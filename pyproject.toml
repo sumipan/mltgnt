@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mltgnt"
+version = "0.1.0"
+description = "ペルソナ×秘書（マルチエージェント）の型契約とチャット入出力 — diary から切り出した OSS 向けコア"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "sumipan" }]
+keywords = ["persona", "secretary", "slack", "llm", "multi-agent"]
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/sumipan/mltgnt"
+Issues = "https://github.com/sumipan/mltgnt/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mltgnt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

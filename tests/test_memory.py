@@ -1,0 +1,434 @@
+"""
+tests/test_mltgnt_memory.py — mltgnt.memory のユニットテスト（AC-1）
+
+設計: Issue #118 §7 AC-1
+"""
+from __future__ import annotations
+
+import threading
+import time
+from pathlib import Path
+
+import pytest
+
+from mltgnt.config import MemoryConfig  # noqa: E402
+from mltgnt.memory import (  # noqa: E402
+    append_memory_entry,
+    read_memory_preferences,
+    read_memory_tail_text,
+    memory_file_path,
+    persona_memory_lock,
+    compact,
+    needs_compaction,
+    LlmCallError,
+    CompactionResult,
+)
+from mltgnt.memory._format import parse_memory, format_memory  # noqa: E402
+
+
+def make_config(tmp_path: Path) -> MemoryConfig:
+    mem_dir = tmp_path / "memory"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    return MemoryConfig(
+        chat_dir=tmp_path,
+        chat_memory_dir=mem_dir,
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-1: 正常系 - append_memory_entry
+# ---------------------------------------------------------------------------
+
+def test_append_memory_entry_creates_file(tmp_path: Path) -> None:
+    """append_memory_entry が指定ペルソナのファイルにエントリを追記する。"""
+    config = make_config(tmp_path)
+    result = append_memory_entry(
+        config, "test_persona", "user", "hello", "2026-04-17T10:00:00+09:00",
+        source_tag="[file]"
+    )
+    assert result is True
+    mp = memory_file_path(config, "test_persona")
+    assert mp.exists()
+    text = mp.read_text(encoding="utf-8")
+    assert "## 2026-04-17T10:00:00+09:00 — user" in text
+    assert "[file]" in text
+    assert "hello" in text
+    assert "---" in text
+
+
+def test_append_memory_entry_format(tmp_path: Path) -> None:
+    """追記エントリのフォーマットが正しい。"""
+    config = make_config(tmp_path)
+    append_memory_entry(
+        config, "test_persona", "user", "hello", "2026-04-17T10:00:00+09:00",
+        source_tag="[file]"
+    )
+    mp = memory_file_path(config, "test_persona")
+    text = mp.read_text(encoding="utf-8")
+    # フォーマット: ## {timestamp} — {role}\n\n{source_tag}\n{body}\n\n---\n\n
+    assert "## 2026-04-17T10:00:00+09:00 — user\n\n[file]\nhello\n\n---" in text
+
+
+# ---------------------------------------------------------------------------
+# AC-1: 正常系 - read_memory_tail_text
+# ---------------------------------------------------------------------------
+
+def test_read_memory_tail_text_returns_entries(tmp_path: Path) -> None:
+    """read_memory_tail_text が末尾エントリを返す。"""
+    config = make_config(tmp_path)
+    for i in range(10):
+        append_memory_entry(
+            config, "test_persona", "user", f"entry {i}", f"2026-04-17T1{i:01d}:00:00+09:00",
+            source_tag="[file]"
+        )
+    result = read_memory_tail_text(config, "test_persona", max_bytes=1024, max_entries=5)
+    assert result
+    # 最大5エントリに収まる
+    assert result.count("## 20") <= 5
+
+
+def test_read_memory_tail_text_nonexistent(tmp_path: Path) -> None:
+    """存在しないファイルへの read_memory_tail_text は空文字列を返す。"""
+    config = make_config(tmp_path)
+    result = read_memory_tail_text(config, "nonexistent", max_bytes=1024, max_entries=5)
+    assert result == ""
+
+
+def test_read_memory_tail_text_max_bytes_zero(tmp_path: Path) -> None:
+    """max_bytes=0 での read_memory_tail_text は空文字列を返す。"""
+    config = make_config(tmp_path)
+    append_memory_entry(
+        config, "test_persona", "user", "hello", "2026-04-17T10:00:00+09:00",
+        source_tag="[file]"
+    )
+    result = read_memory_tail_text(config, "test_persona", max_bytes=0, max_entries=5)
+    assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# AC-1: 正常系 - read_memory_preferences
+# ---------------------------------------------------------------------------
+
+def test_read_memory_preferences_extracts_section(tmp_path: Path) -> None:
+    """read_memory_preferences が ## ユーザーの好み・傾向 セクションを抽出する。"""
+    config = make_config(tmp_path)
+    mp = memory_file_path(config, "test_persona")
+    mp.write_text(
+        "## ユーザーの好み・傾向\n\n好みのテキストです。\n\n---\n\n## 2026-04-17 — user\n\nentryです。\n\n---\n\n",
+        encoding="utf-8",
+    )
+    result = read_memory_preferences(config, "test_persona")
+    assert "ユーザーの好み・傾向" in result
+    assert "好みのテキストです。" in result
+
+
+def test_read_memory_preferences_nonexistent(tmp_path: Path) -> None:
+    """存在しないファイルへの read_memory_preferences は空文字列を返す（例外なし）。"""
+    config = make_config(tmp_path)
+    result = read_memory_preferences(config, "nonexistent")
+    assert result == ""
+
+
+def test_read_memory_preferences_no_section(tmp_path: Path) -> None:
+    """好みセクションがないファイルは空文字列を返す。"""
+    config = make_config(tmp_path)
+    mp = memory_file_path(config, "test_persona")
+    mp.write_text("## 2026-04-17 — user\n\nentryです。\n\n---\n\n", encoding="utf-8")
+    result = read_memory_preferences(config, "test_persona")
+    assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# AC-1: 重複排除
+# ---------------------------------------------------------------------------
+
+def test_dedupe_key_prevents_second_write(tmp_path: Path) -> None:
+    """dedupe_key で2回 append → 2回目は追記せず True を返す。"""
+    config = make_config(tmp_path)
+    r1 = append_memory_entry(
+        config, "test_persona", "user", "hi", "2026-04-17 10:00",
+        source_tag="[file]", dedupe_key="key1"
+    )
+    r2 = append_memory_entry(
+        config, "test_persona", "user", "hi", "2026-04-17 10:00",
+        source_tag="[file]", dedupe_key="key1"
+    )
+    assert r1 is True
+    assert r2 is True
+    mp = memory_file_path(config, "test_persona")
+    text = mp.read_text(encoding="utf-8")
+    assert text.count("2026-04-17 10:00 — user") == 1
+
+
+def test_no_dedupe_key_allows_duplicate(tmp_path: Path) -> None:
+    """dedupe_key=None で2回 append → 2回とも追記される。"""
+    config = make_config(tmp_path)
+    append_memory_entry(
+        config, "test_persona", "user", "hi", "2026-04-17 10:00",
+        source_tag="[file]", dedupe_key=None
+    )
+    append_memory_entry(
+        config, "test_persona", "user", "hi", "2026-04-17 10:00",
+        source_tag="[file]", dedupe_key=None
+    )
+    mp = memory_file_path(config, "test_persona")
+    text = mp.read_text(encoding="utf-8")
+    assert text.count("2026-04-17 10:00 — user") == 2
+
+
+# ---------------------------------------------------------------------------
+# AC-1: ロック
+# ---------------------------------------------------------------------------
+
+def test_persona_memory_lock_blocks_second_acquire(tmp_path: Path) -> None:
+    """ロック取得中に別スレッドが同じ stem でロック取得 → タイムアウトまでブロック。"""
+    config = make_config(tmp_path)
+    ready = threading.Event()
+
+    def hold():
+        with persona_memory_lock(config, "lock_test", timeout_sec=5.0) as ok:
+            assert ok
+            ready.set()
+            time.sleep(0.5)
+
+    t = threading.Thread(target=hold, daemon=True)
+    t.start()
+    assert ready.wait(timeout=2.0)
+    with persona_memory_lock(config, "lock_test", timeout_sec=0.05) as ok2:
+        assert not ok2
+    t.join(timeout=3.0)
+
+
+# ---------------------------------------------------------------------------
+# AC-1: memory_file_path
+# ---------------------------------------------------------------------------
+
+def test_memory_file_path(tmp_path: Path) -> None:
+    """memory_file_path が正しいパスを返す。"""
+    config = make_config(tmp_path)
+    path = memory_file_path(config, "test_persona")
+    assert path == config.chat_memory_dir / "test_persona.md"
+
+
+# ---------------------------------------------------------------------------
+# AC-1: MemoryConfig の新フィールド・chat_memory_dir デフォルト
+# ---------------------------------------------------------------------------
+
+def test_memory_config_default_chat_memory_dir(tmp_path: Path) -> None:
+    """chat_memory_dir 省略時は chat_dir / 'memory' が使われる。"""
+    config = MemoryConfig(chat_dir=tmp_path)
+    path = memory_file_path(config, "persona")
+    assert path == tmp_path / "memory" / "persona.md"
+
+
+def test_memory_config_explicit_chat_memory_dir(tmp_path: Path) -> None:
+    """chat_memory_dir を明示指定すると、そのパスが使われる（後方互換）。"""
+    other = tmp_path / "other"
+    config = MemoryConfig(chat_dir=tmp_path, chat_memory_dir=other)
+    path = memory_file_path(config, "persona")
+    assert path == other / "persona.md"
+
+
+def test_memory_config_new_fields() -> None:
+    """MemoryConfig の新フィールドがデフォルト値を持つ。"""
+    config = MemoryConfig(chat_dir=Path("/tmp/chat"))
+    assert config.raw_days == 7
+    assert config.mid_weeks == 3
+    assert config.compact_threshold_bytes == 40_960
+    assert config.compact_target_bytes == 25_600
+    assert config.preferences_section_name == "ユーザーの好み・傾向"
+
+
+def test_memory_config_new_fields_custom() -> None:
+    """MemoryConfig の新フィールドをカスタマイズできる。"""
+    config = MemoryConfig(
+        chat_dir=Path("/tmp/chat"),
+        raw_days=14,
+        mid_weeks=4,
+        compact_threshold_bytes=81_920,
+        compact_target_bytes=51_200,
+        preferences_section_name="User Preferences",
+    )
+    assert config.raw_days == 14
+    assert config.mid_weeks == 4
+    assert config.compact_threshold_bytes == 81_920
+    assert config.compact_target_bytes == 51_200
+    assert config.preferences_section_name == "User Preferences"
+
+
+# ---------------------------------------------------------------------------
+# _format: parse_memory / format_memory
+# ---------------------------------------------------------------------------
+
+def test_parse_memory_all_sections() -> None:
+    """parse_memory が 4 層すべてを正しく抽出する。"""
+    text = (
+        "## ユーザーの好み・傾向\n\n好み内容\n\n---\n\n"
+        "## 長期要約\n\n長期内容\n\n---\n\n"
+        "## 中期要約\n\n中期内容\n\n---\n\n"
+        "## 直近ログ\n\n直近内容\n"
+    )
+    sections = parse_memory(text)
+    assert "好み内容" in sections.preferences
+    assert "長期内容" in sections.long_term
+    assert "中期内容" in sections.mid_term
+    assert "直近内容" in sections.recent
+
+
+def test_parse_memory_missing_sections() -> None:
+    """セクションが一部欠落しても正常にパースできる。"""
+    text = "## ユーザーの好み・傾向\n\n好み内容\n"
+    sections = parse_memory(text)
+    assert "好み内容" in sections.preferences
+    assert sections.long_term == ""
+    assert sections.mid_term == ""
+    assert sections.recent == ""
+
+
+def test_parse_memory_no_known_sections() -> None:
+    """既知セクションなしのテキストはすべて preamble になる。"""
+    text = "なんらかのテキスト"
+    sections = parse_memory(text)
+    assert sections.preamble == "なんらかのテキスト"
+    assert sections.preferences == ""
+
+
+def test_parse_memory_custom_heading() -> None:
+    """preferences_heading をカスタマイズできる。"""
+    text = "## User Preferences\n\nsome prefs\n"
+    sections = parse_memory(text, preferences_heading="User Preferences")
+    assert "some prefs" in sections.preferences
+
+
+def test_format_memory_roundtrip() -> None:
+    """parse_memory → format_memory のラウンドトリップで内容が保持される。"""
+    text = (
+        "## ユーザーの好み・傾向\n\n好み内容\n\n---\n\n"
+        "## 長期要約\n\n長期内容\n\n---\n\n"
+        "## 中期要約\n\n中期内容\n\n---\n\n"
+        "## 直近ログ\n\n直近内容\n"
+    )
+    sections = parse_memory(text)
+    result = format_memory(sections)
+    assert "好み内容" in result
+    assert "長期内容" in result
+    assert "中期内容" in result
+    assert "直近内容" in result
+    assert "---" in result
+
+
+# ---------------------------------------------------------------------------
+# needs_compaction
+# ---------------------------------------------------------------------------
+
+def test_needs_compaction_false_when_file_missing(tmp_path: Path) -> None:
+    """ファイルが存在しない場合は False。"""
+    config = make_config(tmp_path)
+    assert needs_compaction(config, "nonexistent") is False
+
+
+def test_needs_compaction_false_when_below_threshold(tmp_path: Path) -> None:
+    """閾値未満は False。"""
+    config = make_config(tmp_path)
+    mp = memory_file_path(config, "test")
+    mp.write_text("x" * 100, encoding="utf-8")
+    assert needs_compaction(config, "test") is False
+
+
+def test_needs_compaction_true_when_above_threshold(tmp_path: Path) -> None:
+    """閾値以上は True。"""
+    config = MemoryConfig(
+        chat_dir=tmp_path,
+        chat_memory_dir=tmp_path / "memory",
+        compact_threshold_bytes=100,
+    )
+    mp = memory_file_path(config, "test")
+    mp.parent.mkdir(parents=True, exist_ok=True)
+    mp.write_text("x" * 200, encoding="utf-8")
+    assert needs_compaction(config, "test") is True
+
+
+# ---------------------------------------------------------------------------
+# compact
+# ---------------------------------------------------------------------------
+
+def test_compact_calls_llm_and_writes_result(tmp_path: Path) -> None:
+    """compact が llm_call を呼び出し、結果をファイルに書き込む。"""
+    config = MemoryConfig(
+        chat_dir=tmp_path,
+        chat_memory_dir=tmp_path / "memory",
+        compact_threshold_bytes=100,
+    )
+    mp = memory_file_path(config, "persona")
+    mp.parent.mkdir(parents=True, exist_ok=True)
+    mp.write_text(
+        "## ユーザーの好み・傾向\n\n好み内容\n\n---\n\n## 直近ログ\n\n古いログ\n",
+        encoding="utf-8",
+    )
+
+    llm_response = (
+        "## ユーザーの好み・傾向\n\n好み内容（更新）\n\n---\n\n"
+        "## 長期要約\n\n長期要約内容\n\n---\n\n"
+        "## 中期要約\n\n中期要約内容\n\n---\n\n"
+        "## 直近ログ\n\n直近ログ内容\n"
+    )
+
+    calls: list[str] = []
+
+    def mock_llm(prompt: str) -> str:
+        calls.append(prompt)
+        return llm_response
+
+    result = compact(config, "persona", llm_call=mock_llm)
+
+    assert len(calls) == 1
+    assert isinstance(result, CompactionResult)
+    assert result.before_bytes > 0
+    assert result.after_bytes > 0
+
+    written = mp.read_text(encoding="utf-8")
+    assert "好み内容（更新）" in written
+
+
+def test_compact_dry_run_does_not_write(tmp_path: Path) -> None:
+    """dry_run=True のときはファイルを書き込まない。"""
+    config = MemoryConfig(
+        chat_dir=tmp_path,
+        chat_memory_dir=tmp_path / "memory",
+    )
+    mp = memory_file_path(config, "persona")
+    mp.parent.mkdir(parents=True, exist_ok=True)
+    original = "## ユーザーの好み・傾向\n\noriginal\n"
+    mp.write_text(original, encoding="utf-8")
+
+    def mock_llm(prompt: str) -> str:
+        return "## ユーザーの好み・傾向\n\nupdated\n"
+
+    compact(config, "persona", llm_call=mock_llm, dry_run=True)
+
+    assert mp.read_text(encoding="utf-8") == original
+
+
+def test_compact_raises_llm_call_error_on_failure(tmp_path: Path) -> None:
+    """llm_call が例外を投げると LlmCallError にラップされる。"""
+    config = MemoryConfig(
+        chat_dir=tmp_path,
+        chat_memory_dir=tmp_path / "memory",
+    )
+    mp = memory_file_path(config, "persona")
+    mp.parent.mkdir(parents=True, exist_ok=True)
+    mp.write_text("## ユーザーの好み・傾向\n\nsome content\n", encoding="utf-8")
+
+    def failing_llm(prompt: str) -> str:
+        raise ValueError("API error")
+
+    with pytest.raises(LlmCallError):
+        compact(config, "persona", llm_call=failing_llm)
+
+
+def test_compact_raises_file_not_found(tmp_path: Path) -> None:
+    """メモリファイルが存在しない場合は FileNotFoundError。"""
+    config = make_config(tmp_path)
+
+    with pytest.raises(FileNotFoundError):
+        compact(config, "nonexistent", llm_call=lambda p: p)
