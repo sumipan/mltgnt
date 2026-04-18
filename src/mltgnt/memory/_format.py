@@ -12,6 +12,7 @@ __all__ = [
     "MemorySections",
     "parse_memory",
     "format_memory",
+    "assemble_memory",
 ]
 
 
@@ -91,4 +92,35 @@ def format_memory(sections: MemorySections) -> str:
     ]:
         if content:
             parts.append(content)
+    return "\n\n---\n\n".join(parts) + "\n"
+
+
+def assemble_memory(
+    *,
+    preferences: str,
+    long_term: str,
+    mid_term: str,
+    recent: str,
+    preamble: str = "",
+    preferences_heading: str = "ユーザーの好み・傾向",
+) -> str:
+    """コンパクション結果から見出し付きメモリテキストを組み立てる。
+
+    各セクションは本文のみ（見出しなし）を受け取り、
+    この関数が ``## `` 見出しと ``---`` セパレータを付与する。
+    """
+    parts: list[str] = []
+    if preamble:
+        parts.append(preamble)
+
+    section_defs = [
+        (preferences_heading, preferences),
+        ("長期要約（1ヶ月超）", long_term),
+        ("中期要約（1〜3週間前）", mid_term),
+        ("直近ログ（7日以内）", recent),
+    ]
+    for heading, body in section_defs:
+        text = body.strip() if body else ""
+        parts.append(f"## {heading}\n\n{text}" if text else f"## {heading}")
+
     return "\n\n---\n\n".join(parts) + "\n"

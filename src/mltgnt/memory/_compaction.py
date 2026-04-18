@@ -1,19 +1,19 @@
 """
 mltgnt.memory._compaction — メモリコンパクション。
 
-設計: Issue #123
+設計: Issue #123, #137 (per-section LLM calls)
 """
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
 
-from mltgnt.memory._format import MemorySections, parse_memory, format_memory
+from mltgnt.memory._format import MemorySections, parse_memory, assemble_memory
 
 _log = logging.getLogger(__name__)
 
@@ -23,7 +23,6 @@ __all__ = [
     "LlmCallError",
     "CompactionResult",
     "needs_compaction",
-    "build_compaction_prompt",
     "compact",
 ]
 
@@ -37,6 +36,7 @@ class CompactionResult:
     before_bytes: int
     after_bytes: int
     summary: str
+    warnings: list[str] = field(default_factory=list)
 
 
 def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
@@ -48,65 +48,60 @@ def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
     return path.stat().st_size >= config.compact_threshold_bytes
 
 
-def build_compaction_prompt(config: "MemoryConfig", sections: MemorySections) -> str:
-    """コンパクション用プロンプトを生成する。"""
-    target_kb = config.compact_target_bytes // 1024
-    min_kb = int(config.compact_target_bytes * 0.7 // 1024)
-    max_kb = int(config.compact_target_bytes * 1.3 // 1024)
-    prefs_kb = config.preferences_max_bytes // 1024
-    return f"""メモリファイルのコンパクション（圧縮・要約）を行ってください。
+def _build_section_prompt(section_text: str, target_bytes: int) -> str:
+    """個別セクション用のコンパクションプロンプトを生成する。"""
+    return (
+        "以下の文章を要約・圧縮してください。"
+        "見出しは不要です。本文のみ出力してください。"
+        f"目標サイズ: {target_bytes}バイト以内\n\n"
+        f"{section_text}"
+    )
 
-## 目標サイズ
-コンパクション後: {target_kb}KB 以内（許容範囲: {min_kb}〜{max_kb}KB）
 
-## 入力メモリ（4 層構造）
+def _strip_heading(section_text: str) -> str:
+    """セクションテキストから先頭の ``## ...`` 見出し行を除去して本文だけ返す。"""
+    import re
+    return re.sub(r"^##\s+[^\n]*\n*", "", section_text, count=1).strip()
 
-### 好みセクション（保持必須）
-{sections.preferences or "(なし)"}
 
-### 長期要約
-{sections.long_term or "(なし)"}
+def _compact_section(
+    section_name: str,
+    section_text: str,
+    target_bytes: int,
+    llm_call: LlmCall,
+) -> tuple[str, str | None]:
+    """1 セクションをコンパクションする。
 
-### 中期要約
-{sections.mid_term or "(なし)"}
+    Returns:
+        (compacted_body, warning_or_none)
+        失敗時は元の本文をそのまま返し、warning に理由を入れる。
+    """
+    body = _strip_heading(section_text)
+    if not body:
+        return body, None
 
-### 直近ログ（{config.raw_days}日以内は生保持）
-{sections.recent or "(なし)"}
+    MIN_RATIO = 0.05
+    original_size = len(body.encode("utf-8"))
 
-## 段階的忘却ルール（Asia/Tokyo 日付基準）
+    try:
+        prompt = _build_section_prompt(body, target_bytes)
+        result = llm_call(prompt)
+    except Exception as e:
+        warning = f"{section_name}: LLM call failed ({e}), using original text"
+        _log.warning(warning)
+        return body, warning
 
-| 期間 | 処理 |
-|------|------|
-| 0〜{config.raw_days}日以内 | 生ログをそのまま保持 |
-| {config.raw_days + 1}〜{config.mid_weeks * 7}日前 | 週単位に要約（主要話題 + 感情トーン） |
-| {config.mid_weeks * 7 + 1}日以上前 | 月単位に要約（月あたり 3〜5 行） |
+    result_size = len(result.encode("utf-8"))
+    if result_size < original_size * MIN_RATIO:
+        warning = (
+            f"{section_name}: result too small "
+            f"({result_size}B < {original_size}B * {MIN_RATIO}), "
+            f"using original text"
+        )
+        _log.warning(warning)
+        return body, warning
 
-## 好みセクションのルール
-- `## {config.preferences_section_name}` セクションは必ず保持・更新する
-- {prefs_kb}KB 以内に収める
-- 削除しない
-
-## 出力形式
-以下の 4 層構造で出力してください。各セクションは `---` で区切る。
-
-## {config.preferences_section_name}
-（好みセクション内容）
-
----
-
-## 長期要約（1ヶ月超）
-（月次要約）
-
----
-
-## 中期要約（1〜{config.mid_weeks}週間前）
-（週次要約）
-
----
-
-## 直近ログ（{config.raw_days}日以内）
-（生ログ）
-"""
+    return result.strip(), None
 
 
 def compact(
@@ -114,13 +109,15 @@ def compact(
     persona_stem: str,
     *,
     llm_call: LlmCall,
-    compaction_prompt: str | None = None,
     dry_run: bool = False,
 ) -> CompactionResult:
-    """メモリファイルをコンパクションする。
+    """メモリファイルをコンパクションする（per-section LLM 呼び出し）。
 
     llm_call はプロンプト文字列を受け取り、コンパクション後のテキストを返す callable。
     dry_run=True のときはファイル書き込みを行わない。
+
+    preferences セクションは LLM に送らず、元テキストをそのまま保持する。
+    各セクションの LLM 呼び出しが失敗した場合、そのセクションは元テキストにフォールバックする。
     """
     from mltgnt.memory import memory_file_path, persona_memory_lock
 
@@ -139,33 +136,58 @@ def compact(
             original_text, preferences_heading=config.preferences_section_name
         )
 
-        prompt = compaction_prompt or build_compaction_prompt(config, sections)
+        # preferences はそのまま保持 (LLM に送らない)
+        prefs_body = _strip_heading(sections.preferences)
 
-        try:
-            llm_response = llm_call(prompt)
-        except Exception as e:
-            raise LlmCallError(f"llm_call failed: {e}") from e
+        # 残り 3 セクションのターゲットサイズ配分
+        # preferences を除いた残りを 3 等分
+        prefs_size = len(prefs_body.encode("utf-8")) if prefs_body else 0
+        remaining_target = max(config.compact_target_bytes - prefs_size, 1024)
+        section_target = remaining_target // 3
 
-        # Parse the LLM response as memory sections
-        new_sections = parse_memory(
-            llm_response, preferences_heading=config.preferences_section_name
-        )
-        # Preserve preamble from original
-        new_sections_with_preamble = MemorySections(
-            preferences=new_sections.preferences,
-            long_term=new_sections.long_term,
-            mid_term=new_sections.mid_term,
-            recent=new_sections.recent,
+        warnings: list[str] = []
+
+        # 各セクションを個別にコンパクション
+        section_defs = [
+            ("long_term", sections.long_term),
+            ("mid_term", sections.mid_term),
+            ("recent", sections.recent),
+        ]
+
+        compacted: dict[str, str] = {}
+        for name, text in section_defs:
+            body, warning = _compact_section(name, text, section_target, llm_call)
+            compacted[name] = body
+            if warning:
+                warnings.append(warning)
+
+        # assemble_memory で見出し付きテキストを組み立て
+        new_text = assemble_memory(
+            preferences=prefs_body,
+            long_term=compacted["long_term"],
+            mid_term=compacted["mid_term"],
+            recent=compacted["recent"],
             preamble=sections.preamble,
+            preferences_heading=config.preferences_section_name,
         )
-        new_text = format_memory(new_sections_with_preamble)
         after_bytes = len(new_text.encode("utf-8"))
 
+        # サイズ上限チェック
         if after_bytes > config.compact_target_bytes * 1.3:
-            _log.warning(
-                "compact: after_bytes=%d exceeds compact_target_bytes*1.3=%d",
-                after_bytes,
-                int(config.compact_target_bytes * 1.3),
+            raise ValueError(
+                f"Compaction result too large for {persona_stem}: "
+                f"{after_bytes}B exceeds limit {int(config.compact_target_bytes * 1.3)}B "
+                f"— aborting"
+            )
+
+        # サイズ下限チェック: 元サイズの 5% 未満は異常
+        MIN_RATIO = 0.05
+        if after_bytes < before_bytes * MIN_RATIO:
+            raise ValueError(
+                f"Compaction produced near-empty result for {persona_stem}: "
+                f"{before_bytes}B -> {after_bytes}B "
+                f"(ratio {after_bytes / before_bytes:.3f} < {MIN_RATIO}) "
+                f"— aborting to prevent data loss"
             )
 
         if not dry_run:
@@ -175,4 +197,5 @@ def compact(
             before_bytes=before_bytes,
             after_bytes=after_bytes,
             summary=f"compacted {persona_stem}: {before_bytes}B -> {after_bytes}B",
+            warnings=warnings,
         )
