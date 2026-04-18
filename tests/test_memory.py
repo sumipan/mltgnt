@@ -70,6 +70,51 @@ def test_append_memory_entry_format(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# サイズガード: 破損ファイルへの追記を拒否
+# ---------------------------------------------------------------------------
+
+def test_append_rejects_corrupted_file(tmp_path: Path) -> None:
+    """既存ファイルが閾値以下の場合、追記を拒否して False を返す。"""
+    config = make_config(tmp_path)
+    mp = memory_file_path(config, "broken")
+    mp.write_text("\n", encoding="utf-8")  # 1 byte — 破損状態
+    result = append_memory_entry(
+        config, "broken", "user", "new data", "2026-04-18T10:00:00+09:00",
+        source_tag="[slack]"
+    )
+    assert result is False
+    # ファイルが書き換わっていないことを確認
+    assert mp.read_text(encoding="utf-8") == "\n"
+
+
+def test_append_allows_new_file(tmp_path: Path) -> None:
+    """ファイルが存在しない場合は正常に作成される（サイズガードに引っかからない）。"""
+    config = make_config(tmp_path)
+    result = append_memory_entry(
+        config, "fresh", "user", "first entry", "2026-04-18T10:00:00+09:00",
+        source_tag="[file]"
+    )
+    assert result is True
+    mp = memory_file_path(config, "fresh")
+    assert mp.exists()
+    assert "first entry" in mp.read_text(encoding="utf-8")
+
+
+def test_append_allows_healthy_file(tmp_path: Path) -> None:
+    """閾値を超えるサイズのファイルには正常に追記できる。"""
+    config = make_config(tmp_path)
+    mp = memory_file_path(config, "healthy")
+    # 閾値を超える正常な内容を書き込む
+    mp.write_text("x" * 200, encoding="utf-8")
+    result = append_memory_entry(
+        config, "healthy", "user", "appended", "2026-04-18T10:00:00+09:00",
+        source_tag="[slack]"
+    )
+    assert result is True
+    assert "appended" in mp.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # AC-1: 正常系 - read_memory_tail_text
 # ---------------------------------------------------------------------------
 
