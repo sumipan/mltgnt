@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from mltgnt.persona import Persona, validate_persona
 from mltgnt.persona.schema import (
