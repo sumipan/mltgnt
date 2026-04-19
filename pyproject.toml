@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.1.0"
+version = "0.2.0"
 description = "ペルソナ×秘書（マルチエージェント）の型契約とチャット入出力 — diary から切り出した OSS 向けコア"
 readme = "README.md"
 requires-python = ">=3.10"
