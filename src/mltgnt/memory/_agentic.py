@@ -104,7 +104,8 @@ class AgenticRetriever:
                 break
 
             action = result.action
-            assert action is not None
+            if action is None:
+                break
 
             # Action: source に応じて検索実行
             if action.source == "memory":
