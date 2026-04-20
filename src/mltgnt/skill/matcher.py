@@ -80,14 +80,12 @@ async def _match_by_llm(
     prompt = f"{_LLM_SYSTEM_PROMPT}\n\nスキル一覧:\n{skill_list}\n\nユーザー入力: {user_input}"
 
     try:
-        import anthropic
-        client = anthropic.Anthropic()
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=50,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        response = message.content[0].text.strip().lower()
+        from ghdag.llm import call as llm_call
+        result = llm_call(prompt, engine="claude", model="claude-haiku-4-5-20251001", timeout=30)
+        if not result.ok:
+            print(f"[skill.matcher] LLM 意図分類エラー: {result.stderr}", file=sys.stderr)
+            return None
+        response = result.stdout.strip().lower()
     except Exception as e:
         print(f"[skill.matcher] LLM 意図分類エラー: {e}", file=sys.stderr)
         return None

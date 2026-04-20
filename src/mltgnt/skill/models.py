@@ -5,7 +5,7 @@ mltgnt.skill.models — SkillMeta / SkillFile dataclass 定義。
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -18,11 +18,7 @@ class SkillMeta:
     argument_hint: str
     model: str | None
     path: Path
-    triggers: list[str] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.triggers is None:
-            self.triggers = []
+    triggers: list[str] = field(default_factory=list)
 
 
 @dataclass
