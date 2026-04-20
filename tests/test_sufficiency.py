@@ -5,7 +5,7 @@ TC6: LLM 応答のパース失敗 → フェイルセーフ（sufficient=True）
 TC7: llm_call が例外を送出 → 例外が伝播する
 TC8: rewritten_query が空文字 → フェイルセーフ（sufficient=True）
 """
-from mltgnt.memory._sufficiency import SufficiencyResult, judge_sufficiency
+from mltgnt.memory._sufficiency import judge_sufficiency
 import pytest
 
 

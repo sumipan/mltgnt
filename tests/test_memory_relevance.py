@@ -22,7 +22,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mltgnt.config import MemoryConfig
-from mltgnt.memory import read_memory_by_relevance, read_memory_tail_text, memory_file_path
+from mltgnt.memory import read_memory_by_relevance, read_memory_tail_text, memory_file_path, read_memory_with_sufficiency_check
+from mltgnt.memory._scoring import ScoredEntry
 
 
 def make_config(tmp_path: Path) -> MemoryConfig:
@@ -363,10 +364,6 @@ def test_tc10_single_entry(tmp_path: Path) -> None:
 # Phase 2 tests — read_memory_with_sufficiency_check()
 # ---------------------------------------------------------------------------
 
-import logging
-from unittest.mock import patch, MagicMock
-from mltgnt.memory import read_memory_with_sufficiency_check
-from mltgnt.memory._scoring import ScoredEntry
 
 
 # ---------------------------------------------------------------------------
