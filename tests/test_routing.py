@@ -5,8 +5,6 @@ tests/test_mltgnt_routing.py — mltgnt.routing のユニットテスト（AC-4�
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest

@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 
 from mltgnt.chat.models import ChatInput
 from mltgnt.skill.models import SkillFile, SkillMeta

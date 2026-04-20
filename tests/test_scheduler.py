@@ -15,8 +15,6 @@ import pytest
 from mltgnt.scheduler import (
     ScheduleJob,
     SecretaryScheduler,
-    _hash_offset,
-    atomic_write_text,
     load_schedule_jobs,
 )
 from mltgnt.config import SchedulerConfig
@@ -225,7 +223,6 @@ def test_cycle_detection_raises(tmp_path: Path) -> None:
 
 def test_scheduler_config_integration(tmp_path: Path) -> None:
     """SchedulerConfig を使ってスケジューラが正常に動作する。"""
-    from mltgnt.config import SchedulerConfig
     yaml_file = tmp_path / "schedule.yaml"
     yaml_file.write_text(
         "jobs:\n"

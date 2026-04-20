@@ -176,7 +176,7 @@ async def test_ac4_3_no_match_calls_llm():
     with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = None
         skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-        result = await match("今日の天気は？", skills, persona_skills=None)
+        await match("今日の天気は？", skills, persona_skills=None)
         mock_llm.assert_called_once()
 
 

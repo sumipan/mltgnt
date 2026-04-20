@@ -20,7 +20,6 @@ from mltgnt.memory import (  # noqa: E402
     persona_memory_lock,
     compact,
     needs_compaction,
-    LlmCallError,
     CompactionResult,
 )
 from mltgnt.memory._format import parse_memory, format_memory, assemble_memory  # noqa: E402
