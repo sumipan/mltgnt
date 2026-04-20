@@ -21,8 +21,6 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from mltgnt.config import MemoryConfig
 from mltgnt.memory import read_memory_by_relevance, read_memory_tail_text, memory_file_path
 

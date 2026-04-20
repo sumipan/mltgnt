@@ -5,9 +5,6 @@ TC5（日本語テキスト対応）を含む
 """
 from __future__ import annotations
 
-import numpy as np
-import pytest
-
 from mltgnt.memory._tfidf import vectorize
 
 
