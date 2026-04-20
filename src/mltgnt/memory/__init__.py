@@ -14,11 +14,10 @@ import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator
 
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
-    from mltgnt.memory._sufficiency import LlmCall
     from mltgnt.memory._scoring import ScoredEntry
 
 __all__ = [
@@ -28,6 +27,7 @@ __all__ = [
     "read_memory_tail_text",
     "read_memory_by_relevance",
     "read_memory_with_sufficiency_check",
+    "read_memory_agentic",
     "memory_file_path",
     "normalize_source_prefix",
     "compact",
@@ -408,7 +408,7 @@ def read_memory_with_sufficiency_check(
     *,
     max_bytes: int,
     max_entries: int,
-    llm_call: "LlmCall | None" = None,
+    llm_call: "Callable[[str], str] | None" = None,
 ) -> str:
     """十分性判定付き memory 検索.
 
@@ -496,6 +496,33 @@ def read_memory_with_sufficiency_check(
         return ""
     text = "\n\n---\n\n".join(all_parts)
     return _tail_utf8_bytes(text, max_bytes)
+
+
+def read_memory_agentic(
+    config: "MemoryConfig",
+    persona_stem: str,
+    query: str,
+    *,
+    max_bytes: int,
+    max_entries: int,
+    llm_call: "Callable[[str], str]",
+    skill_paths: "list[Path] | None" = None,
+    max_iterations: int = 3,
+) -> str:
+    """Phase 3: Agentic RAG による情報収集。
+
+    skill_paths が None の場合は memory のみ検索（Phase 2 相当の動作）。
+    """
+    from mltgnt.memory._agentic import AgenticRetriever
+
+    retriever = AgenticRetriever(
+        config=config,
+        persona_stem=persona_stem,
+        skill_paths=skill_paths or [],
+        llm_call=llm_call,
+        max_iterations=max_iterations,
+    )
+    return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
 
 
 # Lazy imports for compaction to avoid circular dependency issues
