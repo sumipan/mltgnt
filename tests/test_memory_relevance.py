@@ -423,7 +423,7 @@ def test_suf_tc2_insufficient_merges_results(tmp_path: Path) -> None:
             "プロジェクト",
             max_bytes=4096,
             max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\nDB接続の詳細設定",
+            llm_call=lambda p: "INSUFFICIENT\nMEMORY\nDB接続の詳細設定",
         )
 
     assert "エントリA" in result
@@ -454,7 +454,7 @@ def test_suf_tc3_deduplication(tmp_path: Path) -> None:
             "テスト",
             max_bytes=4096,
             max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\n追加クエリ",
+            llm_call=lambda p: "INSUFFICIENT\nMEMORY\n追加クエリ",
         )
 
     # エントリAが2回以上現れないことを確認
@@ -491,7 +491,7 @@ def test_suf_tc4_max_entries_after_merge(tmp_path: Path) -> None:
             "テスト",
             max_bytes=65536,
             max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\n追加クエリ",
+            llm_call=lambda p: "INSUFFICIENT\nMEMORY\n追加クエリ",
         )
 
     # 結果に含まれるエントリ数を数える（エントリ0〜エントリ9）
