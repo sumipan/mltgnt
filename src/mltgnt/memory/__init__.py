@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
+    from mltgnt.memory._sufficiency import LlmCall
+    from mltgnt.memory._scoring import ScoredEntry
 
 __all__ = [
     "persona_memory_lock",
@@ -25,6 +27,7 @@ __all__ = [
     "read_memory_preferences",
     "read_memory_tail_text",
     "read_memory_by_relevance",
+    "read_memory_with_sufficiency_check",
     "memory_file_path",
     "normalize_source_prefix",
     "compact",
@@ -271,6 +274,46 @@ def read_memory_tail_text(
     return _tail_utf8_bytes(text, max_bytes)
 
 
+def _search_and_score(
+    config: "MemoryConfig",
+    persona_stem: str,
+    query: str,
+    *,
+    max_entries: int,
+) -> "list[ScoredEntry]":
+    """memory を検索してスコア付きエントリを返す（内部関数）.
+
+    preferences セクションは含まない（呼び出し側で別途処理）。
+    """
+    path = memory_file_path(config, persona_stem)
+    if not path.exists():
+        return []
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    if not raw.strip():
+        return []
+
+    parts = re.split(r"\n---\s*\n", raw)
+    blocks = [p.strip() for p in parts if p.strip()]
+
+    if not blocks:
+        return []
+
+    prefs_header = "## ユーザーの好み・傾向"
+    entry_blocks = [b for b in blocks if prefs_header not in b]
+
+    if not entry_blocks:
+        return []
+
+    from mltgnt.memory._scoring import score_entries
+    scored = score_entries(query, entry_blocks)
+    return scored[:max_entries]
+
+
 def read_memory_by_relevance(
     config: "MemoryConfig",
     persona_stem: str,
@@ -341,10 +384,8 @@ def read_memory_by_relevance(
 
     # TF-IDF でスコアリング
     try:
-        from mltgnt.memory._scoring import score_entries
-
-        scored = score_entries(query, entry_blocks)
-        top_entries = [s.text for s in scored[:max_entries]]
+        scored = _search_and_score(config, persona_stem, query, max_entries=max_entries)
+        top_entries = [s.text for s in scored]
 
     except Exception as e:
         _log.warning(
@@ -356,6 +397,103 @@ def read_memory_by_relevance(
 
     # preferences + 上位エントリを結合
     all_parts = preferences_blocks + top_entries
+    text = "\n\n---\n\n".join(all_parts)
+    return _tail_utf8_bytes(text, max_bytes)
+
+
+def read_memory_with_sufficiency_check(
+    config: "MemoryConfig",
+    persona_stem: str,
+    query: str,
+    *,
+    max_bytes: int,
+    max_entries: int,
+    llm_call: "LlmCall | None" = None,
+) -> str:
+    """十分性判定付き memory 検索.
+
+    1. _search_and_score() で初回検索
+    2. llm_call が指定されていれば judge_sufficiency() で判定
+    3. 不十分なら rewritten_query で再検索し、結果をマージ
+    4. llm_call が None の場合は read_memory_by_relevance() と同じ動作
+    """
+    # llm_call が None の場合は read_memory_by_relevance() と同じ動作
+    if llm_call is None:
+        return read_memory_by_relevance(
+            config, persona_stem, query, max_bytes=max_bytes, max_entries=max_entries
+        )
+
+    # 空クエリはフォールバック
+    if not query:
+        return read_memory_tail_text(
+            config, persona_stem, max_bytes=max_bytes, max_entries=max_entries
+        )
+
+    # 初回検索
+    try:
+        initial_scored = _search_and_score(config, persona_stem, query, max_entries=max_entries)
+    except Exception as e:
+        _log.warning(
+            "read_memory_with_sufficiency_check: initial search error, fallback: %s", e
+        )
+        return read_memory_tail_text(
+            config, persona_stem, max_bytes=max_bytes, max_entries=max_entries
+        )
+
+    top_scored = list(initial_scored)
+
+    if initial_scored:
+        # 十分性判定
+        excerpt = "\n\n---\n\n".join(s.text for s in initial_scored)
+        try:
+            from mltgnt.memory._sufficiency import judge_sufficiency
+            result = judge_sufficiency(query, excerpt, llm_call)
+            if not result.sufficient and result.rewritten_query:
+                # 再検索
+                try:
+                    rewritten_scored = _search_and_score(
+                        config, persona_stem, result.rewritten_query, max_entries=max_entries
+                    )
+                    # マージ: 初回 + 再検索、テキスト完全一致でdedup、スコア降順、max_entries件
+                    seen_texts: set[str] = set()
+                    merged: list[ScoredEntry] = []  # type: ignore[type-arg]
+                    for entry in initial_scored:
+                        if entry.text not in seen_texts:
+                            seen_texts.add(entry.text)
+                            merged.append(entry)
+                    for entry in rewritten_scored:
+                        if entry.text not in seen_texts:
+                            seen_texts.add(entry.text)
+                            merged.append(entry)
+                    merged.sort(key=lambda e: e.score, reverse=True)
+                    top_scored = merged[:max_entries]
+                except Exception as e2:
+                    _log.warning(
+                        "read_memory_with_sufficiency_check: re-search error, using initial: %s", e2
+                    )
+        except Exception as e:
+            _log.warning(
+                "read_memory_with_sufficiency_check: sufficiency check error, using initial results: %s", e
+            )
+
+    # preferences ブロックを読み込む
+    path = memory_file_path(config, persona_stem)
+    preferences_blocks: list[str] = []
+    if path.exists():
+        try:
+            raw = path.read_text(encoding="utf-8")
+            prefs_header = "## ユーザーの好み・傾向"
+            parts = re.split(r"\n---\s*\n", raw)
+            blocks = [p.strip() for p in parts if p.strip()]
+            preferences_blocks = [b for b in blocks if prefs_header in b]
+        except OSError:
+            pass
+
+    # preferences + 上位エントリを結合
+    top_entries = [s.text for s in top_scored]
+    all_parts = preferences_blocks + top_entries
+    if not all_parts:
+        return ""
     text = "\n\n---\n\n".join(all_parts)
     return _tail_utf8_bytes(text, max_bytes)
 

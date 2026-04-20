@@ -22,7 +22,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mltgnt.config import MemoryConfig
-from mltgnt.memory import read_memory_by_relevance, read_memory_tail_text, memory_file_path
+from mltgnt.memory import read_memory_by_relevance, read_memory_tail_text, memory_file_path, read_memory_with_sufficiency_check
+from mltgnt.memory._scoring import ScoredEntry
 
 
 def make_config(tmp_path: Path) -> MemoryConfig:
@@ -357,3 +358,202 @@ def test_tc10_single_entry(tmp_path: Path) -> None:
     )
 
     assert "Python のデコレータ" in result
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 tests — read_memory_with_sufficiency_check()
+# ---------------------------------------------------------------------------
+
+
+
+# ---------------------------------------------------------------------------
+# TC1: llm_call returns SUFFICIENT → same result as read_memory_by_relevance
+# ---------------------------------------------------------------------------
+
+
+def test_suf_tc1_sufficient_same_as_relevance(tmp_path: Path) -> None:
+    """TC1: llm_call が SUFFICIENT を返す → read_memory_by_relevance と同一結果。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
+
+    expected = read_memory_by_relevance(
+        config, "persona", "Python デコレータ", max_bytes=4096, max_entries=3
+    )
+
+    result = read_memory_with_sufficiency_check(
+        config,
+        "persona",
+        "Python デコレータ",
+        max_bytes=4096,
+        max_entries=3,
+        llm_call=lambda p: "SUFFICIENT",
+    )
+
+    assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# TC2: llm_call returns INSUFFICIENT → re-search, results merged
+# ---------------------------------------------------------------------------
+
+
+def test_suf_tc2_insufficient_merges_results(tmp_path: Path) -> None:
+    """TC2: INSUFFICIENT → 再検索し3エントリすべてが結果に含まれる。"""
+    config = make_config(tmp_path)
+    # memory ファイルを作成しておく（preferences 読み込みのため）
+    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
+
+    entry_a = ScoredEntry("エントリA: プロジェクト進捗", 0.9)
+    entry_b = ScoredEntry("エントリB: DB接続設定", 0.8)
+    entry_c = ScoredEntry("エントリC: 料理", 0.3)
+
+    call_count = [0]
+
+    def mock_search(cfg, persona, q, *, max_entries):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return [entry_a, entry_c]
+        else:
+            return [entry_b, entry_a]
+
+    with patch("mltgnt.memory._search_and_score", side_effect=mock_search):
+        result = read_memory_with_sufficiency_check(
+            config,
+            "persona",
+            "プロジェクト",
+            max_bytes=4096,
+            max_entries=10,
+            llm_call=lambda p: "INSUFFICIENT\nDB接続の詳細設定",
+        )
+
+    assert "エントリA" in result
+    assert "エントリB" in result
+    assert "エントリC" in result
+    assert call_count[0] == 2
+
+
+# ---------------------------------------------------------------------------
+# TC3: duplicate deduplication
+# ---------------------------------------------------------------------------
+
+
+def test_suf_tc3_deduplication(tmp_path: Path) -> None:
+    """TC3: 初回と再検索が同一エントリを返す → 重複なし。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
+
+    entries = [
+        ScoredEntry("エントリA", 0.9),
+        ScoredEntry("エントリB", 0.8),
+    ]
+
+    with patch("mltgnt.memory._search_and_score", return_value=entries):
+        result = read_memory_with_sufficiency_check(
+            config,
+            "persona",
+            "テスト",
+            max_bytes=4096,
+            max_entries=10,
+            llm_call=lambda p: "INSUFFICIENT\n追加クエリ",
+        )
+
+    # エントリAが2回以上現れないことを確認
+    assert result.count("エントリA") == 1
+    assert result.count("エントリB") == 1
+
+
+# ---------------------------------------------------------------------------
+# TC4: max_entries limit after merge
+# ---------------------------------------------------------------------------
+
+
+def test_suf_tc4_max_entries_after_merge(tmp_path: Path) -> None:
+    """TC4: マージ後も max_entries を超えない。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
+
+    first_entries = [ScoredEntry(f"エントリ{i}", float(10 - i) / 10) for i in range(8)]
+    second_entries = [ScoredEntry(f"エントリ{i}", float(10 - i) / 10) for i in range(4, 10)]
+
+    call_count = [0]
+
+    def mock_search(cfg, persona, q, *, max_entries):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return first_entries
+        else:
+            return second_entries
+
+    with patch("mltgnt.memory._search_and_score", side_effect=mock_search):
+        result = read_memory_with_sufficiency_check(
+            config,
+            "persona",
+            "テスト",
+            max_bytes=65536,
+            max_entries=10,
+            llm_call=lambda p: "INSUFFICIENT\n追加クエリ",
+        )
+
+    # 結果に含まれるエントリ数を数える（エントリ0〜エントリ9）
+    entry_count = sum(1 for i in range(10) if f"エントリ{i}" in result)
+    assert entry_count <= 10
+
+
+# ---------------------------------------------------------------------------
+# TC5: llm_call=None → same as read_memory_by_relevance
+# ---------------------------------------------------------------------------
+
+
+def test_suf_tc5_no_llm_call_same_as_relevance(tmp_path: Path) -> None:
+    """TC5: llm_call=None → read_memory_by_relevance() と同一結果。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
+
+    expected = read_memory_by_relevance(
+        config, "persona", "Python デコレータ", max_bytes=4096, max_entries=3
+    )
+
+    result = read_memory_with_sufficiency_check(
+        config,
+        "persona",
+        "Python デコレータ",
+        max_bytes=4096,
+        max_entries=3,
+        llm_call=None,
+    )
+
+    assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# TC7 integration: llm_call raises → initial result returned with warning
+# ---------------------------------------------------------------------------
+
+
+def test_suf_tc7_llm_raises_returns_initial(tmp_path: Path, caplog) -> None:
+    """TC7 統合: judge_sufficiency が例外 → 初回結果を返してログに警告。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
+
+    initial_entries = [ScoredEntry("Python のデコレータについて調べた。コードの再利用性が高まる。", 0.9)]
+
+    def mock_search(cfg, persona, q, *, max_entries):
+        return initial_entries
+
+    with patch("mltgnt.memory._search_and_score", side_effect=mock_search):
+        with patch("mltgnt.memory._sufficiency.judge_sufficiency", side_effect=RuntimeError("LLM error")):
+            with caplog.at_level(logging.WARNING, logger="mltgnt.memory"):
+                result = read_memory_with_sufficiency_check(
+                    config,
+                    "persona",
+                    "Python",
+                    max_bytes=4096,
+                    max_entries=5,
+                    llm_call=lambda p: "SUFFICIENT",
+                )
+
+    assert "Python のデコレータ" in result
+    assert any(
+        "sufficiency" in r.message.lower() or "error" in r.message.lower()
+        for r in caplog.records
+    )

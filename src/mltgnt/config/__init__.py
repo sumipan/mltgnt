@@ -11,6 +11,7 @@ from pathlib import Path
 __all__ = [
     "MemoryConfig",
     "SchedulerConfig",
+    "ChatConfig",
 ]
 
 
@@ -37,3 +38,12 @@ class SchedulerConfig:
     state_dir: Path
     timezone: str = "Asia/Tokyo"
     salt: str = ""
+
+
+@dataclass(frozen=True)
+class ChatConfig:
+    """チャットパイプラインに必要な設定。"""
+    persona_dir: Path
+    memory_dir: Path | None = None
+    sufficiency_engine: str | None = None   # 例: "claude"
+    sufficiency_model: str | None = None    # 例: "claude-haiku-4-5-20251001"
