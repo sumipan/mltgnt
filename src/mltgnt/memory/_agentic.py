@@ -88,9 +88,6 @@ class AgenticRetriever:
         # 収集済みエントリ（テキストをキーとして重複排除）
         collected: dict[str, object] = {e.text: e for e in initial_entries}
 
-        # LLM 呼び出し失敗フラグ
-        llm_failed = False
-
         # Loop (最大 max_iterations 回)
         for _ in range(self._max_iterations):
             collected_text = self._format_collected(collected)
@@ -101,7 +98,6 @@ class AgenticRetriever:
                 _log.warning(
                     "AgenticRetriever: LLM call failed, returning collected results: %s", e
                 )
-                llm_failed = True
                 break
 
             if result.sufficient:

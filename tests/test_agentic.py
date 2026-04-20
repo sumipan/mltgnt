@@ -17,14 +17,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 import textwrap
 
-import pytest
 
 from mltgnt.config import MemoryConfig
 from mltgnt.memory import read_memory_agentic, memory_file_path
-from mltgnt.memory._agentic import AgenticRetriever
 
 
 def make_config(tmp_path: Path) -> MemoryConfig:
