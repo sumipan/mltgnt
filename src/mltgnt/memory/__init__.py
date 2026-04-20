@@ -24,6 +24,7 @@ __all__ = [
     "append_memory_entry",
     "read_memory_preferences",
     "read_memory_tail_text",
+    "read_memory_by_relevance",
     "memory_file_path",
     "normalize_source_prefix",
     "compact",
@@ -267,6 +268,95 @@ def read_memory_tail_text(
         return raw.strip()[:max_bytes] if max_bytes else ""
     selected = blocks[-max_entries:] if len(blocks) > max_entries else blocks
     text = "\n\n---\n\n".join(selected)
+    return _tail_utf8_bytes(text, max_bytes)
+
+
+def read_memory_by_relevance(
+    config: "MemoryConfig",
+    persona_stem: str,
+    query: str,
+    *,
+    max_bytes: int,
+    max_entries: int,
+) -> str:
+    """クエリとの関連度が高い memory エントリを選択して返す。
+
+    1. memory ファイルからエントリを `---` で分割
+    2. preferences セクションは常に含める（スコアリング対象外）
+    3. 残りのエントリを TF-IDF + cosine similarity でランク付け
+    4. 上位 max_entries 件を max_bytes 以内で結合して返す
+
+    スコアリングでエラーが発生した場合は
+    read_memory_tail_text() にフォールバックする。
+
+    Args:
+        config: MemoryConfig
+        persona_stem: ペルソナ名
+        query: ユーザーの入力テキスト
+        max_bytes: 最大バイト数
+        max_entries: 最大エントリ数
+
+    Returns:
+        選択された memory テキスト
+    """
+    # 空クエリはフォールバック
+    if not query:
+        return read_memory_tail_text(
+            config, persona_stem, max_bytes=max_bytes, max_entries=max_entries
+        )
+
+    path = memory_file_path(config, persona_stem)
+    if not path.exists():
+        return ""
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+    if not raw.strip():
+        return ""
+
+    # `---` で分割してブロックリストを生成
+    parts = re.split(r"\n---\s*\n", raw)
+    blocks = [p.strip() for p in parts if p.strip()]
+
+    if not blocks:
+        return raw.strip()
+
+    # preferences セクションを分離
+    prefs_header = "## ユーザーの好み・傾向"
+    preferences_blocks: list[str] = []
+    entry_blocks: list[str] = []
+    for block in blocks:
+        if prefs_header in block:
+            preferences_blocks.append(block)
+        else:
+            entry_blocks.append(block)
+
+    # エントリがない場合は preferences のみ結合して返す
+    if not entry_blocks:
+        result = "\n\n---\n\n".join(preferences_blocks)
+        return _tail_utf8_bytes(result, max_bytes)
+
+    # TF-IDF でスコアリング
+    try:
+        from mltgnt.memory._scoring import score_entries
+
+        scored = score_entries(query, entry_blocks)
+        top_entries = [s.text for s in scored[:max_entries]]
+
+    except Exception as e:
+        _log.warning(
+            "read_memory_by_relevance: tfidf scoring error, fallback to tail text: %s", e
+        )
+        return read_memory_tail_text(
+            config, persona_stem, max_bytes=max_bytes, max_entries=max_entries
+        )
+
+    # preferences + 上位エントリを結合
+    all_parts = preferences_blocks + top_entries
+    text = "\n\n---\n\n".join(all_parts)
     return _tail_utf8_bytes(text, max_bytes)
 
 
