@@ -48,12 +48,20 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         raise ValueError("description フィールドが必須です")
     argument_hint: str = fm.get("argument_hint") or ""
     model: str | None = fm.get("model") or None
+    triggers_raw = fm.get("triggers")
+    if triggers_raw is None:
+        triggers: list[str] = []
+    elif not isinstance(triggers_raw, list):
+        raise ValueError(f"triggers フィールドはリストである必要があります: {triggers_raw!r}")
+    else:
+        triggers = [str(t) for t in triggers_raw]
     return SkillMeta(
         name=name,
         description=str(description).strip(),
         argument_hint=argument_hint,
         model=model,
         path=path.resolve(),
+        triggers=triggers,
     )
 
 

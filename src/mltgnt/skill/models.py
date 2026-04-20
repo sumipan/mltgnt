@@ -18,6 +18,11 @@ class SkillMeta:
     argument_hint: str
     model: str | None
     path: Path
+    triggers: list[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.triggers is None:
+            self.triggers = []
 
 
 @dataclass
