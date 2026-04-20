@@ -5,15 +5,21 @@ TC1: スコア順選択
 TC2: preferences 常時包含
 TC3: max_entries 制限
 TC4: max_bytes 制限
-TC7: API エラーフォールバック
-TC8: 空 memory
-TC9: preferences のみ
-TC10: 空クエリ
+TC5: 日本語テキスト対応
+TC6: スコアリングエラーフォールバック
+TC7: 空 memory
+TC8: preferences のみ
+TC9: 空クエリ
+TC10: エントリが1件のみ
+
+Note: Issue #198 で embedding ベースから TF-IDF ベースに変更。
+embedding_call パラメータを削除し、TF-IDF をローカルで使用する。
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -32,30 +38,6 @@ def make_config(tmp_path: Path) -> MemoryConfig:
 
 def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
     memory_file_path(config, persona).write_text(content, encoding="utf-8")
-
-
-# ---------------------------------------------------------------------------
-# Embedding mock helpers
-# ---------------------------------------------------------------------------
-
-# テキストに含まれるキーワードに基づいてシンプルな 3 次元ベクトルを返す mock
-# [プログラミング成分, 料理成分, 天気成分]
-
-def _keyword_embedding_call(texts: list[str]) -> list[list[float]]:
-    """キーワードベースの決定論的 embedding mock。"""
-    result = []
-    for text in texts:
-        t = text.lower()
-        prog = 1.0 if any(w in t for w in ["python", "プログラミング", "デコレータ", "コード"]) else 0.0
-        cook = 1.0 if any(w in t for w in ["料理", "レシピ", "食材", "調理"]) else 0.0
-        weather = 1.0 if any(w in t for w in ["天気", "気温", "雨", "晴れ"]) else 0.0
-        # L2 正規化
-        norm = (prog**2 + cook**2 + weather**2) ** 0.5
-        if norm > 0:
-            result.append([prog / norm, cook / norm, weather / norm])
-        else:
-            result.append([0.333, 0.333, 0.333])
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +78,9 @@ def test_tc1_score_ordering(tmp_path: Path) -> None:
     result = read_memory_by_relevance(
         config,
         "persona",
-        "Python のデコレータについて教えて",
+        "Python デコレータ",
         max_bytes=4096,
         max_entries=3,
-        embedding_call=_keyword_embedding_call,
     )
 
     # プログラミングエントリが料理・天気より先に来ていること
@@ -140,18 +121,16 @@ MEMORY_WITH_PREFERENCES = """\
 
 
 def test_tc2_preferences_always_included(tmp_path: Path) -> None:
-    """TC2: preferences セクションは スコアリング結果に関わらず出力に含まれる。"""
+    """TC2: preferences セクションはスコアリング結果に関わらず出力に含まれる。"""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_WITH_PREFERENCES)
 
-    # 天気クエリ → 料理エントリは低スコアのはずだが、preferences は常に含まれる
     result = read_memory_by_relevance(
         config,
         "persona",
-        "今日の天気は？",
+        "今日の天気",
         max_bytes=4096,
         max_entries=1,
-        embedding_call=_keyword_embedding_call,
     )
 
     assert "ユーザーの好み・傾向" in result
@@ -172,11 +151,6 @@ def _make_10_entries_memory() -> str:
     return "".join(entries)
 
 
-def _fixed_embedding_call(texts: list[str]) -> list[list[float]]:
-    """全テキストに固定ベクトルを返す。"""
-    return [[float(i % 3 == 0), float(i % 3 == 1), float(i % 3 == 2)] for i in range(len(texts))]
-
-
 def test_tc3_max_entries_limit(tmp_path: Path) -> None:
     """TC3: 10 件エントリに max_entries=3 → 3 件のみ返る。"""
     config = make_config(tmp_path)
@@ -185,10 +159,9 @@ def test_tc3_max_entries_limit(tmp_path: Path) -> None:
     result = read_memory_by_relevance(
         config,
         "persona",
-        "test query",
+        "entry query",
         max_bytes=65536,
         max_entries=3,
-        embedding_call=_fixed_embedding_call,
     )
 
     # "entry N" の出現回数 ≤ 3
@@ -204,7 +177,6 @@ def test_tc3_max_entries_limit(tmp_path: Path) -> None:
 def test_tc4_max_bytes_limit(tmp_path: Path) -> None:
     """TC4: 上位エントリの合計が max_bytes を超える場合、バイト数以内に収まる。"""
     config = make_config(tmp_path)
-    # 大きなエントリを作成
     big_entries = "".join(
         f"## 2026-01-{i+1:02d}T10:00:00+09:00 — user\n\n[file]\n{'x' * 500}\n\n---\n\n"
         for i in range(10)
@@ -218,23 +190,41 @@ def test_tc4_max_bytes_limit(tmp_path: Path) -> None:
         "test",
         max_bytes=max_bytes,
         max_entries=10,
-        embedding_call=_fixed_embedding_call,
     )
 
     assert len(result.encode("utf-8")) <= max_bytes
 
 
 # ---------------------------------------------------------------------------
-# TC7: API エラーフォールバック
+# TC5: 日本語テキスト対応
 # ---------------------------------------------------------------------------
 
 
-def _raising_call(texts: list[str]) -> list[list[float]]:
-    raise RuntimeError("embedding API unavailable")
+def test_tc5_japanese_text(tmp_path: Path) -> None:
+    """TC5: 日本語テキストに対して TF-IDF ベクトル化が正常に動作し、スコアが返る。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
+
+    result = read_memory_by_relevance(
+        config,
+        "persona",
+        "Python デコレータ コード",
+        max_bytes=4096,
+        max_entries=3,
+    )
+
+    # 結果が空でなく、エントリが含まれること
+    assert result
+    assert "Python のデコレータ" in result
 
 
-def test_tc7_api_error_fallback(tmp_path: Path, caplog) -> None:
-    """TC7: embedding_call が例外を送出 → read_memory_tail_text() と同等の結果が返る。"""
+# ---------------------------------------------------------------------------
+# TC6: スコアリングエラーフォールバック
+# ---------------------------------------------------------------------------
+
+
+def test_tc6_scoring_error_fallback(tmp_path: Path, caplog) -> None:
+    """TC6: score_entries() が例外を送出 → read_memory_tail_text() と同等の結果が返る。"""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
@@ -243,27 +233,32 @@ def test_tc7_api_error_fallback(tmp_path: Path, caplog) -> None:
     )
 
     with caplog.at_level(logging.WARNING, logger="mltgnt.memory"):
-        result = read_memory_by_relevance(
-            config,
-            "persona",
-            "何か",
-            max_bytes=4096,
-            max_entries=5,
-            embedding_call=_raising_call,
-        )
+        with patch("mltgnt.memory._scoring.score_entries", side_effect=RuntimeError("TF-IDF error")):
+            result = read_memory_by_relevance(
+                config,
+                "persona",
+                "何か",
+                max_bytes=4096,
+                max_entries=5,
+            )
 
     assert result == expected
-    # エラーがログに出力されていること
-    assert any("embedding" in r.message.lower() or "error" in r.message.lower() or "fallback" in r.message.lower() for r in caplog.records)
+    assert any(
+        "tfidf" in r.message.lower()
+        or "error" in r.message.lower()
+        or "fallback" in r.message.lower()
+        or "scoring" in r.message.lower()
+        for r in caplog.records
+    )
 
 
 # ---------------------------------------------------------------------------
-# TC8: 空 memory
+# TC7: 空 memory
 # ---------------------------------------------------------------------------
 
 
-def test_tc8_empty_memory(tmp_path: Path) -> None:
-    """TC8: memory ファイルが存在しない場合、空文字列が返る。"""
+def test_tc7_empty_memory(tmp_path: Path) -> None:
+    """TC7: memory ファイルが存在しない場合、空文字列が返る。"""
     config = make_config(tmp_path)
 
     result = read_memory_by_relevance(
@@ -272,14 +267,13 @@ def test_tc8_empty_memory(tmp_path: Path) -> None:
         "何か質問",
         max_bytes=4096,
         max_entries=5,
-        embedding_call=_keyword_embedding_call,
     )
 
     assert result == ""
 
 
 # ---------------------------------------------------------------------------
-# TC9: preferences のみ
+# TC8: preferences のみ
 # ---------------------------------------------------------------------------
 
 
@@ -293,8 +287,8 @@ MEMORY_PREFERENCES_ONLY = """\
 """
 
 
-def test_tc9_preferences_only(tmp_path: Path) -> None:
-    """TC9: preferences のみの memory → preferences のみ返る。"""
+def test_tc8_preferences_only(tmp_path: Path) -> None:
+    """TC8: preferences のみの memory → preferences のみ返る。"""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PREFERENCES_ONLY)
 
@@ -304,7 +298,6 @@ def test_tc9_preferences_only(tmp_path: Path) -> None:
         "Python について",
         max_bytes=4096,
         max_entries=5,
-        embedding_call=_keyword_embedding_call,
     )
 
     assert "ユーザーの好み・傾向" in result
@@ -312,12 +305,12 @@ def test_tc9_preferences_only(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC10: 空クエリ
+# TC9: 空クエリ
 # ---------------------------------------------------------------------------
 
 
-def test_tc10_empty_query_fallback(tmp_path: Path) -> None:
-    """TC10: クエリが空文字列 → read_memory_tail_text() にフォールバック。"""
+def test_tc9_empty_query_fallback(tmp_path: Path) -> None:
+    """TC9: クエリが空文字列 → read_memory_tail_text() にフォールバック。"""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
@@ -325,21 +318,44 @@ def test_tc10_empty_query_fallback(tmp_path: Path) -> None:
         config, "persona", max_bytes=4096, max_entries=5
     )
 
-    # embedding_call が呼ばれないことを確認（呼ばれたら AssertionError）
-    call_count = [0]
+    result = read_memory_by_relevance(
+        config,
+        "persona",
+        "",
+        max_bytes=4096,
+        max_entries=5,
+    )
 
-    def should_not_be_called(texts: list[str]) -> list[list[float]]:
-        call_count[0] += 1
-        return [[0.0] * 3] * len(texts)
+    assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# TC10: エントリが1件のみ
+# ---------------------------------------------------------------------------
+
+
+MEMORY_SINGLE_ENTRY = """\
+## 2026-01-01T10:00:00+09:00 — user
+
+[file]
+Python のデコレータについて調べた。
+
+---
+
+"""
+
+
+def test_tc10_single_entry(tmp_path: Path) -> None:
+    """TC10: エントリが1件のみでも TF-IDF が正常に動作する。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_SINGLE_ENTRY)
 
     result = read_memory_by_relevance(
         config,
         "persona",
-        "",  # 空クエリ
+        "Python",
         max_bytes=4096,
         max_entries=5,
-        embedding_call=should_not_be_called,
     )
 
-    assert result == expected
-    assert call_count[0] == 0  # embedding_call は呼ばれない
+    assert "Python のデコレータ" in result

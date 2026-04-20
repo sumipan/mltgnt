@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
-    from mltgnt.memory._embedding import EmbeddingCall
 
 __all__ = [
     "persona_memory_lock",
@@ -279,16 +278,15 @@ def read_memory_by_relevance(
     *,
     max_bytes: int,
     max_entries: int,
-    embedding_call: "EmbeddingCall | None" = None,
 ) -> str:
     """クエリとの関連度が高い memory エントリを選択して返す。
 
     1. memory ファイルからエントリを `---` で分割
     2. preferences セクションは常に含める（スコアリング対象外）
-    3. 残りのエントリを embedding スコアでランク付け
+    3. 残りのエントリを TF-IDF + cosine similarity でランク付け
     4. 上位 max_entries 件を max_bytes 以内で結合して返す
 
-    embedding_call が None の場合や API エラー時は
+    スコアリングでエラーが発生した場合は
     read_memory_tail_text() にフォールバックする。
 
     Args:
@@ -297,13 +295,12 @@ def read_memory_by_relevance(
         query: ユーザーの入力テキスト
         max_bytes: 最大バイト数
         max_entries: 最大エントリ数
-        embedding_call: embedding API（テスト時に差し替え可能）
 
     Returns:
         選択された memory テキスト
     """
-    # 空クエリまたは embedding_call なしはフォールバック
-    if not query or embedding_call is None:
+    # 空クエリはフォールバック
+    if not query:
         return read_memory_tail_text(
             config, persona_stem, max_bytes=max_bytes, max_entries=max_entries
         )
@@ -342,22 +339,16 @@ def read_memory_by_relevance(
         result = "\n\n---\n\n".join(preferences_blocks)
         return _tail_utf8_bytes(result, max_bytes)
 
-    # embedding でスコアリング
+    # TF-IDF でスコアリング
     try:
-        from mltgnt.memory._embedding import get_embeddings
         from mltgnt.memory._scoring import score_entries
 
-        all_texts = [query] + entry_blocks
-        all_embeddings = get_embeddings(all_texts, embedding_call=embedding_call)
-        query_embedding = all_embeddings[0]
-        entry_embeddings = all_embeddings[1:]
-
-        scored = score_entries(query_embedding, entry_embeddings, entry_blocks)
+        scored = score_entries(query, entry_blocks)
         top_entries = [s.text for s in scored[:max_entries]]
 
     except Exception as e:
         _log.warning(
-            "read_memory_by_relevance: embedding error, fallback to tail text: %s", e
+            "read_memory_by_relevance: tfidf scoring error, fallback to tail text: %s", e
         )
         return read_memory_tail_text(
             config, persona_stem, max_bytes=max_bytes, max_entries=max_entries
