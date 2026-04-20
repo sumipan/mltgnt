@@ -90,7 +90,7 @@ def load_channel_persona_map(
     return result
 
 
-def resolve_skill(
+async def resolve_skill(
     user_input: str,
     skill_paths: list,
     persona_skills: list[str] | None = None,
@@ -119,7 +119,7 @@ def resolve_skill(
     if not skills:
         return None
 
-    result = match(user_input, skills, persona_skills=persona_skills)
+    result = await match(user_input, skills, persona_skills=persona_skills)
     if result is None:
         return None
 

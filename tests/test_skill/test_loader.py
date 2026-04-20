@@ -152,7 +152,7 @@ class TestDiscover:
 
     def test_load_returns_skill_file(self, tmp_path: Path) -> None:
         """load() が SkillFile を返す"""
-        p = _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
         skills = discover([tmp_path])
         sf = load(skills["review"])
         assert sf.meta.name == "review"
