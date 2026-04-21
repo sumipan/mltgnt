@@ -16,7 +16,10 @@ class PidLock:
                 os.kill(pid, 0)
                 # Process is alive
                 return False
-            except (ValueError, ProcessLookupError, PermissionError):
+            except PermissionError:
+                # Process exists but owned by another user -- treat as alive
+                return False
+            except (ValueError, ProcessLookupError):
                 # stale PID or unreadable -- fall through to overwrite
                 pass
         self._pid_file.parent.mkdir(parents=True, exist_ok=True)
