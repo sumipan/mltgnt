@@ -245,3 +245,253 @@ def test_scheduler_config_integration(tmp_path: Path) -> None:
     sch.reload_jobs()
     assert len(sch._jobs) == 1
     assert sch._jobs[0].id == "config_test"
+
+
+# ---------------------------------------------------------------------------
+# Issue #227: skill action type
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock, patch  # noqa: E402
+from mltgnt.skill.models import SkillFile, SkillMeta  # noqa: E402
+
+
+def _make_skill_meta(name: str, tmp_path: Path) -> SkillMeta:
+    skill_dir = tmp_path / "skills" / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_file = skill_dir / "SKILL.md"
+    skill_file.write_text(
+        "---\nname: {}\ndescription: test skill\n---\n\nスキル本文".format(name),
+        encoding="utf-8",
+    )
+    return SkillMeta(
+        name=name,
+        description="test skill",
+        argument_hint="",
+        model=None,
+        path=skill_file,
+    )
+
+
+def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str = "claude-sonnet-4-6") -> Path:
+    persona_dir = tmp_path / "chat" / "memory"
+    persona_dir.mkdir(parents=True, exist_ok=True)
+    p = persona_dir / f"{name}.md"
+    p.write_text(
+        f"---\nengine: {engine}\nmodel: {model}\n---\n\nペルソナ本文",
+        encoding="utf-8",
+    )
+    return p
+
+
+def _make_skill_scheduler(tmp_path: Path, skill_name: str = "test-skill") -> tuple[SecretaryScheduler, SkillMeta]:
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta(skill_name, tmp_path)
+    sch._skill_registry = {skill_name: meta}
+    return sch, meta
+
+
+def _skill_job(**overrides) -> ScheduleJob:
+    defaults = dict(
+        id="skill_job",
+        mode="scheduled",
+        action="skill",
+        notify="silent",
+        every_day_at="10:00",
+        action_args={
+            "skill": "test-skill",
+            "persona": "タチコマ",
+        },
+    )
+    defaults.update(overrides)
+    return ScheduleJob.from_dict(defaults)
+
+
+def _make_llm_result(ok: bool = True, stdout: str = "応答テキスト", stderr: str = "") -> MagicMock:
+    result = MagicMock()
+    result.ok = ok
+    result.stdout = stdout
+    result.stderr = stderr
+    return result
+
+
+def test_skill_action_success(tmp_path: Path) -> None:
+    """skill action: ghdag.llm.call が ok=True → (True, stdout) を返す。"""
+    sch, meta = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job()
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=True, stdout="応答テキスト")) as mock_call:
+        ok, msg = sch.execute_action(job)
+
+    assert ok is True
+    assert msg == "応答テキスト"
+    mock_call.assert_called_once()
+
+
+def test_skill_action_persona_in_prompt(tmp_path: Path) -> None:
+    """ペルソナ内容がプロンプト先頭に含まれること。"""
+    sch, meta = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job()
+
+    captured_prompt = []
+
+    def fake_call(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return _make_llm_result()
+
+    with patch("ghdag.llm.call", side_effect=fake_call):
+        sch.execute_action(job)
+
+    assert len(captured_prompt) == 1
+    assert "ペルソナ本文" in captured_prompt[0]
+    assert "スキル本文" in captured_prompt[0]
+    assert captured_prompt[0].index("ペルソナ本文") < captured_prompt[0].index("スキル本文")
+
+
+def test_skill_action_engine_explicit(tmp_path: Path) -> None:
+    """action_args.engine 指定時は ghdag.llm.call に正しい engine が渡される。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "engine": "gemini"})
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        sch.execute_action(job)
+
+    _, kwargs = mock_call.call_args
+    assert kwargs.get("engine") == "gemini"
+
+
+def test_skill_action_model_explicit(tmp_path: Path) -> None:
+    """action_args.model 指定時は ghdag.llm.call に正しい model が渡される。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "claude-opus-4-6"})
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        sch.execute_action(job)
+
+    _, kwargs = mock_call.call_args
+    assert kwargs.get("model") == "claude-opus-4-6"
+
+
+def test_skill_action_engine_fallback_to_persona(tmp_path: Path) -> None:
+    """engine 未指定時はペルソナの engine フィールドを使用する。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="gemini", model="gemini-2.5-flash")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        sch.execute_action(job)
+
+    _, kwargs = mock_call.call_args
+    assert kwargs.get("engine") == "gemini"
+
+
+def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
+    """model 未指定時はペルソナの model フィールドを使用する。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="gemini", model="gemini-2.5-pro")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        sch.execute_action(job)
+
+    _, kwargs = mock_call.call_args
+    assert kwargs.get("model") == "gemini-2.5-pro"
+
+
+def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
+    """argv 指定時にプロンプト末尾に '\\n\\n引数: morning' が付与される。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "argv": ["morning"]})
+
+    captured_prompt = []
+
+    def fake_call(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return _make_llm_result()
+
+    with patch("ghdag.llm.call", side_effect=fake_call):
+        sch.execute_action(job)
+
+    assert "\n\n引数: morning" in captured_prompt[0]
+
+
+def test_skill_action_no_argv(tmp_path: Path) -> None:
+    """argv 未指定時はプロンプトに '引数:' が含まれない。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+
+    captured_prompt = []
+
+    def fake_call(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return _make_llm_result()
+
+    with patch("ghdag.llm.call", side_effect=fake_call):
+        sch.execute_action(job)
+
+    assert "引数:" not in captured_prompt[0]
+
+
+def test_skill_action_engine_error(tmp_path: Path) -> None:
+    """ghdag.llm.call が ok=False → (False, stderr) を返す。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=False, stderr="engine error detail")):
+        ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert "engine error detail" in msg
+
+
+def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
+    """action_args.skill 未指定 → (False, エラーメッセージ)。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    job = _skill_job(action_args={"persona": "タチコマ"})
+
+    ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert "action_args.skill" in msg
+
+
+def test_skill_action_missing_persona(tmp_path: Path) -> None:
+    """action_args.persona 未指定 → (False, エラーメッセージ)。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    job = _skill_job(action_args={"skill": "test-skill"})
+
+    ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert "action_args.persona" in msg
+
+
+def test_skill_action_skill_not_found(tmp_path: Path) -> None:
+    """スキルレジストリにない名前 → (False, 'スキルが見つかりません')。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job(action_args={"skill": "nonexistent-skill", "persona": "タチコマ"})
+
+    ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert "スキルが見つかりません" in msg
+    assert "nonexistent-skill" in msg
+
+
+def test_skill_action_persona_file_not_found(tmp_path: Path) -> None:
+    """ペルソナファイル不在 → (False, 'ペルソナファイルが見つかりません')。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    # ペルソナファイルを作らない
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "存在しない"})
+
+    ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert "ペルソナファイルが見つかりません" in msg
