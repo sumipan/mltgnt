@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
@@ -637,8 +637,8 @@ class SecretaryScheduler:
 
             persona_content = persona_path.read_text(encoding="utf-8")
 
-            engine = aa.get("engine") or self._resolve_persona_field(persona_content, "engine")
-            model = aa.get("model") or self._resolve_persona_field(persona_content, "model")
+            engine = aa.get("engine") or self._resolve_persona_field(persona_content, "engine") or None
+            model = aa.get("model") or self._resolve_persona_field(persona_content, "model") or None
 
             meta = self._skill_registry.get(skill_name)
             if meta is None:
