@@ -273,11 +273,14 @@ def _make_skill_meta(name: str, tmp_path: Path) -> SkillMeta:
 
 
 def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str = "claude-sonnet-4-6") -> Path:
-    persona_dir = tmp_path / "chat" / "memory"
+    persona_dir = tmp_path / "agents"
     persona_dir.mkdir(parents=True, exist_ok=True)
     p = persona_dir / f"{name}.md"
     p.write_text(
-        f"---\nengine: {engine}\nmodel: {model}\n---\n\nペルソナ本文",
+        "---\n"
+        f"persona:\n  name: {name}\n"
+        f"ops:\n  engine: {engine}\n  model: {model}\n"
+        "---\n\nペルソナ本文",
         encoding="utf-8",
     )
     return p
