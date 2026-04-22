@@ -712,6 +712,8 @@ class SecretaryScheduler:
                     if job.mode != "interval":
                         self._mark_done(job, d)
                     print(f"[secretary-schedule] 成功: {job.id}", file=sys.stderr)
+                    if msg:
+                        self._post(job, msg)
                     self._record_to_memory(job, msg, True, fired_at)
                 else:
                     if job.mode != "interval":
