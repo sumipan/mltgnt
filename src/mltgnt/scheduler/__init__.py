@@ -639,14 +639,26 @@ class SecretaryScheduler:
             argv_list = aa.get("argv", [])
             argv_str = " ".join(str(x) for x in argv_list) if argv_list else ""
 
-            prompt = persona.body + "\n\n---\n\n" + skill_file.body
-            if argv_str:
-                prompt = prompt + "\n\n引数: " + argv_str
+            from mltgnt.skill import runner as skill_runner
+            from mltgnt.chat.models import ChatInput, Message
+
+            chat_input = ChatInput(
+                source="scheduler",
+                session_key=job.id,
+                messages=[Message(role="user", content=argv_str or "")],
+                persona_name=persona.name,
+                model=model,
+            )
+            chat_input = skill_runner.run(skill_file, persona, argv_str, chat_input)
+
+            # runner.run() が system メッセージにプロンプトを格納する
+            prompt = next(m["content"] for m in chat_input.messages if m["role"] == "system")
+            resolved_model = chat_input.model  # skill.meta.model が優先される
 
             from ghdag.llm import call as ghdag_llm_call
             try:
                 result = ghdag_llm_call(
-                    prompt, engine=engine, model=model, timeout=job.timeout_seconds
+                    prompt, engine=engine, model=resolved_model, timeout=job.timeout_seconds
                 )
                 if not result.ok:
                     return False, (result.stderr or "").strip()[-800:] or "engine error"
