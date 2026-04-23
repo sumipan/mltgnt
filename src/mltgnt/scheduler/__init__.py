@@ -425,7 +425,9 @@ class SecretaryScheduler:
             return
         if job.persona and self._persona_post_kwargs_resolver is not None:
             try:
-                post_kwargs, text = self._persona_post_kwargs_resolver(job.persona, self.repo_root)
+                post_kwargs, resolved_text = self._persona_post_kwargs_resolver(job.persona, self.repo_root)
+                if not text and resolved_text:
+                    text = resolved_text
             except Exception as e:
                 print(f"[secretary-schedule] ペルソナ読込失敗 {job.persona}: {e}", file=sys.stderr)
                 post_kwargs = self._default_slack_post_kwargs() if self._default_slack_post_kwargs else {}

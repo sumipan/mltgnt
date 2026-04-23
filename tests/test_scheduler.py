@@ -15,8 +15,6 @@ import pytest
 from mltgnt.scheduler import (
     ScheduleJob,
     SecretaryScheduler,
-    _hash_offset,
-    atomic_write_text,
     load_schedule_jobs,
 )
 from mltgnt.config import SchedulerConfig
@@ -225,7 +223,6 @@ def test_cycle_detection_raises(tmp_path: Path) -> None:
 
 def test_scheduler_config_integration(tmp_path: Path) -> None:
     """SchedulerConfig を使ってスケジューラが正常に動作する。"""
-    from mltgnt.config import SchedulerConfig
     yaml_file = tmp_path / "schedule.yaml"
     yaml_file.write_text(
         "jobs:\n"
@@ -252,7 +249,7 @@ def test_scheduler_config_integration(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 from unittest.mock import MagicMock, patch  # noqa: E402
-from mltgnt.skill.models import SkillFile, SkillMeta  # noqa: E402
+from mltgnt.skill.models import SkillMeta  # noqa: E402
 
 
 def _make_skill_meta(name: str, tmp_path: Path) -> SkillMeta:
@@ -498,3 +495,157 @@ def test_skill_action_persona_file_not_found(tmp_path: Path) -> None:
 
     assert ok is False
     assert "ペルソナファイルが見つかりません" in msg
+
+
+# ---------------------------------------------------------------------------
+# Issue #242: skill 成功時の _post() 呼び出し / _post() テキスト上書き防止
+# ---------------------------------------------------------------------------
+
+
+def _make_slack_mock() -> MagicMock:
+    slack = MagicMock()
+    slack.post_message = MagicMock()
+    return slack
+
+
+def _command_job(**overrides) -> ScheduleJob:
+    defaults = dict(
+        id="command_job",
+        mode="scheduled",
+        action="command",
+        notify="slack_secretary",
+        every_day_at="10:00",
+        action_args={"command": "echo hello"},
+    )
+    defaults.update(overrides)
+    return ScheduleJob.from_dict(defaults)
+
+
+def test_ac1_spawn_job_skill_success_calls_post(tmp_path: Path) -> None:
+    """AC-1: _spawn_job() の skill 成功パスで _post() が呼ばれ Slack に投稿される。"""
+    slack = _make_slack_mock()
+    job = _skill_job(notify="slack_secretary")
+    sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
+    meta = _make_skill_meta("test-skill", tmp_path)
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    sch.reload_jobs()
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=True, stdout="こんにちは")):
+        with patch.object(sch, "_post", wraps=sch._post) as mock_post:
+            sch._spawn_job(job, date(2026, 4, 23))
+            time.sleep(0.5)
+
+    mock_post.assert_called_once_with(job, "こんにちは")
+
+
+def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
+    """AC-2: skill 成功で msg が空の場合 _post() は呼ばれない。"""
+    slack = _make_slack_mock()
+    job = _skill_job(notify="slack_secretary")
+    sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
+    meta = _make_skill_meta("test-skill", tmp_path)
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    sch.reload_jobs()
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=True, stdout="")):
+        with patch.object(sch, "_post", wraps=sch._post) as mock_post:
+            sch._spawn_job(job, date(2026, 4, 23))
+            time.sleep(0.5)
+
+    mock_post.assert_not_called()
+
+
+def test_ac3_command_success_posts_when_msg_present(tmp_path: Path) -> None:
+    """AC-3: command 成功時も msg があれば _post() を呼ぶ（PR #15 で仕様変更）。"""
+    slack = _make_slack_mock()
+    job = _command_job(notify="slack_secretary")
+    sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
+    sch.reload_jobs()
+
+    # ベースクラスは command アクションを未実装なので execute_action をモックする
+    with patch.object(sch, "execute_action", return_value=(True, "stdout output")):
+        with patch.object(sch, "_post", wraps=sch._post) as mock_post:
+            sch._spawn_job(job, date(2026, 4, 23))
+            time.sleep(0.5)
+
+    mock_post.assert_called_once_with(job, "stdout output")
+
+
+def test_ac4_post_resolver_does_not_overwrite_text(tmp_path: Path) -> None:
+    """AC-4: _post() で resolver の text はスキル生成テキストを上書きしない。"""
+    slack = _make_slack_mock()
+    job = _skill_job(notify="slack_secretary", persona="タチコマ")
+
+    def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
+        return {"icon_emoji": ":robot:"}, "resolver テキスト"
+
+    sch = SecretaryScheduler(
+        slack=slack,
+        state_dir=tmp_path / "state",
+        jobs=[],
+        repo_root=tmp_path,
+        persona_post_kwargs_resolver=resolver,
+    )
+    sch.reload_jobs()
+
+    sch._post(job, "スキル生成テキスト")
+
+    slack.post_message.assert_called_once()
+    args, kwargs = slack.post_message.call_args
+    assert args[0] == "スキル生成テキスト"
+    assert kwargs.get("icon_emoji") == ":robot:"
+
+
+def test_ac5_post_empty_text_uses_resolver_fallback(tmp_path: Path) -> None:
+    """AC-5: text が空かつ resolver が text を返す場合はフォールバック使用。"""
+    slack = _make_slack_mock()
+    job = _skill_job(notify="slack_secretary", persona="タチコマ")
+
+    def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
+        return {"icon_emoji": ":robot:"}, "fallback テキスト"
+
+    sch = SecretaryScheduler(
+        slack=slack,
+        state_dir=tmp_path / "state",
+        jobs=[],
+        repo_root=tmp_path,
+        persona_post_kwargs_resolver=resolver,
+    )
+    sch.reload_jobs()
+
+    sch._post(job, "")
+
+    slack.post_message.assert_called_once()
+    args, kwargs = slack.post_message.call_args
+    assert args[0] == "fallback テキスト"
+
+
+def test_ac6_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
+    """AC-6: resolver が例外を送出したとき default_slack_post_kwargs を使い text は変わらない。"""
+    slack = _make_slack_mock()
+    job = _skill_job(notify="slack_secretary", persona="タチコマ")
+
+    def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
+        raise RuntimeError("resolver error")
+
+    def default_kwargs() -> dict:
+        return {"icon_emoji": ":default:"}
+
+    sch = SecretaryScheduler(
+        slack=slack,
+        state_dir=tmp_path / "state",
+        jobs=[],
+        repo_root=tmp_path,
+        persona_post_kwargs_resolver=resolver,
+        default_slack_post_kwargs=default_kwargs,
+    )
+    sch.reload_jobs()
+
+    sch._post(job, "元のテキスト")
+
+    slack.post_message.assert_called_once()
+    args, kwargs = slack.post_message.call_args
+    assert args[0] == "元のテキスト"
+    assert kwargs.get("icon_emoji") == ":default:"
