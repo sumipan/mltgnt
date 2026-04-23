@@ -561,8 +561,8 @@ def test_ac3_command_success_no_post(tmp_path: Path) -> None:
     sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     sch.reload_jobs()
 
-    with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="stdout output", stderr="")
+    # ベースクラスは command アクションを未実装なので execute_action をモックする
+    with patch.object(sch, "execute_action", return_value=(True, "stdout output")):
         with patch.object(sch, "_post", wraps=sch._post) as mock_post:
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
