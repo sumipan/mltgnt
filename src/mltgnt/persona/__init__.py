@@ -16,7 +16,6 @@ from mltgnt.persona.loader import Persona, load
 from mltgnt.persona.registry import list_personas as _list_personas
 from mltgnt.persona.registry import resolve_with_alias
 from mltgnt.persona.runner import run_persona_prompt
-from mltgnt.persona.schema import ValidationResult, validate_fm, validate_sections
 
 __all__ = [
     "Persona",

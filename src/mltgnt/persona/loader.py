@@ -9,16 +9,15 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 from zoneinfo import ZoneInfo
-
-_TZ = ZoneInfo("Asia/Tokyo")
 
 from mltgnt.persona.frontmatter import split_yaml_frontmatter
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
+
+_TZ = ZoneInfo("Asia/Tokyo")
 
 logger = logging.getLogger(__name__)
 

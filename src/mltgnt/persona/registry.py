@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 EXCLUDE_STEMS: frozenset[str] = frozenset({"サンプル"})
 
