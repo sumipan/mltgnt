@@ -402,8 +402,10 @@ def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
 
 
 def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
-    """argv 指定時にプロンプト末尾に '\\n\\n引数: morning' が付与される。"""
-    sch, _ = _make_skill_scheduler(tmp_path)
+    """argv 指定時に $ARGUMENTS がスキル本文内で展開されること。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS を処理")
+    sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "argv": ["morning"]})
 
@@ -416,7 +418,7 @@ def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
     with patch("ghdag.llm.call", side_effect=fake_call):
         sch.execute_action(job)
 
-    assert "\n\n引数: morning" in captured_prompt[0]
+    assert "morning を処理" in captured_prompt[0]
 
 
 def test_skill_action_no_argv(tmp_path: Path) -> None:
@@ -496,6 +498,138 @@ def test_skill_action_persona_file_not_found(tmp_path: Path) -> None:
     assert ok is False
     assert "ペルソナファイルが見つかりません" in msg
 
+
+
+def _make_skill_meta_with_body(name: str, tmp_path: Path, body: str, model: str | None = None) -> SkillMeta:
+    """body と model を指定できる SkillMeta ヘルパー。"""
+    skill_dir = tmp_path / "skills" / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_file = skill_dir / "SKILL.md"
+    fm_model = f"model: {model}\n" if model is not None else ""
+    skill_file.write_text(
+        f"---\nname: {name}\ndescription: test skill\n{fm_model}---\n\n{body}",
+        encoding="utf-8",
+    )
+    return SkillMeta(name=name, description="test skill", argument_hint="", model=model, path=skill_file)
+
+
+# ---------------------------------------------------------------------------
+# Issue #270: runner.run() 経由での変数置換（AC1〜AC4）
+# ---------------------------------------------------------------------------
+
+
+def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
+    """$SKILL_DIR がスキルファイルの親ディレクトリに展開されること（AC1）。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$SKILL_DIR/scripts/run.py を実行")
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    captured_prompt = []
+
+    def fake_call(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return _make_llm_result()
+
+    with patch("ghdag.llm.call", side_effect=fake_call):
+        sch.execute_action(job)
+
+    skill_dir_path = (tmp_path / "skills" / "test-skill").resolve()
+    expected = str(skill_dir_path) + "/scripts/run.py を実行"
+    assert expected in captured_prompt[0]
+
+
+def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
+    """$ARGUMENTS と $0, $1 が展開されること（AC2）。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS → $0 $1")
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "argv": ["hello", "world"]})
+
+    captured_prompt = []
+
+    def fake_call(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return _make_llm_result()
+
+    with patch("ghdag.llm.call", side_effect=fake_call):
+        sch.execute_action(job)
+
+    assert "hello world → hello world" in captured_prompt[0]
+
+
+def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
+    """argv 未指定時に $ARGUMENTS は空文字に展開される（AC2）。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "引数: [$ARGUMENTS]")
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    captured_prompt = []
+
+    def fake_call(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return _make_llm_result()
+
+    with patch("ghdag.llm.call", side_effect=fake_call):
+        sch.execute_action(job)
+
+    assert "引数: []" in captured_prompt[0]
+
+
+def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
+    """persona.format_prompt() 経由のプロンプト構造であること（AC3）。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文")
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    captured_prompt = []
+
+    def fake_call(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return _make_llm_result()
+
+    with patch("ghdag.llm.call", side_effect=fake_call):
+        sch.execute_action(job)
+
+    assert "あなたは以下のキャラクターになりきり" in captured_prompt[0]
+    assert "--- ユーザーからの指示 ---" in captured_prompt[0]
+    assert "現在日時:" in captured_prompt[0]
+
+
+def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
+    """skill.meta.model が action_args.model より優先されること（AC4）。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文", model="sonnet")
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "opus"})
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        sch.execute_action(job)
+
+    _, kwargs = mock_call.call_args
+    assert kwargs.get("model") == "sonnet"
+
+
+def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> None:
+    """skill.meta.model が None のとき action_args.model にフォールバック（AC4）。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文", model=None)
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "opus"})
+
+    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        sch.execute_action(job)
+
+    _, kwargs = mock_call.call_args
+    assert kwargs.get("model") == "opus"
 
 # ---------------------------------------------------------------------------
 # Issue #242: skill 成功時の _post() 呼び出し / _post() テキスト上書き防止
