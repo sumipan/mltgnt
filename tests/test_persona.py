@@ -5,6 +5,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from freezegun import freeze_time
 
 from mltgnt.persona import (
     PersonaValidationError,
@@ -185,3 +186,45 @@ def test_list_personas(agents_dir: Path) -> None:
     assert "Alpha" in result
     assert "Beta" in result
     assert "サンプル" not in result
+
+
+# ---------------------------------------------------------------------------
+# AC1/AC3: format_prompt datetime insertion
+# ---------------------------------------------------------------------------
+
+
+@freeze_time("2026-04-23T10:00:00+09:00")
+def test_format_prompt_contains_datetime(tachikoma_persona_file: Path, agents_dir: Path) -> None:
+    """AC1 正常系: format_prompt の出力に現在日時が含まれる。"""
+    persona = load_persona("タチコマ", persona_dir=agents_dir)
+    result = persona.format_prompt("テスト指示")
+    assert "現在日時: 2026-04-23 10:00:00 (JST)" in result
+
+
+@freeze_time("2026-04-23T10:00:00+09:00")
+def test_format_prompt_datetime_before_body(tachikoma_persona_file: Path, agents_dir: Path) -> None:
+    """AC1 正常系: 日時はペルソナ本文（body）の前に挿入される。"""
+    persona = load_persona("タチコマ", persona_dir=agents_dir)
+    result = persona.format_prompt("テスト指示")
+    dt_pos = result.index("現在日時:")
+    body_pos = result.index(persona.body)
+    assert dt_pos < body_pos
+
+
+@freeze_time("2026-04-23T10:00:00+09:00")
+def test_format_prompt_datetime_not_in_instruction_section(tachikoma_persona_file: Path, agents_dir: Path) -> None:
+    """AC1 正常系: --- ユーザーからの指示 --- セクションに日時が混入しない。"""
+    persona = load_persona("タチコマ", persona_dir=agents_dir)
+    result = persona.format_prompt("テスト指示")
+    separator = "--- ユーザーからの指示 ---"
+    sep_pos = result.index(separator)
+    instruction_section = result[sep_pos:]
+    assert "現在日時:" not in instruction_section
+
+
+@freeze_time("2026-04-23T01:00:00Z")
+def test_format_prompt_timezone_jst(tachikoma_persona_file: Path, agents_dir: Path) -> None:
+    """AC3 正常系: UTC 01:00 → JST 10:00 に変換される。"""
+    persona = load_persona("タチコマ", persona_dir=agents_dir)
+    result = persona.format_prompt("テスト指示")
+    assert "現在日時: 2026-04-23 10:00:00 (JST)" in result
