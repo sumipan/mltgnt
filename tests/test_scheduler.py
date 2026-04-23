@@ -270,11 +270,14 @@ def _make_skill_meta(name: str, tmp_path: Path) -> SkillMeta:
 
 
 def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str = "claude-sonnet-4-6") -> Path:
-    persona_dir = tmp_path / "chat" / "memory"
+    persona_dir = tmp_path / "agents"
     persona_dir.mkdir(parents=True, exist_ok=True)
     p = persona_dir / f"{name}.md"
     p.write_text(
-        f"---\nengine: {engine}\nmodel: {model}\n---\n\nペルソナ本文",
+        "---\n"
+        f"persona:\n  name: {name}\n"
+        f"ops:\n  engine: {engine}\n  model: {model}\n"
+        "---\n\nペルソナ本文",
         encoding="utf-8",
     )
     return p
@@ -554,8 +557,8 @@ def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
     mock_post.assert_not_called()
 
 
-def test_ac3_command_success_no_post(tmp_path: Path) -> None:
-    """AC-3: command 成功時は _post() を呼ばない。"""
+def test_ac3_command_success_posts_when_msg_present(tmp_path: Path) -> None:
+    """AC-3: command 成功時も msg があれば _post() を呼ぶ（PR #15 で仕様変更）。"""
     slack = _make_slack_mock()
     job = _command_job(notify="slack_secretary")
     sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
@@ -567,7 +570,7 @@ def test_ac3_command_success_no_post(tmp_path: Path) -> None:
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
 
-    mock_post.assert_not_called()
+    mock_post.assert_called_once_with(job, "stdout output")
 
 
 def test_ac4_post_resolver_does_not_overwrite_text(tmp_path: Path) -> None:

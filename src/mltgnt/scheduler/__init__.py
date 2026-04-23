@@ -258,6 +258,7 @@ class SecretaryScheduler:
         default_slack_post_kwargs: Optional[Callable[[], dict]] = None,
         persona_post_kwargs_resolver: Optional[Callable[[str, Path], tuple[dict, str]]] = None,
         repo_root: Optional[Path] = None,
+        persona_dir: Optional[Path] = None,
         append_memory_fn: Optional[Callable[..., bool]] = None,
         execute_action_fn: Optional[Callable[["SecretaryScheduler", ScheduleJob], tuple[bool, str]]] = None,
     ) -> None:
@@ -278,6 +279,7 @@ class SecretaryScheduler:
         self.yaml_path = self._yaml_path
         self.salt = self._salt
         self.repo_root = repo_root or Path(".")
+        self.persona_dir = persona_dir or (self.repo_root / "agents")
         self.paths = SecretarySchedulePaths(self._state_dir)
         self._jobs_override = jobs
         self._reload_counter = 0
@@ -596,26 +598,6 @@ class SecretaryScheduler:
 
         raise ValueError(f"未対応の action: {job.action}")
 
-    def _resolve_persona_field(self, persona_content: str, field: str) -> str:
-        """ペルソナファイルの YAML frontmatter から field の値を返す。存在しない場合は空文字。"""
-        import yaml as _yaml
-        lines = persona_content.splitlines(keepends=True)
-        if not lines or lines[0].strip() != "---":
-            return ""
-        end_idx = None
-        for i, line in enumerate(lines[1:], start=1):
-            if line.strip() == "---":
-                end_idx = i
-                break
-        if end_idx is None:
-            return ""
-        fm_text = "".join(lines[1:end_idx])
-        try:
-            fm = _yaml.safe_load(fm_text) or {}
-        except Exception:
-            return ""
-        return str(fm.get(field) or "").strip()
-
     def execute_action(self, job: ScheduleJob) -> tuple[bool, str]:
         if self._execute_action_fn is not None:
             return self._execute_action_fn(self, job)
@@ -633,14 +615,19 @@ class SecretaryScheduler:
             if not persona_name:
                 return False, f"job {job.id}: action_args.persona が未指定です"
 
-            persona_path = self.repo_root / "chat" / "memory" / f"{persona_name}.md"
-            if not persona_path.is_file():
-                return False, f"ペルソナファイルが見つかりません: {persona_path}"
+            # ペルソナは agents/ 配下の正規 persona ファイルを mltgnt.persona 経由で読む。
+            # 旧実装は chat/memory/{name}.md を直接読んでいたが、そこはチャットログで
+            # YAML frontmatter を持たないため engine/model が解決できずバグっていた。
+            from mltgnt.persona import load_persona
+            try:
+                persona = load_persona(persona_name, persona_dir=self.persona_dir)
+            except FileNotFoundError as e:
+                return False, f"ペルソナファイルが見つかりません: {e}"
+            except Exception as e:
+                return False, f"ペルソナ読込失敗 {persona_name}: {e}"
 
-            persona_content = persona_path.read_text(encoding="utf-8")
-
-            engine = aa.get("engine") or self._resolve_persona_field(persona_content, "engine") or None
-            model = aa.get("model") or self._resolve_persona_field(persona_content, "model") or None
+            engine = aa.get("engine") or (persona.fm.engine or None)
+            model = aa.get("model") or (persona.fm.model or None)
 
             meta = self._skill_registry.get(skill_name)
             if meta is None:
@@ -652,7 +639,7 @@ class SecretaryScheduler:
             argv_list = aa.get("argv", [])
             argv_str = " ".join(str(x) for x in argv_list) if argv_list else ""
 
-            prompt = persona_content + "\n\n---\n\n" + skill_file.body
+            prompt = persona.body + "\n\n---\n\n" + skill_file.body
             if argv_str:
                 prompt = prompt + "\n\n引数: " + argv_str
 
@@ -714,7 +701,7 @@ class SecretaryScheduler:
                     if job.mode != "interval":
                         self._mark_done(job, d)
                     print(f"[secretary-schedule] 成功: {job.id}", file=sys.stderr)
-                    if job.action == "skill" and msg:
+                    if msg:
                         self._post(job, msg)
                     self._record_to_memory(job, msg, True, fired_at)
                 else:
