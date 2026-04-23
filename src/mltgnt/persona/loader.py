@@ -10,8 +10,12 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+_TZ = ZoneInfo("Asia/Tokyo")
 
 from mltgnt.persona.frontmatter import split_yaml_frontmatter
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
@@ -65,8 +69,11 @@ class Persona:
         return self.fm.slack_delegate_ack
 
     def format_prompt(self, instruction: str) -> str:
+        now = datetime.now(_TZ)
+        datetime_line = f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
         return (
             f"あなたは以下のキャラクターになりきり、その口調・性格で応答してください。\n\n"
+            f"{datetime_line}"
             f"{self.body}\n\n"
             f"--- ユーザーからの指示 ---\n\n"
             f"{instruction}"
