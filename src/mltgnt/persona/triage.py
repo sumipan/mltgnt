@@ -4,9 +4,13 @@
 """
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 
 TRIAGE_PROFILE_MAX_CHARS = 6000
+GEMINI_TIMEOUT_SEC = 25
+DEFAULT_TIMEOUT_SEC = 60
 
 
 def extract_triage_section(markdown: str) -> str | None:
@@ -91,3 +95,99 @@ Slack でユーザーからメンションされた。次を判定し、**JSON 1
 --- ユーザーのメッセージ ---
 {instruction}
 """
+
+
+def extract_json_object(text: str) -> dict | None:
+    """LLM の stdout から JSON オブジェクトを1つ取り出す。
+
+    - 空文字なら None
+    - ``` で囲まれていればフェンス行を除去
+    - 最初の { から最後の } までを json.loads でパース
+    """
+    s = text.strip()
+    if not s:
+        return None
+    if s.startswith("```"):
+        lines = s.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        s = "\n".join(lines).strip()
+    start, end = s.find("{"), s.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(s[start: end + 1])
+    except json.JSONDecodeError:
+        return None
+
+
+def run_triage_once(
+    cmd: list[str],
+    prompt: str,
+    logger,
+    *,
+    timeout: int,
+    use_stdin: bool = False,
+) -> dict | None:
+    """エンジンコマンドを1回実行して結果を dict で返す。
+
+    エラー・タイムアウト・不正 JSON の場合は None を返す。
+    """
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt if use_stdin else None,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Slack triage: timeout (%s)", cmd[0])
+        return None
+    except OSError as e:
+        logger.warning("Slack triage: spawn failed (%s): %s", cmd[0], e)
+        return None
+
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()
+        logger.warning(
+            "Slack triage: %s exit %s stderr=%s", cmd[0], proc.returncode, err[:500]
+        )
+    data = extract_json_object(out)
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def run_slack_triage(
+    instruction: str,
+    profile_content: str | None,
+    logger,
+    *,
+    memory_tail: str | None = None,
+    engine: str = "",
+    model: str = "",
+) -> dict | None:
+    """トリアージし direct / delegate を返す。1回失敗時に1回リトライする。失敗時は None。"""
+    from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE, build_engine_command
+
+    engine = engine or SYSTEM_DEFAULT_ENGINE
+    prepared = prepare_profile_for_triage(profile_content, logger)
+    prompt = build_triage_prompt(instruction, prepared, memory_tail)
+    cmd = build_engine_command(engine, model, prompt)
+
+    timeout = GEMINI_TIMEOUT_SEC if engine == "gemini" else DEFAULT_TIMEOUT_SEC
+
+    data = run_triage_once(cmd, prompt, logger, timeout=timeout)
+    if data is None:
+        logger.warning("Slack triage: invalid JSON, retrying once")
+        data = run_triage_once(cmd, prompt, logger, timeout=timeout)
+        if data is None:
+            logger.warning("Slack triage: retry also failed, falling back to delegate")
+            return None
+        logger.info("Slack triage: retry succeeded")
+    return data
