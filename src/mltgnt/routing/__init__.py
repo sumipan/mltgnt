@@ -10,16 +10,48 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import Callable, Literal
+from typing import Any, Callable, Literal
 
 __all__ = [
     "ChannelPersonaEntry",
+    "RoutingRule",
     "detect_nickname",
+    "evaluate",
     "find_observers",
     "load_channel_persona_map",
     "resolve_responding_persona",
     "resolve_skill",
 ]
+
+
+@dataclass
+class RoutingRule:
+    """汎用ルーティングルール。detector が True を返したルールが最初に採用される。"""
+    name: str
+    detector: Callable[[str, dict[str, Any]], bool]
+    handler: str
+
+
+def evaluate(
+    rules: list["RoutingRule"],
+    instruction: str,
+    ctx: dict[str, Any],
+) -> "RoutingRule | None":
+    """rules を順に走査し、最初に detector が True を返したルールを返す。
+    どのルールにもマッチしなければ None を返す。
+
+    Args:
+        rules: 評価するルールのリスト（順序が優先度）
+        instruction: ユーザー発話テキスト
+        ctx: 検出に必要な追加コンテキスト（例: valid_personas, channel_id）
+
+    Returns:
+        マッチした RoutingRule、またはマッチなしなら None
+    """
+    for rule in rules:
+        if rule.detector(instruction, ctx):
+            return rule
+    return None
 
 
 @dataclass
