@@ -14,7 +14,10 @@ from typing import Callable, Literal
 
 __all__ = [
     "ChannelPersonaEntry",
+    "detect_nickname",
+    "find_observers",
     "load_channel_persona_map",
+    "resolve_responding_persona",
     "resolve_skill",
 ]
 
@@ -126,3 +129,9 @@ async def resolve_skill(
     meta, arguments = result
     skill_file = load(meta)
     return (skill_file, arguments)
+
+from mltgnt.routing.channel_router import (  # noqa: E402
+    detect_nickname,
+    find_observers,
+    resolve_responding_persona,
+)
