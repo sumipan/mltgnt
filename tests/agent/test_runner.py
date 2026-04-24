@@ -1,6 +1,5 @@
 """tests/agent/test_runner.py — AgentRunner の受け入れ条件テスト (#287)"""
-import pytest
-from mltgnt.agent import AgentRunner, AgentResult
+from mltgnt.agent import AgentRunner
 
 
 # ---- helpers ----
@@ -147,4 +146,4 @@ def test_tool_executor_raises_exception():
 
 def test_import():
     """#11: mltgnt.agent から AgentRunner, AgentResult が import できる。"""
-    from mltgnt.agent import AgentRunner, AgentResult  # noqa: F401
+    from mltgnt.agent import AgentRunner  # noqa: F401
