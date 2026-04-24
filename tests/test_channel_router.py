@@ -5,7 +5,6 @@ detect_nickname 6 ケース + find_observers 4 ケース + resolve_responding_pe
 """
 from __future__ import annotations
 
-import pytest
 from mltgnt.routing import ChannelPersonaEntry
 from mltgnt.routing.channel_router import (
     detect_nickname,

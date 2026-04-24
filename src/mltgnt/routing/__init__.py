@@ -130,7 +130,7 @@ async def resolve_skill(
     skill_file = load(meta)
     return (skill_file, arguments)
 
-from mltgnt.routing.channel_router import (
+from mltgnt.routing.channel_router import (  # noqa: E402
     detect_nickname,
     find_observers,
     resolve_responding_persona,
