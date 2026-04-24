@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 
 TRIAGE_PROFILE_MAX_CHARS = 6000
 GEMINI_TIMEOUT_SEC = 25
@@ -123,46 +122,6 @@ def extract_json_object(text: str) -> dict | None:
         return None
 
 
-def run_triage_once(
-    cmd: list[str],
-    prompt: str,
-    logger,
-    *,
-    timeout: int,
-    use_stdin: bool = False,
-) -> dict | None:
-    """エンジンコマンドを1回実行して結果を dict で返す。
-
-    エラー・タイムアウト・不正 JSON の場合は None を返す。
-    """
-    try:
-        proc = subprocess.run(
-            cmd,
-            input=prompt if use_stdin else None,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("Slack triage: timeout (%s)", cmd[0])
-        return None
-    except OSError as e:
-        logger.warning("Slack triage: spawn failed (%s): %s", cmd[0], e)
-        return None
-
-    out = (proc.stdout or "").strip()
-    if proc.returncode != 0:
-        err = (proc.stderr or "").strip()
-        logger.warning(
-            "Slack triage: %s exit %s stderr=%s", cmd[0], proc.returncode, err[:500]
-        )
-    data = extract_json_object(out)
-    if not isinstance(data, dict):
-        return None
-    return data
-
-
 def run_slack_triage(
     instruction: str,
     profile_content: str | None,
@@ -173,19 +132,33 @@ def run_slack_triage(
     model: str = "",
 ) -> dict | None:
     """トリアージし direct / delegate を返す。1回失敗時に1回リトライする。失敗時は None。"""
-    from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE, build_engine_command
+    from ghdag.llm import call as ghdag_llm_call
+    from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE
 
     engine = engine or SYSTEM_DEFAULT_ENGINE
     prepared = prepare_profile_for_triage(profile_content, logger)
     prompt = build_triage_prompt(instruction, prepared, memory_tail)
-    cmd = build_engine_command(engine, model, prompt)
-
     timeout = GEMINI_TIMEOUT_SEC if engine == "gemini" else DEFAULT_TIMEOUT_SEC
 
-    data = run_triage_once(cmd, prompt, logger, timeout=timeout)
+    def _try_once() -> dict | None:
+        try:
+            result = ghdag_llm_call(prompt, engine=engine, model=model, timeout=timeout)
+        except Exception as e:
+            logger.warning("Slack triage: exception (%s): %s", engine, e)
+            return None
+        out = (result.stdout or "").strip()
+        if not result.ok:
+            err = (result.stderr or "").strip()
+            logger.warning("Slack triage: %s ok=False stderr=%s", engine, err[:500])
+        data = extract_json_object(out)
+        if not isinstance(data, dict):
+            return None
+        return data
+
+    data = _try_once()
     if data is None:
         logger.warning("Slack triage: invalid JSON, retrying once")
-        data = run_triage_once(cmd, prompt, logger, timeout=timeout)
+        data = _try_once()
         if data is None:
             logger.warning("Slack triage: retry also failed, falling back to delegate")
             return None
