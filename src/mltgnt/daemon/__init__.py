@@ -2,6 +2,7 @@ from typing import Protocol, runtime_checkable
 
 from ._pidlock import PidLock
 from ._runner import DaemonRunner
+from ._skill_watcher import SkillWatcherComponent
 
 
 @runtime_checkable
@@ -20,4 +21,4 @@ class DaemonComponent(Protocol):
         ...
 
 
-__all__ = ["DaemonComponent", "DaemonRunner", "PidLock"]
+__all__ = ["DaemonComponent", "DaemonRunner", "PidLock", "SkillWatcherComponent"]
