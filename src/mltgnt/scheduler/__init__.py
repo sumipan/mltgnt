@@ -403,15 +403,23 @@ class SecretaryScheduler:
 
     def _rewrite_text_for_persona(self, persona: Any, text: str) -> str:
         """ペルソナ口調で text をリライトして返す。失敗時は text をそのまま返す。"""
+        from ghdag.llm import call as ghdag_llm_call
+        from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE, SYSTEM_DEFAULT_MODEL
+
         prompt = (
             f"以下のシステム通知を{persona.name}のキャラクター口調で簡潔に伝えてください。"
             f"通知の内容と事実は変えないでください。\n\n{text}"
         )
-        cmd = persona.build_command(prompt)
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=str(self.repo_root))
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-        print(f"[secretary-schedule] リライト失敗 {persona.name}: {r.stderr[:200]}", file=sys.stderr)
+        engine = persona.fm.engine or SYSTEM_DEFAULT_ENGINE
+        model = persona.fm.model or SYSTEM_DEFAULT_MODEL
+        try:
+            result = ghdag_llm_call(prompt, engine=engine, model=model, timeout=30)
+        except Exception as e:
+            print(f"[secretary-schedule] リライト失敗 {persona.name}: {e}", file=sys.stderr)
+            return text
+        if result.ok and (result.stdout or "").strip():
+            return (result.stdout or "").strip()
+        print(f"[secretary-schedule] リライト失敗 {persona.name}: {(result.stderr or '')[:200]}", file=sys.stderr)
         return text
 
     def _post(self, job: ScheduleJob, text: str) -> None:

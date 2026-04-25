@@ -1,4 +1,4 @@
-"""Tests for extract_json_object, run_triage_once, run_slack_triage."""
+"""Tests for extract_json_object, run_slack_triage."""
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,6 @@ from mltgnt.persona.triage import (
     GEMINI_TIMEOUT_SEC,
     extract_json_object,
     run_slack_triage,
-    run_triage_once,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,104 +41,92 @@ def test_extract_json_object_surrounded():
 
 
 # ---------------------------------------------------------------------------
-# run_triage_once
+# run_slack_triage — ghdag.llm.call 経由
 # ---------------------------------------------------------------------------
 
 
-def test_run_triage_once_success():
+def _make_llm_result(ok: bool = True, stdout: str = "", stderr: str = "") -> MagicMock:
+    r = MagicMock()
+    r.ok = ok
+    r.stdout = stdout
+    r.stderr = stderr
+    return r
+
+
+def test_triage_uses_ghdag_llm():
+    """persona.triage は ghdag.llm.call() 経由で LLM を呼ぶこと。"""
     mock_logger = MagicMock()
-    completed = MagicMock()
-    completed.stdout = '{"mode":"direct"}'
-    completed.returncode = 0
-    with patch("subprocess.run", return_value=completed):
-        result = run_triage_once(["gemini", "-p", "prompt"], "prompt", mock_logger, timeout=25)
-    assert result == {"mode": "direct"}
-
-
-def test_run_triage_once_timeout():
-    import subprocess
-
-    mock_logger = MagicMock()
-    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="gemini", timeout=25)):
-        result = run_triage_once(["gemini", "-p", "prompt"], "prompt", mock_logger, timeout=25)
-    assert result is None
-
-
-def test_run_triage_once_invalid_json():
-    mock_logger = MagicMock()
-    completed = MagicMock()
-    completed.stdout = "not json"
-    completed.returncode = 0
-    with patch("subprocess.run", return_value=completed):
-        result = run_triage_once(["gemini", "-p", "prompt"], "prompt", mock_logger, timeout=25)
-    assert result is None
-
-
-def test_run_triage_once_nonzero_exit():
-    mock_logger = MagicMock()
-    completed = MagicMock()
-    completed.stdout = '{"mode":"delegate"}'
-    completed.returncode = 1
-    completed.stderr = "some error"
-    with patch("subprocess.run", return_value=completed):
-        result = run_triage_once(["claude", "-p", "prompt"], "prompt", mock_logger, timeout=60)
-    assert result == {"mode": "delegate"}
-
-
-# ---------------------------------------------------------------------------
-# run_slack_triage
-# ---------------------------------------------------------------------------
+    with patch("ghdag.llm.call", return_value=_make_llm_result(stdout='{"mode":"direct","reply":"hi"}')) as mock_call:
+        result = run_slack_triage("hello", "# profile", mock_logger)
+    mock_call.assert_called_once()
+    assert result == {"mode": "direct", "reply": "hi"}
 
 
 def test_run_slack_triage_first_try_ok():
     mock_logger = MagicMock()
     expected = {"mode": "direct", "reply": "hi"}
-    with patch("mltgnt.persona.triage.run_triage_once", return_value=expected) as mock_once:
+    with patch("ghdag.llm.call", return_value=_make_llm_result(stdout='{"mode":"direct","reply":"hi"}')) as mock_call:
         result = run_slack_triage("hello", "# profile", mock_logger)
     assert result == expected
-    assert mock_once.call_count == 1
+    assert mock_call.call_count == 1
 
 
-def test_run_slack_triage_retry_ok():
+def test_run_slack_triage_retry_on_invalid_json():
+    """1回目が不正JSONの場合、リトライして正常結果を返すこと。"""
     mock_logger = MagicMock()
     expected = {"mode": "delegate"}
-    with patch("mltgnt.persona.triage.run_triage_once", side_effect=[None, expected]) as mock_once:
+    results = [
+        _make_llm_result(stdout="not json"),
+        _make_llm_result(stdout='{"mode":"delegate"}'),
+    ]
+    with patch("ghdag.llm.call", side_effect=results) as mock_call:
         result = run_slack_triage("hello", "# profile", mock_logger)
     assert result == expected
-    assert mock_once.call_count == 2
+    assert mock_call.call_count == 2
 
 
 def test_run_slack_triage_all_fail():
+    """両回とも不正JSONなら None を返すこと。"""
     mock_logger = MagicMock()
-    with patch("mltgnt.persona.triage.run_triage_once", return_value=None) as mock_once:
+    with patch("ghdag.llm.call", return_value=_make_llm_result(stdout="not json")) as mock_call:
         result = run_slack_triage("hello", "# profile", mock_logger)
     assert result is None
-    assert mock_once.call_count == 2
+    assert mock_call.call_count == 2
 
 
 def test_run_slack_triage_gemini_timeout():
+    """engine=gemini のとき GEMINI_TIMEOUT_SEC が渡されること。"""
     mock_logger = MagicMock()
     captured_kwargs = []
 
     def capture(*args, **kwargs):
         captured_kwargs.append(kwargs)
-        return {"mode": "direct"}
+        return _make_llm_result(stdout='{"mode":"direct"}')
 
-    with patch("mltgnt.persona.triage.run_triage_once", side_effect=capture):
+    with patch("ghdag.llm.call", side_effect=capture):
         run_slack_triage("hello", None, mock_logger, engine="gemini")
 
     assert captured_kwargs[0]["timeout"] == GEMINI_TIMEOUT_SEC
 
 
 def test_run_slack_triage_default_timeout():
+    """engine=claude のとき DEFAULT_TIMEOUT_SEC が渡されること。"""
     mock_logger = MagicMock()
     captured_kwargs = []
 
     def capture(*args, **kwargs):
         captured_kwargs.append(kwargs)
-        return {"mode": "direct"}
+        return _make_llm_result(stdout='{"mode":"direct"}')
 
-    with patch("mltgnt.persona.triage.run_triage_once", side_effect=capture):
+    with patch("ghdag.llm.call", side_effect=capture):
         run_slack_triage("hello", None, mock_logger, engine="claude")
 
     assert captured_kwargs[0]["timeout"] == DEFAULT_TIMEOUT_SEC
+
+
+def test_run_slack_triage_exception_returns_none():
+    """ghdag.llm.call が例外を投げた場合、None を返すこと。"""
+    mock_logger = MagicMock()
+    with patch("ghdag.llm.call", side_effect=RuntimeError("connection error")):
+        result = run_slack_triage("hello", "# profile", mock_logger)
+    assert result is None

@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -27,19 +26,22 @@ def run_persona_prompt(
         persona_name: ペルソナ名（例: "安宅和人"）またはエイリアス。
         prompt: LLM に渡す指示テキスト。ペルソナの body + format_prompt() でラップされる。
         persona_dir: ペルソナファイルのディレクトリ。None の場合は Path("agents")。
-        timeout: subprocess のタイムアウト秒数。デフォルト 120 秒。
+        timeout: LLM 呼び出しのタイムアウト秒数。デフォルト 120 秒。
         memory: 呼び出し側が読み込んだメモリ文字列（任意）。
                 非 None の場合はプロンプト先頭に付加する。
 
     Returns:
         LLM の stdout 出力（strip 済み）。
-        エラー時は "（タイムアウト）" / "（エラー: {code}）" / "（実行失敗: ...）" を返す。
+        エラー時は "（エラー: ...）" / "（実行失敗: ...）" を返す。
 
     Raises:
         FileNotFoundError: ペルソナファイルが見つからない場合。
     """
+    from ghdag.llm import call as ghdag_llm_call
+
     from mltgnt.persona.loader import load
     from mltgnt.persona.registry import resolve_with_alias
+    from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE, SYSTEM_DEFAULT_MODEL
 
     pdir = persona_dir if persona_dir is not None else Path("agents")
     path = resolve_with_alias(str(persona_name), pdir)
@@ -51,25 +53,19 @@ def run_persona_prompt(
         effective_prompt = prompt
 
     formatted = persona.format_prompt(effective_prompt)
-    cmd = persona.build_command(formatted)
+    engine = persona.fm.engine or SYSTEM_DEFAULT_ENGINE
+    model = persona.fm.model or SYSTEM_DEFAULT_MODEL
 
-    logger.debug("[runner] persona=%r engine=%r cmd[0]=%r", persona_name, persona.fm.engine, cmd[0])
+    logger.debug("[runner] persona=%r engine=%r", persona_name, engine)
 
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            shell=False,
-        )
-        return proc.stdout.strip()
-    except subprocess.TimeoutExpired:
-        logger.warning("[runner] persona=%r timeout after %ds", persona_name, timeout)
-        return "（タイムアウト）"
-    except subprocess.CalledProcessError as e:
-        logger.warning("[runner] persona=%r exit code %d", persona_name, e.returncode)
-        return f"（エラー: {e.returncode}）"
-    except OSError as e:
-        logger.warning("[runner] persona=%r OSError: %s", persona_name, e)
+        result = ghdag_llm_call(formatted, engine=engine, model=model, timeout=timeout)
+    except Exception as e:
+        logger.warning("[runner] persona=%r exception: %s", persona_name, e)
         return f"（実行失敗: {e}）"
+
+    if not result.ok:
+        stderr = (result.stderr or "").strip()
+        logger.warning("[runner] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
+        return f"（エラー: {stderr[:200]}）" if stderr else "（エラー）"
+    return (result.stdout or "").strip()

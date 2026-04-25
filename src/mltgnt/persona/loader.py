@@ -78,17 +78,6 @@ class Persona:
             f"{instruction}"
         )
 
-    def build_command(self, prompt: str) -> list[str]:
-        """FM の ops.engine / ops.model を参照してコマンドリストを生成する。"""
-        from mltgnt.persona.schema import (
-            SYSTEM_DEFAULT_ENGINE,
-            SYSTEM_DEFAULT_MODEL,
-            build_engine_command,
-        )
-        engine = self.fm.engine or SYSTEM_DEFAULT_ENGINE
-        model = self.fm.model or SYSTEM_DEFAULT_MODEL
-        return build_engine_command(engine, model, prompt)
-
     def build_review_prompt(self, op_mode: str = "critique") -> str:
         """レビューシステム向けプロンプト断片を返す。"""
         output_section = self.sections.get("アウトプット形式", "")
