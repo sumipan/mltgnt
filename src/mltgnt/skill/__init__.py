@@ -4,6 +4,7 @@ mltgnt.skill — Markdown ベーススキルファイルの読み込み・実行
 設計: Issue #124
 公開 API: discover, load, match, run, estimate_skill
 """
+from mltgnt.skill._registry import SkillRegistry
 from mltgnt.skill.estimator import estimate_skill
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
@@ -18,4 +19,5 @@ __all__ = [
     "run",
     "SkillMeta",
     "SkillFile",
+    "SkillRegistry",
 ]
