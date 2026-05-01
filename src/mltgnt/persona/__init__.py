@@ -5,6 +5,8 @@
     list_personas(persona_dir)                                -> list[str]
     validate_persona(persona, *, available_skills)            -> list[str]
     run_persona_prompt(persona_name, prompt, persona_dir, ..) -> str
+    compress_heavy_to_light(heavy_text, *, engine, model, ..) -> str
+    regenerate_light_block(persona_path, *, engine, model, ..) -> RegenerationResult
     PersonaValidationError                                    (例外クラス)
 """
 
@@ -12,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from mltgnt.persona.compress import compress_heavy_to_light, regenerate_light_block
 from mltgnt.persona.loader import Persona, load
 from mltgnt.persona.registry import list_personas as _list_personas
 from mltgnt.persona.registry import resolve_with_alias
@@ -24,6 +27,8 @@ __all__ = [
     "list_personas",
     "validate_persona",
     "run_persona_prompt",
+    "compress_heavy_to_light",
+    "regenerate_light_block",
 ]
 
 
