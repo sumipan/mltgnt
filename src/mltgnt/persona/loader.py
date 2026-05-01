@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 from zoneinfo import ZoneInfo
 
 from mltgnt.persona.frontmatter import split_yaml_frontmatter
@@ -45,6 +46,16 @@ class Persona:
     body: str
     path: Path
 
+    WEIGHT_MAP: ClassVar[dict[str, str]] = {
+        "基本情報": "heavy",
+        "価値観": "heavy",
+        "反応パターン": "heavy",
+        "口調": "heavy",
+        "アウトプット形式": "reference",
+    }
+
+    DEFAULT_OP_MODE: ClassVar[str] = "critique"
+
     # ------------------------------------------------------------------
     # 後方互換プロパティ
     # ------------------------------------------------------------------
@@ -67,28 +78,55 @@ class Persona:
     def delegate_ack(self) -> str | None:
         return self.fm.slack_delegate_ack
 
-    def format_prompt(self, instruction: str) -> str:
+    def format_prompt(self, instruction: str, *, weight: str = "heavy") -> str:
         now = datetime.now(_TZ)
         datetime_line = f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
+
+        # WEIGHT_MAP に存在しないセクションがあれば warning + フォールバック
+        unknown = [k for k in self.sections if k not in self.WEIGHT_MAP]
+        if unknown:
+            logger.warning(
+                "[persona] %r: WEIGHT_MAP に未定義のセクション %s — 全セクションを embed します",
+                self.name,
+                unknown,
+            )
+            body_part = self.body
+        else:
+            selected = [
+                f"## {key}\n\n{text}"
+                for key, text in self.sections.items()
+                if self.WEIGHT_MAP.get(key) == weight
+            ]
+            body_part = "\n\n".join(selected)
+
         return (
             f"あなたは以下のキャラクターになりきり、その口調・性格で応答してください。\n\n"
             f"{datetime_line}"
-            f"{self.body}\n\n"
+            f"{body_part}\n\n"
             f"--- ユーザーからの指示 ---\n\n"
             f"{instruction}"
         )
 
+    def extract_output_format(self, op_mode: str | None = None) -> str | None:
+        """アウトプット形式セクションから指定 op_mode の H4 ブロックを返す。"""
+        op_mode = op_mode or self.DEFAULT_OP_MODE
+        section = self.sections.get("アウトプット形式")
+        if section is None:
+            return None
+        blocks = re.split(r"^#### ", section, flags=re.MULTILINE)
+        for block in blocks:
+            if block.startswith(op_mode):
+                text = block[len(op_mode):].strip()
+                return text if text else None
+        return None
+
     def build_review_prompt(self, op_mode: str = "critique") -> str:
         """レビューシステム向けプロンプト断片を返す。"""
-        output_section = self.sections.get("アウトプット形式", "")
-        base = self.body
-        if output_section:
-            return (
-                f"{base}\n\n"
-                f"## 指示\n以下の op_mode でレビューしてください: {op_mode}\n\n"
-                f"{output_section}"
-            )
-        return base
+        output_fmt = self.extract_output_format(op_mode)
+        parts = [self.body]
+        if output_fmt:
+            parts.append(f"## アウトプット形式\n{output_fmt}")
+        return "\n\n".join(parts)
 
 
 @dataclass
@@ -167,24 +205,35 @@ def _parse_sections(body: str) -> dict[str, str]:
 
     見出し行自体はセクション本文に含めない。
     "## 1. 基本情報" などの番号付き見出しの場合、キーは "基本情報" として正規化する。
+    "## 0. ..." で始まるセクション（§0）は除外する。
     """
     sections: dict[str, str] = {}
     current_key: str | None = None
     current_lines: list[str] = []
+    skip_current: bool = False
 
     for line in body.splitlines():
-        m = re.match(r"^##\s+(?:\d+\.\s+)?(.+)", line)
+        m = re.match(r"^##\s+(\d+\.\s+)?(.+)", line)
         if m:
-            if current_key is not None:
+            if current_key is not None and not skip_current:
                 sections[current_key] = "\n".join(current_lines).strip()
-            raw_title = m.group(1).strip()
+            num_prefix = m.group(1) or ""
+            raw_title = m.group(2).strip()
+            # §0 除外
+            if num_prefix.strip() == "0.":
+                skip_current = True
+                current_key = None
+                current_lines = []
+                continue
+            skip_current = False
             # 【必須】などの注釈を除去
             current_key = re.sub(r"\s*【[^】]*】", "", raw_title).strip()
             current_lines = []
         else:
-            current_lines.append(line)
+            if not skip_current:
+                current_lines.append(line)
 
-    if current_key is not None:
+    if current_key is not None and not skip_current:
         sections[current_key] = "\n".join(current_lines).strip()
 
     return sections
