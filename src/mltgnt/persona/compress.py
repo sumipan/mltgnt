@@ -232,7 +232,6 @@ def _rebuild_file(
     frontmatter は original_raw から取り出す（変更しない）。
     H2 ブロックの順序は 軽量→重量→参照 を維持する。
     """
-    from mltgnt.persona.frontmatter import split_yaml_frontmatter
 
     # frontmatter 部分（--- ... --- の行を含む）を抽出
     # split_yaml_frontmatter はメタ辞書とボディを返すが、
