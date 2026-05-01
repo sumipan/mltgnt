@@ -277,7 +277,7 @@ def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str 
         "---\n"
         f"persona:\n  name: {name}\n"
         f"ops:\n  engine: {engine}\n  model: {model}\n"
-        "---\n\nペルソナ本文",
+        "---\n\n## 基本情報\n\nペルソナ本文",
         encoding="utf-8",
     )
     return p

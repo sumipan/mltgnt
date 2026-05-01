@@ -207,7 +207,8 @@ def test_format_prompt_datetime_before_body(tachikoma_persona_file: Path, agents
     persona = load_persona("タチコマ", persona_dir=agents_dir)
     result = persona.format_prompt("テスト指示")
     dt_pos = result.index("現在日時:")
-    body_pos = result.index(persona.body)
+    # body は weight=heavy で抽出されるため、heavy セクションの代表内容で前後を検証する
+    body_pos = result.index("タチコマはGHSの多脚戦車型AIロボット。")
     assert dt_pos < body_pos
 
 
