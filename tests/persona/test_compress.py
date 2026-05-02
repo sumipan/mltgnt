@@ -22,6 +22,28 @@ def _make_llm_result(ok: bool = True, stdout: str = "圧縮テキスト", stderr
     return r
 
 
+# v2.1 形式のモックレスポンス（_validate_v21_light_block を通過できる）
+_V21_MOCK_RESPONSE = textwrap.dedent("""\
+    フチコマは好奇心旺盛で論理的な人物。新しい技術に対して積極的に向き合う。
+
+    **口調** — 簡潔でテンポよく話し、専門用語を適切に使う。
+    **価値観** — 効率と正確さを重視し、曖昧さを嫌う。
+    **好意的反応** — 論理的な提案や新技術の話題には前のめりになる。
+    **引っかかる** — 根拠のない主張や非効率な手順には不満を示す。
+""")
+
+# 発言例付きの v2.1 形式
+_V21_MOCK_WITH_SPEECH = textwrap.dedent("""\
+    フチコマは好奇心旺盛で論理的な人物。新しい技術に対して積極的に向き合う。
+
+    **口調** — 簡潔でテンポよく話し、専門用語を適切に使う。
+    **価値観** — 効率と正確さを重視し、曖昧さを嫌う。
+    **好意的反応** — 論理的な提案や新技術の話題には前のめりになる。
+    **引っかかる** — 根拠のない主張や非効率な手順には不満を示す。
+    **発言例**
+    > それ、もう少し根拠を整理してから話してほしいな。
+""")
+
 V2_PERSONA = textwrap.dedent("""\
     ---
     persona:
@@ -120,20 +142,18 @@ class TestCompressHeavyToLight:
     def test_normal_long_text(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         heavy = "あ" * 1500
-        short_result = "圧縮後テキスト" * 10
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=short_result)):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = compress_heavy_to_light(heavy)
         assert isinstance(result, str)
-        assert result == short_result
+        assert result == _V21_MOCK_RESPONSE.strip()
 
     def test_normal_short_text(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         heavy = "短い重量ブロック" * 5
-        compressed = "圧縮後"
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=compressed)) as mock_call:
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
             result = compress_heavy_to_light(heavy)
         mock_call.assert_called_once()
-        assert result == compressed
+        assert result == _V21_MOCK_RESPONSE.strip()
 
     def test_empty_input_raises_runtime_error(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
@@ -154,7 +174,7 @@ class TestCompressHeavyToLight:
 
     def test_engine_and_model_passed_to_llm(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
-        with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
             compress_heavy_to_light("テスト", engine="claude", model="claude-haiku-4-5")
         _, kwargs = mock_call.call_args
         assert kwargs.get("engine") == "claude"
@@ -162,7 +182,7 @@ class TestCompressHeavyToLight:
 
     def test_timeout_passed_to_llm(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
-        with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
             compress_heavy_to_light("テスト", timeout=60)
         _, kwargs = mock_call.call_args
         assert kwargs.get("timeout") == 60
@@ -178,31 +198,57 @@ class TestRegenerateLightBlock:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout="新しい軽量テキスト")):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.is_first_generation is True
         assert result.old_hash == ""
-        assert result.light_text == "新しい軽量テキスト"
+        assert result.light_text == _V21_MOCK_RESPONSE.strip()
         content = persona_file.read_text(encoding="utf-8")
-        assert "新しい軽量テキスト" in content
+        assert "**口調**" in content
 
     def test_regeneration_changed(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout="全く新しい軽量テキスト")):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.changed is True
         assert result.old_hash != result.new_hash
         content = persona_file.read_text(encoding="utf-8")
-        assert "全く新しい軽量テキスト" in content
+        assert "**口調**" in content
 
     def test_regeneration_unchanged(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
-        persona_file.write_text(V2_PERSONA, encoding="utf-8")
-        existing_light = "既存の軽量テキスト。"
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=existing_light)):
+        # まず v2.1 形式の軽量ブロックを持つペルソナを準備
+        v2_persona_v21_light = """---
+persona:
+  name: テスト太郎
+ops:
+  engine: claude
+  model: claude-sonnet-4-6
+---
+
+## 軽量
+
+フチコマは好奇心旺盛で論理的な人物。新しい技術に対して積極的に向き合う。
+
+**口調** — 簡潔でテンポよく話し、専門用語を適切に使う。
+**価値観** — 効率と正確さを重視し、曖昧さを嫌う。
+**好意的反応** — 論理的な提案や新技術の話題には前のめりになる。
+**引っかかる** — 根拠のない主張や非効率な手順には不満を示す。
+
+## 重量
+
+詳細な人物像のテキスト。価値観・反応パターン・口調など。
+このペルソナは非常に好奇心旺盛で、新しいことに挑戦するのが好きです。
+
+## 参照
+
+参照リンクや補足情報。
+"""
+        persona_file.write_text(v2_persona_v21_light, encoding="utf-8")
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.changed is False
         assert result.old_hash == result.new_hash
@@ -211,7 +257,7 @@ class TestRegenerateLightBlock:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout="変更後の軽量テキスト")):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             with caplog.at_level(logging.WARNING, logger="mltgnt.persona.compress"):
                 result = regenerate_light_block(persona_file)
         if result.changed:
@@ -224,7 +270,7 @@ class TestRegenerateLightBlock:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout="新軽量テキスト")):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             regenerate_light_block(persona_file)
         content = persona_file.read_text(encoding="utf-8")
         assert "persona:" in content
@@ -245,7 +291,7 @@ class TestRegenerateLightBlock:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout="軽量テキスト")):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.persona_name == "テスト太郎"
 
@@ -256,26 +302,146 @@ class TestRegenerateLightBlock:
 
 
 class TestIntegration:
-    def test_file_has_light_block_under_400_chars(self, tmp_path: Path) -> None:
+    def test_file_has_light_block_under_1500_chars(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block, _split_h2_blocks
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        compressed = "あ" * 200
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=compressed)):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             regenerate_light_block(persona_file)
         content = persona_file.read_text(encoding="utf-8")
         from mltgnt.persona.frontmatter import split_yaml_frontmatter
         _, body = split_yaml_frontmatter(content)
         blocks = _split_h2_blocks(body)
         light_text = blocks.get("軽量", "")
-        assert len(light_text) <= 400
+        assert len(light_text) <= 1500
 
     def test_loader_compatible_after_regeneration(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         from mltgnt.persona.loader import load
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout="軽量テキスト")):
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             regenerate_light_block(persona_file)
         persona = load(persona_file)
         assert persona.name == "テスト太郎"
+
+
+# ---------------------------------------------------------------------------
+# 新規: LIGHT_BLOCK_MAX_CHARS 定数テスト (AC-2 #1)
+# ---------------------------------------------------------------------------
+
+
+class TestLightBlockMaxChars:
+    def test_constant_is_1500(self) -> None:
+        from mltgnt.persona.compress import LIGHT_BLOCK_MAX_CHARS
+        assert LIGHT_BLOCK_MAX_CHARS == 1500
+
+
+# ---------------------------------------------------------------------------
+# 新規: _validate_v21_light_block テスト (AC-2 #5-7)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateV21LightBlock:
+    """_validate_v21_light_block の正常・異常系テスト。"""
+
+    def test_valid_standard_block(self) -> None:
+        """正常: 標準的な v2.1 ブロックはエラーなし。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        _validate_v21_light_block(_V21_MOCK_RESPONSE)  # エラーなし
+
+    def test_valid_with_speech_examples(self) -> None:
+        """正常: 発言例付きの v2.1 ブロックはエラーなし。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        _validate_v21_light_block(_V21_MOCK_WITH_SPEECH)  # エラーなし
+
+    def test_error_no_lead_text(self) -> None:
+        """異常: リード文なし（**口調** から始まる）→ ValueError('リード文')。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        no_lead = """**口調** — 簡潔でテンポよく話す。
+**価値観** — 効率を重視する。
+**好意的反応** — 論理的な提案に喜ぶ。
+**引っかかる** — 根拠のない主張に不満。
+"""
+        with pytest.raises(ValueError, match="リード文"):
+            _validate_v21_light_block(no_lead)
+
+    def test_error_missing_section_chotyp(self) -> None:
+        """異常: **口調** がない → ValueError に '口調' が含まれる。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        missing_section = """フチコマは好奇心旺盛な人物。
+
+**価値観** — 効率を重視する。
+**好意的反応** — 論理的な提案に喜ぶ。
+**引っかかる** — 根拠のない主張に不満。
+"""
+        with pytest.raises(ValueError, match="口調"):
+            _validate_v21_light_block(missing_section)
+
+    def test_error_missing_section_kachikan(self) -> None:
+        """異常: **価値観** がない → ValueError に '価値観' が含まれる。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        missing_section = """フチコマは好奇心旺盛な人物。
+
+**口調** — 簡潔に話す。
+**好意的反応** — 論理的な提案に喜ぶ。
+**引っかかる** — 根拠のない主張に不満。
+"""
+        with pytest.raises(ValueError, match="価値観"):
+            _validate_v21_light_block(missing_section)
+
+    def test_error_missing_section_koitekireaction(self) -> None:
+        """異常: **好意的反応** がない → ValueError に '好意的反応' が含まれる。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        missing_section = """フチコマは好奇心旺盛な人物。
+
+**口調** — 簡潔に話す。
+**価値観** — 効率を重視する。
+**引っかかる** — 根拠のない主張に不満。
+"""
+        with pytest.raises(ValueError, match="好意的反応"):
+            _validate_v21_light_block(missing_section)
+
+    def test_error_missing_section_hikkakaru(self) -> None:
+        """異常: **引っかかる** がない → ValueError に '引っかかる' が含まれる。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        missing_section = """フチコマは好奇心旺盛な人物。
+
+**口調** — 簡潔に話す。
+**価値観** — 効率を重視する。
+**好意的反応** — 論理的な提案に喜ぶ。
+"""
+        with pytest.raises(ValueError, match="引っかかる"):
+            _validate_v21_light_block(missing_section)
+
+    def test_error_speech_example_without_quote(self) -> None:
+        """異常: **発言例** の後に > 行がない → ValueError。"""
+        from mltgnt.persona.compress import _validate_v21_light_block
+        bad_speech = """フチコマは好奇心旺盛な人物。
+
+**口調** — 簡潔に話す。
+**価値観** — 効率を重視する。
+**好意的反応** — 論理的な提案に喜ぶ。
+**引っかかる** — 根拠のない主張に不満。
+**発言例**
+それ、もう少し根拠を整理してほしいな。
+"""
+        with pytest.raises(ValueError):
+            _validate_v21_light_block(bad_speech)
+
+
+# ---------------------------------------------------------------------------
+# 新規: regenerate_light_block が v2.1 バリデーションを呼ぶことの確認
+# ---------------------------------------------------------------------------
+
+
+class TestRegenerateLightBlockV21Validation:
+    def test_invalid_v21_raises_value_error(self, tmp_path: Path) -> None:
+        """LLM がバリデーション不通過な応答を返した場合 ValueError になる。"""
+        from mltgnt.persona.compress import regenerate_light_block
+        persona_file = tmp_path / "テスト太郎.md"
+        persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
+        bad_response = "**口調** — リード文なし。\n**価値観** — 効率。\n**好意的反応** — OK。\n**引っかかる** — NG。"
+        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=bad_response)):
+            with pytest.raises(ValueError, match="リード文"):
+                regenerate_light_block(persona_file)

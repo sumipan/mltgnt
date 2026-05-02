@@ -18,18 +18,27 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-LIGHT_BLOCK_MAX_CHARS = 400
+LIGHT_BLOCK_MAX_CHARS = 1500
 
-_COMPRESS_PROMPT_TEMPLATE = """\
-以下のペルソナの重量ブロック（詳細な人物像）を、400文字以内のプレーンテキストに圧縮してください。
+_COMPRESS_PROMPT_TEMPLATE = """以下のペルソナの重量ブロックから、v2.1 形式の軽量ブロックを生成してください。
 
-制約:
-- 400文字以内（厳守）
-- マークダウン記法は使わない
-- 人物の核心的な特徴（価値観・反応パターン・口調）を優先して残す
-- 具体例やエピソードは省略し、本質を要約する
+## 出力形式
 
-重量ブロック:
+1. リード文（1〜2文で人物の本質を要約）
+2. 必須サブセクション（太字見出し）:
+   - **口調** — 話し方の特徴
+   - **価値観** — 大切にしていること
+   - **好意的反応** — どんなとき喜ぶか
+   - **引っかかる** — どんなとき不快になるか
+3. 推奨（任意）:
+   - **発言例** — 引用ブロック（> ）形式で1〜3例
+
+## 制約
+- 1500文字以内（厳守）
+- 太字見出しは上記の名前をそのまま使う
+- 発言例がある場合は必ず引用ブロック形式にする
+
+## 重量ブロック:
 {heavy_text}"""
 
 
@@ -89,7 +98,7 @@ def compress_heavy_to_light(
         timeout: LLM 呼び出しタイムアウト秒数
 
     Returns:
-        400文字以内に圧縮されたプレーンテキスト
+        1500文字以内の v2.1 形式テキスト（リード文 + 必須サブセクション）
 
     Raises:
         RuntimeError: LLM 呼び出しが失敗した場合、または heavy_text が空の場合
@@ -130,8 +139,9 @@ def regenerate_light_block(
     1. ペルソナファイルを読み込み、H2 ブロックを分割
     2. 既存の軽量ブロックの sha256 を記録
     3. 重量ブロックを LLM 圧縮して新しい軽量ブロックを生成
-    4. 新しい軽量ブロックでファイルを上書き保存
-    5. sha256 を比較し、変更があれば warning をログ出力
+    4. 生成結果を v2.1 形式でバリデーション
+    5. 新しい軽量ブロックでファイルを上書き保存
+    6. sha256 を比較し、変更があれば warning をログ出力
 
     Args:
         persona_path: ペルソナファイルのパス
@@ -143,7 +153,7 @@ def regenerate_light_block(
         RegenerationResult
 
     Raises:
-        ValueError: v2 形式でないファイル（## 重量 が存在しない）
+        ValueError: v2 形式でないファイル（## 重量 が存在しない）、または生成結果が v2.1 形式に適合しない場合
         RuntimeError: LLM 圧縮に失敗した場合
     """
     from mltgnt.persona.frontmatter import split_yaml_frontmatter
@@ -166,6 +176,10 @@ def regenerate_light_block(
 
     # LLM 圧縮
     new_light = compress_heavy_to_light(heavy_text, engine=engine, model=model, timeout=timeout)
+
+    # v2.1 形式バリデーション
+    _validate_v21_light_block(new_light)
+
     new_hash = compute_block_hash(new_light)
 
     changed = old_hash != new_hash
@@ -194,6 +208,73 @@ def regenerate_light_block(
 # ---------------------------------------------------------------------------
 # 内部ユーティリティ
 # ---------------------------------------------------------------------------
+
+
+def _validate_v21_light_block(text: str) -> None:
+    """生成された軽量ブロックが v2.1 形式に準拠しているか検証する。
+
+    v2.1 形式の要件:
+    - リード文（1行以上の非空行）が最初の ** より前に存在すること
+    - 必須サブセクション: **口調**、**価値観**、**好意的反応**、**引っかかる**
+    - **発言例** が存在する場合は直後（同セクション内）に > で始まる行が必要
+
+    Args:
+        text: 検証対象テキスト
+
+    Raises:
+        ValueError: 形式要件を満たさない場合
+    """
+    lines = text.strip().splitlines()
+
+    # リード文チェック: 最初の ** 見出し行より前に非空行が必要
+    first_bold_index = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith("**"):
+            first_bold_index = i
+            break
+
+    if first_bold_index is None:
+        # ** 見出しが一切ない場合、必須セクションチェックで捕捉される
+        # リード文チェックとしてはとりあえず通過
+        pass
+    else:
+        # 最初の ** 行より前に非空行があるか確認
+        lead_lines = [ln for ln in lines[:first_bold_index] if ln.strip()]
+        if not lead_lines:
+            raise ValueError(
+                "v2.1 形式エラー: リード文がありません。最初の太字見出し（**）より前に人物紹介の文章を記述してください。"
+            )
+
+    # 必須サブセクションチェック
+    required_sections = ["**口調**", "**価値観**", "**好意的反応**", "**引っかかる**"]
+    for section in required_sections:
+        # ** で始まる行にセクション名が含まれているか（行中位置は問わない）
+        found = any(section in line for line in lines)
+        if not found:
+            section_name = section.strip("*")
+            raise ValueError(
+                f"v2.1 形式エラー: 必須サブセクション {section} がありません。"
+                f"（{section_name} — ... の形式で記述してください）"
+            )
+
+    # 発言例チェック: **発言例** がある場合は > で始まる行が後続に必要
+    for i, line in enumerate(lines):
+        if "**発言例**" in line:
+            # 後続の行に > で始まる行があるか確認（次の太字見出しまでの範囲）
+            has_quote = False
+            for j in range(i + 1, len(lines)):
+                next_line = lines[j]
+                if next_line.strip().startswith("**") and "**発言例**" not in next_line:
+                    # 別のセクションに入ったので終了
+                    break
+                if next_line.strip().startswith("> ") or next_line.strip() == ">":
+                    has_quote = True
+                    break
+            if not has_quote:
+                raise ValueError(
+                    "v2.1 形式エラー: **発言例** の後に引用ブロック（> で始まる行）がありません。"
+                )
+            break
 
 
 def _split_h2_blocks(body: str) -> dict[str, str]:
