@@ -200,12 +200,34 @@ def load(path: Path) -> Persona:
     )
 
 
+def _expand_h3_sections(section_text: str) -> dict[str, str]:
+    """H3 (###) でサブセクションに分割してフラット dict を返す。
+
+    各ブロックの 1 行目を見出し名、残りを本文とする。
+    H3 の前にある pre-H3 コンテンツ（空文字の場合は破棄）は無視する。
+    """
+    result: dict[str, str] = {}
+    parts = re.split(r"^###\s+", section_text, flags=re.MULTILINE)
+    for part in parts:
+        if not part.strip():
+            continue
+        lines = part.split("\n", 1)
+        key = lines[0].strip()
+        body = lines[1].strip() if len(lines) > 1 else ""
+        if key:
+            result[key] = body
+    return result
+
+
 def _parse_sections(body: str) -> dict[str, str]:
     """本文を ## 見出しでセクション分割する。
 
     見出し行自体はセクション本文に含めない。
     "## 1. 基本情報" などの番号付き見出しの場合、キーは "基本情報" として正規化する。
     "## 0. ..." で始まるセクション（§0）は除外する。
+
+    v2 形式では `## 重量` と `## 参照` の内容を H3 (###) でさらに展開し、
+    H3 見出し名をキーとするフラット dict に統合する。
     """
     sections: dict[str, str] = {}
     current_key: str | None = None
@@ -235,5 +257,11 @@ def _parse_sections(body: str) -> dict[str, str]:
 
     if current_key is not None and not skip_current:
         sections[current_key] = "\n".join(current_lines).strip()
+
+    # v2 対応: ## 重量 / ## 参照 を H3 展開してフラット化
+    for h2_key in ("重量", "参照"):
+        if h2_key in sections:
+            h3_sections = _expand_h3_sections(sections.pop(h2_key))
+            sections.update(h3_sections)
 
     return sections
