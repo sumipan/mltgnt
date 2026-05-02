@@ -239,7 +239,7 @@ def _validate_v21_light_block(text: str) -> None:
         pass
     else:
         # 最初の ** 行より前に非空行があるか確認
-        lead_lines = [l for l in lines[:first_bold_index] if l.strip()]
+        lead_lines = [ln for ln in lines[:first_bold_index] if ln.strip()]
         if not lead_lines:
             raise ValueError(
                 "v2.1 形式エラー: リード文がありません。最初の太字見出し（**）より前に人物紹介の文章を記述してください。"
