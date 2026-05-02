@@ -240,3 +240,260 @@ class TestBackwardCompatibility:
         persona = _make_persona(body)
         result = persona.build_review_prompt()
         assert "タチコマ" in result
+
+
+# ---------------------------------------------------------------------------
+# AC-1: v2 形式の _parse_sections H3 展開
+# ---------------------------------------------------------------------------
+
+
+import textwrap as _textwrap
+from unittest.mock import patch as _patch
+
+
+class TestParseSectionsV2:
+    def test_1_1_v2_expands_h3_heavy_and_reference(self):
+        """AC 1-1: v2 形式の H3 展開。重量・参照の H3 がフラット dict に展開される。"""
+        body = _textwrap.dedent("""\
+            ## 軽量
+
+            サマリ
+
+            ## 重量
+
+            ### 基本情報
+
+            内容A
+
+            ### 価値観
+
+            内容B
+
+            ## 参照
+
+            ### アウトプット形式
+
+            #### critique
+
+            テンプレ
+
+            ### メモ・更新履歴
+
+            更新内容
+        """)
+        sections = _parse_sections(body)
+        assert sections.get("軽量") == "サマリ"
+        assert sections.get("基本情報") == "内容A"
+        assert sections.get("価値観") == "内容B"
+        assert "重量" not in sections
+        assert "参照" not in sections
+        assert "アウトプット形式" in sections
+        assert "#### critique" in sections["アウトプット形式"]
+        assert sections.get("メモ・更新履歴") == "更新内容"
+
+    def test_1_2_format_prompt_v2_no_unknown_warning(self):
+        """AC 1-2: v2 形式（重量のみ）で format_prompt が WEIGHT_MAP 未定義警告を出さない。"""
+        body = _textwrap.dedent("""\
+            ## 重量
+
+            ### 基本情報
+
+            基本情報の内容。
+
+            ### 価値観
+
+            価値観の内容。
+
+            ### 反応パターン
+
+            反応パターンの内容。
+
+            ### 口調
+
+            口調の内容。
+        """)
+        persona = _make_persona(body)
+        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+            persona.format_prompt("指示", weight="heavy")
+            for call_args in mock_logger.warning.call_args_list:
+                args = call_args[0]
+                msg = args[0] if args else ""
+                assert "WEIGHT_MAP に未定義" not in str(args), \
+                    f"WEIGHT_MAP 未定義警告が出てはいけない: {args}"
+
+    def test_1_3_reference_block_h3_expansion(self):
+        """AC 1-3: 参照ブロックの H3 展開。"""
+        body = _textwrap.dedent("""\
+            ## 参照
+
+            ### アウトプット形式
+
+            #### critique
+
+            テンプレ
+
+            ### メモ・更新履歴
+
+            更新内容
+        """)
+        sections = _parse_sections(body)
+        assert "アウトプット形式" in sections
+        assert "#### critique" in sections["アウトプット形式"]
+        assert "テンプレ" in sections["アウトプット形式"]
+        assert sections.get("メモ・更新履歴") == "更新内容"
+        assert "参照" not in sections
+
+    def test_1_4_v1_backward_compat(self):
+        """AC 1-4: v1 後方互換。H2 直接指定のセクションは従来通り。"""
+        body = _textwrap.dedent("""\
+            ## 基本情報
+
+            内容
+
+            ## 価値観
+
+            内容B
+        """)
+        sections = _parse_sections(body)
+        assert sections == {"基本情報": "内容", "価値観": "内容B"}
+
+    def test_1_5_v1_numbered_heading(self):
+        """AC 1-5: v1 番号付き見出しの正規化は維持される。"""
+        body = "## 1. 基本情報\n内容"
+        sections = _parse_sections(body)
+        assert "基本情報" in sections
+        assert sections["基本情報"] == "内容"
+
+    def test_1_6_section0_exclusion_maintained(self):
+        """AC 1-6: §0 除外の維持。"""
+        body = _textwrap.dedent("""\
+            ## 0. ファイルの使い方
+
+            内容
+
+            ## 基本情報
+
+            内容B
+        """)
+        sections = _parse_sections(body)
+        assert "ファイルの使い方" not in sections
+        assert sections.get("基本情報") == "内容B"
+
+
+# ---------------------------------------------------------------------------
+# AC-2: v2 形式の extract_output_format
+# ---------------------------------------------------------------------------
+
+
+class TestExtractOutputFormatV2:
+    def test_2_1_v2_extract_critique(self):
+        """AC 2-1: v2 形式（参照 > アウトプット形式）から critique を取得できる。"""
+        body = _textwrap.dedent("""\
+            ## 参照
+
+            ### アウトプット形式
+
+            #### critique
+
+            【所見】
+
+            #### edit
+
+            【修正案】
+        """)
+        persona = _make_persona(body)
+        result = persona.extract_output_format("critique")
+        assert result is not None
+        assert "【所見】" in result
+        assert "【修正案】" not in result
+
+    def test_2_2_v2_unknown_mode_returns_none(self):
+        """AC 2-2: 存在しないモードは None を返す（silent skip）。"""
+        body = _textwrap.dedent("""\
+            ## 参照
+
+            ### アウトプット形式
+
+            #### critique
+
+            【所見】
+        """)
+        persona = _make_persona(body)
+        assert persona.extract_output_format("debate") is None
+
+    def test_2_3_v1_extract_output_format(self):
+        """AC 2-3: v1 形式（H2 直接アウトプット形式）から取得できる。"""
+        body = _textwrap.dedent("""\
+            ## アウトプット形式
+
+            #### critique
+
+            内容
+        """)
+        persona = _make_persona(body)
+        result = persona.extract_output_format("critique")
+        assert result is not None
+        assert "内容" in result
+
+
+# ---------------------------------------------------------------------------
+# AC-3: v2 形式の extract_triage_section
+# ---------------------------------------------------------------------------
+
+
+from mltgnt.persona.triage import extract_triage_section as _extract_triage_section
+
+
+class TestExtractTriageSectionV2:
+    def test_3_1_v2_returns_light_section(self):
+        """AC 3-1: v2 形式（## 軽量）のトリアージセクションを返す。"""
+        md = _textwrap.dedent("""\
+            ## 軽量
+
+            論理的で率直な
+
+            ## 重量
+
+            ### 基本情報
+
+            内容
+        """)
+        result = _extract_triage_section(md)
+        assert result is not None
+        assert "論理的で率直な" in result
+
+    def test_3_2_v1_fallback(self):
+        """AC 3-2: v1 形式（## トリアージ用）のフォールバック。"""
+        md = _textwrap.dedent("""\
+            ## トリアージ用
+
+            トリアージ内容
+
+            ## 基本情報
+
+            内容
+        """)
+        result = _extract_triage_section(md)
+        assert result is not None
+        assert "トリアージ内容" in result
+
+    def test_3_3_neither_returns_none(self):
+        """AC 3-3: 両方なし → None を返す。"""
+        md = "## 基本情報\n内容のみ"
+        assert _extract_triage_section(md) is None
+
+    def test_3_4_both_present_v2_wins(self):
+        """AC 3-4: 両方存在する場合、## 軽量 が優先される。"""
+        md = _textwrap.dedent("""\
+            ## 軽量
+
+            v2内容
+
+            ## トリアージ用
+
+            v1内容
+        """)
+        result = _extract_triage_section(md)
+        assert result is not None
+        assert "v2内容" in result
+        assert "v1内容" not in result

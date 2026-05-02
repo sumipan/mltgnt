@@ -13,8 +13,15 @@ DEFAULT_TIMEOUT_SEC = 60
 
 
 def extract_triage_section(markdown: str) -> str | None:
-    """人物像 Markdown 内の `## トリアージ用` セクション本文を返す。無ければ None。"""
-    m = re.search(r"^##\s+トリアージ用\s*$", markdown, re.MULTILINE)
+    """人物像 Markdown 内のトリアージ用セクション本文を返す。無ければ None。
+
+    v2 形式の `## 軽量` を優先し、フォールバックとして v1 形式の `## トリアージ用` も探す。
+    """
+    # v2: ## 軽量 を優先
+    m = re.search(r"^##\s+軽量\s*$", markdown, re.MULTILINE)
+    if not m:
+        # v1 フォールバック: ## トリアージ用
+        m = re.search(r"^##\s+トリアージ用\s*$", markdown, re.MULTILINE)
     if not m:
         return None
     after = markdown[m.end():].lstrip("\n")
