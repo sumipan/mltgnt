@@ -3,6 +3,8 @@
 人物像フロントマターのスキーマ定義とバリデーション。
 
 FM 構造:
+    spec_version: str  # 任意。ペルソナスキーマのバージョン（例: "2.2.0"）
+
     persona:
       name: str          # 必須。ファイル stem と一致
       aliases: list[str] # 任意
@@ -65,6 +67,7 @@ class PersonaFM:
     name: str
     aliases: list[str] = field(default_factory=list)
     description: str = ""
+    spec_version: str | None = None
 
     # ops namespace
     chat_model: str | None = None
@@ -98,6 +101,10 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
     旧キーを使用した場合は deprecation warning を出す。
     """
     unknown: list[str] = []
+
+    # ── トップレベル spec_version ────────────────────────────────────────────
+    _sv_raw = meta.get("spec_version")
+    spec_version: str | None = str(_sv_raw).strip() if _sv_raw is not None else None
 
     # ── 新スキーマの persona: namespace ──────────────────────────────────────
     persona_ns: dict[str, Any] = meta.get("persona") or {}
@@ -156,7 +163,7 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
     legacy_keys_list: list[str] = [k for k in meta if k in _legacy_flat]
 
     # legacy_flat は unknown とは別扱い（validate_fm で個別エラー）
-    known_top: frozenset[str] = frozenset({"persona", "ops"}) | _legacy_flat
+    known_top: frozenset[str] = frozenset({"persona", "ops", "spec_version"}) | _legacy_flat
     for k in meta:
         if k not in known_top:
             unknown.append(k)
@@ -169,6 +176,7 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
         name=name,
         aliases=aliases,
         description=description,
+        spec_version=spec_version,
         chat_model=chat_model,
         engine=engine,
         model=model,
