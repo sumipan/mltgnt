@@ -9,7 +9,7 @@ import re
 
 TRIAGE_PROFILE_MAX_CHARS = 6000
 GEMINI_TIMEOUT_SEC = 25
-DEFAULT_TIMEOUT_SEC = 60
+DEFAULT_TIMEOUT_SEC = 30
 
 
 def extract_triage_section(markdown: str) -> str | None:
