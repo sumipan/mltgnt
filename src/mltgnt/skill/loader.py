@@ -84,6 +84,9 @@ def discover(
             continue
 
         for skill_file in sorted(base.rglob(entry_file)):
+            # _ 始まりディレクトリ（内部・フォールバック用）はスキップ
+            if any(p.startswith("_") for p in skill_file.relative_to(base).parts[:-1]):
+                continue
             try:
                 text = skill_file.read_text(encoding="utf-8")
                 fm, _ = _parse_frontmatter(text)
