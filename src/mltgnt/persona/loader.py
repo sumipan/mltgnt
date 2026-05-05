@@ -52,6 +52,7 @@ class Persona:
         "反応パターン": "heavy",
         "口調": "heavy",
         "アウトプット形式": "reference",
+        "軽量": "light",
     }
 
     DEFAULT_OP_MODE: ClassVar[str] = "critique"
@@ -82,8 +83,15 @@ class Persona:
         now = datetime.now(_TZ)
         datetime_line = f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
 
-        # WEIGHT_MAP に存在しないセクションがあれば warning + フォールバック
-        unknown = [k for k in self.sections if k not in self.WEIGHT_MAP]
+        def _weight_for(key: str) -> str | None:
+            """WEIGHT_MAP の前方一致でセクションの weight を返す。マッチなしは None。"""
+            for wk, wv in self.WEIGHT_MAP.items():
+                if key == wk or key.startswith(wk):
+                    return wv
+            return None
+
+        # WEIGHT_MAP に対応しないセクションがあれば warning + フォールバック
+        unknown = [k for k in self.sections if _weight_for(k) is None]
         if unknown:
             logger.warning(
                 "[persona] %r: WEIGHT_MAP に未定義のセクション %s — 全セクションを embed します",
@@ -95,7 +103,7 @@ class Persona:
             selected = [
                 f"## {key}\n\n{text}"
                 for key, text in self.sections.items()
-                if self.WEIGHT_MAP.get(key) == weight
+                if _weight_for(key) == weight
             ]
             body_part = "\n\n".join(selected)
 

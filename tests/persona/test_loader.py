@@ -379,6 +379,73 @@ class TestParseSectionsV2:
         assert "ファイルの使い方" not in sections
         assert sections.get("基本情報") == "内容B"
 
+    def test_1_7_v1_full_section_names_no_warning(self):
+        """AC 1-7: v1 形式の完全セクション名（価値観・優先順位 等）でも WEIGHT_MAP 未定義警告を出さない。"""
+        body = _textwrap.dedent("""\
+            ## 基本情報
+
+            基本情報の内容。
+
+            ## 価値観・優先順位
+
+            価値観の内容。
+
+            ## 反応パターン
+
+            反応パターンの内容。
+
+            ## 口調・語り方
+
+            口調の内容。
+
+            ## 軽量
+
+            軽量テキスト。
+        """)
+        persona = _make_persona(body)
+        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+            persona.format_prompt("指示", weight="heavy")
+            for call_args in mock_logger.warning.call_args_list:
+                args = call_args[0]
+                assert "WEIGHT_MAP に未定義" not in str(args), \
+                    f"WEIGHT_MAP 未定義警告が出てはいけない: {args}"
+
+    def test_1_8_v1_full_section_names_heavy_excludes_light(self):
+        """AC 1-8: v1 形式で weight="heavy" のとき軽量セクションが含まれない。"""
+        body = _textwrap.dedent("""\
+            ## 基本情報
+
+            基本情報の内容。
+
+            ## 価値観・優先順位
+
+            価値観の内容。
+
+            ## 軽量
+
+            軽量テキスト。
+        """)
+        persona = _make_persona(body)
+        result = persona.format_prompt("指示", weight="heavy")
+        assert "基本情報の内容" in result
+        assert "軽量テキスト" not in result
+
+    def test_1_9_v1_full_section_names_light_weight(self):
+        """AC 1-9: v1 形式で weight="light" のとき軽量セクションのみが含まれる。"""
+        body = _textwrap.dedent("""\
+            ## 基本情報
+
+            基本情報の内容。
+
+            ## 軽量
+
+            軽量テキスト。
+        """)
+        persona = _make_persona(body)
+        result = persona.format_prompt("指示", weight="light")
+        assert "軽量テキスト" in result
+        assert "基本情報の内容" not in result
+
 
 # ---------------------------------------------------------------------------
 # AC-2: v2 形式の extract_output_format
