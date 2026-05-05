@@ -401,26 +401,6 @@ class SecretaryScheduler:
                 file=sys.stderr,
             )
 
-    def _rewrite_text_for_persona(self, persona: Any, text: str) -> str:
-        """ペルソナ口調で text をリライトして返す。失敗時は text をそのまま返す。"""
-        from ghdag.llm import call as ghdag_llm_call
-        from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE, SYSTEM_DEFAULT_MODEL
-
-        prompt = (
-            f"以下のシステム通知を{persona.name}のキャラクター口調で簡潔に伝えてください。"
-            f"通知の内容と事実は変えないでください。\n\n{text}"
-        )
-        engine = persona.fm.engine or SYSTEM_DEFAULT_ENGINE
-        model = persona.fm.model or SYSTEM_DEFAULT_MODEL
-        try:
-            result = ghdag_llm_call(prompt, engine=engine, model=model, timeout=30)
-        except Exception as e:
-            print(f"[secretary-schedule] リライト失敗 {persona.name}: {e}", file=sys.stderr)
-            return text
-        if result.ok and (result.stdout or "").strip():
-            return (result.stdout or "").strip()
-        print(f"[secretary-schedule] リライト失敗 {persona.name}: {(result.stderr or '')[:200]}", file=sys.stderr)
-        return text
 
     def _post(self, job: ScheduleJob, text: str) -> None:
         if not self._should_notify_slack(job):
@@ -663,16 +643,19 @@ class SecretaryScheduler:
             prompt = next(m["content"] for m in chat_input.messages if m["role"] == "system")
             resolved_model = chat_input.model  # skill.meta.model が優先される
 
-            from ghdag.llm import call as ghdag_llm_call
-            try:
-                result = ghdag_llm_call(
-                    prompt, engine=engine, model=resolved_model, timeout=job.timeout_seconds
-                )
-                if not result.ok:
-                    return False, (result.stderr or "").strip()[-800:] or "engine error"
-                return True, (result.stdout or "").strip()
-            except Exception as e:
-                return False, str(e)
+            from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait
+
+            fired_at = datetime.now(ZoneInfo(self._default_tz))
+            ok, msg = enqueue_and_wait(
+                prompt=prompt,
+                engine=engine,
+                model=resolved_model,
+                timeout=job.timeout_seconds or 120,
+                idempotency_key=f"scheduler:{job.id}:{fired_at.isoformat()}",
+                queue_dir=self.repo_root / "queue",
+                exec_done_dir=self.repo_root / "exec-done",
+            )
+            return ok, msg
 
         if job.action == "append_exec_order":
             dry_run = bool(job.action_args.get("dry_run", False))

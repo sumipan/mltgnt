@@ -306,26 +306,21 @@ def _skill_job(**overrides) -> ScheduleJob:
     return ScheduleJob.from_dict(defaults)
 
 
-def _make_llm_result(ok: bool = True, stdout: str = "応答テキスト", stderr: str = "") -> MagicMock:
-    result = MagicMock()
-    result.ok = ok
-    result.stdout = stdout
-    result.stderr = stderr
-    return result
+_ENQUEUE = "mltgnt.scheduler.ghdag_bridge.enqueue_and_wait"
 
 
 def test_skill_action_success(tmp_path: Path) -> None:
-    """skill action: ghdag.llm.call が ok=True → (True, stdout) を返す。"""
+    """skill action: enqueue_and_wait が (True, stdout) → (True, stdout) を返す。"""
     sch, meta = _make_skill_scheduler(tmp_path)
     _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job()
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=True, stdout="応答テキスト")) as mock_call:
+    with patch(_ENQUEUE, return_value=(True, "応答テキスト")) as mock_enqueue:
         ok, msg = sch.execute_action(job)
 
     assert ok is True
     assert msg == "応答テキスト"
-    mock_call.assert_called_once()
+    mock_enqueue.assert_called_once()
 
 
 def test_skill_action_persona_in_prompt(tmp_path: Path) -> None:
@@ -334,45 +329,37 @@ def test_skill_action_persona_in_prompt(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job()
 
-    captured_prompt = []
-
-    def fake_call(prompt, **kwargs):
-        captured_prompt.append(prompt)
-        return _make_llm_result()
-
-    with patch("ghdag.llm.call", side_effect=fake_call):
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert len(captured_prompt) == 1
-    assert "ペルソナ本文" in captured_prompt[0]
-    assert "スキル本文" in captured_prompt[0]
-    assert captured_prompt[0].index("ペルソナ本文") < captured_prompt[0].index("スキル本文")
+    prompt = mock_enqueue.call_args.kwargs["prompt"]
+    assert "ペルソナ本文" in prompt
+    assert "スキル本文" in prompt
+    assert prompt.index("ペルソナ本文") < prompt.index("スキル本文")
 
 
 def test_skill_action_engine_explicit(tmp_path: Path) -> None:
-    """action_args.engine 指定時は ghdag.llm.call に正しい engine が渡される。"""
+    """action_args.engine 指定時は enqueue_and_wait に正しい engine が渡される。"""
     sch, _ = _make_skill_scheduler(tmp_path)
     _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "engine": "gemini"})
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    _, kwargs = mock_call.call_args
-    assert kwargs.get("engine") == "gemini"
+    assert mock_enqueue.call_args.kwargs["engine"] == "gemini"
 
 
 def test_skill_action_model_explicit(tmp_path: Path) -> None:
-    """action_args.model 指定時は ghdag.llm.call に正しい model が渡される。"""
+    """action_args.model 指定時は enqueue_and_wait に正しい model が渡される。"""
     sch, _ = _make_skill_scheduler(tmp_path)
     _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "claude-opus-4-6"})
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    _, kwargs = mock_call.call_args
-    assert kwargs.get("model") == "claude-opus-4-6"
+    assert mock_enqueue.call_args.kwargs["model"] == "claude-opus-4-6"
 
 
 def test_skill_action_engine_fallback_to_persona(tmp_path: Path) -> None:
@@ -381,11 +368,10 @@ def test_skill_action_engine_fallback_to_persona(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ", engine="gemini", model="gemini-2.5-flash")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    _, kwargs = mock_call.call_args
-    assert kwargs.get("engine") == "gemini"
+    assert mock_enqueue.call_args.kwargs["engine"] == "gemini"
 
 
 def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
@@ -394,11 +380,10 @@ def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ", engine="gemini", model="gemini-2.5-pro")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    _, kwargs = mock_call.call_args
-    assert kwargs.get("model") == "gemini-2.5-pro"
+    assert mock_enqueue.call_args.kwargs["model"] == "gemini-2.5-pro"
 
 
 def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
@@ -409,16 +394,12 @@ def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "argv": ["morning"]})
 
-    captured_prompt = []
+    with patch(_ENQUEUE, return_value=(True, "結果")) as mock_enqueue:
+        ok, msg = sch.execute_action(job)
 
-    def fake_call(prompt, **kwargs):
-        captured_prompt.append(prompt)
-        return _make_llm_result()
-
-    with patch("ghdag.llm.call", side_effect=fake_call):
-        sch.execute_action(job)
-
-    assert "morning を処理" in captured_prompt[0]
+    assert ok is True
+    assert msg == "結果"
+    assert "morning を処理" in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_no_argv(tmp_path: Path) -> None:
@@ -427,29 +408,75 @@ def test_skill_action_no_argv(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
 
-    captured_prompt = []
-
-    def fake_call(prompt, **kwargs):
-        captured_prompt.append(prompt)
-        return _make_llm_result()
-
-    with patch("ghdag.llm.call", side_effect=fake_call):
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert "引数:" not in captured_prompt[0]
+    assert "引数:" not in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_engine_error(tmp_path: Path) -> None:
-    """ghdag.llm.call が ok=False → (False, stderr) を返す。"""
+    """enqueue_and_wait が (False, ...) → execute_action も (False, ...) を返す。"""
     sch, _ = _make_skill_scheduler(tmp_path)
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job()
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=False, stderr="engine error detail")):
+    with patch(_ENQUEUE, return_value=(False, "engine error detail")):
         ok, msg = sch.execute_action(job)
 
     assert ok is False
     assert "engine error detail" in msg
+
+
+def test_skill_action_timeout(tmp_path: Path) -> None:
+    """enqueue_and_wait が timeout を返したとき execute_action も (False, "timeout ...") を返す。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    with patch(_ENQUEUE, return_value=(False, "timeout (120s)")):
+        ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert msg == "timeout (120s)"
+
+
+def test_skill_action_rejected(tmp_path: Path) -> None:
+    """REJECTED ステータス時は (False, 'rejected: REJECTED') を返す。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    with patch(_ENQUEUE, return_value=(False, "rejected: REJECTED")):
+        ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert msg == "rejected: REJECTED"
+
+
+def test_skill_action_empty_result(tmp_path: Path) -> None:
+    """EMPTY_RESULT ステータス時は (False, 'empty_result: EMPTY_RESULT') を返す。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    with patch(_ENQUEUE, return_value=(False, "empty_result: EMPTY_RESULT")):
+        ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert msg == "empty_result: EMPTY_RESULT"
+
+
+def test_skill_action_idempotency_key_format(tmp_path: Path) -> None:
+    """enqueue_and_wait に渡される idempotency_key が 'scheduler:{job.id}:...' 形式であること。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+        sch.execute_action(job)
+
+    key = mock_enqueue.call_args.kwargs["idempotency_key"]
+    assert key.startswith(f"scheduler:{job.id}:")
 
 
 def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
@@ -526,18 +553,12 @@ def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job()
 
-    captured_prompt = []
-
-    def fake_call(prompt, **kwargs):
-        captured_prompt.append(prompt)
-        return _make_llm_result()
-
-    with patch("ghdag.llm.call", side_effect=fake_call):
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
     skill_dir_path = (tmp_path / "skills" / "test-skill").resolve()
     expected = str(skill_dir_path) + "/scripts/run.py を実行"
-    assert expected in captured_prompt[0]
+    assert expected in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
@@ -548,16 +569,10 @@ def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "argv": ["hello", "world"]})
 
-    captured_prompt = []
-
-    def fake_call(prompt, **kwargs):
-        captured_prompt.append(prompt)
-        return _make_llm_result()
-
-    with patch("ghdag.llm.call", side_effect=fake_call):
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert "hello world → hello world" in captured_prompt[0]
+    assert "hello world → hello world" in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
@@ -568,16 +583,10 @@ def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job()
 
-    captured_prompt = []
-
-    def fake_call(prompt, **kwargs):
-        captured_prompt.append(prompt)
-        return _make_llm_result()
-
-    with patch("ghdag.llm.call", side_effect=fake_call):
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert "引数: []" in captured_prompt[0]
+    assert "引数: []" in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
@@ -588,18 +597,13 @@ def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job()
 
-    captured_prompt = []
-
-    def fake_call(prompt, **kwargs):
-        captured_prompt.append(prompt)
-        return _make_llm_result()
-
-    with patch("ghdag.llm.call", side_effect=fake_call):
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert "あなたは以下のキャラクターになりきり" in captured_prompt[0]
-    assert "--- ユーザーからの指示 ---" in captured_prompt[0]
-    assert "現在日時:" in captured_prompt[0]
+    prompt = mock_enqueue.call_args.kwargs["prompt"]
+    assert "あなたは以下のキャラクターになりきり" in prompt
+    assert "--- ユーザーからの指示 ---" in prompt
+    assert "現在日時:" in prompt
 
 
 def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
@@ -610,11 +614,10 @@ def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "opus"})
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    _, kwargs = mock_call.call_args
-    assert kwargs.get("model") == "sonnet"
+    assert mock_enqueue.call_args.kwargs["model"] == "sonnet"
 
 
 def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> None:
@@ -625,11 +628,10 @@ def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> 
     _make_persona(tmp_path, "タチコマ")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "opus"})
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result()) as mock_call:
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    _, kwargs = mock_call.call_args
-    assert kwargs.get("model") == "opus"
+    assert mock_enqueue.call_args.kwargs["model"] == "opus"
 
 # ---------------------------------------------------------------------------
 # Issue #242: skill 成功時の _post() 呼び出し / _post() テキスト上書き防止
@@ -665,7 +667,7 @@ def test_ac1_spawn_job_skill_success_calls_post(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     sch.reload_jobs()
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=True, stdout="こんにちは")):
+    with patch(_ENQUEUE, return_value=(True, "こんにちは")):
         with patch.object(sch, "_post", wraps=sch._post) as mock_post:
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
@@ -683,7 +685,7 @@ def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
     _make_persona(tmp_path, "タチコマ")
     sch.reload_jobs()
 
-    with patch("ghdag.llm.call", return_value=_make_llm_result(ok=True, stdout="")):
+    with patch(_ENQUEUE, return_value=(True, "")):
         with patch.object(sch, "_post", wraps=sch._post) as mock_post:
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
