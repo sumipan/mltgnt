@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ..dag_bridge import DagBridge, DagJobSpec, DagJobResult
+from ..dag_bridge import DagJobSpec, DagJobResult
 from ..types import StrategyInput, StrategyResult
 
 
