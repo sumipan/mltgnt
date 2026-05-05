@@ -60,7 +60,7 @@ def enqueue_and_wait(
         idempotency_key=idempotency_key,
     )
 
-    skill_line = next(l for l in exec_lines if not l.startswith("#"))
+    skill_line = next(line for line in exec_lines if not line.startswith("#"))
     m = _UUID_RE.search(skill_line)
     if not m:
         return False, f"exec_line に UUID が見つかりません: {skill_line!r}"
