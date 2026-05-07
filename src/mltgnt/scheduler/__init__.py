@@ -652,8 +652,8 @@ class SecretaryScheduler:
                 model=resolved_model,
                 timeout=job.timeout_seconds or 120,
                 idempotency_key=f"scheduler:{job.id}:{fired_at.isoformat()}",
-                queue_dir=self.repo_root / "queue",
-                exec_done_dir=self.repo_root / "exec-done",
+                jobs_dir=self.repo_root / "jobs",
+                exec_done_dir=self.repo_root / "jobs" / "done",
             )
             return ok, msg
 
