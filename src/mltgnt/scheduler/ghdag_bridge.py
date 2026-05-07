@@ -55,7 +55,7 @@ def enqueue_and_wait(
     )
 
     exec_lines = api.submit(
-        [StepConfig(id="skill", template=prompt, agent=engine, model=model or "")],
+        [StepConfig(id="skill", template=prompt, engine=engine, model=model or "")],
         base_context={"workflow_name": "scheduler"},
         idempotency_key=idempotency_key,
     )
