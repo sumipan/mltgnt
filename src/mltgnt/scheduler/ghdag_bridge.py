@@ -17,7 +17,7 @@ def enqueue_and_wait(
     model: str | None,
     timeout: float,
     idempotency_key: str,
-    queue_dir: Path,
+    jobs_dir: Path,
     exec_done_dir: Path,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
@@ -27,9 +27,9 @@ def enqueue_and_wait(
         engine: LLM エンジン名（"claude", "gemini" 等）
         model: モデル ID（None の場合はエンジンのデフォルト）
         timeout: 最大待機秒数
-        idempotency_key: exec.md に記録する冪等性キー
-        queue_dir: order/result/exec.md の置き場
-        exec_done_dir: 完了マーカー（exec-done/<uuid>）の置き場
+        idempotency_key: exec.jsonl に記録する冪等性キー
+        jobs_dir: order/result/exec.jsonl の置き場（jobs/）
+        exec_done_dir: 完了マーカー（jobs/done/<uuid>）の置き場
 
     Returns:
         (True, result_content) — 成功時
@@ -45,13 +45,13 @@ def enqueue_and_wait(
     from ghdag.workflow.schema import StepConfig
 
     state = PipelineState(
-        state_dir=queue_dir / ".pipeline-state",
-        exec_md_path=queue_dir / "exec.md",
+        state_dir=jobs_dir / ".pipeline-state",
+        exec_md_path=jobs_dir / "exec.jsonl",
     )
     api = LLMPipelineAPI(
         pipeline_state=state,
         order_builder=InlineOrderBuilder(),
-        queue_dir=str(queue_dir),
+        queue_dir=str(jobs_dir),
     )
 
     exec_lines = api.submit(
@@ -72,7 +72,7 @@ def enqueue_and_wait(
         return False, f"timeout ({timeout}s)"
 
     if status == "success":
-        result_path = queue_dir / _order_to_result_filename(skill_line)
+        result_path = jobs_dir / _order_to_result_filename(skill_line)
         try:
             content = result_path.read_text(encoding="utf-8").strip()
         except OSError:
@@ -85,7 +85,7 @@ def enqueue_and_wait(
 def _order_to_result_filename(exec_line: str) -> str:
     """exec_line 内の order ファイルパスから result ファイル名を導出する。
 
-    例: "queue/20260505120000-claude-order-uuid.md" → "20260505120000-claude-result-uuid.md"
+    例: "jobs/20260505120000-claude-order-uuid.md" → "20260505120000-claude-result-uuid.md"
     """
     m = re.search(r"(\S+)-order-(" + _UUID_RE.pattern + r")\.md", exec_line)
     if not m:
