@@ -5,6 +5,7 @@ scheduler の action: skill から呼ばれ、order/result ファイルを残し
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -60,7 +61,10 @@ def enqueue_and_wait(
         idempotency_key=idempotency_key,
     )
 
-    skill_line = next(line for line in exec_lines if not line.startswith("#"))
+    skill_line = next(
+        line for line in exec_lines
+        if not line.startswith("#") and line.strip()
+    )
     m = _UUID_RE.search(skill_line)
     if not m:
         return False, f"exec_line に UUID が見つかりません: {skill_line!r}"
@@ -72,7 +76,7 @@ def enqueue_and_wait(
         return False, f"timeout ({timeout}s)"
 
     if status == "success":
-        result_path = jobs_dir / _order_to_result_filename(skill_line)
+        result_path = jobs_dir / _extract_result_filename(skill_line)
         try:
             content = result_path.read_text(encoding="utf-8").strip()
         except OSError:
@@ -82,8 +86,25 @@ def enqueue_and_wait(
     return False, f"{status}: {first_line}"
 
 
+def _extract_result_filename(exec_line: str) -> str:
+    """exec 行（テキスト形式または JSON 文字列）から result ファイル名を取り出す。
+
+    JSON 形式の場合は result_path フィールドから直接取得する。
+    テキスト形式の場合は order ファイルパスから result ファイル名を導出する。
+    """
+    stripped = exec_line.strip()
+    if stripped.startswith("{"):
+        try:
+            record = json.loads(stripped)
+            result_path = record.get("result_path", "")
+            return Path(result_path).name if result_path else ""
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return _order_to_result_filename(exec_line)
+
+
 def _order_to_result_filename(exec_line: str) -> str:
-    """exec_line 内の order ファイルパスから result ファイル名を導出する。
+    """テキスト形式の exec 行から result ファイル名を導出する。
 
     例: "jobs/20260505120000-claude-order-uuid.md" → "20260505120000-claude-result-uuid.md"
     """
