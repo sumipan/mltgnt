@@ -575,6 +575,20 @@ def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
     assert "hello world → hello world" in mock_enqueue.call_args.kwargs["prompt"]
 
 
+def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
+    """$PERSONA が persona.name に展開されること（AC5）。"""
+    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "担当: $PERSONA")
+    sch._skill_registry = {"test-skill": meta}
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+        sch.execute_action(job)
+
+    assert "担当: タチコマ" in mock_enqueue.call_args.kwargs["prompt"]
+
+
 def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
     """argv 未指定時に $ARGUMENTS は空文字に展開される（AC2）。"""
     sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
