@@ -55,6 +55,9 @@ def enqueue_and_wait(
         queue_dir=str(jobs_dir),
     )
 
+    if not api.check_idempotency(idempotency_key):
+        return True, ""
+
     exec_lines = api.submit(
         [StepConfig(id="skill", template=prompt, engine=engine, model=model or "")],
         base_context={"workflow_name": "scheduler"},
