@@ -23,7 +23,6 @@ from mltgnt.memory import (
     persona_memory_lock,
     compact,
     needs_compaction,
-    LlmCallError,
     CompactionResult,
 )
 from mltgnt.memory._format import (

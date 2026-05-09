@@ -42,7 +42,7 @@ class CompactionResult:
 
 def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
     """メモリファイルがコンパクション閾値を超えているか判定する。"""
-    from mltgnt.memory import memory_file_path, _ensure_jsonl
+    from mltgnt.memory import _ensure_jsonl
     path = _ensure_jsonl(config, persona_stem)
     if not path.exists():
         return False
@@ -123,7 +123,7 @@ def compact(
     - source_tag="preferences" のエントリはそのまま保持
     - 残りを期間（raw_days / mid_weeks）でグループ化して LLM 要約
     """
-    from mltgnt.memory import memory_file_path, persona_memory_lock, _ensure_jsonl
+    from mltgnt.memory import persona_memory_lock, _ensure_jsonl
 
     path = _ensure_jsonl(config, persona_stem)
     if not path.exists():

@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
+import tempfile
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -137,7 +137,6 @@ def _ensure_jsonl(config: "MemoryConfig", persona_stem: str) -> Path:
         line.strip().startswith("{") for line in content.splitlines() if line.strip()
     ):
         # 有効 JSON が 1 行も無い → Markdown として in-place マイグレーション
-        import tempfile, os
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".md", delete=False, encoding="utf-8"
