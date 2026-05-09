@@ -559,3 +559,33 @@ def test_suf_tc7_llm_raises_returns_initial(tmp_path: Path, caplog) -> None:
         "sufficiency" in r.message.lower() or "error" in r.message.lower()
         for r in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# layers フィルタ: read_memory_by_relevance
+# ---------------------------------------------------------------------------
+
+
+def test_read_memory_by_relevance_layers_filter(tmp_path: Path) -> None:
+    """`layers=["learning"]` 指定時、layer="learning" のエントリのみ返す。"""
+    from mltgnt.memory._format import MemoryEntry, serialize_entry
+
+    config = make_config(tmp_path)
+    mp = memory_file_path(config, "persona")
+    mp.parent.mkdir(parents=True, exist_ok=True)
+    entries = [
+        MemoryEntry("2030-01-01T00:00:00+09:00", "user", "学びエントリ", "file", layer="learning"),
+        MemoryEntry("2030-01-02T00:00:00+09:00", "user", "caveatエントリ", "file", layer="caveat"),
+        MemoryEntry("2030-01-03T00:00:00+09:00", "user", "通常エントリ", "file"),
+    ]
+    with mp.open("w", encoding="utf-8") as f:
+        for e in entries:
+            f.write(serialize_entry(e) + "\n")
+
+    result = read_memory_by_relevance(
+        config, "persona", "学び",
+        max_bytes=4096, max_entries=10, layers=["learning"],
+    )
+    assert "学びエントリ" in result
+    assert "caveatエントリ" not in result
+    assert "通常エントリ" not in result
