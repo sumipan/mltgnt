@@ -15,7 +15,7 @@ dependencies = [
     "PyYAML>=6.0",
     "scikit-learn>=1.0",
     "numpy>=1.21",
-    "ghdag @ git+https://github.com/sumipan/ghdag.git",
+    "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.15.0",
 ]
 
 [project.optional-dependencies]
