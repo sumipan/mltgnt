@@ -29,6 +29,7 @@ class MemoryConfig:
     compact_threshold_bytes: int = 40_960
     compact_target_bytes: int = 25_600
     preferences_section_name: str = "ユーザーの好み・傾向"
+    protected_layers: tuple[str, ...] = ("caveat",)
 
 
 @dataclass(frozen=True)
