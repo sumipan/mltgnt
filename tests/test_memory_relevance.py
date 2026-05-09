@@ -36,7 +36,9 @@ def make_config(tmp_path: Path) -> MemoryConfig:
 
 
 def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
-    memory_file_path(config, persona).write_text(content, encoding="utf-8")
+    # Markdown 形式で .md に書き込む。_ensure_jsonl が読み込み時に自動マイグレーションを実行する。
+    md_path = memory_file_path(config, persona).with_suffix(".md")
+    md_path.write_text(content, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

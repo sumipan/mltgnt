@@ -121,37 +121,37 @@ class AgenticRetriever:
         return self._build_output(collected, max_bytes, max_entries)
 
     def _search_memory(self, query: str, max_entries: int) -> list:
-        """memory ファイルからエントリを TF-IDF でスコアリングして返す。
+        """memory ファイルからエントリを TF-IDF でスコアリングして返す（JSONL 対応）。
 
         Returns:
             list[ScoredEntry]
         """
         from mltgnt.memory._scoring import score_entries, ScoredEntry
-        from mltgnt.memory import memory_file_path
+        from mltgnt.memory import _ensure_jsonl
+        from mltgnt.memory._format import parse_jsonl, assemble_entries_text
 
-        path = memory_file_path(self._config, self._persona_stem)
-        if not path.exists():
-            return []
-        try:
-            raw = path.read_text(encoding="utf-8")
-        except OSError:
-            return []
-        if not raw.strip():
+        jsonl_path = _ensure_jsonl(self._config, self._persona_stem)
+        if not jsonl_path.exists():
             return []
 
-        prefs_header = "## ユーザーの好み・傾向"
-        parts = re.split(r"\n---\s*\n", raw)
-        entry_blocks = [
-            p.strip() for p in parts if p.strip() and prefs_header not in p
+        entries = parse_jsonl(jsonl_path)
+        non_prefs = [e for e in entries if e.source_tag != "preferences"]
+
+        if not non_prefs:
+            return []
+
+        entry_texts = [
+            assemble_entries_text(
+                [e],
+                preferences_heading=self._config.preferences_section_name,
+            ).strip()
+            for e in non_prefs
         ]
 
-        if not entry_blocks:
-            return []
-
         if not query:
-            return [ScoredEntry(text=b, score=0.0) for b in entry_blocks[-max_entries:]]
+            return [ScoredEntry(text=t, score=0.0) for t in entry_texts[-max_entries:]]
 
-        scored = score_entries(query, entry_blocks)
+        scored = score_entries(query, entry_texts)
         return scored[:max_entries]
 
     def _format_collected(self, collected: dict) -> str:

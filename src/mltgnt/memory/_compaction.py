@@ -1,10 +1,11 @@
 """
-mltgnt.memory._compaction — メモリコンパクション。
+mltgnt.memory._compaction — メモリコンパクション（JSONL + MemoryEntry ベース）。
 
-設計: Issue #123, #137 (per-section LLM calls)
+設計: Issue #123, #137, #823
 """
 from __future__ import annotations
 
+import datetime
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -13,7 +14,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
 
-from mltgnt.memory._format import MemorySections, parse_memory, assemble_memory
+from mltgnt.memory._format import MemoryEntry, parse_jsonl, serialize_entry
 
 _log = logging.getLogger(__name__)
 
@@ -41,55 +42,60 @@ class CompactionResult:
 
 def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
     """メモリファイルがコンパクション閾値を超えているか判定する。"""
-    from mltgnt.memory import memory_file_path
-    path = memory_file_path(config, persona_stem)
+    from mltgnt.memory import memory_file_path, _ensure_jsonl
+    path = _ensure_jsonl(config, persona_stem)
     if not path.exists():
         return False
     return path.stat().st_size >= config.compact_threshold_bytes
 
 
-def _build_section_prompt(section_text: str, target_bytes: int) -> str:
-    """個別セクション用のコンパクションプロンプトを生成する。"""
-    return (
-        "以下の文章を要約・圧縮してください。"
-        "見出しは不要です。本文のみ出力してください。"
-        f"目標サイズ: {target_bytes}バイト以内\n\n"
-        f"{section_text}"
-    )
+def _parse_timestamp(ts: str) -> datetime.datetime | None:
+    """ISO 8601 タイムスタンプをパース。失敗時は None。"""
+    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"):
+        try:
+            return datetime.datetime.strptime(ts, fmt)
+        except (ValueError, TypeError):
+            pass
+    try:
+        return datetime.datetime.fromisoformat(ts)
+    except (ValueError, TypeError):
+        return None
 
 
-def _strip_heading(section_text: str) -> str:
-    """セクションテキストから先頭の ``## ...`` 見出し行を除去して本文だけ返す。"""
-    import re
-    return re.sub(r"^##\s+[^\n]*\n*", "", section_text, count=1).strip()
-
-
-def _compact_section(
+def _compact_entries(
     section_name: str,
-    section_text: str,
+    entries: list[MemoryEntry],
     target_bytes: int,
     llm_call: LlmCall,
 ) -> tuple[str, str | None]:
-    """1 セクションをコンパクションする。
+    """複数エントリを結合してコンパクションする。
 
     Returns:
-        (compacted_body, warning_or_none)
-        失敗時は元の本文をそのまま返し、warning に理由を入れる。
+        (compacted_text, warning_or_none)
     """
-    body = _strip_heading(section_text)
-    if not body:
-        return body, None
+    if not entries:
+        return "", None
+
+    combined = "\n\n".join(e.content for e in entries if e.content.strip())
+    if not combined.strip():
+        return "", None
 
     MIN_RATIO = 0.05
-    original_size = len(body.encode("utf-8"))
+    original_size = len(combined.encode("utf-8"))
+
+    prompt = (
+        "以下の文章を要約・圧縮してください。"
+        "見出しは不要です。本文のみ出力してください。"
+        f"目標サイズ: {target_bytes}バイト以内\n\n"
+        f"{combined}"
+    )
 
     try:
-        prompt = _build_section_prompt(body, target_bytes)
         result = llm_call(prompt)
     except Exception as e:
         warning = f"{section_name}: LLM call failed ({e}), using original text"
         _log.warning(warning)
-        return body, warning
+        return combined, warning
 
     result_size = len(result.encode("utf-8"))
     if result_size < original_size * MIN_RATIO:
@@ -99,7 +105,7 @@ def _compact_section(
             f"using original text"
         )
         _log.warning(warning)
-        return body, warning
+        return combined, warning
 
     return result.strip(), None
 
@@ -111,17 +117,15 @@ def compact(
     llm_call: LlmCall,
     dry_run: bool = False,
 ) -> CompactionResult:
-    """メモリファイルをコンパクションする（per-section LLM 呼び出し）。
+    """JSONL メモリファイルをコンパクションする。
 
-    llm_call はプロンプト文字列を受け取り、コンパクション後のテキストを返す callable。
-    dry_run=True のときはファイル書き込みを行わない。
-
-    preferences セクションは LLM に送らず、元テキストをそのまま保持する。
-    各セクションの LLM 呼び出しが失敗した場合、そのセクションは元テキストにフォールバックする。
+    - protected_layers（デフォルト: caveat）に属するエントリはコンパクション対象外
+    - source_tag="preferences" のエントリはそのまま保持
+    - 残りを期間（raw_days / mid_weeks）でグループ化して LLM 要約
     """
-    from mltgnt.memory import memory_file_path, persona_memory_lock
+    from mltgnt.memory import memory_file_path, persona_memory_lock, _ensure_jsonl
 
-    path = memory_file_path(config, persona_stem)
+    path = _ensure_jsonl(config, persona_stem)
     if not path.exists():
         raise FileNotFoundError(f"Memory file not found: {path}")
 
@@ -132,44 +136,71 @@ def compact(
         original_text = path.read_text(encoding="utf-8")
         before_bytes = len(original_text.encode("utf-8"))
 
-        sections = parse_memory(
-            original_text, preferences_heading=config.preferences_section_name
-        )
+        entries = parse_jsonl(path)
 
-        # preferences はそのまま保持 (LLM に送らない)
-        prefs_body = _strip_heading(sections.preferences)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        raw_cutoff = now - datetime.timedelta(days=config.raw_days)
+        mid_cutoff = now - datetime.timedelta(weeks=config.mid_weeks)
 
-        # 残り 3 セクションのターゲットサイズ配分
-        # preferences を除いた残りを 3 等分
-        prefs_size = len(prefs_body.encode("utf-8")) if prefs_body else 0
-        remaining_target = max(config.compact_target_bytes - prefs_size, 1024)
+        # 分類
+        protected_entries: list[MemoryEntry] = []
+        prefs_entries: list[MemoryEntry] = []
+        recent_entries: list[MemoryEntry] = []
+        mid_entries: list[MemoryEntry] = []
+        long_entries: list[MemoryEntry] = []
+
+        for entry in entries:
+            if entry.layer is not None and entry.layer in config.protected_layers:
+                protected_entries.append(entry)
+                continue
+            if entry.source_tag == "preferences":
+                prefs_entries.append(entry)
+                continue
+            ts = _parse_timestamp(entry.timestamp)
+            if ts is None:
+                # タイムスタンプ不明は長期扱い
+                long_entries.append(entry)
+            elif ts >= raw_cutoff:
+                recent_entries.append(entry)
+            elif ts >= mid_cutoff:
+                mid_entries.append(entry)
+            else:
+                long_entries.append(entry)
+
+        prefs_size = sum(len(e.content.encode("utf-8")) for e in prefs_entries)
+        protected_size = sum(len(e.content.encode("utf-8")) for e in protected_entries)
+        remaining_target = max(config.compact_target_bytes - prefs_size - protected_size, 1024)
         section_target = remaining_target // 3
 
         warnings: list[str] = []
+        compacted_ts = now.astimezone(
+            datetime.timezone(datetime.timedelta(hours=9))
+        ).isoformat(timespec="seconds")
 
-        # 各セクションを個別にコンパクション
-        section_defs = [
-            ("long_term", sections.long_term),
-            ("mid_term", sections.mid_term),
-            ("recent", sections.recent),
-        ]
+        summary_entries: list[MemoryEntry] = []
 
-        compacted: dict[str, str] = {}
-        for name, text in section_defs:
-            body, warning = _compact_section(name, text, section_target, llm_call)
-            compacted[name] = body
+        for section_name, group in [
+            ("long_term", long_entries),
+            ("mid_term", mid_entries),
+        ]:
+            if not group:
+                continue
+            body, warning = _compact_entries(section_name, group, section_target, llm_call)
             if warning:
                 warnings.append(warning)
+            if body.strip():
+                summary_entries.append(MemoryEntry(
+                    timestamp=compacted_ts,
+                    role="assistant",
+                    content=body,
+                    source_tag="compaction",
+                ))
 
-        # assemble_memory で見出し付きテキストを組み立て
-        new_text = assemble_memory(
-            preferences=prefs_body,
-            long_term=compacted["long_term"],
-            mid_term=compacted["mid_term"],
-            recent=compacted["recent"],
-            preamble=sections.preamble,
-            preferences_heading=config.preferences_section_name,
-        )
+        new_entries = protected_entries + prefs_entries + summary_entries + recent_entries
+
+        # 書き戻し
+        lines = [serialize_entry(e) + "\n" for e in new_entries]
+        new_text = "".join(lines)
         after_bytes = len(new_text.encode("utf-8"))
 
         # サイズ上限チェック
@@ -180,9 +211,8 @@ def compact(
                 f"— aborting"
             )
 
-        # サイズ下限チェック: 元サイズの 5% 未満は異常
         MIN_RATIO = 0.05
-        if after_bytes < before_bytes * MIN_RATIO:
+        if before_bytes > 0 and after_bytes < before_bytes * MIN_RATIO:
             raise ValueError(
                 f"Compaction produced near-empty result for {persona_stem}: "
                 f"{before_bytes}B -> {after_bytes}B "
