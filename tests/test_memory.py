@@ -606,6 +606,51 @@ def test_migrate_markdown_to_jsonl(tmp_path: Path) -> None:
     assert any("好みの内容" in e.content for e in prefs)
 
 
+def test_migrate_markdown_to_jsonl_dedupe_key(tmp_path: Path) -> None:
+    """`<!-- memory-dedupe:{key} -->` が dedupe_key フィールドに変換される。"""
+    md_path = tmp_path / "persona.md"
+    jsonl_path = tmp_path / "persona.jsonl"
+    md_content = """\
+## ユーザーの好み・傾向
+
+好みの内容
+
+---
+
+## 直近ログ（7日以内）
+
+## 2026-04-17T10:00:00+09:00 — user
+
+[file]
+dedupe付きエントリ <!-- memory-dedupe:key-abc-123 -->
+
+---
+
+"""
+    md_path.write_text(md_content, encoding="utf-8")
+
+    migrate_markdown_to_jsonl(md_path, jsonl_path)
+    entries = parse_jsonl(jsonl_path)
+
+    dedupe_entries = [e for e in entries if e.dedupe_key is not None]
+    assert dedupe_entries, "dedupe_key を持つエントリが存在しない"
+    assert dedupe_entries[0].dedupe_key == "key-abc-123"
+
+
+def test_extract_and_append_invalid_json_returns_empty(tmp_path: Path) -> None:
+    """LLM 応答が不正な JSON の場合も空リスト [] を返し例外を投げない。"""
+    config = make_config(tmp_path)
+
+    def invalid_json_llm(prompt: str) -> str:
+        return "これは全く JSON ではない応答テキスト\nno json here either"
+
+    result = extract_and_append(
+        config, "persona", "テキスト",
+        llm_call=invalid_json_llm,
+    )
+    assert result == []
+
+
 def test_auto_migration_on_read(tmp_path: Path) -> None:
     """.jsonl なし・.md ありの場合、読み込み時に自動マイグレーションが実行される。"""
     config = make_config(tmp_path)
