@@ -147,6 +147,17 @@ def migrate_markdown_to_jsonl(md_path: Path, jsonl_path: Path) -> int:
                 source_tag="compaction",
             ))
 
+    _DEDUPE_PAT = re.compile(r"<!--\s*memory-dedupe:([^\s>]+)\s*-->")
+
+    def _extract_dedupe_key(body: str) -> tuple[str, str | None]:
+        """body から <!-- memory-dedupe:{key} --> を抽出し (cleaned_body, key) を返す。"""
+        m = _DEDUPE_PAT.search(body)
+        if m:
+            key = m.group(1)
+            cleaned = _DEDUPE_PAT.sub("", body).strip()
+            return cleaned, key
+        return body, None
+
     # recent セクション内の個別エントリをパース
     if sections.recent:
         recent_text = re.sub(r"^##\s+[^\n]*\n*", "", sections.recent, count=1).strip()
@@ -167,18 +178,22 @@ def migrate_markdown_to_jsonl(md_path: Path, jsonl_path: Path) -> int:
                 if content_lines and re.match(r"^\[.+?\]$", content_lines[0].strip()):
                     source_tag = content_lines[0].strip()[1:-1]
                     body = content_lines[1].strip() if len(content_lines) > 1 else ""
+                body, dedupe_key = _extract_dedupe_key(body)
                 entries.append(MemoryEntry(
                     timestamp=ts,
                     role=role,
                     content=body,
                     source_tag=source_tag,
+                    dedupe_key=dedupe_key,
                 ))
             elif block:
+                body, dedupe_key = _extract_dedupe_key(block)
                 entries.append(MemoryEntry(
                     timestamp=base_ts,
                     role="user",
-                    content=block,
+                    content=body,
                     source_tag="file",
+                    dedupe_key=dedupe_key,
                 ))
 
     # エントリ単位形式（section header が一切ない場合）
@@ -201,11 +216,13 @@ def migrate_markdown_to_jsonl(md_path: Path, jsonl_path: Path) -> int:
                 if content_lines and re.match(r"^\[.+?\]$", content_lines[0].strip()):
                     source_tag = content_lines[0].strip()[1:-1]
                     body = content_lines[1].strip() if len(content_lines) > 1 else ""
+                body, dedupe_key = _extract_dedupe_key(body)
                 entries.append(MemoryEntry(
                     timestamp=ts,
                     role=role,
                     content=body,
                     source_tag=source_tag,
+                    dedupe_key=dedupe_key,
                 ))
 
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
