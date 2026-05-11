@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.5.5"
+version = "0.5.6"
 description = "マルチエージェントの型契約とチャット入出力"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,7 +15,7 @@ dependencies = [
     "PyYAML>=6.0",
     "scikit-learn>=1.0",
     "numpy>=1.21",
-    "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.15.0",
+    "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.15.1",
 ]
 
 [project.optional-dependencies]
