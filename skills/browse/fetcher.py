@@ -103,7 +103,7 @@ def fetch(url: str, *, timeout_light: int = 10, timeout_heavy: int = 30) -> str:
             html = _playwright_get(url, timeout=timeout_heavy)
         except ImportError:
             pass  # Playwright 未インストール時は httpx 結果をそのまま使う
-        except Exception as e:
+        except Exception:
             pass  # Playwright 失敗時も httpx 結果を返す
 
     return html

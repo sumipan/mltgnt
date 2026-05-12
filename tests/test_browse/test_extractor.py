@@ -1,7 +1,6 @@
 """tests/test_browse/test_extractor.py — extractor ユニットテスト (AC-5, AC-7)"""
 from __future__ import annotations
 
-import pytest
 
 
 def test_extract_returns_string():
