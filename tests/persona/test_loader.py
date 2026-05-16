@@ -507,7 +507,7 @@ class TestExtractOutputFormatV2:
 # ---------------------------------------------------------------------------
 
 
-from mltgnt.persona.triage import extract_triage_section as _extract_triage_section  # noqa: E402
+from mltgnt.routing.triage import extract_triage_section as _extract_triage_section  # noqa: E402
 
 
 class TestExtractTriageSectionV2:
