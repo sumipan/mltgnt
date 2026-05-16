@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import json
 import random
-import subprocess
 import sys
 import threading
 import time
@@ -29,7 +28,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ScheduleJob",
-    "SecretaryScheduler",
+    "PersonaScheduler",
+    "SchedulePaths",
     "load_schedule_jobs",
     "atomic_write_text",
     "_hash_offset",
@@ -217,7 +217,10 @@ def load_schedule_jobs(
     return [ScheduleJob.from_dict(j, default_timezone=default_timezone) for j in jobs_raw]
 
 
-class SecretarySchedulePaths:
+ActionFn = Callable[["ScheduleJob"], tuple[bool, str]]
+
+
+class SchedulePaths:
     def __init__(self, state_dir: Path):
         self.state_dir = state_dir
         self.done_dir = state_dir / "done"
@@ -238,11 +241,12 @@ class SecretarySchedulePaths:
         return self.failed_dir / f"{job_id}_{d.isoformat()}.failed"
 
 
-class SecretaryScheduler:
+class PersonaScheduler:
     """
     1 秒周期で tick する想定。main からデーモンスレッドで起動する。
 
     ペルソナ関連コールバックは __init__ 引数で注入（OSS 分離）。
+    host 固有 action は actions= / register_action() で登録する。
     """
 
     def __init__(
@@ -260,7 +264,7 @@ class SecretaryScheduler:
         repo_root: Optional[Path] = None,
         persona_dir: Optional[Path] = None,
         append_memory_fn: Optional[Callable[..., bool]] = None,
-        execute_action_fn: Optional[Callable[["SecretaryScheduler", ScheduleJob], tuple[bool, str]]] = None,
+        actions: Optional[dict[str, "ActionFn"]] = None,
     ) -> None:
         # config が指定された場合、config から設定を取得
         if config is not None:
@@ -280,7 +284,7 @@ class SecretaryScheduler:
         self.salt = self._salt
         self.repo_root = repo_root or Path(".")
         self.persona_dir = persona_dir or (self.repo_root / "agents")
-        self.paths = SecretarySchedulePaths(self._state_dir)
+        self.paths = SchedulePaths(self._state_dir)
         self._jobs_override = jobs
         self._reload_counter = 0
         self._jobs: list[ScheduleJob] = []
@@ -299,10 +303,13 @@ class SecretaryScheduler:
         self._default_slack_post_kwargs = default_slack_post_kwargs
         self._persona_post_kwargs_resolver = persona_post_kwargs_resolver
         self._append_memory_fn = append_memory_fn
-        self._execute_action_fn = execute_action_fn
+        self._actions: dict[str, ActionFn] = dict(actions or {})
 
         from mltgnt.skill import discover
         self._skill_registry = discover(paths=[self.repo_root / "skills"])
+
+    def register_action(self, name: str, fn: "ActionFn") -> None:
+        self._actions[name] = fn
 
     def _load_jobs(self) -> list[ScheduleJob]:
         if self._jobs_override is not None:
@@ -544,52 +551,11 @@ class SecretaryScheduler:
             self._mark_done(job, d)
 
     def build_command(self, job: ScheduleJob) -> list[str]:
-        argv_extra: list[str] = []
-        aa = job.action_args
-        if isinstance(aa.get("argv"), list):
-            argv_extra = [str(x) for x in aa["argv"]]
-
-        if job.action == "noop":
+        if job.action in ("noop", "skill"):
             return []
-
-        if job.action == "subprocess_diary_draft":
-            cmd = [sys.executable, str(self.repo_root / "scripts" / "diary-draft.py")]
-            if job.notify == "silent":
-                cmd.append("--no-slack")
-            cmd.extend(argv_extra)
-            return cmd
-
-        if job.action == "subprocess_from_slack":
-            cmd = [
-                sys.executable,
-                str(self.repo_root / "scripts" / "diary-draft.py"),
-                "--from-slack",
-            ]
-            if job.notify == "silent":
-                cmd.append("--no-slack")
-            cmd.extend(argv_extra)
-            return cmd
-
-        if job.action == "skill":
-            return []
-
-        if job.action == "append_exec_order":
-            return []
-
-        if job.action == "subprocess_script":
-            script = aa.get("script")
-            if not script:
-                raise ValueError(f"job {job.id}: subprocess_script には action_args.script が必須です")
-            cmd = [sys.executable, str(self.repo_root / "scripts" / script)]
-            cmd.extend(argv_extra)
-            return cmd
-
         raise ValueError(f"未対応の action: {job.action}")
 
     def execute_action(self, job: ScheduleJob) -> tuple[bool, str]:
-        if self._execute_action_fn is not None:
-            return self._execute_action_fn(self, job)
-
         if job.action == "noop":
             print(f"[secretary-schedule] noop: {job.id}", file=sys.stderr)
             return True, ""
@@ -604,8 +570,6 @@ class SecretaryScheduler:
                 return False, f"job {job.id}: action_args.persona が未指定です"
 
             # ペルソナは agents/ 配下の正規 persona ファイルを mltgnt.persona 経由で読む。
-            # 旧実装は chat/memory/{name}.md を直接読んでいたが、そこはチャットログで
-            # YAML frontmatter を持たないため engine/model が解決できずバグっていた。
             from mltgnt.persona import load_persona
             try:
                 persona = load_persona(persona_name, persona_dir=self.persona_dir)
@@ -657,43 +621,10 @@ class SecretaryScheduler:
             )
             return ok, msg
 
-        if job.action == "append_exec_order":
-            dry_run = bool(job.action_args.get("dry_run", False))
-            issue_number = int(job.action_args.get("issue_number", 0))
-            try:
-                _stash_dev = str(self.repo_root / "tools" / "stash-developer")
-                if _stash_dev not in sys.path:
-                    sys.path.insert(0, _stash_dev)
-                from stash_developer.secretary_api import enqueue_issue  # noqa: PLC0415
-                enqueue_issue(issue_number=issue_number, dry_run=dry_run)
-                print(
-                    f"[secretary-schedule] append_exec_order 完了: {job.id}",
-                    file=sys.stderr,
-                )
-                return True, ""
-            except Exception as e:
-                return False, str(e)
+        if job.action in self._actions:
+            return self._actions[job.action](job)
 
-        cmd = self.build_command(job)
-        if not cmd:
-            return False, "empty command"
-        try:
-            r = subprocess.run(
-                cmd,
-                cwd=str(self.repo_root),
-                capture_output=True,
-                text=True,
-                timeout=job.timeout_seconds,
-            )
-            err = (r.stderr or "").strip() or (r.stdout or "").strip()
-            if r.returncode != 0:
-                tail = err[-800:] if err else f"exit {r.returncode}"
-                return False, tail
-            return True, (r.stdout or "").strip()
-        except subprocess.TimeoutExpired:
-            return False, f"timeout ({job.timeout_seconds}s)"
-        except OSError as e:
-            return False, str(e)
+        raise ValueError(f"未対応の action: {job.action}")
 
     def _spawn_job(self, job: ScheduleJob, d: date, on_finish: Optional[Callable[[], None]] = None) -> None:
         def runner() -> None:
