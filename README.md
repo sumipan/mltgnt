@@ -139,7 +139,7 @@ Reads are layered:
 - `read_memory_tail_text(...)` — the last *N* entries, capped at *B* bytes.
 - `read_memory_by_relevance(query, ...)` — TF-IDF + cosine over per-entry text; falls back to tail on scoring errors.
 - `read_memory_with_sufficiency_check(query, ..., llm_call)` — runs the relevance search, asks the LLM `SUFFICIENT?`, and if not, re-searches with the LLM's rewritten query and merges the results. Failure modes are fail-safe (treat as sufficient).
-- `read_memory_agentic(query, ..., llm_call, skill_paths=...)` — multi-step retrieval that can also pull from skills.
+- `read_memory_iterative(query, ..., llm_call, skill_paths=...)` — iterative retrieval: the LLM judges sufficiency after each search; if insufficient, it specifies a source (memory or skill) and a new query, repeating up to `max_iterations` times.
 
 Writes are protected by a per-persona file lock (`O_CREAT | O_EXCL`) and made idempotent by an optional `dedupe_key`. When the file exceeds a configured size, `compact()` rewrites it section-by-section through the LLM.
 

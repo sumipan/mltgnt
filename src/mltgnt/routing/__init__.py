@@ -15,10 +15,14 @@ from typing import Any, Callable, Literal
 __all__ = [
     "ChannelPersonaEntry",
     "RoutingRule",
+    "TRIAGE_PROFILE_MAX_CHARS",
     "detect_nickname",
     "evaluate",
+    "extract_json_object",
+    "extract_triage_section",
     "find_observers",
     "load_channel_persona_map",
+    "prepare_profile_for_triage",
     "resolve_responding_persona",
     "resolve_skill",
 ]
@@ -125,45 +129,16 @@ def load_channel_persona_map(
     return result
 
 
-async def resolve_skill(
-    user_input: str,
-    skill_paths: list,
-    persona_skills: list[str] | None = None,
-    entry_file: str = "SKILL.md",
-) -> "tuple | None":
-    """
-    ユーザー入力からスキルを検索・マッチし、(SkillFile, arguments_str) を返す。
-
-    skill_paths が空または存在しない場合は None を返す（エラーにしない）。
-    スキルがマッチしない場合も None を返す。
-
-    引数:
-        user_input: ユーザーのメッセージ文字列
-        skill_paths: スキルディレクトリのリスト（Path または str）
-        persona_skills: ペルソナの skills フィールド（None = フィルタなし）
-        entry_file: スキルエントリファイル名
-    戻り値:
-        (SkillFile, arguments_str) または None
-    """
-    from pathlib import Path as _Path
-    from mltgnt.skill.loader import discover, load
-    from mltgnt.skill.matcher import match
-
-    paths = [_Path(p) for p in skill_paths]
-    skills = discover(paths, entry_file=entry_file)
-    if not skills:
-        return None
-
-    result = await match(user_input, skills, persona_skills=persona_skills)
-    if result is None:
-        return None
-
-    meta, arguments = result
-    skill_file = load(meta)
-    return (skill_file, arguments)
+from mltgnt.skill import resolve_skill  # noqa: F401, E402 — re-export for backward compat (Issue #912)
 
 from mltgnt.routing.channel_router import (  # noqa: E402
     detect_nickname,
     find_observers,
     resolve_responding_persona,
+)
+from mltgnt.routing.triage import (  # noqa: E402
+    TRIAGE_PROFILE_MAX_CHARS,
+    extract_json_object,
+    extract_triage_section,
+    prepare_profile_for_triage,
 )

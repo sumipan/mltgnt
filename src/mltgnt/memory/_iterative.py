@@ -1,7 +1,7 @@
 """
-mltgnt.memory._agentic — Plan→Action→Observe ループによる Agentic RAG。
+mltgnt.memory._iterative — judge_sufficiency を用いた反復検索による情報収集。
 
-設計: Issue #200 Phase 3
+設計: Issue #913
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _log = logging.getLogger(__name__)
 
 __all__ = [
     "SearchResult",
-    "AgenticRetriever",
+    "IterativeRetriever",
 ]
 
 
@@ -55,8 +55,12 @@ def _search_skills(
     return scored[:max_entries]
 
 
-class AgenticRetriever:
-    """Plan→Action→Observe ループを実行するエージェント型リトリーバー。"""
+class IterativeRetriever:
+    """judge_sufficiency による反復的な情報収集を実行するリトリーバー。
+
+    LLM が INSUFFICIENT と判定するたびに source 指定で memory または skill を再検索し、
+    SUFFICIENT になるか max_iterations に達するまで繰り返す。
+    """
 
     def __init__(
         self,
@@ -74,7 +78,7 @@ class AgenticRetriever:
         self._max_iterations = max_iterations
 
     def retrieve(self, query: str, *, max_bytes: int, max_entries: int) -> str:
-        """Plan→Action→Observe ループを実行し、収集した情報をテキストとして返す。
+        """反復検索ループを実行し、収集した情報をテキストとして返す。
 
         Returns:
             preferences + 収集エントリを結合したテキスト（max_bytes 以内）
@@ -95,7 +99,7 @@ class AgenticRetriever:
                 result = judge_sufficiency(query, collected_text, self._llm_call)
             except Exception as e:
                 _log.warning(
-                    "AgenticRetriever: LLM call failed, returning collected results: %s", e
+                    "IterativeRetriever: LLM call failed, returning collected results: %s", e
                 )
                 break
 

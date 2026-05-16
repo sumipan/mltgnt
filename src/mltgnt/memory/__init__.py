@@ -34,12 +34,12 @@ __all__ = [
     "read_memory_tail_text",
     "read_memory_by_relevance",
     "read_memory_with_sufficiency_check",
+    "read_memory_iterative",
     "read_memory_agentic",
     "memory_file_path",
     "normalize_source_prefix",
     "compact",
     "needs_compaction",
-    "extract_and_append",
     "LlmCallError",
     "CompactionResult",
 ]
@@ -481,6 +481,30 @@ def read_memory_with_sufficiency_check(
     return _tail_utf8_bytes(text, max_bytes)
 
 
+def read_memory_iterative(
+    config: "MemoryConfig",
+    persona_stem: str,
+    query: str,
+    *,
+    max_bytes: int,
+    max_entries: int,
+    llm_call: "Callable[[str], str]",
+    skill_paths: "list[Path] | None" = None,
+    max_iterations: int = 3,
+) -> str:
+    """反復検索による情報収集。LLM が十分性を判定し、不足時は source 指定で再検索する。"""
+    from mltgnt.memory._iterative import IterativeRetriever
+
+    retriever = IterativeRetriever(
+        config=config,
+        persona_stem=persona_stem,
+        skill_paths=skill_paths or [],
+        llm_call=llm_call,
+        max_iterations=max_iterations,
+    )
+    return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
+
+
 def read_memory_agentic(
     config: "MemoryConfig",
     persona_stem: str,
@@ -492,85 +516,23 @@ def read_memory_agentic(
     skill_paths: "list[Path] | None" = None,
     max_iterations: int = 3,
 ) -> str:
-    """Phase 3: Agentic RAG による情報収集。"""
-    from mltgnt.memory._agentic import AgenticRetriever
-
-    retriever = AgenticRetriever(
-        config=config,
-        persona_stem=persona_stem,
-        skill_paths=skill_paths or [],
+    """Deprecated: use read_memory_iterative instead."""
+    import warnings
+    warnings.warn(
+        "read_memory_agentic is deprecated, use read_memory_iterative",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return read_memory_iterative(
+        config,
+        persona_stem,
+        query,
+        max_bytes=max_bytes,
+        max_entries=max_entries,
         llm_call=llm_call,
+        skill_paths=skill_paths,
         max_iterations=max_iterations,
     )
-    return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
-
-
-def extract_and_append(
-    config: "MemoryConfig",
-    persona_stem: str,
-    session_text: str,
-    *,
-    llm_call: LlmCall,
-    target_layers: list[str] | None = None,
-) -> list[MemoryEntry]:
-    """セッションテキストから教訓・学びを抽出してメモリに追記する。
-
-    LLM エラー時は空リスト [] を返し、例外を投げない。
-    """
-    if target_layers is None:
-        target_layers = ["caveat", "learning"]
-
-    layers_str = "・".join(target_layers)
-    prompt = (
-        f"以下のセッションテキストから、{layers_str} に分類できる教訓・禁止事項・学びを抽出してください。\n"
-        "各項目を JSON 形式（1行1件）で出力してください:\n"
-        '{"layer": "<caveat|learning>", "content": "<抽出テキスト>"}\n\n'
-        f"セッションテキスト:\n{session_text}"
-    )
-
-    try:
-        response = llm_call(prompt)
-    except Exception as e:
-        _log.warning("extract_and_append: llm_call failed: %s", e)
-        return []
-
-    import datetime
-    ts = datetime.datetime.now(datetime.timezone.utc).astimezone(
-        datetime.timezone(datetime.timedelta(hours=9))
-    ).isoformat(timespec="seconds")
-
-    appended: list[MemoryEntry] = []
-    for line in response.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-            layer = data.get("layer", "")
-            content = data.get("content", "").strip()
-            if not content or layer not in target_layers:
-                continue
-            entry = MemoryEntry(
-                timestamp=ts,
-                role="assistant",
-                content=content,
-                source_tag="auto_extract",
-                layer=layer,
-            )
-            append_memory_entry(
-                config,
-                persona_stem,
-                entry.role,
-                entry.content,
-                entry.timestamp,
-                source_tag=entry.source_tag,
-                layer=entry.layer,
-            )
-            appended.append(entry)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    return appended
 
 
 # Lazy imports for compaction
