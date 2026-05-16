@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock
 
-import pytest
 
 from mltgnt.routing.triage import (
     TRIAGE_PROFILE_MAX_CHARS,
