@@ -16,7 +16,7 @@ import pytest
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
 from mltgnt.skill.models import SkillMeta
-from mltgnt.routing import resolve_skill
+from mltgnt.skill import resolve_skill
 
 
 # --------------- matcher 単体テスト（仮説①） ---------------
@@ -220,7 +220,7 @@ class TestResolveSkillIntegration:
     async def test_resolve_skill_passes_matcher_model(self, tmp_path: Path) -> None:
         """matcher_model="custom" が match() に model="custom" として渡される"""
         _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
-        with patch("mltgnt.skill.matcher.match", new=AsyncMock(return_value=None)) as mock_match:
+        with patch("mltgnt.skill.match", new=AsyncMock(return_value=None)) as mock_match:
             await resolve_skill("hello", [tmp_path], matcher_model="custom-model")
             mock_match.assert_called_once()
             _, kwargs = mock_match.call_args
