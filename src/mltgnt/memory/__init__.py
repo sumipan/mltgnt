@@ -34,6 +34,7 @@ __all__ = [
     "read_memory_tail_text",
     "read_memory_by_relevance",
     "read_memory_with_sufficiency_check",
+    "read_memory_iterative",
     "read_memory_agentic",
     "memory_file_path",
     "normalize_source_prefix",
@@ -481,6 +482,30 @@ def read_memory_with_sufficiency_check(
     return _tail_utf8_bytes(text, max_bytes)
 
 
+def read_memory_iterative(
+    config: "MemoryConfig",
+    persona_stem: str,
+    query: str,
+    *,
+    max_bytes: int,
+    max_entries: int,
+    llm_call: "Callable[[str], str]",
+    skill_paths: "list[Path] | None" = None,
+    max_iterations: int = 3,
+) -> str:
+    """反復検索による情報収集。LLM が十分性を判定し、不足時は source 指定で再検索する。"""
+    from mltgnt.memory._iterative import IterativeRetriever
+
+    retriever = IterativeRetriever(
+        config=config,
+        persona_stem=persona_stem,
+        skill_paths=skill_paths or [],
+        llm_call=llm_call,
+        max_iterations=max_iterations,
+    )
+    return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
+
+
 def read_memory_agentic(
     config: "MemoryConfig",
     persona_stem: str,
@@ -492,17 +517,23 @@ def read_memory_agentic(
     skill_paths: "list[Path] | None" = None,
     max_iterations: int = 3,
 ) -> str:
-    """Phase 3: Agentic RAG による情報収集。"""
-    from mltgnt.memory._agentic import AgenticRetriever
-
-    retriever = AgenticRetriever(
-        config=config,
-        persona_stem=persona_stem,
-        skill_paths=skill_paths or [],
+    """Deprecated: use read_memory_iterative instead."""
+    import warnings
+    warnings.warn(
+        "read_memory_agentic is deprecated, use read_memory_iterative",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return read_memory_iterative(
+        config,
+        persona_stem,
+        query,
+        max_bytes=max_bytes,
+        max_entries=max_entries,
         llm_call=llm_call,
+        skill_paths=skill_paths,
         max_iterations=max_iterations,
     )
-    return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
 
 
 def extract_and_append(
