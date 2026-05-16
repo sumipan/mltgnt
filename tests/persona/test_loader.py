@@ -564,3 +564,198 @@ class TestExtractTriageSectionV2:
         assert result is not None
         assert "v2内容" in result
         assert "v1内容" not in result
+
+
+# ---------------------------------------------------------------------------
+# Issue-919: DEFAULT_WEIGHT_MAP / PersonaConfig / 英語ペルソナ対応
+# ---------------------------------------------------------------------------
+
+import textwrap as _tw
+
+from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
+
+
+_ENGLISH_BODY = _tw.dedent("""\
+    ## Light
+
+    Light content.
+
+    ## Heavy
+
+    ### Background
+
+    Background content.
+
+    ### Values
+
+    Values content.
+
+    ### Tone
+
+    Tone content.
+
+    ## Reference
+
+    ### Output format
+
+    #### critique
+
+    Critique template.
+""")
+
+
+class TestPersonaConfig:
+    def test_ac1_default_weight_map(self):
+        """AC-1: パラメータなしで生成すると weight_map が DEFAULT_WEIGHT_MAP と同値。"""
+        cfg = PersonaConfig()
+        assert cfg.weight_map == DEFAULT_WEIGHT_MAP
+
+    def test_ac1_weight_map_is_copy(self):
+        """AC-1: weight_map は DEFAULT_WEIGHT_MAP のコピーで別オブジェクト。"""
+        cfg = PersonaConfig()
+        assert cfg.weight_map is not DEFAULT_WEIGHT_MAP
+
+    def test_ac2_custom_weight_map(self):
+        """AC-2: カスタム weight_map で上書きできる。"""
+        custom = {"Custom": "heavy"}
+        cfg = PersonaConfig(weight_map=custom)
+        assert cfg.weight_map == custom
+
+
+class TestEnglishPersona:
+    def test_ac4_english_heavy_sections(self):
+        """AC-4: 英語ペルソナで weight="heavy" → Background・Values・Tone のみ含まれる。"""
+        persona = _make_persona(_ENGLISH_BODY)
+        result = persona.format_prompt("instruction", weight="heavy")
+        assert "Background content" in result
+        assert "Values content" in result
+        assert "Tone content" in result
+        assert "Light content" not in result
+
+    def test_ac5_english_light_section(self):
+        """AC-5: 英語ペルソナで weight="light" → Light セクションのみ含まれる。"""
+        persona = _make_persona(_ENGLISH_BODY)
+        result = persona.format_prompt("instruction", weight="light")
+        assert "Light content" in result
+        assert "Background content" not in result
+
+    def test_ac6_parse_sections_expands_heavy_h3(self):
+        """AC-6: _parse_sections が ## Heavy > ### X / ### Y をフラット展開する。"""
+        body = _tw.dedent("""\
+            ## Heavy
+
+            ### Background
+
+            Background content.
+
+            ### Values
+
+            Values content.
+        """)
+        sections = _parse_sections(body)
+        assert "Background" in sections
+        assert "Values" in sections
+        assert "Heavy" not in sections
+        assert sections["Background"] == "Background content."
+        assert sections["Values"] == "Values content."
+
+    def test_ac7_parse_sections_expands_reference_h3(self):
+        """AC-7: _parse_sections が ## Reference > ### Output format を展開し extract_output_format で取得できる。"""
+        persona = _make_persona(_ENGLISH_BODY)
+        result = persona.extract_output_format("critique")
+        assert result is not None
+        assert "Critique template" in result
+
+    def test_ac4_no_unknown_warning_english(self):
+        """AC-4: 英語ペルソナで WEIGHT_MAP 未定義警告が出ない。"""
+        persona = _make_persona(_ENGLISH_BODY)
+        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+            persona.format_prompt("instruction", weight="heavy")
+            for call_args in mock_logger.warning.call_args_list:
+                args = call_args[0]
+                assert "WEIGHT_MAP に未定義" not in str(args), \
+                    f"WEIGHT_MAP 未定義警告が出てはいけない: {args}"
+
+
+class TestLoadWithConfig:
+    def test_ac8_load_with_custom_config(self, tmp_path):
+        """AC-8: load(path, config=PersonaConfig(weight_map=custom)) で weight_map が custom と一致。"""
+        md = _tw.dedent("""\
+            ---
+            persona:
+              name: test
+            ---
+            ## Custom
+
+            Custom content.
+        """)
+        p = tmp_path / "test.md"
+        p.write_text(md, encoding="utf-8")
+        custom = {"Custom": "heavy"}
+        cfg = PersonaConfig(weight_map=custom)
+        persona = load(p, config=cfg)
+        assert persona.weight_map == custom
+
+    def test_ac9_load_without_config(self, tmp_path):
+        """AC-9: config 省略時、weight_map が DEFAULT_WEIGHT_MAP と一致。"""
+        md = _tw.dedent("""\
+            ---
+            persona:
+              name: test
+            ---
+            ## 基本情報
+
+            内容。
+        """)
+        p = tmp_path / "test.md"
+        p.write_text(md, encoding="utf-8")
+        persona = load(p)
+        assert persona.weight_map == DEFAULT_WEIGHT_MAP
+
+    def test_ac10_unknown_section_warns_and_fallbacks(self):
+        """AC-10: weight_map に該当しないセクションで warning + 全セクションフォールバック。"""
+        body = _tw.dedent("""\
+            ## UnknownSection
+
+            Unknown content.
+        """)
+        persona = _make_persona(body)
+        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+            result = persona.format_prompt("instruction", weight="heavy")
+            mock_logger.warning.assert_called()
+        assert "Unknown content" in result
+
+    def test_ac11_empty_weight_map_fallback(self):
+        """AC-11: 空の weight_map で全セクション未定義 → 全セクションフォールバック。"""
+        body = _tw.dedent("""\
+            ## 基本情報
+
+            内容。
+        """)
+        from mltgnt.persona.schema import PersonaFM
+        fm = PersonaFM(name="テスト")
+        persona = Persona(
+            name="テスト",
+            fm=fm,
+            sections=_parse_sections(body),
+            body=body,
+            path=Path("test.md"),
+            weight_map={},
+        )
+        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+            result = persona.format_prompt("instruction", weight="heavy")
+            mock_logger.warning.assert_called()
+        assert "内容" in result
+
+    def test_ac12_class_var_weight_map_exists(self):
+        """AC-12: Persona.WEIGHT_MAP ClassVar が現行の日本語キー辞書として存在する。"""
+        assert hasattr(Persona, "WEIGHT_MAP")
+        assert "基本情報" in Persona.WEIGHT_MAP
+        assert "価値観" in Persona.WEIGHT_MAP
+        assert Persona.WEIGHT_MAP["基本情報"] == "heavy"
+
+    def test_ac13_make_persona_without_weight_map(self):
+        """AC-13: weight_map を渡さない Persona 直接生成が動作する（テストヘルパー互換）。"""
+        persona = _make_persona("## 基本情報\n\n内容")
+        assert persona is not None
+        assert persona.weight_map == DEFAULT_WEIGHT_MAP
