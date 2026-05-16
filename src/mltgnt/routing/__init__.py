@@ -130,6 +130,7 @@ async def resolve_skill(
     skill_paths: list,
     persona_skills: list[str] | None = None,
     entry_file: str = "SKILL.md",
+    matcher_model: str | None = None,
 ) -> "tuple | None":
     """
     ユーザー入力からスキルを検索・マッチし、(SkillFile, arguments_str) を返す。
@@ -142,6 +143,7 @@ async def resolve_skill(
         skill_paths: スキルディレクトリのリスト（Path または str）
         persona_skills: ペルソナの skills フィールド（None = フィルタなし）
         entry_file: スキルエントリファイル名
+        matcher_model: LLM 意図分類に使うモデル（None = デフォルト）
     戻り値:
         (SkillFile, arguments_str) または None
     """
@@ -154,7 +156,7 @@ async def resolve_skill(
     if not skills:
         return None
 
-    result = await match(user_input, skills, persona_skills=persona_skills)
+    result = await match(user_input, skills, persona_skills=persona_skills, model=matcher_model)
     if result is None:
         return None
 
