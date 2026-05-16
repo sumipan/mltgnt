@@ -15,10 +15,14 @@ from typing import Any, Callable, Literal
 __all__ = [
     "ChannelPersonaEntry",
     "RoutingRule",
+    "TRIAGE_PROFILE_MAX_CHARS",
     "detect_nickname",
     "evaluate",
+    "extract_json_object",
+    "extract_triage_section",
     "find_observers",
     "load_channel_persona_map",
+    "prepare_profile_for_triage",
     "resolve_responding_persona",
     "resolve_skill",
 ]
@@ -131,4 +135,10 @@ from mltgnt.routing.channel_router import (  # noqa: E402
     detect_nickname,
     find_observers,
     resolve_responding_persona,
+)
+from mltgnt.routing.triage import (  # noqa: E402
+    TRIAGE_PROFILE_MAX_CHARS,
+    extract_json_object,
+    extract_triage_section,
+    prepare_profile_for_triage,
 )
