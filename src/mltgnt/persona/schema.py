@@ -20,11 +20,6 @@ FM 構造:
       engine: str
       model: str
       skills: list[str]
-      review:
-        allowed_ops: list[str]
-        domain: list[str]
-        constraints: list[str]
-        max_chars: int
 """
 
 from __future__ import annotations
@@ -38,7 +33,7 @@ from typing import Any
 
 _KNOWN_PERSONA_KEYS: frozenset[str] = frozenset({"name", "aliases", "description"})
 
-_KNOWN_OPS_KEYS: frozenset[str] = frozenset({"slack", "chat_model", "engine", "model", "review", "skills"})
+_KNOWN_OPS_KEYS: frozenset[str] = frozenset({"slack", "chat_model", "engine", "model", "skills"})
 
 _KNOWN_OPS_SLACK_KEYS: frozenset[str] = frozenset(
     {"username", "icon_emoji", "icon_url", "delegate_ack", "channel",
