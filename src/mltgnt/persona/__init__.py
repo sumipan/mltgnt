@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from mltgnt.config import PersonaConfig
 from mltgnt.persona.compress import compress_heavy_to_light, regenerate_light_block
 from mltgnt.persona.loader import Persona, load
 from mltgnt.persona.registry import list_personas as _list_personas
@@ -47,12 +48,18 @@ class PersonaValidationError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def load_persona(name: str, *, persona_dir: Path | None = None) -> Persona:
+def load_persona(
+    name: str,
+    *,
+    persona_dir: Path | None = None,
+    config: PersonaConfig | None = None,
+) -> Persona:
     """名前またはエイリアスでペルソナを読み込む。
 
     Args:
         name: ペルソナ名またはエイリアス
         persona_dir: ペルソナファイルのディレクトリ（デフォルト: ./agents/）
+        config: ペルソナ読み込み設定（省略時はデフォルト）
 
     Returns:
         Persona dataclass
@@ -63,7 +70,7 @@ def load_persona(name: str, *, persona_dir: Path | None = None) -> Persona:
     """
     pdir = persona_dir if persona_dir is not None else Path("agents")
     path = resolve_with_alias(name, pdir)
-    return load(path)
+    return load(path, config=config)
 
 
 def list_personas(persona_dir: Path | None = None) -> list[str]:

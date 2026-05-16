@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 from zoneinfo import ZoneInfo
 
+from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
 from mltgnt.persona.frontmatter import split_yaml_frontmatter
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
 
@@ -45,7 +46,11 @@ class Persona:
     sections: dict[str, str]
     body: str
     path: Path
+    weight_map: dict[str, str] = field(
+        default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
+    )
 
+    # 後方互換（read-only 参照用、format_prompt では使わない）
     WEIGHT_MAP: ClassVar[dict[str, str]] = {
         "基本情報": "heavy",
         "価値観": "heavy",
@@ -84,8 +89,8 @@ class Persona:
         datetime_line = f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
 
         def _weight_for(key: str) -> str | None:
-            """WEIGHT_MAP の前方一致でセクションの weight を返す。マッチなしは None。"""
-            for wk, wv in self.WEIGHT_MAP.items():
+            """weight_map の前方一致でセクションの weight を返す。マッチなしは None。"""
+            for wk, wv in self.weight_map.items():
                 if key == wk or key.startswith(wk):
                     return wv
             return None
@@ -118,7 +123,7 @@ class Persona:
     def extract_output_format(self, op_mode: str | None = None) -> str | None:
         """アウトプット形式セクションから指定 op_mode の H4 ブロックを返す。"""
         op_mode = op_mode or self.DEFAULT_OP_MODE
-        section = self.sections.get("アウトプット形式")
+        section = self.sections.get("アウトプット形式") or self.sections.get("Output format")
         if section is None:
             return None
         blocks = re.split(r"^#### ", section, flags=re.MULTILINE)
@@ -162,7 +167,7 @@ class _OpsConfig:
 # ---------------------------------------------------------------------------
 
 
-def load(path: Path) -> Persona:
+def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
     """ファイルパスからペルソナを読み込んで Persona を返す。
 
     ファイルが存在しない場合は FileNotFoundError を送出する。
@@ -199,13 +204,18 @@ def load(path: Path) -> Persona:
         [k for k in meta if meta[k] is not None],
     )
 
+    wm = dict(config.weight_map) if config else dict(DEFAULT_WEIGHT_MAP)
     return Persona(
         name=fm.name or path.stem,
         fm=fm,
         sections=sections,
         body=body,
         path=path,
+        weight_map=wm,
     )
+
+
+_H2_EXPAND_KEYS: tuple[str, ...] = ("重量", "参照", "Heavy", "Reference")
 
 
 def _expand_h3_sections(section_text: str) -> dict[str, str]:
@@ -266,8 +276,8 @@ def _parse_sections(body: str) -> dict[str, str]:
     if current_key is not None and not skip_current:
         sections[current_key] = "\n".join(current_lines).strip()
 
-    # v2 対応: ## 重量 / ## 参照 を H3 展開してフラット化
-    for h2_key in ("重量", "参照"):
+    # v2 対応: ## 重量 / ## 参照 / ## Heavy / ## Reference を H3 展開してフラット化
+    for h2_key in _H2_EXPAND_KEYS:
         if h2_key in sections:
             h3_sections = _expand_h3_sections(sections.pop(h2_key))
             sections.update(h3_sections)

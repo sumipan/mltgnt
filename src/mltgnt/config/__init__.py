@@ -5,14 +5,40 @@ mltgnt.config — diary 非依存な設定 dataclass。
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 __all__ = [
+    "DEFAULT_WEIGHT_MAP",
     "MemoryConfig",
+    "PersonaConfig",
     "SchedulerConfig",
     "ChatConfig",
 ]
+
+DEFAULT_WEIGHT_MAP: dict[str, str] = {
+    # 日本語（v1/v2）
+    "基本情報": "heavy",
+    "価値観": "heavy",
+    "反応パターン": "heavy",
+    "口調": "heavy",
+    "アウトプット形式": "reference",
+    "軽量": "light",
+    # English
+    "Background": "heavy",
+    "Values": "heavy",
+    "Tone": "heavy",
+    "Output format": "reference",
+    "Light": "light",
+}
+
+
+@dataclass(frozen=True)
+class PersonaConfig:
+    """ペルソナ読み込み・解釈に必要な設定。"""
+    weight_map: dict[str, str] = field(
+        default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
+    )
 
 
 @dataclass(frozen=True)
