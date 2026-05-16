@@ -14,7 +14,8 @@ import pytest
 
 from mltgnt.scheduler import (
     ScheduleJob,
-    SecretaryScheduler,
+    PersonaScheduler,
+    SchedulePaths,
     load_schedule_jobs,
 )
 from mltgnt.config import SchedulerConfig
@@ -26,8 +27,8 @@ def dt_jst(year: int, month: int, day: int, hour: int, minute: int) -> datetime:
     return datetime(year, month, day, hour, minute, tzinfo=TZ)
 
 
-def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> SecretaryScheduler:
-    sch = SecretaryScheduler(slack=None, state_dir=state_dir, jobs=jobs)
+def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler:
+    sch = PersonaScheduler(slack=None, state_dir=state_dir, jobs=jobs)
     sch.reload_jobs()
     return sch
 
@@ -212,7 +213,7 @@ def test_cycle_detection_raises(tmp_path: Path) -> None:
         "notify": "silent",
         "depends_on": ["job_a_cycle"],
     })
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[job_a, job_b])
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[job_a, job_b])
     cycled = sch._detect_cycles([job_a, job_b])
     assert "job_a_cycle" in cycled or "job_b_cycle" in cycled
 
@@ -238,7 +239,7 @@ def test_scheduler_config_integration(tmp_path: Path) -> None:
         schedule_yaml=yaml_file,
         state_dir=tmp_path / "state",
     )
-    sch = SecretaryScheduler(slack=None, config=config)
+    sch = PersonaScheduler(slack=None, config=config)
     sch.reload_jobs()
     assert len(sch._jobs) == 1
     assert sch._jobs[0].id == "config_test"
@@ -283,8 +284,8 @@ def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str 
     return p
 
 
-def _make_skill_scheduler(tmp_path: Path, skill_name: str = "test-skill") -> tuple[SecretaryScheduler, SkillMeta]:
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+def _make_skill_scheduler(tmp_path: Path, skill_name: str = "test-skill") -> tuple[PersonaScheduler, SkillMeta]:
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta(skill_name, tmp_path)
     sch._skill_registry = {skill_name: meta}
     return sch, meta
@@ -388,7 +389,7 @@ def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
 
 def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
     """argv 指定時に $ARGUMENTS がスキル本文内で展開されること。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS を処理")
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -547,7 +548,7 @@ def _make_skill_meta_with_body(name: str, tmp_path: Path, body: str, model: str 
 
 def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
     """$SKILL_DIR がスキルファイルの親ディレクトリに展開されること（AC1）。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "$SKILL_DIR/scripts/run.py を実行")
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -563,7 +564,7 @@ def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
 
 def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
     """$ARGUMENTS と $0, $1 が展開されること（AC2）。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS → $0 $1")
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -577,7 +578,7 @@ def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
 
 def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
     """$PERSONA が persona.name に展開されること（AC5）。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "担当: $PERSONA")
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -591,7 +592,7 @@ def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
 
 def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
     """argv 未指定時に $ARGUMENTS は空文字に展開される（AC2）。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "引数: [$ARGUMENTS]")
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -605,7 +606,7 @@ def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
 
 def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
     """persona.format_prompt() 経由のプロンプト構造であること（AC3）。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文")
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -622,7 +623,7 @@ def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
 
 def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
     """skill.meta.model が action_args.model より優先されること（AC4）。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文", model="sonnet")
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -636,7 +637,7 @@ def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
 
 def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> None:
     """skill.meta.model が None のとき action_args.model にフォールバック（AC4）。"""
-    sch = SecretaryScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文", model=None)
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -675,7 +676,7 @@ def test_ac1_spawn_job_skill_success_calls_post(tmp_path: Path) -> None:
     """AC-1: _spawn_job() の skill 成功パスで _post() が呼ばれ Slack に投稿される。"""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary")
-    sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     meta = _make_skill_meta("test-skill", tmp_path)
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -693,7 +694,7 @@ def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
     """AC-2: skill 成功で msg が空の場合 _post() は呼ばれない。"""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary")
-    sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     meta = _make_skill_meta("test-skill", tmp_path)
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "タチコマ")
@@ -711,7 +712,7 @@ def test_ac3_command_success_posts_when_msg_present(tmp_path: Path) -> None:
     """AC-3: command 成功時も msg があれば _post() を呼ぶ（PR #15 で仕様変更）。"""
     slack = _make_slack_mock()
     job = _command_job(notify="slack_secretary")
-    sch = SecretaryScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
+    sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     sch.reload_jobs()
 
     # ベースクラスは command アクションを未実装なので execute_action をモックする
@@ -731,7 +732,7 @@ def test_ac4_post_resolver_does_not_overwrite_text(tmp_path: Path) -> None:
     def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
         return {"icon_emoji": ":robot:"}, "resolver テキスト"
 
-    sch = SecretaryScheduler(
+    sch = PersonaScheduler(
         slack=slack,
         state_dir=tmp_path / "state",
         jobs=[],
@@ -756,7 +757,7 @@ def test_ac5_post_empty_text_uses_resolver_fallback(tmp_path: Path) -> None:
     def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
         return {"icon_emoji": ":robot:"}, "fallback テキスト"
 
-    sch = SecretaryScheduler(
+    sch = PersonaScheduler(
         slack=slack,
         state_dir=tmp_path / "state",
         jobs=[],
@@ -783,7 +784,7 @@ def test_ac6_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
     def default_kwargs() -> dict:
         return {"icon_emoji": ":default:"}
 
-    sch = SecretaryScheduler(
+    sch = PersonaScheduler(
         slack=slack,
         state_dir=tmp_path / "state",
         jobs=[],
@@ -799,3 +800,139 @@ def test_ac6_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
     args, kwargs = slack.post_message.call_args
     assert args[0] == "元のテキスト"
     assert kwargs.get("icon_emoji") == ":default:"
+
+
+# ---------------------------------------------------------------------------
+# Issue #906: PersonaScheduler / SchedulePaths リネーム + register_action
+# ---------------------------------------------------------------------------
+
+
+def test_secretary_scheduler_not_importable() -> None:
+    """SecretaryScheduler が mltgnt.scheduler から import できないこと（後方互換エイリアスなし）。"""
+    import mltgnt.scheduler as sched
+    assert not hasattr(sched, "SecretaryScheduler"), (
+        "SecretaryScheduler は後方互換エイリアスなしで削除されていること"
+    )
+
+
+def test_secretary_schedule_paths_not_importable() -> None:
+    """SecretarySchedulePaths が mltgnt.scheduler から import できないこと。"""
+    import mltgnt.scheduler as sched
+    assert not hasattr(sched, "SecretarySchedulePaths")
+
+
+def test_schedule_paths_importable() -> None:
+    """SchedulePaths が import できること。"""
+    from mltgnt.scheduler import SchedulePaths  # noqa: F401 (import check)
+
+
+def test_noop_action_returns_true(tmp_path: Path) -> None:
+    """job.action='noop' → execute_action が (True, '') を返す。"""
+    job = ScheduleJob.from_dict({
+        "id": "noop_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "noop",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[])
+    ok, msg = sch.execute_action(job)
+    assert ok is True
+    assert msg == ""
+
+
+def test_unknown_action_raises_value_error(tmp_path: Path) -> None:
+    """未登録 action → execute_action が ValueError を raise する。"""
+    job = ScheduleJob.from_dict({
+        "id": "unknown_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "unknown_action_xyz",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[])
+    with pytest.raises(ValueError):
+        sch.execute_action(job)
+
+
+def test_register_action_is_called(tmp_path: Path) -> None:
+    """register_action で登録した callback が execute_action 経由で呼ばれる。"""
+    job = ScheduleJob.from_dict({
+        "id": "custom_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "custom",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[])
+    sch.register_action("custom", lambda j: (True, "ok"))
+    ok, msg = sch.execute_action(job)
+    assert ok is True
+    assert msg == "ok"
+
+
+def test_actions_kwarg_in_init(tmp_path: Path) -> None:
+    """__init__ の actions= kwarg で渡した callback も execute_action 経由で呼ばれる。"""
+    job = ScheduleJob.from_dict({
+        "id": "init_action_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "init_action",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(
+        slack=None,
+        state_dir=tmp_path / "state",
+        jobs=[],
+        actions={"init_action": lambda j: (True, "from_init")},
+    )
+    ok, msg = sch.execute_action(job)
+    assert ok is True
+    assert msg == "from_init"
+
+
+def test_registered_action_failure(tmp_path: Path) -> None:
+    """登録 action が (False, 'err') → execute_action が (False, 'err') を返す。"""
+    job = ScheduleJob.from_dict({
+        "id": "fail_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "fail_action",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[])
+    sch.register_action("fail_action", lambda j: (False, "err"))
+    ok, msg = sch.execute_action(job)
+    assert ok is False
+    assert msg == "err"
+
+
+def test_registered_action_failure_creates_failed_marker(tmp_path: Path) -> None:
+    """登録 action 失敗時に _spawn_job が failed マーカーを生成する。"""
+    job = ScheduleJob.from_dict({
+        "id": "fail_marker_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "fail_action",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[job])
+    sch.register_action("fail_action", lambda j: (False, "something went wrong"))
+    sch.reload_jobs()
+    d = date(2026, 5, 1)
+    sch._spawn_job(job, d)
+    time.sleep(0.5)
+    assert sch.paths.failed_path("fail_marker_job", d).is_file()
+
+
+def test_slack_none_post_does_not_raise(tmp_path: Path) -> None:
+    """slack=None で PersonaScheduler を生成し _post() を呼んでも例外が出ない。"""
+    job = ScheduleJob.from_dict({
+        "id": "notify_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "noop",
+        "notify": "slack_secretary",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[])
+    sch._post(job, "test message")  # should not raise
