@@ -16,7 +16,6 @@ import pytest
 from mltgnt.config import MemoryConfig
 from mltgnt.memory import (
     append_memory_entry,
-    extract_and_append,
     read_memory_preferences,
     read_memory_tail_text,
     memory_file_path,
@@ -637,20 +636,6 @@ dedupe付きエントリ <!-- memory-dedupe:key-abc-123 -->
     assert dedupe_entries[0].dedupe_key == "key-abc-123"
 
 
-def test_extract_and_append_invalid_json_returns_empty(tmp_path: Path) -> None:
-    """LLM 応答が不正な JSON の場合も空リスト [] を返し例外を投げない。"""
-    config = make_config(tmp_path)
-
-    def invalid_json_llm(prompt: str) -> str:
-        return "これは全く JSON ではない応答テキスト\nno json here either"
-
-    result = extract_and_append(
-        config, "persona", "テキスト",
-        llm_call=invalid_json_llm,
-    )
-    assert result == []
-
-
 def test_auto_migration_on_read(tmp_path: Path) -> None:
     """.jsonl なし・.md ありの場合、読み込み時に自動マイグレーションが実行される。"""
     config = make_config(tmp_path)
@@ -907,62 +892,17 @@ def test_compact_from_markdown_auto_migration(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# extract_and_append
+# ---------------------------------------------------------------------------
+# extract_and_append 削除確認 (Issue #915)
 # ---------------------------------------------------------------------------
 
-def test_extract_and_append_returns_caveat(tmp_path: Path) -> None:
-    """セッションテキストから caveat エントリを少なくとも1件生成する。"""
-    config = make_config(tmp_path)
-
-    def mock_llm(prompt: str) -> str:
-        return '{"layer": "caveat", "content": "デプロイ順序を逆にしない"}\n'
-
-    result = extract_and_append(
-        config, "persona", "デプロイ順序を間違えて障害が発生した",
-        llm_call=mock_llm,
-    )
-    assert len(result) >= 1
-    assert any(e.layer == "caveat" for e in result)
+def test_extract_and_append_not_in_all() -> None:
+    """extract_and_append が __all__ に含まれていないことを確認。"""
+    import mltgnt.memory as m
+    assert "extract_and_append" not in m.__all__
 
 
-def test_extract_and_append_source_tag(tmp_path: Path) -> None:
-    """抽出結果の各エントリに source_tag='auto_extract' が付与される。"""
-    config = make_config(tmp_path)
-
-    def mock_llm(prompt: str) -> str:
-        return '{"layer": "learning", "content": "テストを書いてから実装する"}\n'
-
-    result = extract_and_append(
-        config, "persona", "TDD の効果を体験した",
-        llm_call=mock_llm,
-    )
-    assert all(e.source_tag == "auto_extract" for e in result)
-
-
-def test_extract_and_append_llm_error_returns_empty(tmp_path: Path) -> None:
-    """LLM 呼び出しエラー時に空リスト [] を返し例外を投げない。"""
-    config = make_config(tmp_path)
-
-    def failing_llm(prompt: str) -> str:
-        raise RuntimeError("LLM unavailable")
-
-    result = extract_and_append(
-        config, "persona", "何かテキスト",
-        llm_call=failing_llm,
-    )
-    assert result == []
-
-
-def test_extract_and_append_writes_to_file(tmp_path: Path) -> None:
-    """抽出結果が JSONL ファイルに追記される。"""
-    config = make_config(tmp_path)
-
-    def mock_llm(prompt: str) -> str:
-        return '{"layer": "caveat", "content": "追記されるべき内容"}\n'
-
-    extract_and_append(config, "persona", "テキスト", llm_call=mock_llm)
-
-    mp = memory_file_path(config, "persona")
-    assert mp.exists()
-    entries = parse_jsonl(mp)
-    assert any(e.content == "追記されるべき内容" for e in entries)
+def test_extract_and_append_not_importable() -> None:
+    """`from mltgnt.memory import extract_and_append` が ImportError を返す。"""
+    with pytest.raises(ImportError):
+        from mltgnt.memory import extract_and_append  # noqa: F401

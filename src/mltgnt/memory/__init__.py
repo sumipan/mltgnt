@@ -40,7 +40,6 @@ __all__ = [
     "normalize_source_prefix",
     "compact",
     "needs_compaction",
-    "extract_and_append",
     "LlmCallError",
     "CompactionResult",
 ]
@@ -534,74 +533,6 @@ def read_memory_agentic(
         skill_paths=skill_paths,
         max_iterations=max_iterations,
     )
-
-
-def extract_and_append(
-    config: "MemoryConfig",
-    persona_stem: str,
-    session_text: str,
-    *,
-    llm_call: LlmCall,
-    target_layers: list[str] | None = None,
-) -> list[MemoryEntry]:
-    """セッションテキストから教訓・学びを抽出してメモリに追記する。
-
-    LLM エラー時は空リスト [] を返し、例外を投げない。
-    """
-    if target_layers is None:
-        target_layers = ["caveat", "learning"]
-
-    layers_str = "・".join(target_layers)
-    prompt = (
-        f"以下のセッションテキストから、{layers_str} に分類できる教訓・禁止事項・学びを抽出してください。\n"
-        "各項目を JSON 形式（1行1件）で出力してください:\n"
-        '{"layer": "<caveat|learning>", "content": "<抽出テキスト>"}\n\n'
-        f"セッションテキスト:\n{session_text}"
-    )
-
-    try:
-        response = llm_call(prompt)
-    except Exception as e:
-        _log.warning("extract_and_append: llm_call failed: %s", e)
-        return []
-
-    import datetime
-    ts = datetime.datetime.now(datetime.timezone.utc).astimezone(
-        datetime.timezone(datetime.timedelta(hours=9))
-    ).isoformat(timespec="seconds")
-
-    appended: list[MemoryEntry] = []
-    for line in response.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-            layer = data.get("layer", "")
-            content = data.get("content", "").strip()
-            if not content or layer not in target_layers:
-                continue
-            entry = MemoryEntry(
-                timestamp=ts,
-                role="assistant",
-                content=content,
-                source_tag="auto_extract",
-                layer=layer,
-            )
-            append_memory_entry(
-                config,
-                persona_stem,
-                entry.role,
-                entry.content,
-                entry.timestamp,
-                source_tag=entry.source_tag,
-                layer=entry.layer,
-            )
-            appended.append(entry)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    return appended
 
 
 # Lazy imports for compaction
