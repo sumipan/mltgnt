@@ -8,9 +8,13 @@ from __future__ import annotations
 import re
 import sys
 
+from ghdag.llm import call as llm_call
+
 from mltgnt.skill.models import SkillMeta
 
 _SLASH_PATTERN = re.compile(r"^/(\S+)(.*)", re.DOTALL)
+
+_DEFAULT_MATCHER_MODEL = "claude-haiku-4-5-20251001"
 
 _LLM_SYSTEM_PROMPT = """\
 あなたはスキルマッチャーです。
@@ -58,6 +62,7 @@ async def _match_by_llm(
     user_input: str,
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None,
+    model: str | None = None,
 ) -> tuple[SkillMeta, str] | None:
     """LLM にスキル一覧と入力を渡し、意図分類する。
 
@@ -80,8 +85,7 @@ async def _match_by_llm(
     prompt = f"{_LLM_SYSTEM_PROMPT}\n\nスキル一覧:\n{skill_list}\n\nユーザー入力: {user_input}"
 
     try:
-        from ghdag.llm import call as llm_call
-        result = llm_call(prompt, engine="claude", model="claude-haiku-4-5-20251001", timeout=30)
+        result = llm_call(prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30)
         if not result.ok:
             print(f"[skill.matcher] LLM 意図分類エラー: {result.stderr}", file=sys.stderr)
             return None
@@ -100,6 +104,7 @@ async def match(
     user_input: str,
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None = None,
+    model: str | None = None,
 ) -> tuple[SkillMeta, str] | None:
     """
     ユーザー入力からスキルを特定する（ハイブリッド 2段フォールバック）。
@@ -127,4 +132,4 @@ async def match(
         return result
 
     # Step 3: LLM 意図分類
-    return await _match_by_llm(user_input, skills, persona_skills)
+    return await _match_by_llm(user_input, skills, persona_skills, model=model)

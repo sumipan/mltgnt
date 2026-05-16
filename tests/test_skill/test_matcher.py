@@ -6,10 +6,11 @@ tests/test_skill/test_matcher.py — matcher.match のユニットテスト。
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mltgnt.skill.matcher import match
+from mltgnt.skill.matcher import match, _DEFAULT_MATCHER_MODEL
 from mltgnt.skill.models import SkillMeta
 
 
@@ -83,3 +84,40 @@ class TestMatch:
         """persona_skills=None ならフィルタなし"""
         result = await match("/review args", SKILLS, persona_skills=None)
         assert result is not None
+
+
+class TestMatcherModel:
+    @pytest.mark.asyncio
+    async def test_model_passed_to_llm(self) -> None:
+        """model 引数が _match_by_llm の LLM 呼び出しに渡される"""
+        with patch("mltgnt.skill.matcher.llm_call") as mock:
+            mock.return_value = MagicMock(ok=True, stdout="none")
+            await match("hello", SKILLS, model="custom-model")
+            mock.assert_called_once()
+            _, kwargs = mock.call_args
+            assert kwargs["model"] == "custom-model"
+
+    @pytest.mark.asyncio
+    async def test_default_model_when_none(self) -> None:
+        """model=None のとき _DEFAULT_MATCHER_MODEL が使われる"""
+        with patch("mltgnt.skill.matcher.llm_call") as mock:
+            mock.return_value = MagicMock(ok=True, stdout="none")
+            await match("hello", SKILLS, model=None)
+            mock.assert_called_once()
+            _, kwargs = mock.call_args
+            assert kwargs["model"] == "claude-haiku-4-5-20251001"
+
+    @pytest.mark.asyncio
+    async def test_empty_string_model_falls_back_to_default(self) -> None:
+        """model="" の空文字はデフォルトにフォールバックする"""
+        with patch("mltgnt.skill.matcher.llm_call") as mock:
+            mock.return_value = MagicMock(ok=True, stdout="none")
+            await match("hello", SKILLS, model="")
+            mock.assert_called_once()
+            _, kwargs = mock.call_args
+            assert kwargs["model"] == _DEFAULT_MATCHER_MODEL
+
+    @pytest.mark.asyncio
+    async def test_default_matcher_model_constant(self) -> None:
+        """_DEFAULT_MATCHER_MODEL が期待値を持つ"""
+        assert _DEFAULT_MATCHER_MODEL == "claude-haiku-4-5-20251001"

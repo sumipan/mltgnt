@@ -217,6 +217,15 @@ class TestResolveSkillIntegration:
         result = await resolve_skill("/persona-create foo", [])
         assert result is None
 
+    async def test_resolve_skill_passes_matcher_model(self, tmp_path: Path) -> None:
+        """matcher_model="custom" が match() に model="custom" として渡される"""
+        _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
+        with patch("mltgnt.skill.match", new=AsyncMock(return_value=None)) as mock_match:
+            await resolve_skill("hello", [tmp_path], matcher_model="custom-model")
+            mock_match.assert_called_once()
+            _, kwargs = mock_match.call_args
+            assert kwargs.get("model") == "custom-model"
+
     async def test_resolve_with_real_skills_dir(self) -> None:
         """実際の skills/ ディレクトリから解決（SKILL.md が存在する場合のみ）"""
         real_skills_dir = Path("/Users/ngystks/Github/diary/skills")

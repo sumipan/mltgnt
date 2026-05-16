@@ -74,3 +74,4 @@ class ChatConfig:
     memory_dir: Path | None = None
     sufficiency_engine: str | None = None   # 例: "claude"
     sufficiency_model: str | None = None    # 例: "claude-haiku-4-5-20251001"
+    matcher_model: str = "claude-haiku-4-5-20251001"
