@@ -1,5 +1,4 @@
 import warnings
-import pytest
 from mltgnt.persona.schema import parse_fm
 
 
