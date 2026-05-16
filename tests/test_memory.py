@@ -31,9 +31,6 @@ from mltgnt.memory._format import (
     serialize_entry,
     assemble_entries_text,
     migrate_markdown_to_jsonl,
-    parse_memory,
-    format_memory,
-    assemble_memory,
 )
 
 
@@ -425,59 +422,21 @@ def test_memory_config_new_fields_custom() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 旧 API (後方互換): parse_memory / format_memory / assemble_memory
+# 旧 API パブリックインタフェース除去の確認
 # ---------------------------------------------------------------------------
 
-def test_parse_memory_all_sections() -> None:
-    text = (
-        "## ユーザーの好み・傾向\n\n好み内容\n\n---\n\n"
-        "## 長期要約\n\n長期内容\n\n---\n\n"
-        "## 中期要約\n\n中期内容\n\n---\n\n"
-        "## 直近ログ\n\n直近内容\n"
-    )
-    sections = parse_memory(text)
-    assert "好み内容" in sections.preferences
-    assert "長期内容" in sections.long_term
-    assert "中期内容" in sections.mid_term
-    assert "直近内容" in sections.recent
+def test_old_api_symbols_not_in_all() -> None:
+    """MemorySections, parse_memory, format_memory, assemble_memory が __all__ に含まれない。"""
+    import mltgnt.memory._format as fmt
+    for symbol in ("MemorySections", "parse_memory", "format_memory", "assemble_memory"):
+        assert symbol not in fmt.__all__, f"{symbol} should not be in __all__"
 
 
-def test_parse_memory_missing_sections() -> None:
-    text = "## ユーザーの好み・傾向\n\n好み内容\n"
-    sections = parse_memory(text)
-    assert "好み内容" in sections.preferences
-    assert sections.long_term == ""
-    assert sections.mid_term == ""
-    assert sections.recent == ""
-
-
-def test_parse_memory_no_known_sections() -> None:
-    text = "なんらかのテキスト"
-    sections = parse_memory(text)
-    assert sections.preamble == "なんらかのテキスト"
-    assert sections.preferences == ""
-
-
-def test_parse_memory_custom_heading() -> None:
-    text = "## User Preferences\n\nsome prefs\n"
-    sections = parse_memory(text, preferences_heading="User Preferences")
-    assert "some prefs" in sections.preferences
-
-
-def test_format_memory_roundtrip() -> None:
-    text = (
-        "## ユーザーの好み・傾向\n\n好み内容\n\n---\n\n"
-        "## 長期要約\n\n長期内容\n\n---\n\n"
-        "## 中期要約\n\n中期内容\n\n---\n\n"
-        "## 直近ログ\n\n直近内容\n"
-    )
-    sections = parse_memory(text)
-    result = format_memory(sections)
-    assert "好み内容" in result
-    assert "長期内容" in result
-    assert "中期内容" in result
-    assert "直近内容" in result
-    assert "---" in result
+def test_old_api_functions_not_accessible() -> None:
+    """parse_memory, format_memory, assemble_memory, MemorySections がモジュール属性として存在しない。"""
+    import mltgnt.memory._format as fmt
+    for symbol in ("parse_memory", "format_memory", "assemble_memory", "MemorySections"):
+        assert not hasattr(fmt, symbol), f"{symbol} should not be a public attribute"
 
 
 # ---------------------------------------------------------------------------
@@ -512,44 +471,6 @@ def test_assemble_entries_text_separator() -> None:
     ]
     result = assemble_entries_text(entries)
     assert "---" in result
-
-
-# ---------------------------------------------------------------------------
-# assemble_memory (旧 API)
-# ---------------------------------------------------------------------------
-
-def test_assemble_memory_produces_correct_structure() -> None:
-    result = assemble_memory(
-        preferences="好みテキスト",
-        long_term="長期テキスト",
-        mid_term="中期テキスト",
-        recent="直近テキスト",
-    )
-    assert "## ユーザーの好み・傾向" in result
-    assert "## 長期要約（1ヶ月超）" in result
-    assert "## 中期要約（1〜3週間前）" in result
-    assert "## 直近ログ（7日以内）" in result
-    assert result.count("---") == 3
-    assert "好みテキスト" in result
-    assert result.endswith("\n")
-
-
-def test_assemble_memory_with_preamble() -> None:
-    result = assemble_memory(
-        preferences="好み",
-        long_term="長期",
-        mid_term="中期",
-        recent="直近",
-        preamble="# メモリファイル",
-    )
-    assert result.startswith("# メモリファイル")
-    assert result.count("---") == 4
-
-
-def test_assemble_memory_empty_sections() -> None:
-    result = assemble_memory(preferences="", long_term="", mid_term="", recent="")
-    assert "## ユーザーの好み・傾向" in result
-    assert "## 長期要約（1ヶ月超）" in result
 
 
 # ---------------------------------------------------------------------------
