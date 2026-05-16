@@ -247,8 +247,8 @@ class TestBackwardCompatibility:
 # ---------------------------------------------------------------------------
 
 
-import textwrap as _textwrap
-from unittest.mock import patch as _patch
+import textwrap as _textwrap  # noqa: E402
+from unittest.mock import patch as _patch  # noqa: E402
 
 
 class TestParseSectionsV2:
@@ -317,7 +317,6 @@ class TestParseSectionsV2:
             persona.format_prompt("指示", weight="heavy")
             for call_args in mock_logger.warning.call_args_list:
                 args = call_args[0]
-                msg = args[0] if args else ""
                 assert "WEIGHT_MAP に未定義" not in str(args), \
                     f"WEIGHT_MAP 未定義警告が出てはいけない: {args}"
 
@@ -508,7 +507,7 @@ class TestExtractOutputFormatV2:
 # ---------------------------------------------------------------------------
 
 
-from mltgnt.persona.triage import extract_triage_section as _extract_triage_section
+from mltgnt.persona.triage import extract_triage_section as _extract_triage_section  # noqa: E402
 
 
 class TestExtractTriageSectionV2:
@@ -570,9 +569,9 @@ class TestExtractTriageSectionV2:
 # Issue-919: DEFAULT_WEIGHT_MAP / PersonaConfig / 英語ペルソナ対応
 # ---------------------------------------------------------------------------
 
-import textwrap as _tw
+import textwrap as _tw  # noqa: E402
 
-from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
+from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig  # noqa: E402
 
 
 _ENGLISH_BODY = _tw.dedent("""\
