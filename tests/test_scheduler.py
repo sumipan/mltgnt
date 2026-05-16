@@ -15,7 +15,6 @@ import pytest
 from mltgnt.scheduler import (
     ScheduleJob,
     PersonaScheduler,
-    SchedulePaths,
     load_schedule_jobs,
 )
 from mltgnt.config import SchedulerConfig
