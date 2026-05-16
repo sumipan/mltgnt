@@ -1,7 +1,7 @@
 """
 mltgnt.memory._format — メモリファイルのパース・フォーマット。
 
-設計: Issue #823 (JSONL 統一)、後方互換のため旧 MemorySections API も保持。
+設計: Issue #823 (JSONL 統一)
 """
 from __future__ import annotations
 
@@ -12,17 +12,11 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
-    # JSONL 新 API
     "MemoryEntry",
     "parse_jsonl",
     "serialize_entry",
     "assemble_entries_text",
     "migrate_markdown_to_jsonl",
-    # 旧 API (後方互換)
-    "MemorySections",
-    "parse_memory",
-    "format_memory",
-    "assemble_memory",
 ]
 
 
@@ -113,7 +107,7 @@ def migrate_markdown_to_jsonl(md_path: Path, jsonl_path: Path) -> int:
     entries: list[MemoryEntry] = []
 
     # section-based 形式を解析
-    sections = parse_memory(text)
+    sections = _parse_memory(text)
 
     base_ts = "1970-01-01T00:00:00+00:00"
 
@@ -234,12 +228,12 @@ def migrate_markdown_to_jsonl(md_path: Path, jsonl_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
-# 旧 API (後方互換)
+# Internal helpers (used by migrate_markdown_to_jsonl)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class MemorySections:
+class _MemorySections:
     preferences: str
     long_term: str
     mid_term: str
@@ -247,12 +241,12 @@ class MemorySections:
     preamble: str = ""
 
 
-def parse_memory(
+def _parse_memory(
     text: str,
     *,
     preferences_heading: str = _PREFS_HEADING,
-) -> MemorySections:
-    """メモリファイルのテキストを 4 層に分解する。"""
+) -> _MemorySections:
+    """メモリファイルのテキストを 4 層に分解する。migrate_markdown_to_jsonl 専用。"""
     prefs_pat = re.compile(rf"^## {re.escape(preferences_heading)}", re.MULTILINE)
     long_pat = re.compile(r"^## 長期要約", re.MULTILINE)
     mid_pat = re.compile(r"^## 中期要約", re.MULTILINE)
@@ -275,7 +269,7 @@ def parse_memory(
     if sections_found:
         preamble = text[: sections_found[0][0]].strip()
     else:
-        return MemorySections(
+        return _MemorySections(
             preferences="",
             long_term="",
             mid_term="",
@@ -291,53 +285,10 @@ def parse_memory(
         section_text = re.sub(r"\n---\s*$", "", section_text.rstrip())
         result[key] = section_text.strip()
 
-    return MemorySections(
+    return _MemorySections(
         preferences=result["preferences"],
         long_term=result["long_term"],
         mid_term=result["mid_term"],
         recent=result["recent"],
         preamble=preamble,
     )
-
-
-def format_memory(sections: MemorySections) -> str:
-    """MemorySections を 1 つのメモリファイルテキストに結合する。"""
-    parts: list[str] = []
-    if sections.preamble:
-        parts.append(sections.preamble)
-    for content in [
-        sections.preferences,
-        sections.long_term,
-        sections.mid_term,
-        sections.recent,
-    ]:
-        if content:
-            parts.append(content)
-    return "\n\n---\n\n".join(parts) + "\n"
-
-
-def assemble_memory(
-    *,
-    preferences: str,
-    long_term: str,
-    mid_term: str,
-    recent: str,
-    preamble: str = "",
-    preferences_heading: str = _PREFS_HEADING,
-) -> str:
-    """コンパクション結果から見出し付きメモリテキストを組み立てる。"""
-    parts: list[str] = []
-    if preamble:
-        parts.append(preamble)
-
-    section_defs = [
-        (preferences_heading, preferences),
-        ("長期要約（1ヶ月超）", long_term),
-        ("中期要約（1〜3週間前）", mid_term),
-        ("直近ログ（7日以内）", recent),
-    ]
-    for heading, body in section_defs:
-        text = body.strip() if body else ""
-        parts.append(f"## {heading}\n\n{text}" if text else f"## {heading}")
-
-    return "\n\n---\n\n".join(parts) + "\n"
