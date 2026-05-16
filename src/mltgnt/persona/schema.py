@@ -24,6 +24,7 @@ FM 構造:
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -132,6 +133,13 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
 
     if isinstance(ops_ns, dict):
         chat_model = _str_or_none(ops_ns.get("chat_model"))
+        if chat_model is not None:
+            warnings.warn(
+                "ops.chat_model は非推奨です。ops.engine / ops.model に移行してください。"
+                " 将来のバージョンで削除されます。",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         engine = _str_or_none(ops_ns.get("engine")) or ""
         model = _str_or_none(ops_ns.get("model")) or ""
         _skills_raw = ops_ns.get("skills")
@@ -156,6 +164,15 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
     # ── 未知トップレベルキー ─────────────────────────────────────────────────
     _legacy_flat: frozenset[str] = frozenset({"chat_model", "slack"})
     legacy_keys_list: list[str] = [k for k in meta if k in _legacy_flat]
+
+    for key in legacy_keys_list:
+        warnings.warn(
+            f"トップレベルの FM キー '{key}' は非推奨です。"
+            f"ops: namespace に移行してください（例: ops.{key}）。"
+            " 将来のバージョンで削除されます。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # legacy_flat は unknown とは別扱い（validate_fm で個別エラー）
     known_top: frozenset[str] = frozenset({"persona", "ops", "spec_version"}) | _legacy_flat
