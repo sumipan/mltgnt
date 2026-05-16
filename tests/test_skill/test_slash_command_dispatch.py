@@ -16,7 +16,7 @@ import pytest
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
 from mltgnt.skill.models import SkillMeta
-from mltgnt.routing import resolve_skill
+from mltgnt.skill import resolve_skill
 
 
 # --------------- matcher 単体テスト（仮説①） ---------------
