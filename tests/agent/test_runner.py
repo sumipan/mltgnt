@@ -147,3 +147,32 @@ def test_tool_executor_raises_exception():
 def test_import():
     """#11: mltgnt.agent から AgentRunner, AgentResult が import できる。"""
     from mltgnt.agent import AgentRunner  # noqa: F401
+
+
+# ---- #907: tools パラメータ ----
+
+def test_tools_stored_on_runner():
+    """#907: tools= を渡すと _tools に保存される。"""
+    tools = [{"name": "search", "description": "search the web"}]
+    runner = AgentRunner(
+        llm_call=make_llm(['{"tool": "done", "args": {}}']),
+        tool_executor=make_executor({}),
+        terminal_tools=frozenset({"done"}),
+        tools=tools,
+    )
+    assert runner._tools == tools
+
+
+def test_tools_default_empty():
+    """#907: tools= 省略時は空リスト。"""
+    runner = AgentRunner(
+        llm_call=make_llm([]),
+        tool_executor=make_executor({}),
+        terminal_tools=frozenset({"done"}),
+    )
+    assert runner._tools == []
+
+
+def test_import_llm_caller_and_tool_executor():
+    """#907: LLMCaller, ToolExecutor が mltgnt.agent から import できる。"""
+    from mltgnt.agent import LLMCaller, ToolExecutor  # noqa: F401

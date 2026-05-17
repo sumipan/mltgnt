@@ -1,7 +1,7 @@
 """
-tests/test_skill/test_runner.py — runner.run のユニットテスト。
+tests/test_skill/test_runner.py — runner.run / run_agent のユニットテスト。
 
-設計: Issue #124 §8 AC-4, AC-5
+設計: Issue #124 §8 AC-4, AC-5 / Issue #907
 """
 from __future__ import annotations
 
@@ -11,16 +11,24 @@ from unittest.mock import MagicMock
 
 from mltgnt.chat.models import ChatInput
 from mltgnt.skill.models import SkillFile, SkillMeta
-from mltgnt.skill.runner import run
+from mltgnt.skill.runner import run, run_agent
 
 
-def _make_skill(body: str, model: str | None = None, name: str = "review") -> SkillFile:
+def _make_skill(
+    body: str,
+    model: str | None = None,
+    name: str = "review",
+    agent: bool = False,
+    tools: list[dict] | None = None,
+) -> SkillFile:
     meta = SkillMeta(
         name=name,
         description="test",
         argument_hint="",
         model=model,
         path=Path("/fake/skills/review/SKILL.md"),
+        agent=agent,
+        tools=tools or [],
     )
     return SkillFile(meta=meta, body=body)
 
@@ -137,3 +145,126 @@ class TestRunPromptComposition:
         assert len(system_msgs) == 1
         assert "old system" not in system_msgs[0]["content"]
         assert "new system" in system_msgs[0]["content"]
+
+
+def _make_llm(responses: list):
+    calls = iter(responses)
+
+    def llm_call(prompt: str, *, tool_result: str | None = None) -> str | None:
+        return next(calls)
+
+    return llm_call
+
+
+def _make_executor(results: dict):
+    def executor(tool_name: str, tool_args: dict) -> str:
+        return results[tool_name]
+    return executor
+
+
+class TestRunAgent:
+    """#907: run_agent — skill から AgentRunner ループへの統合。"""
+
+    def test_agent_skill_runs_terminal_tool(self) -> None:
+        """agent: true のスキルが AgentRunner ループで終端ツールまで到達する。"""
+        skill = _make_skill(
+            "あなたはエージェントです",
+            agent=True,
+            tools=[{"name": "slack_reply", "description": "Slackに返信"}],
+        )
+        persona = _make_persona()
+        chat_input = ChatInput(
+            source="test", session_key="s",
+            messages=[{"role": "user", "content": "こんにちは"}],
+            model=None,
+        )
+        llm = _make_llm(['{"tool": "slack_reply", "args": {"message": "hello"}}'])
+        result = run_agent(
+            skill, persona, "", chat_input,
+            llm_call=llm,
+            tool_executor=_make_executor({}),
+            terminal_tools=frozenset({"slack_reply"}),
+        )
+        assert result is not None
+        assert result.tool == "slack_reply"
+        assert result.args == {"message": "hello"}
+
+    def test_non_agent_skill_also_runs_via_run_agent(self) -> None:
+        """agent: false のスキルも run_agent で実行できる（呼び出し元が選択する想定）。"""
+        skill = _make_skill("通常スキル本文", agent=False)
+        persona = _make_persona()
+        chat_input = ChatInput(
+            source="test", session_key="s",
+            messages=[{"role": "user", "content": "test"}],
+            model=None,
+        )
+        llm = _make_llm(['{"tool": "done", "args": {}}'])
+        result = run_agent(
+            skill, persona, "", chat_input,
+            llm_call=llm,
+            tool_executor=_make_executor({}),
+            terminal_tools=frozenset({"done"}),
+        )
+        assert result is not None
+        assert result.tool == "done"
+
+    def test_tools_passed_to_agent_runner(self) -> None:
+        """skill.meta.tools が AgentRunner に渡り、runner._tools に保存される。"""
+        from mltgnt.agent import AgentRunner
+
+        tools_def = [{"name": "search", "description": "検索"}]
+        skill = _make_skill("body", agent=True, tools=tools_def)
+        persona = _make_persona()
+        chat_input = ChatInput(
+            source="test", session_key="s",
+            messages=[{"role": "user", "content": "x"}],
+            model=None,
+        )
+
+        captured: list[AgentRunner] = []
+
+        original_run = AgentRunner.run
+
+        def patched_run(self_runner, prompt: str):
+            captured.append(self_runner)
+            return original_run(self_runner, prompt)
+
+        AgentRunner.run = patched_run  # type: ignore[method-assign]
+        try:
+            llm = _make_llm(['{"tool": "done", "args": {}}'])
+            run_agent(
+                skill, persona, "", chat_input,
+                llm_call=llm,
+                tool_executor=_make_executor({}),
+                terminal_tools=frozenset({"done"}),
+            )
+        finally:
+            AgentRunner.run = original_run  # type: ignore[method-assign]
+
+        assert len(captured) == 1
+        assert captured[0]._tools == tools_def
+
+    def test_system_prompt_passed_to_agent_runner(self) -> None:
+        """skill の system prompt（ペルソナ + 本文）が AgentRunner.run の prompt に渡る。"""
+        skill = _make_skill("スキル指示テキスト", agent=True)
+        persona = _make_persona("タチコマ")
+        chat_input = ChatInput(
+            source="test", session_key="s",
+            messages=[{"role": "user", "content": "x"}],
+            model=None,
+        )
+        received_prompts: list[str] = []
+
+        def recording_llm(prompt: str, *, tool_result: str | None = None) -> str | None:
+            received_prompts.append(prompt)
+            return '{"tool": "done", "args": {}}'
+
+        run_agent(
+            skill, persona, "", chat_input,
+            llm_call=recording_llm,
+            tool_executor=_make_executor({}),
+            terminal_tools=frozenset({"done"}),
+        )
+        assert len(received_prompts) == 1
+        assert "タチコマ" in received_prompts[0]
+        assert "スキル指示テキスト" in received_prompts[0]

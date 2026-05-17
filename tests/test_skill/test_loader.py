@@ -169,3 +169,67 @@ class TestDiscover:
         )
         with pytest.raises(FileNotFoundError):
             load(meta)
+
+
+class TestAgentAndToolsParsing:
+    """#907: agent / tools フロントマター解析テスト。"""
+
+    def test_agent_true_parsed(self, tmp_path: Path) -> None:
+        """agent: true が SkillMeta.agent == True に変換される。"""
+        content = """\
+---
+description: エージェントスキル
+agent: true
+---
+本文
+"""
+        _write_skill(tmp_path, "agent_skill/SKILL.md", content)
+        skills = discover([tmp_path])
+        assert skills["agent_skill"].agent is True
+
+    def test_agent_false_by_default(self, tmp_path: Path) -> None:
+        """agent フィールドなし → SkillMeta.agent == False。"""
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        skills = discover([tmp_path])
+        assert skills["review"].agent is False
+
+    def test_tools_list_parsed(self, tmp_path: Path) -> None:
+        """tools: リストが SkillMeta.tools に変換される。"""
+        content = """\
+---
+description: ツールスキル
+agent: true
+tools:
+  - name: slack_reply
+    description: Slackに返信
+  - name: search
+    description: 検索
+---
+本文
+"""
+        _write_skill(tmp_path, "tool_skill/SKILL.md", content)
+        skills = discover([tmp_path])
+        meta = skills["tool_skill"]
+        assert meta.agent is True
+        assert len(meta.tools) == 2
+        assert meta.tools[0]["name"] == "slack_reply"
+        assert meta.tools[1]["name"] == "search"
+
+    def test_tools_empty_by_default(self, tmp_path: Path) -> None:
+        """tools フィールドなし → SkillMeta.tools == []。"""
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        skills = discover([tmp_path])
+        assert skills["review"].tools == []
+
+    def test_tools_invalid_type_raises(self, tmp_path: Path) -> None:
+        """tools がリストでない場合は ValueError。"""
+        content = """\
+---
+description: bad
+tools: not-a-list
+---
+本文
+"""
+        _write_skill(tmp_path, "bad_skill/SKILL.md", content)
+        skills = discover([tmp_path])
+        assert "bad_skill" not in skills
