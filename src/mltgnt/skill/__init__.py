@@ -1,14 +1,14 @@
 """
 mltgnt.skill — Markdown ベーススキルファイルの読み込み・実行基盤。
 
-設計: Issue #124
-公開 API: discover, load, match, run, estimate_skill, resolve_skill
+設計: Issue #124 / Issue #907
+公開 API: discover, load, match, run, run_agent, resolve_skill
 """
 from mltgnt.skill._registry import SkillRegistry
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
 from mltgnt.skill.models import SkillFile, SkillMeta
-from mltgnt.skill.runner import run
+from mltgnt.skill.runner import run, run_agent
 
 __all__ = [
     "discover",
@@ -16,6 +16,7 @@ __all__ = [
     "match",
     "resolve_skill",
     "run",
+    "run_agent",
     "SkillMeta",
     "SkillFile",
     "SkillRegistry",

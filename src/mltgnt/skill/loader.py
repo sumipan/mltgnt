@@ -55,6 +55,11 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         raise ValueError(f"triggers フィールドはリストである必要があります: {triggers_raw!r}")
     else:
         triggers = [str(t) for t in triggers_raw]
+    agent: bool = bool(fm.get("agent", False))
+    tools_raw = fm.get("tools") or []
+    if not isinstance(tools_raw, list):
+        raise ValueError(f"tools フィールドはリストである必要があります: {tools_raw!r}")
+    tools: list[dict] = [t if isinstance(t, dict) else {"name": str(t)} for t in tools_raw]
     return SkillMeta(
         name=name,
         description=str(description).strip(),
@@ -62,6 +67,8 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         model=model,
         path=path.resolve(),
         triggers=triggers,
+        agent=agent,
+        tools=tools,
     )
 
 

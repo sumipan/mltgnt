@@ -19,6 +19,8 @@ class SkillMeta:
     model: str | None
     path: Path
     triggers: list[str] = field(default_factory=list)
+    agent: bool = False
+    tools: list[dict] = field(default_factory=list)
 
 
 @dataclass

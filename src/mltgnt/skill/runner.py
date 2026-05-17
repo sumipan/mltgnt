@@ -1,16 +1,20 @@
 """
 mltgnt.skill.runner — 変数置換とプロンプト合成。
 
-設計: Issue #124 §6.4
+設計: Issue #124 §6.4 / Issue #907
 """
 from __future__ import annotations
 
 import re
 from copy import deepcopy
+from typing import TYPE_CHECKING
 
 from mltgnt.chat.models import ChatInput, Message
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.skill.models import SkillFile
+
+if TYPE_CHECKING:
+    from mltgnt.agent._runner import AgentResult, LLMCaller, ToolExecutor
 
 _VAR_PATTERN = re.compile(r"\$(\d+|\w+)")
 
@@ -69,3 +73,33 @@ def run(
     new_input.model = skill.meta.model if skill.meta.model is not None else chat_input.model
 
     return new_input
+
+
+def run_agent(
+    skill: SkillFile,
+    persona: PersonaProtocol,
+    arguments: str,
+    chat_input: ChatInput,
+    llm_call: "LLMCaller",
+    tool_executor: "ToolExecutor",
+    terminal_tools: frozenset[str],
+    max_iterations: int = 3,
+) -> "AgentResult | None":
+    """skill を AgentRunner ループで実行する。
+
+    skill.meta.agent が True のスキル向け。
+    skill.meta.tools に定義されたツール一覧が AgentRunner に渡る。
+    agent: false のスキルに対しても呼び出せるが、通常は skill.meta.agent を確認してから使う。
+    """
+    from mltgnt.agent._runner import AgentRunner
+
+    prepared = run(skill, persona, arguments, chat_input)
+    system_prompt = prepared.messages[0]["content"] if prepared.messages else ""
+    runner = AgentRunner(
+        llm_call=llm_call,
+        tool_executor=tool_executor,
+        terminal_tools=terminal_tools,
+        tools=skill.meta.tools,
+        max_iterations=max_iterations,
+    )
+    return runner.run(system_prompt)

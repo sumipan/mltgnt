@@ -45,12 +45,14 @@ class AgentRunner:
         llm_call: LLMCaller,
         tool_executor: ToolExecutor,
         terminal_tools: frozenset[str],
+        tools: list[dict] | None = None,
         max_iterations: int = 3,
         logger: logging.Logger | None = None,
     ) -> None:
         self._llm_call = llm_call
         self._tool_executor = tool_executor
         self._terminal_tools = terminal_tools
+        self._tools = tools or []
         self._max_iterations = max_iterations
         self._logger = logger or _logger
 
