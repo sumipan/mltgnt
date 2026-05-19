@@ -935,3 +935,74 @@ def test_slack_none_post_does_not_raise(tmp_path: Path) -> None:
     })
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[])
     sch._post(job, "test message")  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# Issue #923: SlackClientProtocol **kwargs 除去 / SkillLoaderProtocol 削除
+# ---------------------------------------------------------------------------
+
+def test_slack_client_protocol_import() -> None:
+    """SlackClientProtocol が interfaces から import できる。"""
+    from mltgnt.interfaces import SlackClientProtocol
+    assert SlackClientProtocol is not None
+
+
+def test_skill_loader_protocol_deleted() -> None:
+    """SkillLoaderProtocol が削除されていること（ImportError）。"""
+    with pytest.raises(ImportError):
+        from mltgnt.interfaces import SkillLoaderProtocol  # noqa: F401
+
+
+def test_slack_protocol_no_kwargs() -> None:
+    """SlackClientProtocol.post_message に **kwargs がないこと（シグネチャ閉鎖）。"""
+    import inspect
+    from mltgnt.interfaces import SlackClientProtocol
+    sig = inspect.signature(SlackClientProtocol.post_message)
+    var_keyword_params = [
+        p for p in sig.parameters.values()
+        if p.kind == inspect.Parameter.VAR_KEYWORD
+    ]
+    assert var_keyword_params == [], "**kwargs should not exist in SlackClientProtocol.post_message"
+
+
+def test_slack_protocol_conforming_impl_basic() -> None:
+    """SlackClientProtocol を満たす実装が post_message(text, channel) のみで呼び出せる。"""
+    from mltgnt.interfaces import SlackClientProtocol
+
+    class ConcreteSlack:
+        def post_message(
+            self,
+            text: str,
+            channel: str,
+            thread_ts: str | None = None,
+            blocks: list[dict] | None = None,
+            reply_broadcast: bool = False,
+        ) -> bool:
+            return True
+
+    client: SlackClientProtocol = ConcreteSlack()  # type: ignore[assignment]
+    assert client.post_message("hello", "C123") is True
+
+
+def test_slack_protocol_conforming_impl_full_kwargs() -> None:
+    """SlackClientProtocol を満たす実装が全 optional 引数付きで呼び出せる。"""
+    from mltgnt.interfaces import SlackClientProtocol
+
+    class ConcreteSlack:
+        def post_message(
+            self,
+            text: str,
+            channel: str,
+            thread_ts: str | None = None,
+            blocks: list[dict] | None = None,
+            reply_broadcast: bool = False,
+        ) -> bool:
+            return True
+
+    client: SlackClientProtocol = ConcreteSlack()  # type: ignore[assignment]
+    assert client.post_message(
+        "hello", "C123",
+        thread_ts="ts001",
+        blocks=[{"type": "section"}],
+        reply_broadcast=True,
+    ) is True
