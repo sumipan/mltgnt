@@ -15,7 +15,7 @@ class Message(TypedDict):
 
 @dataclass
 class ChatInput:
-    """チャット／Slack 共通のパイプライン入力（ホストの run_pipeline と対）。"""
+    """チャット／Slack 共通のパイプライン入力。"""
 
     source: str
     session_key: str
