@@ -191,7 +191,7 @@ For Slack-bot hosts, `mltgnt.daemon.DaemonRunner` supervises the process: PID fi
 - **Not an LLM client.** All LLM calls go through `ghdag.llm.call`. mltgnt does not ship its own provider adapters and does not manage API keys.
 - **Not a Slack SDK.** `slack_sdk` (or any Slack client) is your responsibility. `SlackClientProtocol` is a one-method interface; mltgnt only needs `post_message`.
 - **Not a vector database.** Memory retrieval is TF-IDF + cosine via scikit-learn. The expected scale is "one human's chat history per persona", paired with periodic LLM-driven compaction. If you need ANN over millions of vectors, mltgnt is the wrong layer.
-- **Not an agent framework.** `mltgnt.agent.AgentRunner` exists as a thin JSON-tool loop for hosts that want one, but it is opt-in. Personas don't need agents; most replies are a single LLM call.
+- **Agent loop は skill 内の手段。** `mltgnt.agent.AgentRunner` はスキルが内部で使う JSON-tool loop。persona の基本動作（スキル呼び出し＋メモリ注入＋単発 LLM コール）は変わらないが、スキルがツール使用ループを必要とする場合は AgentRunner を利用できる。
 - **Not a multi-tenant service.** Configuration is per-process via dataclasses (`MemoryConfig`, `ChatConfig`, `SchedulerConfig`). No request-scoped config injection.
 
 ---
