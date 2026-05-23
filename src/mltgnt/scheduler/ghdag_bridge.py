@@ -9,6 +9,8 @@ import json
 import re
 from pathlib import Path
 
+from mltgnt.persona import load_persona
+
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
@@ -20,6 +22,8 @@ def enqueue_and_wait(
     idempotency_key: str,
     jobs_dir: Path,
     exec_done_dir: Path,
+    persona_name: str | None = None,
+    persona_dir: Path | None = None,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
 
@@ -31,6 +35,8 @@ def enqueue_and_wait(
         idempotency_key: exec.jsonl に記録する冪等性キー
         jobs_dir: order/result/exec.jsonl の置き場（jobs/）
         exec_done_dir: 完了マーカー（jobs/done/<uuid>）の置き場
+        persona_name: ペルソナ名。指定時は load_persona → format_prompt でプロンプトを変換する
+        persona_dir: ペルソナファイルのディレクトリ（None の場合は load_persona のデフォルト）
 
     Returns:
         (True, result_content) — 成功時
@@ -45,6 +51,10 @@ def enqueue_and_wait(
     )
     from ghdag.pipeline.audit import AuditContext
     from ghdag.workflow.schema import StepConfig
+
+    if persona_name is not None:
+        persona = load_persona(persona_name, persona_dir=persona_dir)
+        prompt = persona.format_prompt(prompt)
 
     state = PipelineState(
         state_dir=jobs_dir / ".pipeline-state",
