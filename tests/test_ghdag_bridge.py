@@ -4,6 +4,7 @@
   - _extract_result_filename(): JSON 形式 / テキスト形式 / フォールバック
   - _order_to_result_filename(): 標準テキスト exec 行からの導出
   - enqueue_and_wait() 統合: exec.jsonl に書き込む行が全て valid JSON
+  - enqueue_and_wait() 結果読み取り: ghdag.files.md_read 経由での result 取得
 """
 from __future__ import annotations
 
@@ -593,3 +594,98 @@ class TestEnqueueDag:
             assert "uuid" in record, f"uuid フィールドがない: {record}"
             assert "command" in record, f"command フィールドがない: {record}"
             assert "result_path" in record, f"result_path フィールドがない: {record}"
+
+
+# ---------------------------------------------------------------------------
+# enqueue_and_wait — result 読み取りテスト
+# （md_read をモックして result content の取得を検証）
+# ---------------------------------------------------------------------------
+
+_MD_READ = "ghdag.files.md_read"
+
+
+class TestEnqueueAndWaitResultRead:
+    """result ファイル読み取りが ghdag.files.md_read 経由で行われることを検証する。"""
+
+    def test_success_uses_md_read(self, tmp_path):
+        """wait_for_result が success のとき md_read 経由で content を返す。"""
+        jobs_dir = _make_jobs_dir(tmp_path)
+        mock_md = MagicMock()
+        mock_md.content = "result text"
+
+        with patch(_WAIT, return_value=("success", "")), \
+             patch(_MD_READ, return_value=mock_md) as mock_read:
+            ok, content = enqueue_and_wait(
+                prompt="test",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="test:result_read:2026-05-23T00:00:00+09:00",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+            )
+
+        assert ok is True
+        assert content == "result text"
+        mock_read.assert_called_once()
+
+    def test_result_not_found_returns_empty(self, tmp_path):
+        """result ファイルが存在しないとき content="" を返す。"""
+        jobs_dir = _make_jobs_dir(tmp_path)
+
+        with patch(_WAIT, return_value=("success", "")), \
+             patch(_MD_READ, side_effect=FileNotFoundError("not found")):
+            ok, content = enqueue_and_wait(
+                prompt="test",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="test:result_missing:2026-05-23T00:00:00+09:00",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+            )
+
+        assert ok is True
+        assert content == ""
+
+    def test_frontmatter_stripped_from_result(self, tmp_path):
+        """result ファイルに frontmatter があっても content のみが返る。"""
+        jobs_dir = _make_jobs_dir(tmp_path)
+        mock_md = MagicMock()
+        mock_md.content = "body only"
+
+        with patch(_WAIT, return_value=("success", "")), \
+             patch(_MD_READ, return_value=mock_md):
+            ok, content = enqueue_and_wait(
+                prompt="test",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="test:frontmatter:2026-05-23T00:00:00+09:00",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+            )
+
+        assert ok is True
+        assert content == "body only"
+
+    def test_md_read_called_with_jobs_dir_parent_as_repo_root(self, tmp_path):
+        """md_read の repo_root が jobs_dir.parent になっていること。"""
+        jobs_dir = _make_jobs_dir(tmp_path)
+        mock_md = MagicMock()
+        mock_md.content = ""
+
+        with patch(_WAIT, return_value=("success", "")), \
+             patch(_MD_READ, return_value=mock_md) as mock_read:
+            enqueue_and_wait(
+                prompt="test",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="test:repo_root:2026-05-23T00:00:00+09:00",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+            )
+
+        _args, kwargs = mock_read.call_args
+        assert kwargs.get("repo_root") == jobs_dir.parent
