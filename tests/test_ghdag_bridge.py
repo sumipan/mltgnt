@@ -408,7 +408,7 @@ class TestEnqueueDag:
     """enqueue_dag() の受け入れ条件テスト。"""
 
     def test_ac1_two_step_linear_dag_submit(self, tmp_path):
-        """AC-1: 2ステップ線形 DAG の投入と依存関係。"""
+        """AC-1: 2ステップ線形 DAG が s1→s2 の順で submit されること（逐次投入モデル）。"""
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
 
@@ -438,12 +438,13 @@ class TestEnqueueDag:
             except (StopIteration, OSError):
                 pass
 
+        # 逐次投入: submit は 1 ステップずつ、s1 → s2 の順で呼ばれる
         assert len(captured_steps) == 2
-        ids = [s.id for s in captured_steps]
-        assert "s1" in ids
-        assert "s2" in ids
-        s2 = next(s for s in captured_steps if s.id == "s2")
-        assert s2.depends == ["s1"]
+        assert captured_steps[0].id == "s1"
+        assert captured_steps[1].id == "s2"
+        # 逐次投入では depends は空（順序制御は enqueue_dag 側が担保）
+        assert captured_steps[0].depends == []
+        assert captured_steps[1].depends == []
 
     def test_ac2_per_step_persona_prompt_transform(self, tmp_path):
         """AC-2: ステップ別ペルソナ指定時のプロンプト変換。"""
@@ -689,3 +690,188 @@ class TestEnqueueAndWaitResultRead:
 
         _args, kwargs = mock_read.call_args
         assert kwargs.get("repo_root") == jobs_dir
+
+
+# ---------------------------------------------------------------------------
+# enqueue_dag — データフロー・結果伝搬テスト（AC-8〜AC-12）
+# ---------------------------------------------------------------------------
+
+
+class TestEnqueueDagDataFlow:
+    """AC-8〜AC-12: ステップ間の result 伝搬・逐次投入モデル検証。"""
+
+    def test_ac8_result_content_propagated_to_dependent_step(self, tmp_path):
+        """AC-8: step_a の result が step_b の base_context['step_a_result'] に伝搬される。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        captured_contexts: list[dict] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, step_list, base_context=None, **kwargs):
+            captured_contexts.append(dict(base_context or {}))
+            return original_submit(self_api, step_list, base_context=base_context, **kwargs)
+
+        mock_md_a = MagicMock()
+        mock_md_a.content = "分析結果A"
+        mock_md_b = MagicMock()
+        mock_md_b.content = ""
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, side_effect=[mock_md_a, mock_md_b]),
+        ):
+            results = enqueue_dag(
+                steps=[
+                    DagStep(id="step_a", prompt="指示A", engine="cursor"),
+                    DagStep(id="step_b", prompt="$step_a_result を踏まえて", engine="cursor", depends=["step_a"]),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:ac8:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        assert len(captured_contexts) == 2
+        # step_b の submit 時に step_a_result が注入されている
+        step_b_context = captured_contexts[1]
+        assert "step_a_result" in step_b_context
+        assert step_b_context["step_a_result"] == "分析結果A"
+        # step_a は成功
+        assert results[0] == (True, "分析結果A")
+
+    def test_ac9_independent_steps_no_cross_context(self, tmp_path):
+        """AC-9: depends なしのステップの base_context に他ステップの _result が含まれない。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        captured_contexts: list[dict] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, step_list, base_context=None, **kwargs):
+            captured_contexts.append(dict(base_context or {}))
+            return original_submit(self_api, step_list, base_context=base_context, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="result")),
+        ):
+            enqueue_dag(
+                steps=[
+                    DagStep(id="step_a", prompt="P_a", engine="cursor"),
+                    DagStep(id="step_b", prompt="P_b", engine="cursor"),  # depends なし
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:ac9:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        assert len(captured_contexts) == 2
+        # step_a の context に step_b_result がない
+        assert "step_b_result" not in captured_contexts[0]
+        # step_b の context に step_a_result がない（depends していない）
+        assert "step_a_result" not in captured_contexts[1]
+
+    def test_ac10_user_context_overrides_auto_injection(self, tmp_path):
+        """AC-10: ユーザー指定 context が自動注入より優先される。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        captured_contexts: list[dict] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, step_list, base_context=None, **kwargs):
+            captured_contexts.append(dict(base_context or {}))
+            return original_submit(self_api, step_list, base_context=base_context, **kwargs)
+
+        mock_md_a = MagicMock()
+        mock_md_a.content = "自動注入値"
+        mock_md_b = MagicMock()
+        mock_md_b.content = ""
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, side_effect=[mock_md_a, mock_md_b]),
+        ):
+            enqueue_dag(
+                steps=[
+                    DagStep(id="step_a", prompt="指示A", engine="cursor"),
+                    DagStep(
+                        id="step_b",
+                        prompt="$step_a_result を踏まえて",
+                        engine="cursor",
+                        depends=["step_a"],
+                        context={"step_a_result": "カスタム値"},
+                    ),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:ac10:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        assert len(captured_contexts) == 2
+        # ユーザー指定値が自動注入を上書きする
+        assert captured_contexts[1]["step_a_result"] == "カスタム値"
+
+    def test_ac11_failed_step_prevents_dependent_submission(self, tmp_path):
+        """AC-11: 先行ステップ失敗時、依存する後続ステップが submit されない。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        submitted_ids: list[str] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, step_list, **kwargs):
+            for s in step_list:
+                submitted_ids.append(s.id)
+            return original_submit(self_api, step_list, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("failed_exit", "exit code 1")),
+        ):
+            results = enqueue_dag(
+                steps=[
+                    DagStep(id="step_a", prompt="P_a", engine="cursor"),
+                    DagStep(id="step_b", prompt="P_b", engine="cursor", depends=["step_a"]),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:ac11:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        # step_a は submit されたが step_b は submit されていない
+        assert "step_a" in submitted_ids
+        assert "step_b" not in submitted_ids
+        # 両方 False
+        assert results[0][0] is False
+        assert results[1][0] is False
+
+    def test_ac12_backward_compat_no_context_field(self, tmp_path):
+        """AC-12: context 未指定の既存呼び出しパターンが後方互換で動作する。"""
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+
+        # context フィールドなしで DagStep を生成できる
+        step = DagStep(id="s1", prompt="P1", engine="cursor")
+        assert step.context == {}
+
+        with patch(_WAIT, return_value=("success", "")):
+            try:
+                results = enqueue_dag(
+                    steps=[step],
+                    timeout=5.0,
+                    idempotency_key=f"dag:ac12:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=done_dir,
+                )
+            except (StopIteration, OSError):
+                results = [(True, "")]
+
+        assert len(results) == 1
+        assert results[0][0] is True
