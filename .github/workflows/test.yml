@@ -26,3 +26,6 @@ jobs:
 
       - name: Run tests
         run: pytest
+
+      - name: Lint boundary policy
+        run: bash tools/lint-boundary.sh

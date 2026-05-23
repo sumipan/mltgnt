@@ -209,9 +209,12 @@ def enqueue_and_wait(
         return False, f"timeout ({timeout}s)"
 
     if status == "success":
-        result_path = jobs_dir / _extract_result_filename(skill_line)
+        from ghdag.files import md_read
+
+        result_filename = _extract_result_filename(skill_line)
         try:
-            content = result_path.read_text(encoding="utf-8").strip()
+            md_file = md_read(str(jobs_dir / result_filename), repo_root=jobs_dir.parent)
+            content = md_file.content.strip()
         except OSError:
             content = ""
         return True, content
