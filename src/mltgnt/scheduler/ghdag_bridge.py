@@ -120,9 +120,12 @@ def enqueue_dag(
             continue
 
         if status == "success":
-            result_path = jobs_dir / _extract_result_filename(exec_line)
+            from ghdag.files import md_read
+
+            result_filename = _extract_result_filename(exec_line)
             try:
-                content = result_path.read_text(encoding="utf-8").strip()
+                md_file = md_read(str(jobs_dir / result_filename), repo_root=jobs_dir.parent)
+                content = md_file.content.strip()
             except OSError:
                 content = ""
             results.append((True, content))
