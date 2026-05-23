@@ -167,7 +167,7 @@ def test_audit_writer_called_for_non_terminal_tool():
         terminal_tools=frozenset({"slack_reply"}),
         audit_writer=mock_writer,
     )
-    result = runner.run("prompt")
+    runner.run("prompt")
     assert len(calls) == 1
     assert calls[0] == ("search", {"q": "x"}, "found: y")
 
