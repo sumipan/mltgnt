@@ -15,8 +15,10 @@ from pathlib import Path
 from typing import ClassVar
 from zoneinfo import ZoneInfo
 
+import yaml
+
+from ghdag.files import md_read
 from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
-from mltgnt.persona.frontmatter import split_yaml_frontmatter
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
 
 _TZ = ZoneInfo("Asia/Tokyo")
@@ -178,16 +180,20 @@ def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
     if not path.exists():
         raise FileNotFoundError(f"ペルソナファイルが見つかりません: {path}")
 
-    raw = path.read_text(encoding="utf-8")
-    meta, body = split_yaml_frontmatter(raw)
-
-    # meta が None の場合は YAML パース失敗
-    if meta is None:
+    try:
+        md = md_read(path.name, repo_root=path.parent)
+    except yaml.YAMLError as e:
         raise PersonaValidationError(
             f"YAML フロントマターのパースに失敗しました: {path}"
+        ) from e
+
+    meta = md.frontmatter
+    if "persona" not in meta:
+        raise PersonaValidationError(
+            f"YAML フロントマターに必須キー 'persona' がありません: {path}"
         )
 
-    body = body.strip()
+    body = md.content.strip()
     fm = parse_fm(meta, file_stem=path.stem)
 
     # FM バリデーション（エラーをログに記録）

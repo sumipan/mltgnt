@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 logger = logging.getLogger(__name__)
 
 LIGHT_BLOCK_MAX_CHARS = 1500
@@ -156,10 +158,11 @@ def regenerate_light_block(
         ValueError: v2 形式でないファイル（## 重量 が存在しない）、または生成結果が v2.1 形式に適合しない場合
         RuntimeError: LLM 圧縮に失敗した場合
     """
-    from mltgnt.persona.frontmatter import split_yaml_frontmatter
+    from ghdag.files import md_read, md_write
 
-    raw = persona_path.read_text(encoding="utf-8")
-    frontmatter_text, body = split_yaml_frontmatter(raw)
+    md = md_read(persona_path.name, repo_root=persona_path.parent)
+    fm_dict = md.frontmatter
+    body = md.content
 
     blocks = _split_h2_blocks(body)
 
@@ -193,8 +196,8 @@ def regenerate_light_block(
         )
 
     # ファイルに書き戻す
-    new_content = _rebuild_file(raw, body, blocks, new_light)
-    persona_path.write_text(new_content, encoding="utf-8")
+    new_content = _rebuild_file(fm_dict, blocks, new_light)
+    md_write(persona_path.name, new_content, repo_root=persona_path.parent)
 
     return RegenerationResult(
         persona_name=persona_path.stem,
@@ -303,29 +306,21 @@ def _split_h2_blocks(body: str) -> dict[str, str]:
 
 
 def _rebuild_file(
-    original_raw: str,
-    original_body: str,
+    fm_dict: dict,
     blocks: dict[str, str],
     new_light: str,
 ) -> str:
     """軽量ブロックを new_light で置き換えてファイル内容全体を再構築する。
 
-    frontmatter は original_raw から取り出す（変更しない）。
+    frontmatter は fm_dict を yaml.dump で再シリアライズする。
     H2 ブロックの順序は 軽量→重量→参照 を維持する。
     """
-
-    # frontmatter 部分（--- ... --- の行を含む）を抽出
-    # split_yaml_frontmatter はメタ辞書とボディを返すが、
-    # 元の frontmatter テキストを保持するために original_raw から直接取得する
-    fm_end = _find_frontmatter_end(original_raw)
-    if fm_end == -1:
-        frontmatter_section = ""
-        separator = ""
+    if fm_dict:
+        fm_text = yaml.dump(fm_dict, sort_keys=False, allow_unicode=True)
+        frontmatter_section = f"---\n{fm_text}---\n"
     else:
-        frontmatter_section = original_raw[:fm_end]
-        separator = "\n"
+        frontmatter_section = ""
 
-    # 新しいボディを構築（ブロック順序を維持）
     section_order = list(blocks.keys())
     new_sections: list[str] = []
     for key in section_order:
@@ -339,22 +334,6 @@ def _rebuild_file(
             new_sections.append(f"## {key}\n")
 
     new_body = "\n".join(new_sections)
-    return f"{frontmatter_section}{separator}{new_body}"
-
-
-def _find_frontmatter_end(raw: str) -> int:
-    """raw テキストから frontmatter の終端位置（2番目の --- 行の後）を返す。
-
-    frontmatter がない場合は -1 を返す。
-    """
-    lines = raw.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
-        return -1
-
-    pos = len(lines[0])
-    for line in lines[1:]:
-        pos += len(line)
-        if line.strip() == "---":
-            return pos
-
-    return -1
+    if frontmatter_section:
+        return f"{frontmatter_section}\n{new_body}"
+    return new_body
