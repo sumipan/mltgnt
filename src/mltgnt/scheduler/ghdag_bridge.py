@@ -7,11 +7,129 @@ from __future__ import annotations
 
 import json
 import re
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from mltgnt.persona import load_persona
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+@dataclass
+class DagStep:
+    """enqueue_dag に渡す 1 ステップの定義。"""
+
+    id: str
+    prompt: str
+    engine: str
+    model: str | None = None
+    persona_name: str | None = None
+    depends: list[str] = field(default_factory=list)
+
+
+def enqueue_dag(
+    steps: list[DagStep],
+    timeout: float,
+    idempotency_key: str,
+    jobs_dir: Path,
+    exec_done_dir: Path,
+    persona_dir: Path | None = None,
+) -> list[tuple[bool, str]]:
+    """複数ステップを依存関係付きで投入し、全完了を待つ。
+
+    Returns:
+        入力ステップと同順の (bool, str) リスト。
+        (True, content)       — ステップ成功
+        (True, "")            — 冪等性チェックで既投入
+        (False, "timeout Ns") — タイムアウト
+        (False, "status: msg") — ステップ失敗
+    """
+    if not steps:
+        raise ValueError("steps must not be empty")
+
+    from ghdag.pipeline import (
+        InlineOrderBuilder,
+        LLMPipelineAPI,
+        PipelineState,
+        wait_for_result,
+    )
+    from ghdag.pipeline.audit import AuditContext
+    from ghdag.workflow.schema import StepConfig
+
+    step_configs: list[StepConfig] = []
+    for step in steps:
+        prompt = step.prompt
+        if step.persona_name is not None:
+            persona = load_persona(step.persona_name, persona_dir=persona_dir)
+            prompt = persona.format_prompt(prompt)
+        step_configs.append(
+            StepConfig(
+                id=step.id,
+                template=prompt,
+                engine=step.engine,
+                model=step.model or "",
+                depends=step.depends,
+            )
+        )
+
+    state = PipelineState(
+        state_dir=jobs_dir / ".pipeline-state",
+        exec_md_path=jobs_dir / "exec.jsonl",
+    )
+    api = LLMPipelineAPI(
+        pipeline_state=state,
+        order_builder=InlineOrderBuilder(),
+        queue_dir=str(jobs_dir),
+    )
+
+    if not api.check_idempotency(idempotency_key):
+        return [(True, "")] * len(steps)
+
+    exec_lines = api.submit(
+        step_configs,
+        base_context={"workflow_name": "scheduler"},
+        idempotency_key=idempotency_key,
+        audit_context=AuditContext(source="mltgnt-scheduler"),
+    )
+
+    data_lines = [ln for ln in exec_lines if not ln.startswith("#") and ln.strip()]
+    step_exec: list[tuple[str, str]] = []  # (uuid, exec_line) per step in order
+    for exec_line in data_lines:
+        m = _UUID_RE.search(exec_line)
+        step_exec.append((m.group(0) if m else "", exec_line))
+
+    results: list[tuple[bool, str]] = []
+    start = time.monotonic()
+    timed_out = False
+
+    for step_uuid, exec_line in step_exec:
+        if timed_out:
+            results.append((False, f"timeout ({timeout}s)"))
+            continue
+        remaining = timeout - (time.monotonic() - start)
+        if remaining <= 0:
+            timed_out = True
+            results.append((False, f"timeout ({timeout}s)"))
+            continue
+        try:
+            status, first_line = wait_for_result(exec_done_dir, step_uuid, timeout=remaining)
+        except TimeoutError:
+            timed_out = True
+            results.append((False, f"timeout ({timeout}s)"))
+            continue
+
+        if status == "success":
+            result_path = jobs_dir / _extract_result_filename(exec_line)
+            try:
+                content = result_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                content = ""
+            results.append((True, content))
+        else:
+            results.append((False, f"{status}: {first_line}"))
+
+    return results
 
 
 def enqueue_and_wait(
