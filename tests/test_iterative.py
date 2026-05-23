@@ -100,7 +100,8 @@ def test_ac2_deprecated_alias(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
-    llm_call = lambda _: "SUFFICIENT"
+    def llm_call(_: str) -> str:
+        return "SUFFICIENT"
 
     result_iterative = read_memory_iterative(
         config,
