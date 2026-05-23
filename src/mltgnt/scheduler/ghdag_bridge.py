@@ -43,6 +43,7 @@ def enqueue_and_wait(
         PipelineState,
         wait_for_result,
     )
+    from ghdag.pipeline.audit import AuditContext
     from ghdag.workflow.schema import StepConfig
 
     state = PipelineState(
@@ -62,6 +63,7 @@ def enqueue_and_wait(
         [StepConfig(id="skill", template=prompt, engine=engine, model=model or "")],
         base_context={"workflow_name": "scheduler"},
         idempotency_key=idempotency_key,
+        audit_context=AuditContext(source="mltgnt-scheduler"),
     )
 
     skill_line = next(
