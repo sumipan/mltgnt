@@ -38,6 +38,27 @@ __all__ = [
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 _DEFAULT_TIMEZONE = "Asia/Tokyo"
 
+# fanout 指示: ペルソナが動的子タスクを生成できるよう result 末尾に YAML を出力させる。
+# action_args.enable_fanout=true の skill ジョブでプロンプトに付加する。
+_FANOUT_PROMPT_SUFFIX = """
+---
+If you determine that the task should be split into independent parallel subtasks,
+append the following YAML block at the very end of your response (after a `---` separator).
+Each child must have a unique `id` and a `command` that can be executed independently.
+
+```
+---
+ghdag_fanout:
+  children:
+    - id: "subtask-1"
+      command: "agent -p --force < order-subtask-1.md"
+    - id: "subtask-2"
+      command: "agent -p --force < order-subtask-2.md"
+```
+
+If no parallel subtasks are needed, omit the `ghdag_fanout` block entirely.
+"""
+
 
 def _parse_hhmm(s: str) -> tuple[int, int]:
     parts = s.strip().split(":")
@@ -606,6 +627,9 @@ class PersonaScheduler:
             # runner.run() が system メッセージにプロンプトを格納する
             prompt = next(m["content"] for m in chat_input.messages if m["role"] == "system")
             resolved_model = chat_input.model  # skill.meta.model が優先される
+
+            if aa.get("enable_fanout", False):
+                prompt = prompt + _FANOUT_PROMPT_SUFFIX
 
             from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait
 
