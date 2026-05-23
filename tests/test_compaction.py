@@ -4,10 +4,6 @@
 """
 from __future__ import annotations
 
-import datetime
-
-import pytest
-
 from mltgnt.memory._compaction import (
     CompactionResult,
     PromoteCandidate,
@@ -78,7 +74,6 @@ class TestExtractPromoteCandidates:
             lambda *a, **kw: called.append(True) or [],
             raising=False,
         )
-        entries = [_entry("x", f"c{i}", i) for i in range(5)]
         # 直接 import した関数を呼ぶのでモンキーパッチは不要
         # md_promote が存在しないことだけ確認する
         import mltgnt.memory._compaction as mod
