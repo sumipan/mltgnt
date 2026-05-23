@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -47,12 +48,14 @@ class AgentRunner:
         terminal_tools: frozenset[str],
         max_iterations: int = 3,
         logger: logging.Logger | None = None,
+        audit_writer: Callable[[str, dict, str], None] | None = None,
     ) -> None:
         self._llm_call = llm_call
         self._tool_executor = tool_executor
         self._terminal_tools = terminal_tools
         self._max_iterations = max_iterations
         self._logger = logger or _logger
+        self._audit_writer = audit_writer
 
     def run(self, prompt: str) -> AgentResult | None:
         tool_trace: list[dict] = []
@@ -87,6 +90,12 @@ class AgentRunner:
                 return None
 
             tool_trace.append({"tool": tool_name, "args": args, "result": tool_result})
+
+            if self._audit_writer is not None:
+                try:
+                    self._audit_writer(tool_name, args, tool_result)
+                except Exception as exc:
+                    self._logger.warning("audit_writer raised: %s", exc)
 
         self._logger.warning("max_iterations (%d) reached without terminal tool", self._max_iterations)
         return None
