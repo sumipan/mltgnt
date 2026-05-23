@@ -1,7 +1,6 @@
 """tests/test_hooks_adapter.py — hooks_adapter 受け入れ条件テスト (#1036)"""
 import json
 
-import pytest
 
 from mltgnt.agent import AgentRunner, create_audit_writer
 
