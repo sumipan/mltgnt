@@ -44,11 +44,12 @@ def _search_skills(
         return []
     from mltgnt.skill.loader import discover
     from mltgnt.memory._scoring import score_entries
+    from ghdag.files import md_read
 
     skills = discover(skill_paths)
     if not skills:
         return []
-    bodies = [Path(meta.path).read_text(encoding="utf-8") for meta in skills.values()]
+    bodies = [md_read(meta.path.name, repo_root=meta.path.parent).content for meta in skills.values()]
     if not bodies:
         return []
     scored = score_entries(query, bodies)

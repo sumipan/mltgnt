@@ -44,7 +44,7 @@ def resolve_with_alias(name: str, persona_dir: Path) -> Path:
         return direct
 
     # エイリアス検索（全ファイルの frontmatter を読む）
-    from mltgnt.persona.frontmatter import split_yaml_frontmatter
+    from ghdag.files import md_read
 
     for p in sorted(persona_dir.iterdir()):
         if not p.is_file() or p.suffix.lower() != ".md":
@@ -52,18 +52,15 @@ def resolve_with_alias(name: str, persona_dir: Path) -> Path:
         if p.stem in EXCLUDE_STEMS:
             continue
         try:
-            raw = p.read_text(encoding="utf-8")
-            meta, _ = split_yaml_frontmatter(raw)
-            if meta is None:
-                continue
-            persona_ns = meta.get("persona") or {}
+            md = md_read(p.name, repo_root=p.parent)
+            persona_ns = md.frontmatter.get("persona") or {}
             if not isinstance(persona_ns, dict):
                 continue
             aliases_raw = persona_ns.get("aliases") or []
             aliases = list(aliases_raw) if isinstance(aliases_raw, list) else []
             if name in aliases:
                 return p
-        except (OSError, UnicodeDecodeError):
+        except OSError:
             continue
 
     raise FileNotFoundError(

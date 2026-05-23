@@ -8,36 +8,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import yaml
+from ghdag.files import md_read
 
 from mltgnt.skill.models import SkillFile, SkillMeta
-
-_FRONTMATTER_DELIM = "---"
-
-
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """テキストを frontmatter dict と body に分割する。"""
-    lines = text.splitlines(keepends=True)
-    if not lines or lines[0].strip() != _FRONTMATTER_DELIM:
-        raise ValueError("frontmatter が存在しません（--- で始まる行が必要）")
-
-    end_idx = None
-    for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == _FRONTMATTER_DELIM:
-            end_idx = i
-            break
-
-    if end_idx is None:
-        raise ValueError("frontmatter の終端 --- が見つかりません")
-
-    fm_text = "".join(lines[1:end_idx])
-    body = "".join(lines[end_idx + 1:])
-    try:
-        fm = yaml.safe_load(fm_text) or {}
-    except yaml.YAMLError as e:
-        raise ValueError(f"frontmatter の YAML パースに失敗しました: {e}") from e
-
-    return fm, body
 
 
 def _build_meta(fm: dict, path: Path) -> SkillMeta:
@@ -88,9 +61,8 @@ def discover(
             if any(p.startswith("_") for p in skill_file.relative_to(base).parts[:-1]):
                 continue
             try:
-                text = skill_file.read_text(encoding="utf-8")
-                fm, _ = _parse_frontmatter(text)
-                meta = _build_meta(fm, skill_file)
+                md = md_read(str(skill_file.relative_to(base)), repo_root=base)
+                meta = _build_meta(md.frontmatter, skill_file)
             except Exception as e:
                 print(
                     f"[skill.loader] パースエラー（スキップ）: {skill_file}: {e}",
@@ -123,8 +95,6 @@ def load(meta: SkillMeta) -> SkillFile:
     if not path.exists():
         raise FileNotFoundError(f"SKILL.md が見つかりません: {path}")
 
-    text = path.read_text(encoding="utf-8")
-    fm, body = _parse_frontmatter(text)
-    # Re-validate meta (may differ from cached discover result)
-    loaded_meta = _build_meta(fm, path)
-    return SkillFile(meta=loaded_meta, body=body)
+    md = md_read(path.name, repo_root=path.parent)
+    loaded_meta = _build_meta(md.frontmatter, path)
+    return SkillFile(meta=loaded_meta, body=md.content)

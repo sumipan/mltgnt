@@ -758,3 +758,52 @@ class TestLoadWithConfig:
         persona = _make_persona("## 基本情報\n\n内容")
         assert persona is not None
         assert persona.weight_map == DEFAULT_WEIGHT_MAP
+
+
+# ---------------------------------------------------------------------------
+# Issue-1034: md_read 移行後の load() エラーハンドリング
+# ---------------------------------------------------------------------------
+
+
+class TestLoadMdRead:
+    """AC: md_read 移行後の load() エラーハンドリング。"""
+
+    def test_yaml_error_raises_persona_validation_error(self, tmp_path):
+        """AC: YAML パースエラーのある .md ファイルで PersonaValidationError が送出される。"""
+        from mltgnt.persona import PersonaValidationError
+
+        p = tmp_path / "broken.md"
+        p.write_text("---\ndescription: [unclosed\n---\n\n本文\n", encoding="utf-8")
+        with pytest.raises(PersonaValidationError):
+            load(p)
+
+    def test_no_persona_namespace_raises_persona_validation_error(self, tmp_path):
+        """AC: persona namespace なしの frontmatter で PersonaValidationError が送出される。"""
+        from mltgnt.persona import PersonaValidationError
+
+        p = tmp_path / "nons.md"
+        p.write_text(
+            "---\nops:\n  engine: claude\n---\n\n## 基本情報\n\n内容。\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(PersonaValidationError):
+            load(p)
+
+    def test_no_frontmatter_raises_persona_validation_error(self, tmp_path):
+        """AC: frontmatter なしの .md ファイルで PersonaValidationError が送出される。"""
+        from mltgnt.persona import PersonaValidationError
+
+        p = tmp_path / "nofront.md"
+        p.write_text("## 基本情報\n\n内容のみ。\n", encoding="utf-8")
+        with pytest.raises(PersonaValidationError):
+            load(p)
+
+
+class TestFrontmatterDeadCode:
+    """AC: dead code 削除の確認。"""
+
+    def test_read_persona_markdown_deleted(self):
+        """AC: read_persona_markdown は削除されている。"""
+        import mltgnt.persona.frontmatter as m
+
+        assert not hasattr(m, "read_persona_markdown")
