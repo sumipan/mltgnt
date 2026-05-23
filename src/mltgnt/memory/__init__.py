@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -22,7 +21,6 @@ if TYPE_CHECKING:
 from mltgnt.memory._format import (
     MemoryEntry,
     assemble_entries_text,
-    migrate_markdown_to_jsonl,
     parse_jsonl,
     serialize_entry,
 )
@@ -117,39 +115,8 @@ def persona_memory_lock(
 
 
 def _ensure_jsonl(config: "MemoryConfig", persona_stem: str) -> Path:
-    """JSONL ファイルパスを返す。
-
-    - .jsonl 不在かつ .md 在: .md を JSONL にマイグレーション
-    - .jsonl 在だが有効 JSON 行が 0 行で先頭が Markdown らしい: Markdown として in-place マイグレーション
-    """
-    jsonl_path = memory_file_path(config, persona_stem)
-    if not jsonl_path.exists():
-        md_path = jsonl_path.with_suffix(".md")
-        if md_path.exists():
-            migrate_markdown_to_jsonl(md_path, jsonl_path)
-        return jsonl_path
-    # ファイルが存在するが有効 JSON 行がなければ Markdown の可能性がある
-    try:
-        content = jsonl_path.read_text(encoding="utf-8")
-    except OSError:
-        return jsonl_path
-    if content.strip() and not any(
-        line.strip().startswith("{") for line in content.splitlines() if line.strip()
-    ):
-        # 有効 JSON が 1 行も無い → Markdown として in-place マイグレーション
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".md", delete=False, encoding="utf-8"
-            ) as tf:
-                tf.write(content)
-                tf_name = tf.name
-            migrate_markdown_to_jsonl(Path(tf_name), jsonl_path)
-        finally:
-            try:
-                os.unlink(tf_name)
-            except OSError:
-                pass
-    return jsonl_path
+    """JSONL ファイルパスを返す。"""
+    return memory_file_path(config, persona_stem)
 
 
 def _scan_tail_for_dedupe_key(path: Path, dedupe_key: str) -> bool:

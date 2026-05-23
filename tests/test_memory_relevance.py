@@ -36,9 +36,10 @@ def make_config(tmp_path: Path) -> MemoryConfig:
 
 
 def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
-    # Markdown 形式で .md に書き込む。_ensure_jsonl が読み込み時に自動マイグレーションを実行する。
-    md_path = memory_file_path(config, persona).with_suffix(".md")
-    md_path.write_text(content, encoding="utf-8")
+    # JSONL 形式で .jsonl に書き込む。
+    jsonl_path = memory_file_path(config, persona)
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    jsonl_path.write_text(content, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -46,29 +47,11 @@ def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-MEMORY_THREE_ENTRIES = """\
-## 2026-01-01T10:00:00+09:00 — user
-
-[file]
-料理のレシピについて話した。おいしいパスタの作り方を学んだ。
-
----
-
-## 2026-01-02T10:00:00+09:00 — user
-
-[file]
-Python のデコレータについて調べた。コードの再利用性が高まる。
-
----
-
-## 2026-01-03T10:00:00+09:00 — user
-
-[file]
-今日の天気は晴れだった。気温が上がってきた。
-
----
-
-"""
+MEMORY_THREE_ENTRIES = (
+    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"料理のレシピについて話した。おいしいパスタの作り方を学んだ。","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-02T10:00:00+09:00","role":"user","content":"Python のデコレータについて調べた。コードの再利用性が高まる。","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-03T10:00:00+09:00","role":"user","content":"今日の天気は晴れだった。気温が上がってきた。","source_tag":"file"}\n'
+)
 
 
 def test_tc1_score_ordering(tmp_path: Path) -> None:
@@ -97,28 +80,11 @@ def test_tc1_score_ordering(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-MEMORY_WITH_PREFERENCES = """\
-## ユーザーの好み・傾向
-
-プログラミングが得意。Python を主に使う。
-
----
-
-## 2026-01-01T10:00:00+09:00 — user
-
-[file]
-料理のレシピについて話した。
-
----
-
-## 2026-01-02T10:00:00+09:00 — user
-
-[file]
-天気の話をした。
-
----
-
-"""
+MEMORY_WITH_PREFERENCES = (
+    '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"プログラミングが得意。Python を主に使う。","source_tag":"preferences"}\n'
+    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"料理のレシピについて話した。","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-02T10:00:00+09:00","role":"user","content":"天気の話をした。","source_tag":"file"}\n'
+)
 
 
 def test_tc2_preferences_always_included(tmp_path: Path) -> None:
@@ -144,12 +110,16 @@ def test_tc2_preferences_always_included(tmp_path: Path) -> None:
 
 
 def _make_10_entries_memory() -> str:
-    entries = []
+    import json
+    lines = []
     for i in range(10):
-        entries.append(
-            f"## 2026-01-{i+1:02d}T10:00:00+09:00 — user\n\n[file]\nentry {i}\n\n---\n\n"
-        )
-    return "".join(entries)
+        lines.append(json.dumps({
+            "timestamp": f"2026-01-{i+1:02d}T10:00:00+09:00",
+            "role": "user",
+            "content": f"entry {i}",
+            "source_tag": "file",
+        }, ensure_ascii=False))
+    return "\n".join(lines) + "\n"
 
 
 def test_tc3_max_entries_limit(tmp_path: Path) -> None:
@@ -177,11 +147,18 @@ def test_tc3_max_entries_limit(tmp_path: Path) -> None:
 
 def test_tc4_max_bytes_limit(tmp_path: Path) -> None:
     """TC4: 上位エントリの合計が max_bytes を超える場合、バイト数以内に収まる。"""
+    import json
     config = make_config(tmp_path)
-    big_entries = "".join(
-        f"## 2026-01-{i+1:02d}T10:00:00+09:00 — user\n\n[file]\n{'x' * 500}\n\n---\n\n"
+    lines = [
+        json.dumps({
+            "timestamp": f"2026-01-{i+1:02d}T10:00:00+09:00",
+            "role": "user",
+            "content": "x" * 500,
+            "source_tag": "file",
+        }, ensure_ascii=False)
         for i in range(10)
-    )
+    ]
+    big_entries = "\n".join(lines) + "\n"
     _write_memory(config, "persona", big_entries)
 
     max_bytes = 800
@@ -278,14 +255,9 @@ def test_tc7_empty_memory(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-MEMORY_PREFERENCES_ONLY = """\
-## ユーザーの好み・傾向
-
-プログラミングが好き。
-
----
-
-"""
+MEMORY_PREFERENCES_ONLY = (
+    '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"プログラミングが好き。","source_tag":"preferences"}\n'
+)
 
 
 def test_tc8_preferences_only(tmp_path: Path) -> None:
@@ -335,15 +307,9 @@ def test_tc9_empty_query_fallback(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-MEMORY_SINGLE_ENTRY = """\
-## 2026-01-01T10:00:00+09:00 — user
-
-[file]
-Python のデコレータについて調べた。
-
----
-
-"""
+MEMORY_SINGLE_ENTRY = (
+    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"Python のデコレータについて調べた。","source_tag":"file"}\n'
+)
 
 
 def test_tc10_single_entry(tmp_path: Path) -> None:
