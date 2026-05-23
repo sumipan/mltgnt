@@ -24,6 +24,7 @@ AC8: JSONL ファイルが空 → 空文字列（TC11 で検証済み）
 """
 from __future__ import annotations
 
+import json
 import logging
 import warnings
 from pathlib import Path
@@ -49,36 +50,15 @@ def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
     memory_file_path(config, persona).write_text(content, encoding="utf-8")
 
 
-MEMORY_SUSHI = """## ユーザーの好み・傾向
+MEMORY_SUSHI = (
+    json.dumps({"timestamp": "2026-01-01T00:00:00+09:00", "role": "user", "content": "食べ物の好みを持つユーザー。", "source_tag": "preferences"}, ensure_ascii=False) + "\n"
+    + json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "寿司が好き。特にサーモンとマグロが好きだと言っていた。", "source_tag": "file"}, ensure_ascii=False) + "\n"
+)
 
-食べ物の好みを持つユーザー。
-
----
-
-## 2026-01-01T10:00:00+09:00 — user
-
-[file]
-寿司が好き。特にサーモンとマグロが好きだと言っていた。
-
----
-
-"""
-
-MEMORY_PROJECT = """## 2026-01-01T10:00:00+09:00 — user
-
-[file]
-フロントエンドのバグ修正を完了した。
-
----
-
-## 2026-01-02T10:00:00+09:00 — user
-
-[file]
-バックエンドの API 設計を始めた。先週のプロジェクト進捗について議論した。
-
----
-
-"""
+MEMORY_PROJECT = (
+    json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "フロントエンドのバグ修正を完了した。", "source_tag": "file"}, ensure_ascii=False) + "\n"
+    + json.dumps({"timestamp": "2026-01-02T10:00:00+09:00", "role": "user", "content": "バックエンドの API 設計を始めた。先週のプロジェクト進捗について議論した。", "source_tag": "file"}, ensure_ascii=False) + "\n"
+)
 
 
 def _make_llm_responses(*responses: str):
@@ -120,7 +100,8 @@ def test_ac2_deprecated_alias(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
-    llm_call = lambda _: "SUFFICIENT"
+    def llm_call(_: str) -> str:
+        return "SUFFICIENT"
 
     result_iterative = read_memory_iterative(
         config,
@@ -213,7 +194,7 @@ def test_tc2_memory_requery(tmp_path: Path) -> None:
 def test_tc3_skill_search(tmp_path: Path) -> None:
     """TC3: INSUFFICIENT→SKILL→skill 本文がマージされる。"""
     config = make_config(tmp_path)
-    _write_memory(config, "persona", "## 2026-01-01T10:00:00+09:00 — user\n\n[file]\n一般情報のみ。\n\n---\n\n")
+    _write_memory(config, "persona", json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "一般情報のみ。", "source_tag": "file"}, ensure_ascii=False) + "\n")
 
     # skill ディレクトリと SKILL.md を作成
     skill_dir = tmp_path / "skills"
@@ -258,28 +239,9 @@ def test_tc4_multi_loop(tmp_path: Path) -> None:
     _write_memory(
         config,
         "persona",
-        """## 2026-01-01T10:00:00+09:00 — user
-
-[file]
-エントリA: 最初の情報。
-
----
-
-## 2026-01-02T10:00:00+09:00 — user
-
-[file]
-エントリB: 追加の情報。
-
----
-
-## 2026-01-03T10:00:00+09:00 — user
-
-[file]
-エントリC: さらなる情報。
-
----
-
-""",
+        json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "エントリA: 最初の情報。", "source_tag": "file"}, ensure_ascii=False) + "\n"
+        + json.dumps({"timestamp": "2026-01-02T10:00:00+09:00", "role": "user", "content": "エントリB: 追加の情報。", "source_tag": "file"}, ensure_ascii=False) + "\n"
+        + json.dumps({"timestamp": "2026-01-03T10:00:00+09:00", "role": "user", "content": "エントリC: さらなる情報。", "source_tag": "file"}, ensure_ascii=False) + "\n",
     )
 
     llm_call = _make_llm_responses(
@@ -333,7 +295,7 @@ def test_tc6_max_bytes_limit(tmp_path: Path) -> None:
     """TC6: 返却テキストが max_bytes 以内。"""
     config = make_config(tmp_path)
     big_memory = "".join(
-        f"## 2026-01-{i+1:02d}T10:00:00+09:00 — user\n\n[file]\n{'あ' * 200}\n\n---\n\n"
+        json.dumps({"timestamp": f"2026-01-{i+1:02d}T10:00:00+09:00", "role": "user", "content": "あ" * 200, "source_tag": "file"}, ensure_ascii=False) + "\n"
         for i in range(10)
     )
     _write_memory(config, "persona", big_memory)

@@ -29,7 +29,6 @@ from mltgnt.memory._format import (
     parse_jsonl,
     serialize_entry,
     assemble_entries_text,
-    migrate_markdown_to_jsonl,
 )
 
 
@@ -425,10 +424,21 @@ def test_memory_config_new_fields_custom() -> None:
 # ---------------------------------------------------------------------------
 
 def test_old_api_symbols_not_in_all() -> None:
-    """MemorySections, parse_memory, format_memory, assemble_memory が __all__ に含まれない。"""
+    """MemorySections, parse_memory, format_memory, assemble_memory, migrate_markdown_to_jsonl が __all__ に含まれない。"""
     import mltgnt.memory._format as fmt
-    for symbol in ("MemorySections", "parse_memory", "format_memory", "assemble_memory"):
+    for symbol in ("MemorySections", "parse_memory", "format_memory", "assemble_memory", "migrate_markdown_to_jsonl"):
         assert symbol not in fmt.__all__, f"{symbol} should not be in __all__"
+
+
+def test_ensure_jsonl_no_md_fallback(tmp_path: Path) -> None:
+    """.jsonl なし・.md ありの場合、自動マイグレーションせず .jsonl パスをそのまま返す（空文字列）。"""
+    config = make_config(tmp_path)
+    md_path = memory_file_path(config, "persona").with_suffix(".md")
+    md_path.write_text("## ユーザーの好み・傾向\n\n好みの内容\n", encoding="utf-8")
+
+    result = read_memory_tail_text(config, "persona", max_bytes=4096, max_entries=20)
+    assert result == ""
+    assert not memory_file_path(config, "persona").exists()
 
 
 def test_old_api_functions_not_accessible() -> None:
@@ -471,101 +481,6 @@ def test_assemble_entries_text_separator() -> None:
     result = assemble_entries_text(entries)
     assert "---" in result
 
-
-# ---------------------------------------------------------------------------
-# migrate_markdown_to_jsonl
-# ---------------------------------------------------------------------------
-
-MARKDOWN_MEMORY = """\
-## ユーザーの好み・傾向
-
-好みの内容
-
----
-
-## 長期要約（1ヶ月超）
-
-長期内容
-
----
-
-## 中期要約（1〜3週間前）
-
-中期内容
-
----
-
-## 直近ログ（7日以内）
-
-## 2026-04-17T10:00:00+09:00 — user
-
-[file]
-直近エントリ
-
----
-
-"""
-
-
-def test_migrate_markdown_to_jsonl(tmp_path: Path) -> None:
-    """migrate_markdown_to_jsonl が全エントリの timestamp・role・content・source_tag を保持。"""
-    md_path = tmp_path / "persona.md"
-    jsonl_path = tmp_path / "persona.jsonl"
-    md_path.write_text(MARKDOWN_MEMORY, encoding="utf-8")
-
-    count = migrate_markdown_to_jsonl(md_path, jsonl_path)
-    assert count > 0
-    assert jsonl_path.exists()
-
-    entries = parse_jsonl(jsonl_path)
-    source_tags = {e.source_tag for e in entries}
-    assert "preferences" in source_tags
-    assert "compaction" in source_tags
-
-    prefs = [e for e in entries if e.source_tag == "preferences"]
-    assert any("好みの内容" in e.content for e in prefs)
-
-
-def test_migrate_markdown_to_jsonl_dedupe_key(tmp_path: Path) -> None:
-    """`<!-- memory-dedupe:{key} -->` が dedupe_key フィールドに変換される。"""
-    md_path = tmp_path / "persona.md"
-    jsonl_path = tmp_path / "persona.jsonl"
-    md_content = """\
-## ユーザーの好み・傾向
-
-好みの内容
-
----
-
-## 直近ログ（7日以内）
-
-## 2026-04-17T10:00:00+09:00 — user
-
-[file]
-dedupe付きエントリ <!-- memory-dedupe:key-abc-123 -->
-
----
-
-"""
-    md_path.write_text(md_content, encoding="utf-8")
-
-    migrate_markdown_to_jsonl(md_path, jsonl_path)
-    entries = parse_jsonl(jsonl_path)
-
-    dedupe_entries = [e for e in entries if e.dedupe_key is not None]
-    assert dedupe_entries, "dedupe_key を持つエントリが存在しない"
-    assert dedupe_entries[0].dedupe_key == "key-abc-123"
-
-
-def test_auto_migration_on_read(tmp_path: Path) -> None:
-    """.jsonl なし・.md ありの場合、読み込み時に自動マイグレーションが実行される。"""
-    config = make_config(tmp_path)
-    md_path = memory_file_path(config, "persona").with_suffix(".md")
-    md_path.write_text(MARKDOWN_MEMORY, encoding="utf-8")
-
-    result = read_memory_tail_text(config, "persona", max_bytes=4096, max_entries=20)
-    assert result  # 自動マイグレーションで内容が返る
-    assert memory_file_path(config, "persona").exists()  # .jsonl が作成された
 
 
 # ---------------------------------------------------------------------------
@@ -794,22 +709,6 @@ def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
     caveat_entries = [e for e in result_entries if e.layer == "caveat"]
     assert not caveat_entries
 
-
-def test_compact_from_markdown_auto_migration(tmp_path: Path) -> None:
-    """Markdown ファイルから自動マイグレーション後に compact が動作する。"""
-    config = MemoryConfig(
-        chat_dir=tmp_path,
-        chat_memory_dir=tmp_path / "memory",
-        compact_threshold_bytes=10,
-        compact_target_bytes=25_600,
-    )
-    (tmp_path / "memory").mkdir(exist_ok=True)
-    md_path = memory_file_path(config, "persona").with_suffix(".md")
-    md_path.write_text(MARKDOWN_MEMORY, encoding="utf-8")
-
-    result = compact(config, "persona", llm_call=_identity_llm)
-    assert result.before_bytes > 0
-    assert memory_file_path(config, "persona").exists()
 
 
 # ---------------------------------------------------------------------------
