@@ -1,6 +1,6 @@
-"""tests/test_ghdag_version.py — ghdag v0.21.0 互換性テスト。
+"""tests/test_ghdag_version.py — ghdag v0.21.2 互換性テスト。
 
-Issue #1039: mltgnt が ghdag v0.21.0 の API に追従していることを検証する。
+Issue #1052: mltgnt が ghdag v0.21.2 の API に追従していることを確認する。
 """
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ import inspect
 
 
 def test_ghdag_version_is_at_least_0_21_0():
-    """ghdag のインストール済みバージョンが 0.21.0 以上であることを確認する。"""
+    """ghdag のインストール済みバージョンが 0.21.2 以上であることを確認する。"""
     version_str = importlib.metadata.version("ghdag")
     parts = [int(x) for x in version_str.split(".")[:3]]
-    assert parts >= [0, 21, 0], (
-        f"ghdag {version_str} は v0.21.0 より古い。pyproject.toml の依存ピンを更新してください。"
+    assert parts >= [0, 21, 2], (
+        f"ghdag {version_str} は v0.21.2 より古い。pyproject.toml の依存ピンを更新してください。"
     )
 
 
