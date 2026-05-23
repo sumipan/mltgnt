@@ -3,12 +3,15 @@
 ペルソナのコンテキストを含めてプロンプトを LLM に実行し、応答を返す。
 
 公開 API:
-    run_persona_prompt(persona_name, prompt, persona_dir, timeout, memory) -> str
+    run_persona_prompt(persona_name, prompt, persona_dir, timeout, memory, audit_writer) -> str
 """
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,7 @@ def run_persona_prompt(
     persona_dir: Path | None = None,
     timeout: int = 120,
     memory: str | None = None,
+    audit_writer: Callable[[dict], None] | None = None,
 ) -> str:
     """ペルソナのコンテキストを含めてプロンプトを LLM に実行し、応答を返す。
 
@@ -29,6 +33,8 @@ def run_persona_prompt(
         timeout: LLM 呼び出しのタイムアウト秒数。デフォルト 120 秒。
         memory: 呼び出し側が読み込んだメモリ文字列（任意）。
                 非 None の場合はプロンプト先頭に付加する。
+        audit_writer: LLM 呼び出し結果を受け取るコールバック（任意）。
+                      None の場合は記録しない。
 
     Returns:
         LLM の stdout 出力（strip 済み）。
@@ -58,14 +64,32 @@ def run_persona_prompt(
 
     logger.debug("[runner] persona=%r engine=%r", persona_name, engine)
 
+    ok = False
+    response: str
     try:
         result = ghdag_llm_call(formatted, engine=engine, model=model, timeout=timeout)
+        ok = result.ok
     except Exception as e:
         logger.warning("[runner] persona=%r exception: %s", persona_name, e)
-        return f"（実行失敗: {e}）"
+        response = f"（実行失敗: {e}）"
+    else:
+        if not result.ok:
+            stderr = (result.stderr or "").strip()
+            logger.warning("[runner] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
+            response = f"（エラー: {stderr[:200]}）" if stderr else "（エラー）"
+        else:
+            response = (result.stdout or "").strip()
 
-    if not result.ok:
-        stderr = (result.stderr or "").strip()
-        logger.warning("[runner] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
-        return f"（エラー: {stderr[:200]}）" if stderr else "（エラー）"
-    return (result.stdout or "").strip()
+    if audit_writer is not None:
+        try:
+            audit_writer({
+                "source": f"mltgnt-persona-{persona_name}",
+                "engine": engine,
+                "model": model,
+                "ok": ok,
+                "timestamp": datetime.now(tz=ZoneInfo("Asia/Tokyo")).isoformat(),
+            })
+        except Exception:
+            logger.warning("[runner] audit_writer failed for persona=%r", persona_name)
+
+    return response
