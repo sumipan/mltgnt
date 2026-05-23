@@ -23,6 +23,8 @@ LlmCall = Callable[[str], str]
 __all__ = [
     "LlmCallError",
     "CompactionResult",
+    "PromoteCandidate",
+    "extract_promote_candidates",
     "needs_compaction",
     "compact",
 ]
@@ -33,11 +35,57 @@ class LlmCallError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class PromoteCandidate:
+    topic: str
+    summary: str
+    source_entries: int
+    recurrence: int
+
+
+@dataclass(frozen=True)
 class CompactionResult:
     before_bytes: int
     after_bytes: int
     summary: str
     warnings: list[str] = field(default_factory=list)
+    promote_candidates: list[PromoteCandidate] = field(default_factory=list)
+
+
+def extract_promote_candidates(
+    entries: list[MemoryEntry],
+    *,
+    min_recurrence: int = 3,
+) -> list[PromoteCandidate]:
+    """コンパクション対象のエントリから promote 候補を抽出する。
+
+    同一 source_tag が min_recurrence 回以上出現するエントリを候補とする。
+    promote の実行判定は呼び出し側に委譲する。
+
+    Args:
+        entries: コンパクション対象の MemoryEntry リスト
+        min_recurrence: 同一トピックの最小出現回数
+
+    Returns:
+        PromoteCandidate のリスト。
+    """
+    from collections import defaultdict
+
+    groups: dict[str, list[MemoryEntry]] = defaultdict(list)
+    for entry in entries:
+        groups[entry.source_tag].append(entry)
+
+    candidates: list[PromoteCandidate] = []
+    for source_tag, group in groups.items():
+        if len(group) < min_recurrence:
+            continue
+        summary = "\n\n".join(e.content for e in group if e.content.strip())
+        candidates.append(PromoteCandidate(
+            topic=source_tag,
+            summary=summary,
+            source_entries=len(group),
+            recurrence=len(group),
+        ))
+    return candidates
 
 
 def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
@@ -196,6 +244,11 @@ def compact(
                     source_tag="compaction",
                 ))
 
+        promote_candidates = extract_promote_candidates(
+            long_entries + mid_entries,
+            min_recurrence=3,
+        )
+
         new_entries = protected_entries + prefs_entries + summary_entries + recent_entries
 
         # 書き戻し
@@ -228,4 +281,5 @@ def compact(
             after_bytes=after_bytes,
             summary=f"compacted {persona_stem}: {before_bytes}B -> {after_bytes}B",
             warnings=warnings,
+            promote_candidates=promote_candidates,
         )
