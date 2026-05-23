@@ -134,7 +134,6 @@ class TestEnqueueAndWaitJsonlIntegration:
              wait_return=None) -> Path:
         jobs_dir = _make_jobs_dir(tmp_path)
         if wait_return is None:
-            step_uuid = str(uuid.uuid4())
             done_dir = jobs_dir / "done"
             done_dir.mkdir()
             # Create done file so wait_for_result returns immediately
@@ -163,7 +162,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_all_lines_valid_json(self, tmp_path):
         """enqueue_and_wait が exec.jsonl に書き込む全行が valid JSON。"""
         exec_jsonl = self._run(tmp_path)
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         assert len(lines) >= 1, "exec.jsonl に行が書き込まれていない"
         for line in lines:
             try:
@@ -180,7 +179,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_record_has_required_fields(self, tmp_path):
         """書き込まれた JSON レコードに uuid / command / result_path が存在する。"""
         exec_jsonl = self._run(tmp_path)
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "uuid" in record
         assert "command" in record
@@ -196,7 +195,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_cursor_engine_command_format(self, tmp_path):
         """cursor エンジン時の command が agent -p --force < order_path 形式。"""
         exec_jsonl = self._run(tmp_path, engine="cursor")
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "agent" in record["command"]
         assert "-p" in record["command"]
@@ -205,7 +204,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_claude_engine_command_format(self, tmp_path):
         """claude エンジン時の command が claude -p ... 形式。"""
         exec_jsonl = self._run(tmp_path, engine="claude", model="claude-sonnet-4-6")
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "claude" in record["command"]
         assert "--dangerously-skip-permissions" in record["command"]
@@ -231,7 +230,7 @@ class TestEnqueueAndWaitJsonlIntegration:
                 pass
 
         exec_jsonl = jobs_dir / "exec.jsonl"
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         # Second call should be a no-op due to idempotency
         assert len(lines) == 1, (
             f"idempotency が機能していない: {len(lines)} 行書き込まれた"
@@ -304,7 +303,6 @@ class TestEnqueueAndWaitPersonaIntegration:
         submitted_templates = []
 
         from ghdag.pipeline import LLMPipelineAPI
-        from ghdag.workflow.schema import StepConfig
 
         original_submit = LLMPipelineAPI.submit
 
