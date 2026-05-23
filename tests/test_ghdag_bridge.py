@@ -134,7 +134,6 @@ class TestEnqueueAndWaitJsonlIntegration:
              wait_return=None) -> Path:
         jobs_dir = _make_jobs_dir(tmp_path)
         if wait_return is None:
-            step_uuid = str(uuid.uuid4())
             done_dir = jobs_dir / "done"
             done_dir.mkdir()
             # Create done file so wait_for_result returns immediately
@@ -163,7 +162,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_all_lines_valid_json(self, tmp_path):
         """enqueue_and_wait が exec.jsonl に書き込む全行が valid JSON。"""
         exec_jsonl = self._run(tmp_path)
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         assert len(lines) >= 1, "exec.jsonl に行が書き込まれていない"
         for line in lines:
             try:
@@ -180,7 +179,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_record_has_required_fields(self, tmp_path):
         """書き込まれた JSON レコードに uuid / command / result_path が存在する。"""
         exec_jsonl = self._run(tmp_path)
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "uuid" in record
         assert "command" in record
@@ -196,7 +195,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_cursor_engine_command_format(self, tmp_path):
         """cursor エンジン時の command が agent -p --force < order_path 形式。"""
         exec_jsonl = self._run(tmp_path, engine="cursor")
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "agent" in record["command"]
         assert "-p" in record["command"]
@@ -205,7 +204,7 @@ class TestEnqueueAndWaitJsonlIntegration:
     def test_exec_jsonl_claude_engine_command_format(self, tmp_path):
         """claude エンジン時の command が claude -p ... 形式。"""
         exec_jsonl = self._run(tmp_path, engine="claude", model="claude-sonnet-4-6")
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "claude" in record["command"]
         assert "--dangerously-skip-permissions" in record["command"]
@@ -231,7 +230,7 @@ class TestEnqueueAndWaitJsonlIntegration:
                 pass
 
         exec_jsonl = jobs_dir / "exec.jsonl"
-        lines = [l for l in exec_jsonl.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         # Second call should be a no-op due to idempotency
         assert len(lines) == 1, (
             f"idempotency が機能していない: {len(lines)} 行書き込まれた"
@@ -275,3 +274,114 @@ class TestEnqueueAndWaitJsonlIntegration:
         for line in exec_jsonl.read_text().splitlines():
             if line.strip():
                 json.loads(line)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# enqueue_and_wait — ペルソナ統合テスト（AC-1, AC-3）
+# ---------------------------------------------------------------------------
+
+_LOAD_PERSONA = "mltgnt.scheduler.ghdag_bridge.load_persona"
+
+
+class TestEnqueueAndWaitPersonaIntegration:
+    """enqueue_and_wait の persona_name / persona_dir パラメータ検証。"""
+
+    def _run_with_persona(
+        self,
+        tmp_path: Path,
+        *,
+        persona_name: str | None = None,
+        persona_dir=None,
+        mock_formatted: str = "フォーマット済みプロンプト",
+    ):
+        """submit に渡された StepConfig.template を返す。"""
+        jobs_dir = _make_jobs_dir(tmp_path)
+
+        mock_persona = MagicMock()
+        mock_persona.format_prompt.return_value = mock_formatted
+
+        submitted_templates = []
+
+        from ghdag.pipeline import LLMPipelineAPI
+
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            for step in steps:
+                submitted_templates.append(step.template)
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch(_LOAD_PERSONA, return_value=mock_persona) as mock_load,
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+        ):
+            try:
+                enqueue_and_wait(
+                    prompt="元のプロンプト",
+                    engine="cursor",
+                    model="auto",
+                    timeout=5.0,
+                    idempotency_key=f"scheduler:persona_test:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=jobs_dir / "done",
+                    persona_name=persona_name,
+                    persona_dir=persona_dir,
+                )
+            except (StopIteration, OSError):
+                pass
+
+        return submitted_templates, mock_load, mock_persona
+
+    def test_ac1_persona_name_triggers_format_prompt(self, tmp_path):
+        """AC-1: persona_name 指定時、submit の template が format_prompt の返り値になる。"""
+        formatted = "ペルソナでフォーマット済み: 元のプロンプト"
+        templates, mock_load, mock_persona = self._run_with_persona(
+            tmp_path,
+            persona_name="タチコマ",
+            persona_dir=Path("agents"),
+            mock_formatted=formatted,
+        )
+
+        mock_load.assert_called_once_with("タチコマ", persona_dir=Path("agents"))
+        mock_persona.format_prompt.assert_called_once_with("元のプロンプト")
+        assert len(templates) >= 1
+        assert templates[0] == formatted
+
+    def test_ac1_persona_dir_none_uses_default(self, tmp_path):
+        """AC-1: persona_dir=None のとき load_persona に None が渡される。"""
+        _, mock_load, _ = self._run_with_persona(
+            tmp_path,
+            persona_name="タチコマ",
+            persona_dir=None,
+        )
+        mock_load.assert_called_once_with("タチコマ", persona_dir=None)
+
+    def test_ac2_no_persona_name_skips_load_persona(self, tmp_path):
+        """AC-2: persona_name 未指定時、load_persona は呼ばれずプロンプトがそのまま使われる。"""
+        templates, mock_load, mock_persona = self._run_with_persona(
+            tmp_path,
+            persona_name=None,
+        )
+        mock_load.assert_not_called()
+        mock_persona.format_prompt.assert_not_called()
+        assert len(templates) >= 1
+        assert templates[0] == "元のプロンプト"
+
+    def test_ac3_nonexistent_persona_raises_file_not_found(self, tmp_path):
+        """AC-3: 存在しないペルソナ名で FileNotFoundError が送出される。"""
+        jobs_dir = _make_jobs_dir(tmp_path)
+
+        with patch(_LOAD_PERSONA, side_effect=FileNotFoundError("存在しない")):
+            with pytest.raises(FileNotFoundError):
+                enqueue_and_wait(
+                    prompt="元のプロンプト",
+                    engine="cursor",
+                    model="auto",
+                    timeout=5.0,
+                    idempotency_key=f"scheduler:persona_test:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=jobs_dir / "done",
+                    persona_name="存在しない",
+                    persona_dir=Path("agents"),
+                )
