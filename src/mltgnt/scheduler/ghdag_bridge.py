@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ghdag.files import md_read
 from mltgnt.persona import load_persona
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -26,6 +27,32 @@ class DagStep:
     model: str | None = None
     persona_name: str | None = None
     depends: list[str] = field(default_factory=list)
+    context: dict[str, str] = field(default_factory=dict)
+
+
+def _topological_sort(steps: list[DagStep]) -> list[DagStep]:
+    """Kahn's algorithm によるトポロジカルソート。循環依存時は ValueError を送出する。"""
+    step_map = {s.id: s for s in steps}
+    in_degree = {s.id: 0 for s in steps}
+    adjacency: dict[str, list[str]] = {s.id: [] for s in steps}
+    for step in steps:
+        for dep_id in step.depends:
+            if dep_id not in step_map:
+                raise ValueError(f"Unknown dependency: {dep_id!r}")
+            adjacency[dep_id].append(step.id)
+            in_degree[step.id] += 1
+    queue = [sid for sid, deg in in_degree.items() if deg == 0]
+    result: list[DagStep] = []
+    while queue:
+        node = queue.pop(0)
+        result.append(step_map[node])
+        for neighbor in adjacency[node]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+    if len(result) < len(steps):
+        raise ValueError("circular dependency detected")
+    return result
 
 
 def enqueue_dag(
@@ -36,7 +63,9 @@ def enqueue_dag(
     exec_done_dir: Path,
     persona_dir: Path | None = None,
 ) -> list[tuple[bool, str]]:
-    """複数ステップを依存関係付きで投入し、全完了を待つ。
+    """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
+
+    各ステップを 1 つずつ投入・完了待ちし、前段の result を後段の base_context に注入する。
 
     Returns:
         入力ステップと同順の (bool, str) リスト。
@@ -44,6 +73,7 @@ def enqueue_dag(
         (True, "")            — 冪等性チェックで既投入
         (False, "timeout Ns") — タイムアウト
         (False, "status: msg") — ステップ失敗
+        (False, "dependency failed") — 先行ステップ失敗
     """
     if not steps:
         raise ValueError("steps must not be empty")
@@ -56,22 +86,6 @@ def enqueue_dag(
     )
     from ghdag.pipeline.audit import AuditContext
     from ghdag.workflow.schema import StepConfig
-
-    step_configs: list[StepConfig] = []
-    for step in steps:
-        prompt = step.prompt
-        if step.persona_name is not None:
-            persona = load_persona(step.persona_name, persona_dir=persona_dir)
-            prompt = persona.format_prompt(prompt)
-        step_configs.append(
-            StepConfig(
-                id=step.id,
-                template=prompt,
-                engine=step.engine,
-                model=step.model or "",
-                depends=step.depends,
-            )
-        )
 
     state = PipelineState(
         state_dir=jobs_dir / ".pipeline-state",
@@ -86,53 +100,83 @@ def enqueue_dag(
     if not api.check_idempotency(idempotency_key):
         return [(True, "")] * len(steps)
 
-    exec_lines = api.submit(
-        step_configs,
-        base_context={"workflow_name": "scheduler"},
-        idempotency_key=idempotency_key,
-        audit_context=AuditContext(source="mltgnt-scheduler"),
-    )
-
-    data_lines = [ln for ln in exec_lines if not ln.startswith("#") and ln.strip()]
-    step_exec: list[tuple[str, str]] = []  # (uuid, exec_line) per step in order
-    for exec_line in data_lines:
-        m = _UUID_RE.search(exec_line)
-        step_exec.append((m.group(0) if m else "", exec_line))
-
-    results: list[tuple[bool, str]] = []
+    sorted_steps = _topological_sort(steps)
+    completed_results: dict[str, str] = {}
+    failed_steps: set[str] = set()
+    results_by_id: dict[str, tuple[bool, str]] = {}
     start = time.monotonic()
-    timed_out = False
+    first_submit = True
 
-    for step_uuid, exec_line in step_exec:
-        if timed_out:
-            results.append((False, f"timeout ({timeout}s)"))
+    for step in sorted_steps:
+        if any(dep_id in failed_steps for dep_id in step.depends):
+            results_by_id[step.id] = (False, "dependency failed")
+            failed_steps.add(step.id)
             continue
+
+        # コンテキストのマージ（優先度: 固定値 < 自動注入 < ユーザー指定）
+        base_context: dict[str, str] = {"workflow_name": "scheduler"}
+        for dep_id in step.depends:
+            if dep_id in completed_results:
+                base_context[f"{dep_id}_result"] = completed_results[dep_id]
+        base_context.update(step.context)
+
+        prompt = step.prompt
+        if step.persona_name is not None:
+            persona = load_persona(step.persona_name, persona_dir=persona_dir)
+            prompt = persona.format_prompt(prompt)
+
+        step_config = StepConfig(
+            id=step.id,
+            template=prompt,
+            engine=step.engine,
+            model=step.model or "",
+            depends=[],  # 順序制御は enqueue_dag 側が担保するため不要
+        )
+
+        exec_lines = api.submit(
+            [step_config],
+            base_context=base_context,
+            idempotency_key=idempotency_key if first_submit else None,
+            audit_context=AuditContext(source="mltgnt-scheduler"),
+        )
+        first_submit = False
+
+        data_lines = [ln for ln in exec_lines if not ln.startswith("#") and ln.strip()]
+        if not data_lines:
+            results_by_id[step.id] = (False, "no exec line returned")
+            failed_steps.add(step.id)
+            continue
+
+        exec_line = data_lines[0]
+        m = _UUID_RE.search(exec_line)
+        step_uuid = m.group(0) if m else ""
+
         remaining = timeout - (time.monotonic() - start)
         if remaining <= 0:
-            timed_out = True
-            results.append((False, f"timeout ({timeout}s)"))
+            results_by_id[step.id] = (False, f"timeout ({timeout}s)")
+            failed_steps.add(step.id)
             continue
+
         try:
             status, first_line = wait_for_result(exec_done_dir, step_uuid, timeout=remaining)
         except TimeoutError:
-            timed_out = True
-            results.append((False, f"timeout ({timeout}s)"))
+            results_by_id[step.id] = (False, f"timeout ({timeout}s)")
+            failed_steps.add(step.id)
             continue
 
         if status == "success":
-            from ghdag.files import md_read
-
             result_filename = _extract_result_filename(exec_line)
             try:
-                md_file = md_read(str(jobs_dir / result_filename), repo_root=jobs_dir.parent)
-                content = md_file.content.strip()
+                content = md_read(result_filename, repo_root=jobs_dir).content.strip()
             except OSError:
                 content = ""
-            results.append((True, content))
+            completed_results[step.id] = content
+            results_by_id[step.id] = (True, content)
         else:
-            results.append((False, f"{status}: {first_line}"))
+            results_by_id[step.id] = (False, f"{status}: {first_line}")
+            failed_steps.add(step.id)
 
-    return results
+    return [results_by_id[step.id] for step in steps]
 
 
 def enqueue_and_wait(
@@ -212,12 +256,9 @@ def enqueue_and_wait(
         return False, f"timeout ({timeout}s)"
 
     if status == "success":
-        from ghdag.files import md_read
-
         result_filename = _extract_result_filename(skill_line)
         try:
-            md_file = md_read(str(jobs_dir / result_filename), repo_root=jobs_dir.parent)
-            content = md_file.content.strip()
+            content = md_read(result_filename, repo_root=jobs_dir).content.strip()
         except OSError:
             content = ""
         return True, content

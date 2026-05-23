@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import yaml
@@ -70,18 +69,3 @@ def delegate_ack_from_meta(meta: dict[str, Any]) -> str | None:
     return s or None
 
 
-def read_persona_markdown(path: Path) -> tuple[str, dict[str, Any], str | None]:
-    """人物像ファイルを読み、(プロンプト用本文, meta, 読み込みエラー文言) を返す。
-
-    ファイル欠落時は ("", {}, "…") 。存在するが読めない場合も error を返す。
-    """
-    try:
-        if not path.exists():
-            return "", {}, "ファイルが存在しません"
-        raw = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        return "", {}, str(e)
-    meta, body = split_yaml_frontmatter(raw)
-    if meta is None:
-        meta = {}
-    return body.strip(), meta, None
