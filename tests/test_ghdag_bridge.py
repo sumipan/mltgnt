@@ -602,7 +602,7 @@ class TestEnqueueDag:
 # （md_read をモックして result content の取得を検証）
 # ---------------------------------------------------------------------------
 
-_MD_READ = "ghdag.files.md_read"
+_MD_READ = "mltgnt.scheduler.ghdag_bridge.md_read"
 
 
 class TestEnqueueAndWaitResultRead:
@@ -670,8 +670,8 @@ class TestEnqueueAndWaitResultRead:
         assert ok is True
         assert content == "body only"
 
-    def test_md_read_called_with_jobs_dir_parent_as_repo_root(self, tmp_path):
-        """md_read の repo_root が jobs_dir.parent になっていること。"""
+    def test_md_read_called_with_jobs_dir_as_repo_root(self, tmp_path):
+        """md_read の repo_root が jobs_dir になっていること。"""
         jobs_dir = _make_jobs_dir(tmp_path)
         mock_md = MagicMock()
         mock_md.content = ""
@@ -689,7 +689,7 @@ class TestEnqueueAndWaitResultRead:
             )
 
         _args, kwargs = mock_read.call_args
-        assert kwargs.get("repo_root") == jobs_dir.parent
+        assert kwargs.get("repo_root") == jobs_dir
 
 
 # ---------------------------------------------------------------------------

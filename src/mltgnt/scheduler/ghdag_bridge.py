@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ghdag.files import md_read
 from mltgnt.persona import load_persona
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -164,12 +165,9 @@ def enqueue_dag(
             continue
 
         if status == "success":
-            from ghdag.files import md_read
-
             result_filename = _extract_result_filename(exec_line)
             try:
-                md_file = md_read(str(jobs_dir / result_filename), repo_root=jobs_dir.parent)
-                content = md_file.content.strip()
+                content = md_read(result_filename, repo_root=jobs_dir).content.strip()
             except OSError:
                 content = ""
             completed_results[step.id] = content
@@ -258,12 +256,9 @@ def enqueue_and_wait(
         return False, f"timeout ({timeout}s)"
 
     if status == "success":
-        from ghdag.files import md_read
-
         result_filename = _extract_result_filename(skill_line)
         try:
-            md_file = md_read(str(jobs_dir / result_filename), repo_root=jobs_dir.parent)
-            content = md_file.content.strip()
+            content = md_read(result_filename, repo_root=jobs_dir).content.strip()
         except OSError:
             content = ""
         return True, content

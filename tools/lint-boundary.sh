@@ -31,6 +31,16 @@ if [ -n "$order_result_writes" ]; then
   violations=$((violations + 1))
 fi
 
+# Rule 4: src/mltgnt/ 全体で .md ファイルへの read_text を検出
+md_reads=$(grep -rn 'read_text' src/mltgnt/ --include="*.py" \
+  | grep -v '__pycache__\|#.*lint-ok\|\.jsonl\|jsonl' \
+  | grep '\.md\b' || true)
+if [ -n "$md_reads" ]; then
+  echo "ERROR: src/mltgnt/ 内に .md ファイルへの read_text が検出されました:"
+  echo "$md_reads"
+  violations=$((violations + 1))
+fi
+
 if [ $violations -eq 0 ]; then
   echo "OK: 越境ポリシー lint passed"
 fi
