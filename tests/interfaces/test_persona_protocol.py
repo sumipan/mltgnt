@@ -1,4 +1,4 @@
-"""Tests for PersonaProtocol (issue-908)."""
+"""Tests for PersonaProtocol (issue-908, issue-1106)."""
 from __future__ import annotations
 
 import textwrap
@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from mltgnt.interfaces.persona import PersonaProtocol
+from mltgnt.interfaces.types import PersonaFMBase
 from mltgnt.persona.loader import Persona
 from mltgnt.persona.schema import PersonaFM
 
@@ -83,3 +84,26 @@ def test_name_only_fails_isinstance() -> None:
             return instruction
 
     assert not isinstance(NameOnly(), PersonaProtocol)
+
+
+def test_persona_fm_satisfies_persona_fm_base(persona: Persona) -> None:
+    """PersonaFM インスタンスは PersonaFMBase Protocol を満たす（structural subtyping）。"""
+    assert isinstance(persona.fm, PersonaFMBase)
+
+
+def test_persona_protocol_no_domain_import() -> None:
+    """interfaces/persona.py が mltgnt.persona.schema を import していないこと。"""
+    import importlib
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "mltgnt.interfaces.persona_src",
+        Path(__file__).parents[2] / "src" / "mltgnt" / "interfaces" / "persona.py",
+    )
+    assert spec is not None
+    source_file = spec.origin
+    assert source_file is not None
+    content = Path(source_file).read_text()
+    assert "mltgnt.persona" not in content, (
+        "interfaces/persona.py must not import from mltgnt.persona (layer violation)"
+    )
