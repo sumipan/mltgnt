@@ -89,7 +89,7 @@ def enqueue_dag(
 
     state = PipelineState(
         state_dir=jobs_dir / ".pipeline-state",
-        exec_md_path=jobs_dir / "exec.jsonl",
+        exec_jsonl_path=jobs_dir / "exec.jsonl",
     )
     api = LLMPipelineAPI(
         pipeline_state=state,
@@ -223,7 +223,7 @@ def enqueue_and_wait(
 
     state = PipelineState(
         state_dir=jobs_dir / ".pipeline-state",
-        exec_md_path=jobs_dir / "exec.jsonl",
+        exec_jsonl_path=jobs_dir / "exec.jsonl",
     )
     api = LLMPipelineAPI(
         pipeline_state=state,
