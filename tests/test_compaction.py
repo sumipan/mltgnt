@@ -4,8 +4,6 @@
 """
 from __future__ import annotations
 
-import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -17,7 +15,6 @@ from mltgnt.memory._compaction import (
     _effective_bytes_for_ratio,
     _extract_and_merge_preferences,
     _promote_with_compression,
-    _promote_mid_to_long,
     _redistribute_entries,
     _strip_observe_entries,
     _rollup_recent_chunk,
@@ -475,10 +472,9 @@ class TestCompactPerSectionCap:
             self._make_entry("2026-05-01T00:00:00+09:00", "x" * 200, "recent"),
         ]
         _write_jsonl(path, entries)
-        original_mtime = path.stat().st_mtime
         original_text = path.read_text(encoding="utf-8")
 
-        result = compact(cfg, "test_persona", llm_call=lambda p: "compressed", dry_run=True)
+        compact(cfg, "test_persona", llm_call=lambda p: "compressed", dry_run=True)
         # ファイルの内容は変わらない
         assert path.read_text(encoding="utf-8") == original_text
 
@@ -501,7 +497,7 @@ class TestCompactPerSectionCap:
             # cap に収まるサイズで返す（元の90%以上を保持）
             return "L" * 6000
 
-        result = compact(cfg, "test_persona", llm_call=_llm)
+        compact(cfg, "test_persona", llm_call=_llm)
         assert len(llm_calls) > 0, "LLM should be called when long_term exceeds cap"
 
     def test_mid_term_over_cap_promotes_to_long_term(self, tmp_path: Path):
