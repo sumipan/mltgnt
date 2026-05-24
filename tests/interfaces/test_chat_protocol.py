@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from mltgnt.interfaces.chat import ChatPipelineProtocol
 from mltgnt.interfaces.types import ChatInputBase, ChatOutputBase
@@ -33,7 +32,6 @@ def test_chat_pipeline_missing_run_fails() -> None:
 
 def test_chat_pipeline_protocol_uses_base_types() -> None:
     """ChatPipelineProtocol.run のシグネチャが ChatInputBase / ChatOutputBase を参照する。"""
-    import inspect
 
     hints = ChatPipelineProtocol.run.__annotations__
     assert hints.get("inp") is ChatInputBase or "ChatInputBase" in str(hints.get("inp"))
