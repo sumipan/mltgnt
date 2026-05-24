@@ -55,6 +55,8 @@ class TestBridgesAll:
         from mltgnt import bridges
         assert hasattr(bridges, "__all__"), "bridges/__init__.py must define __all__"
         assert set(bridges.__all__) == {
+            "MltgntHooks",
+            "create_audit_writer",
             "files_adapter",
             "ghdag_bridge",
             "hooks_adapter",
