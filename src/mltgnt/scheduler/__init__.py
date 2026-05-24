@@ -60,6 +60,49 @@ If no parallel subtasks are needed, omit the `ghdag_fanout` block entirely.
 """
 
 
+def _parse_fanout_steps(
+    content: str,
+    engine: str,
+    model: "str | None",
+) -> "list | None":
+    """ghdag_fanout YAML ブロックをパースして DagStep リストに変換する。
+
+    content: enqueue_and_wait の応答文字列
+    Returns DagStep のリスト。ブロックが存在しない場合は None。
+    """
+    lines = content.splitlines()
+    last_sep_idx = None
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip() == "---":
+            last_sep_idx = i
+            break
+    if last_sep_idx is None:
+        return None
+
+    yaml_text = "\n".join(lines[last_sep_idx + 1:])
+    try:
+        data = yaml.safe_load(yaml_text)
+    except Exception:
+        return None
+
+    if not isinstance(data, dict) or "ghdag_fanout" not in data:
+        return None
+
+    fanout_data = data.get("ghdag_fanout") or {}
+    children = fanout_data.get("children") or []
+    if not children:
+        return None
+
+    from mltgnt.bridges.ghdag_bridge import DagStep
+    steps = []
+    for c in children:
+        try:
+            steps.append(DagStep(id=c["id"], prompt=c["command"], engine=engine, model=model))
+        except (KeyError, TypeError):
+            return None
+    return steps or None
+
+
 def _parse_hhmm(s: str) -> tuple[int, int]:
     parts = s.strip().split(":")
     if len(parts) != 2:
@@ -643,6 +686,24 @@ class PersonaScheduler:
                 jobs_dir=self.repo_root / "jobs",
                 exec_done_dir=self.repo_root / "jobs" / "done",
             )
+
+            if ok and aa.get("enable_fanout", False):
+                fanout_steps = _parse_fanout_steps(msg, engine=engine, model=resolved_model)
+                if fanout_steps:
+                    from mltgnt.bridges.ghdag_bridge import enqueue_dag
+                    dag_results = enqueue_dag(
+                        fanout_steps,
+                        timeout=job.timeout_seconds or 120,
+                        idempotency_key=f"scheduler:{job.id}:{fired_at.isoformat()}:fanout",
+                        jobs_dir=self.repo_root / "jobs",
+                        exec_done_dir=self.repo_root / "jobs" / "done",
+                    )
+                    for i, (step_ok, step_msg) in enumerate(dag_results):
+                        if not step_ok:
+                            step_id = fanout_steps[i].id
+                            return False, f"fanout: step '{step_id}' failed: {step_msg}"
+                    return True, f"fanout: {len(dag_results)} steps completed"
+
             return ok, msg
 
         if job.action in self._actions:
