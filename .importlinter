@@ -1,0 +1,34 @@
+[importlinter]
+root_packages =
+    mltgnt
+include_external_packages = True
+
+[importlinter:contract:layered]
+name = mltgnt layered architecture
+type = layers
+layers =
+    daemon
+    scheduler | agent | routing
+    persona | chat | skill | memory
+    bridges
+    interfaces
+containers =
+    mltgnt
+ignore_imports =
+    mltgnt.* -> mltgnt.config
+    mltgnt.persona.* -> mltgnt.chat.*
+    mltgnt.chat.* -> mltgnt.persona.*
+    mltgnt.skill.* -> mltgnt.chat.*
+    mltgnt.memory.* -> mltgnt.skill.*
+
+[importlinter:contract:l3_no_ghdag]
+name = L3 domain must not import ghdag directly
+type = forbidden
+source_modules =
+    mltgnt.persona
+    mltgnt.chat
+    mltgnt.skill
+    mltgnt.memory
+forbidden_modules =
+    ghdag
+allow_indirect_imports = True
