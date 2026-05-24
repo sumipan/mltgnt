@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mltgnt.scheduler.ghdag_bridge import (
+from mltgnt.bridges.ghdag_bridge import (
     DagStep,
     _extract_result_filename,
     _order_to_result_filename,
@@ -283,7 +283,7 @@ class TestEnqueueAndWaitJsonlIntegration:
 # enqueue_and_wait — ペルソナ統合テスト（AC-1, AC-3）
 # ---------------------------------------------------------------------------
 
-_LOAD_PERSONA = "mltgnt.scheduler.ghdag_bridge.load_persona"
+_LOAD_PERSONA = "mltgnt.bridges.ghdag_bridge.load_persona"
 
 
 class TestEnqueueAndWaitPersonaIntegration:
@@ -602,7 +602,7 @@ class TestEnqueueDag:
 # （md_read をモックして result content の取得を検証）
 # ---------------------------------------------------------------------------
 
-_MD_READ = "mltgnt.scheduler.ghdag_bridge.md_read"
+_MD_READ = "mltgnt.bridges.ghdag_bridge.md_read"
 
 
 class TestEnqueueAndWaitResultRead:
