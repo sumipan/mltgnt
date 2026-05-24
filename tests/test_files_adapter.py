@@ -8,9 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
-from mltgnt.bridges import files_adapter
 from mltgnt.bridges.files_adapter import md_read, md_write
 
 
