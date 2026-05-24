@@ -56,6 +56,7 @@ class MemoryConfig:
     compact_target_bytes: int = 25_600
     preferences_section_name: str = "ユーザーの好み・傾向"
     protected_layers: tuple[str, ...] = ("caveat",)
+    timezone: str = "Asia/Tokyo"  # _redistribute_entries で使用
 
 
 @dataclass(frozen=True)
