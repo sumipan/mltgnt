@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -43,53 +41,15 @@ def run_persona_prompt(
     Raises:
         FileNotFoundError: ペルソナファイルが見つからない場合。
     """
-    from ghdag.llm import call as ghdag_llm_call
-
-    from mltgnt.persona.loader import load
-    from mltgnt.persona.registry import resolve_with_alias
-    from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE, SYSTEM_DEFAULT_MODEL
+    from mltgnt.chat.pipeline import run_chat
 
     pdir = persona_dir if persona_dir is not None else Path("agents")
-    path = resolve_with_alias(str(persona_name), pdir)
-    persona = load(path)
-
-    if memory is not None:
-        effective_prompt = f"{memory}\n\n{prompt}"
-    else:
-        effective_prompt = prompt
-
-    formatted = persona.format_prompt(effective_prompt)
-    engine = persona.fm.engine or SYSTEM_DEFAULT_ENGINE
-    model = persona.fm.model or SYSTEM_DEFAULT_MODEL
-
-    logger.debug("[runner] persona=%r engine=%r", persona_name, engine)
-
-    ok = False
-    response: str
-    try:
-        result = ghdag_llm_call(formatted, engine=engine, model=model, timeout=timeout)
-        ok = result.ok
-    except Exception as e:
-        logger.warning("[runner] persona=%r exception: %s", persona_name, e)
-        response = f"（実行失敗: {e}）"
-    else:
-        if not result.ok:
-            stderr = (result.stderr or "").strip()
-            logger.warning("[runner] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
-            response = f"（エラー: {stderr[:200]}）" if stderr else "（エラー）"
-        else:
-            response = (result.stdout or "").strip()
-
-    if audit_writer is not None:
-        try:
-            audit_writer({
-                "source": f"mltgnt-persona-{persona_name}",
-                "engine": engine,
-                "model": model,
-                "ok": ok,
-                "timestamp": datetime.now(tz=ZoneInfo("Asia/Tokyo")).isoformat(),
-            })
-        except Exception:
-            logger.warning("[runner] audit_writer failed for persona=%r", persona_name)
-
-    return response
+    out = run_chat(
+        prompt,
+        persona_name,
+        pdir,
+        timeout=timeout,
+        memory=memory,
+        audit_writer=audit_writer,
+    )
+    return out.content
