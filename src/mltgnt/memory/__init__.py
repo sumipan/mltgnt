@@ -40,6 +40,12 @@ __all__ = [
     "needs_compaction",
     "LlmCallError",
     "CompactionResult",
+    # Phase B-3: public API 追加 (Issue #1127)
+    "MemoryEntry",
+    "parse_jsonl",
+    "serialize_entry",
+    "assemble_entries_text",
+    "tail_utf8_bytes",
 ]
 
 LlmCall = Callable[[str], str]
@@ -79,6 +85,11 @@ def _tail_utf8_bytes(s: str, max_bytes: int) -> str:
         return s
     cut = b[-max_bytes:]
     return cut.decode("utf-8", errors="replace")
+
+
+def tail_utf8_bytes(s: str, max_bytes: int) -> str:
+    """文字列 `s` の末尾 `max_bytes` バイト分を UTF-8 で切り出して返す（public alias）。"""
+    return _tail_utf8_bytes(s, max_bytes)
 
 
 @contextmanager
