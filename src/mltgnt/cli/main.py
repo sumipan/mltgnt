@@ -1,5 +1,4 @@
 import argparse
-import sys
 from typing import Optional
 
 from mltgnt.cli import run as run_module
