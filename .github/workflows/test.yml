@@ -27,5 +27,8 @@ jobs:
       - name: Run tests
         run: pytest
 
+      - name: Lint layer boundaries (import-linter)
+        run: lint-imports
+
       - name: Lint boundary policy
         run: bash tools/lint-boundary.sh

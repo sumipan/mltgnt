@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ghdag.files import md_read
-from mltgnt.persona import load_persona
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
@@ -25,7 +24,6 @@ class DagStep:
     prompt: str
     engine: str
     model: str | None = None
-    persona_name: str | None = None
     depends: list[str] = field(default_factory=list)
     context: dict[str, str] = field(default_factory=dict)
 
@@ -61,7 +59,6 @@ def enqueue_dag(
     idempotency_key: str,
     jobs_dir: Path,
     exec_done_dir: Path,
-    persona_dir: Path | None = None,
 ) -> list[tuple[bool, str]]:
     """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
 
@@ -120,14 +117,9 @@ def enqueue_dag(
                 base_context[f"{dep_id}_result"] = completed_results[dep_id]
         base_context.update(step.context)
 
-        prompt = step.prompt
-        if step.persona_name is not None:
-            persona = load_persona(step.persona_name, persona_dir=persona_dir)
-            prompt = persona.format_prompt(prompt)
-
         step_config = StepConfig(
             id=step.id,
-            template=prompt,
+            template=step.prompt,
             engine=step.engine,
             model=step.model or "",
             depends=[],  # 順序制御は enqueue_dag 側が担保するため不要
@@ -187,21 +179,17 @@ def enqueue_and_wait(
     idempotency_key: str,
     jobs_dir: Path,
     exec_done_dir: Path,
-    persona_name: str | None = None,
-    persona_dir: Path | None = None,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
 
     Args:
-        prompt: order ファイルに書き込むプロンプト本文
+        prompt: order ファイルに書き込むプロンプト本文（ペルソナ書式変換は呼び出し元が実施済みであること）
         engine: LLM エンジン名（"claude", "gemini" 等）
         model: モデル ID（None の場合はエンジンのデフォルト）
         timeout: 最大待機秒数
         idempotency_key: exec.jsonl に記録する冪等性キー
         jobs_dir: order/result/exec.jsonl の置き場（jobs/）
         exec_done_dir: 完了マーカー（jobs/done/<uuid>）の置き場
-        persona_name: ペルソナ名。指定時は load_persona → format_prompt でプロンプトを変換する
-        persona_dir: ペルソナファイルのディレクトリ（None の場合は load_persona のデフォルト）
 
     Returns:
         (True, result_content) — 成功時
@@ -216,10 +204,6 @@ def enqueue_and_wait(
     )
     from ghdag.pipeline.audit import AuditContext
     from ghdag.workflow.schema import StepConfig
-
-    if persona_name is not None:
-        persona = load_persona(persona_name, persona_dir=persona_dir)
-        prompt = persona.format_prompt(prompt)
 
     state = PipelineState(
         state_dir=jobs_dir / ".pipeline-state",
