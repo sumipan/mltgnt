@@ -44,7 +44,7 @@ def _search_skills(
         return []
     from mltgnt.skill.loader import discover
     from mltgnt.memory._scoring import score_entries
-    from ghdag.files import md_read
+    from mltgnt.bridges.files_adapter import md_read
 
     skills = discover(skill_paths)
     if not skills:

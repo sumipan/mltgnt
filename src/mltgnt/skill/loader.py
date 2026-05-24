@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from ghdag.files import md_read
+from mltgnt.bridges.files_adapter import md_read
 
 from mltgnt.skill.models import SkillFile, SkillMeta
 

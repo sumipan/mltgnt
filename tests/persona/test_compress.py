@@ -142,7 +142,7 @@ class TestCompressHeavyToLight:
     def test_normal_long_text(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         heavy = "あ" * 1500
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = compress_heavy_to_light(heavy)
         assert isinstance(result, str)
         assert result == _V21_MOCK_RESPONSE.strip()
@@ -150,7 +150,7 @@ class TestCompressHeavyToLight:
     def test_normal_short_text(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         heavy = "短い重量ブロック" * 5
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
             result = compress_heavy_to_light(heavy)
         mock_call.assert_called_once()
         assert result == _V21_MOCK_RESPONSE.strip()
@@ -162,19 +162,19 @@ class TestCompressHeavyToLight:
 
     def test_llm_failure_raises_runtime_error(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
-        with patch("ghdag.llm.call", side_effect=TimeoutError("timeout")):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", side_effect=TimeoutError("timeout")):
             with pytest.raises(RuntimeError, match="timeout"):
                 compress_heavy_to_light("重量テキスト")
 
     def test_llm_ok_false_raises_runtime_error(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
-        with patch("ghdag.llm.call", return_value=_make_llm_result(ok=False, stderr="engine error")):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=False, stderr="engine error")):
             with pytest.raises(RuntimeError, match="engine error"):
                 compress_heavy_to_light("重量テキスト")
 
     def test_engine_and_model_passed_to_llm(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
             compress_heavy_to_light("テスト", engine="claude", model="claude-haiku-4-5")
         _, kwargs = mock_call.call_args
         assert kwargs.get("engine") == "claude"
@@ -182,7 +182,7 @@ class TestCompressHeavyToLight:
 
     def test_timeout_passed_to_llm(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
             compress_heavy_to_light("テスト", timeout=60)
         _, kwargs = mock_call.call_args
         assert kwargs.get("timeout") == 60
@@ -198,7 +198,7 @@ class TestRegenerateLightBlock:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.is_first_generation is True
         assert result.old_hash == ""
@@ -210,7 +210,7 @@ class TestRegenerateLightBlock:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.changed is True
         assert result.old_hash != result.new_hash
@@ -248,7 +248,7 @@ ops:
 参照リンクや補足情報。
 """
         persona_file.write_text(v2_persona_v21_light, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.changed is False
         assert result.old_hash == result.new_hash
@@ -257,7 +257,7 @@ ops:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             with caplog.at_level(logging.WARNING, logger="mltgnt.persona.compress"):
                 result = regenerate_light_block(persona_file)
         if result.changed:
@@ -270,7 +270,7 @@ ops:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             regenerate_light_block(persona_file)
         content = persona_file.read_text(encoding="utf-8")
         assert "persona:" in content
@@ -291,7 +291,7 @@ ops:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             result = regenerate_light_block(persona_file)
         assert result.persona_name == "テスト太郎"
 
@@ -306,7 +306,7 @@ class TestIntegration:
         from mltgnt.persona.compress import regenerate_light_block, _split_h2_blocks
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             regenerate_light_block(persona_file)
         content = persona_file.read_text(encoding="utf-8")
         from mltgnt.persona.frontmatter import split_yaml_frontmatter
@@ -320,7 +320,7 @@ class TestIntegration:
         from mltgnt.persona.loader import load
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             regenerate_light_block(persona_file)
         persona = load(persona_file)
         assert persona.name == "テスト太郎"
@@ -442,6 +442,6 @@ class TestRegenerateLightBlockV21Validation:
         persona_file = tmp_path / "テスト太郎.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
         bad_response = "**口調** — リード文なし。\n**価値観** — 効率。\n**好意的反応** — OK。\n**引っかかる** — NG。"
-        with patch("ghdag.llm.call", return_value=_make_llm_result(stdout=bad_response)):
+        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=bad_response)):
             with pytest.raises(ValueError, match="リード文"):
                 regenerate_light_block(persona_file)

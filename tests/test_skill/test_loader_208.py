@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from mltgnt.skill.loader import _build_meta
-from ghdag.files import md_read
+from mltgnt.bridges.files_adapter import md_read
 
 
 def _fm_and_meta(yaml_content: str, tmp_path: Path, path: Path | None = None) -> object:
