@@ -306,7 +306,7 @@ def _skill_job(**overrides) -> ScheduleJob:
     return ScheduleJob.from_dict(defaults)
 
 
-_ENQUEUE = "mltgnt.scheduler.ghdag_bridge.enqueue_and_wait"
+_ENQUEUE = "mltgnt.bridges.ghdag_bridge.enqueue_and_wait"
 
 
 def test_skill_action_success(tmp_path: Path) -> None:
