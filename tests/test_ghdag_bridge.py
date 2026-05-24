@@ -515,7 +515,7 @@ class TestEnqueueDag:
         for _ in range(2):
             with patch(_WAIT, return_value=("success", "")):
                 try:
-                    result = enqueue_dag(
+                    enqueue_dag(
                         steps=steps,
                         timeout=5.0,
                         idempotency_key=key,
@@ -523,7 +523,7 @@ class TestEnqueueDag:
                         exec_done_dir=done_dir,
                     )
                 except (StopIteration, OSError):
-                    result = None
+                    pass
 
         exec_jsonl = jobs_dir / "exec.jsonl"
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
