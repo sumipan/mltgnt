@@ -1,7 +1,7 @@
 """tests/test_hooks_adapter.py — hooks_adapter 受け入れ条件テスト (#1036, #1128)"""
 import json
 
-from ghdag.dag.hooks import DagHooks, Task, TaskMetrics
+from ghdag.dag.hooks import Task, TaskMetrics
 
 from mltgnt.agent import AgentRunner, create_audit_writer
 from mltgnt.bridges.hooks_adapter import MltgntHooks
