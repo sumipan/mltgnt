@@ -40,10 +40,10 @@ class DagBridge(Protocol):
 
 
 class GhdagDagBridge:
-    """本番用: exec.md 経由で ghdag にジョブを投入する実装"""
+    """本番用: exec.jsonl 経由で ghdag にジョブを投入する実装"""
 
-    def __init__(self, exec_md_path: Path) -> None:
-        self._exec_md_path = exec_md_path
+    def __init__(self, exec_jsonl_path: Path) -> None:
+        self._exec_jsonl_path = exec_jsonl_path
 
     def submit(self, spec: DagJobSpec) -> str:
         raise NotImplementedError("Phase D で実装")
