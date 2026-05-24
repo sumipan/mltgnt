@@ -631,7 +631,7 @@ class PersonaScheduler:
             if aa.get("enable_fanout", False):
                 prompt = prompt + _FANOUT_PROMPT_SUFFIX
 
-            from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait
+            from mltgnt.bridges.ghdag_bridge import enqueue_and_wait
 
             fired_at = datetime.now(ZoneInfo(self._default_tz))
             ok, msg = enqueue_and_wait(

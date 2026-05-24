@@ -1,4 +1,4 @@
-"""mltgnt.agent.hooks_adapter — AgentRunner.audit_writer 用コールバックファクトリ。"""
+"""mltgnt.bridges.hooks_adapter — AgentRunner.audit_writer 用コールバックファクトリ。"""
 from __future__ import annotations
 
 import uuid as _uuid_module
