@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from ghdag.files import md_read
+from mltgnt.bridges.files_adapter import md_read
 from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
 

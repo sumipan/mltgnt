@@ -105,7 +105,7 @@ def compress_heavy_to_light(
     Raises:
         RuntimeError: LLM 呼び出しが失敗した場合、または heavy_text が空の場合
     """
-    from ghdag.llm import call as ghdag_llm_call
+    from mltgnt.bridges.llm_adapter import call_llm as ghdag_llm_call
 
     if not heavy_text.strip():
         raise RuntimeError("heavy_text が空です。圧縮対象のテキストを指定してください。")
@@ -158,7 +158,7 @@ def regenerate_light_block(
         ValueError: v2 形式でないファイル（## 重量 が存在しない）、または生成結果が v2.1 形式に適合しない場合
         RuntimeError: LLM 圧縮に失敗した場合
     """
-    from ghdag.files import md_read, md_write
+    from mltgnt.bridges.files_adapter import md_read, md_write
 
     md = md_read(persona_path.name, repo_root=persona_path.parent)
     fm_dict = md.frontmatter

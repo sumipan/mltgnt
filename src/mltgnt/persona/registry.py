@@ -44,7 +44,7 @@ def resolve_with_alias(name: str, persona_dir: Path) -> Path:
         return direct
 
     # エイリアス検索（全ファイルの frontmatter を読む）
-    from ghdag.files import md_read
+    from mltgnt.bridges.files_adapter import md_read
 
     for p in sorted(persona_dir.iterdir()):
         if not p.is_file() or p.suffix.lower() != ".md":

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 import sys
 
-from ghdag.llm import call as llm_call
+from mltgnt.bridges.llm_adapter import call_llm as llm_call
 
 from mltgnt.skill.models import SkillMeta
 
