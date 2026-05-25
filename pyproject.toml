@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.6.11"
+version = "0.7.1"
 description = "マルチエージェントの型契約とチャット入出力"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,11 +23,15 @@ dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "freezegun>=1.2",
+    "import-linter>=2.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/sumipan/mltgnt"
 Issues = "https://github.com/sumipan/mltgnt/issues"
+
+[project.scripts]
+mltgnt = "mltgnt.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

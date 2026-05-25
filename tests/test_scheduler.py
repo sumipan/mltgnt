@@ -1006,3 +1006,116 @@ def test_slack_protocol_conforming_impl_full_kwargs() -> None:
         blocks=[{"type": "section"}],
         reply_broadcast=True,
     ) is True
+
+
+# ---------------------------------------------------------------------------
+# AC-4: enable_fanout + enqueue_dag 配線 (#1128)
+# ---------------------------------------------------------------------------
+
+_ENQUEUE_DAG = "mltgnt.bridges.ghdag_bridge.enqueue_dag"
+
+_FANOUT_RESPONSE = (
+    "通常の応答テキスト\n"
+    "---\n"
+    "ghdag_fanout:\n"
+    "  children:\n"
+    "    - id: child-1\n"
+    "      command: \"agent -p --force < order-1.md\"\n"
+    "    - id: child-2\n"
+    "      command: \"agent -p --force < order-2.md\"\n"
+)
+
+
+def test_fanout_calls_enqueue_dag_when_block_present(tmp_path: Path) -> None:
+    """AC-4: enable_fanout=true かつ LLM 応答に ghdag_fanout ブロックがある → enqueue_dag が呼ばれる。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={
+        "skill": "test-skill",
+        "persona": "タチコマ",
+        "enable_fanout": True,
+    })
+
+    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
+         patch(_ENQUEUE_DAG, return_value=[(True, "ok1"), (True, "ok2")]) as mock_dag:
+        ok, msg = sch.execute_action(job)
+
+    assert ok is True
+    mock_dag.assert_called_once()
+    steps = mock_dag.call_args[0][0]
+    assert len(steps) == 2
+    assert steps[0].id == "child-1"
+    assert steps[1].id == "child-2"
+
+
+def test_fanout_success_message_contains_step_count(tmp_path: Path) -> None:
+    """AC-4: fanout 全成功 → (True, 'fanout: N steps completed') を返す。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={
+        "skill": "test-skill",
+        "persona": "タチコマ",
+        "enable_fanout": True,
+    })
+
+    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
+         patch(_ENQUEUE_DAG, return_value=[(True, "ok1"), (True, "ok2")]):
+        ok, msg = sch.execute_action(job)
+
+    assert ok is True
+    assert "2" in msg and "steps" in msg
+
+
+def test_fanout_failure_returns_false_with_step_id(tmp_path: Path) -> None:
+    """AC-4: fanout でいずれかのステップが失敗 → (False, 'fanout: step X failed: ...') を返す。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={
+        "skill": "test-skill",
+        "persona": "タチコマ",
+        "enable_fanout": True,
+    })
+
+    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
+         patch(_ENQUEUE_DAG, return_value=[(True, "ok"), (False, "timeout (120s)")]):
+        ok, msg = sch.execute_action(job)
+
+    assert ok is False
+    assert "child-2" in msg
+    assert "failed" in msg
+
+
+def test_fanout_no_block_returns_initial_result(tmp_path: Path) -> None:
+    """AC-4: enable_fanout=true でも ghdag_fanout ブロックがない → enqueue_and_wait 結果をそのまま返す。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={
+        "skill": "test-skill",
+        "persona": "タチコマ",
+        "enable_fanout": True,
+    })
+
+    with patch(_ENQUEUE, return_value=(True, "fanout なしの通常応答")), \
+         patch(_ENQUEUE_DAG) as mock_dag:
+        ok, msg = sch.execute_action(job)
+
+    assert ok is True
+    assert msg == "fanout なしの通常応答"
+    mock_dag.assert_not_called()
+
+
+def test_fanout_disabled_does_not_call_enqueue_dag(tmp_path: Path) -> None:
+    """AC-4: enable_fanout=false のジョブでは enqueue_dag は呼ばれない。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={
+        "skill": "test-skill",
+        "persona": "タチコマ",
+    })
+
+    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
+         patch(_ENQUEUE_DAG) as mock_dag:
+        ok, msg = sch.execute_action(job)
+
+    assert ok is True
+    mock_dag.assert_not_called()
