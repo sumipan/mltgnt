@@ -5,7 +5,7 @@ from ghdag.dag.hooks import Task, TaskMetrics
 
 import pytest
 
-from mltgnt.agent import AgentResult, AgentRunner
+from mltgnt.agent import AgentRunner
 from mltgnt.bridges import create_audit_writer as create_audit_writer_from_bridges
 from mltgnt.bridges.hooks_adapter import MltgntHooks, create_audit_writer
 
