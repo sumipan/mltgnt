@@ -48,10 +48,15 @@ class TestBridgesInitImports:
 
         assert set(mltgnt.bridges.__all__) == {
             "DagStep",
+            "MltgntHooks",
             "call_llm",
             "create_audit_writer",
             "enqueue_and_wait",
             "enqueue_dag",
+            "files_adapter",
+            "ghdag_bridge",
+            "hooks_adapter",
+            "llm_adapter",
             "md_read",
             "md_write",
         }
@@ -425,29 +430,16 @@ class TestEnqueueAndWaitJsonlIntegration:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_and_wait — ペルソナ統合テスト（AC-1, AC-3）
+# enqueue_and_wait — プロンプト受け渡しテスト
 # ---------------------------------------------------------------------------
 
-_LOAD_PERSONA = "mltgnt.bridges.ghdag_bridge.load_persona"
 
+class TestEnqueueAndWaitPromptPassthrough:
+    """enqueue_and_wait はペルソナ変換を行わず、prompt をそのまま submit する。"""
 
-class TestEnqueueAndWaitPersonaIntegration:
-    """enqueue_and_wait の persona_name / persona_dir パラメータ検証。"""
-
-    def _run_with_persona(
-        self,
-        tmp_path: Path,
-        *,
-        persona_name: str | None = None,
-        persona_dir=None,
-        mock_formatted: str = "フォーマット済みプロンプト",
-    ):
-        """submit に渡された StepConfig.template を返す。"""
+    def test_prompt_passed_as_is_to_submit(self, tmp_path):
+        """書式変換済み prompt が submit に渡されること（bridge 側で変換しない）。"""
         jobs_dir = _make_jobs_dir(tmp_path)
-
-        mock_persona = MagicMock()
-        mock_persona.format_prompt.return_value = mock_formatted
-
         submitted_templates = []
 
         from ghdag.pipeline import LLMPipelineAPI
@@ -459,80 +451,27 @@ class TestEnqueueAndWaitPersonaIntegration:
                 submitted_templates.append(step.template)
             return original_submit(self_api, steps, **kwargs)
 
+        pre_formatted = "ペルソナ書式変換済みプロンプト（呼び出し元が事前適用済み）"
+
         with (
-            patch(_LOAD_PERSONA, return_value=mock_persona) as mock_load,
             patch.object(LLMPipelineAPI, "submit", capture_submit),
             patch(_WAIT, return_value=("success", "")),
         ):
             try:
                 enqueue_and_wait(
-                    prompt="元のプロンプト",
+                    prompt=pre_formatted,
                     engine="cursor",
                     model="auto",
                     timeout=5.0,
-                    idempotency_key=f"scheduler:persona_test:{uuid.uuid4()}",
+                    idempotency_key=f"scheduler:passthrough:{uuid.uuid4()}",
                     jobs_dir=jobs_dir,
                     exec_done_dir=jobs_dir / "done",
-                    persona_name=persona_name,
-                    persona_dir=persona_dir,
                 )
             except (StopIteration, OSError):
                 pass
 
-        return submitted_templates, mock_load, mock_persona
-
-    def test_ac1_persona_name_triggers_format_prompt(self, tmp_path):
-        """AC-1: persona_name 指定時、submit の template が format_prompt の返り値になる。"""
-        formatted = "ペルソナでフォーマット済み: 元のプロンプト"
-        templates, mock_load, mock_persona = self._run_with_persona(
-            tmp_path,
-            persona_name="タチコマ",
-            persona_dir=Path("agents"),
-            mock_formatted=formatted,
-        )
-
-        mock_load.assert_called_once_with("タチコマ", persona_dir=Path("agents"))
-        mock_persona.format_prompt.assert_called_once_with("元のプロンプト")
-        assert len(templates) >= 1
-        assert templates[0] == formatted
-
-    def test_ac1_persona_dir_none_uses_default(self, tmp_path):
-        """AC-1: persona_dir=None のとき load_persona に None が渡される。"""
-        _, mock_load, _ = self._run_with_persona(
-            tmp_path,
-            persona_name="タチコマ",
-            persona_dir=None,
-        )
-        mock_load.assert_called_once_with("タチコマ", persona_dir=None)
-
-    def test_ac2_no_persona_name_skips_load_persona(self, tmp_path):
-        """AC-2: persona_name 未指定時、load_persona は呼ばれずプロンプトがそのまま使われる。"""
-        templates, mock_load, mock_persona = self._run_with_persona(
-            tmp_path,
-            persona_name=None,
-        )
-        mock_load.assert_not_called()
-        mock_persona.format_prompt.assert_not_called()
-        assert len(templates) >= 1
-        assert templates[0] == "元のプロンプト"
-
-    def test_ac3_nonexistent_persona_raises_file_not_found(self, tmp_path):
-        """AC-3: 存在しないペルソナ名で FileNotFoundError が送出される。"""
-        jobs_dir = _make_jobs_dir(tmp_path)
-
-        with patch(_LOAD_PERSONA, side_effect=FileNotFoundError("存在しない")):
-            with pytest.raises(FileNotFoundError):
-                enqueue_and_wait(
-                    prompt="元のプロンプト",
-                    engine="cursor",
-                    model="auto",
-                    timeout=5.0,
-                    idempotency_key=f"scheduler:persona_test:{uuid.uuid4()}",
-                    jobs_dir=jobs_dir,
-                    exec_done_dir=jobs_dir / "done",
-                    persona_name="存在しない",
-                    persona_dir=Path("agents"),
-                )
+        assert len(submitted_templates) >= 1
+        assert submitted_templates[0] == pre_formatted
 
 
 # ---------------------------------------------------------------------------
@@ -591,8 +530,8 @@ class TestEnqueueDag:
         assert captured_steps[0].depends == []
         assert captured_steps[1].depends == []
 
-    def test_ac2_per_step_persona_prompt_transform(self, tmp_path):
-        """AC-2: ステップ別ペルソナ指定時のプロンプト変換。"""
+    def test_ac2_pre_formatted_prompts_passed_as_is(self, tmp_path):
+        """AC-2: 呼び出し元が事前変換済みの prompt を DagStep に渡すと、そのまま submit される。"""
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
 
@@ -604,31 +543,24 @@ class TestEnqueueDag:
             captured_steps.extend(steps)
             return original_submit(self_api, steps, **kwargs)
 
-        mock_persona = MagicMock()
-        mock_persona.format_prompt.return_value = "ペルソナ変換済み: 指示A"
-
         with (
-            patch(_LOAD_PERSONA, return_value=mock_persona) as mock_load,
             patch.object(LLMPipelineAPI, "submit", capture_submit),
             patch(_WAIT, return_value=("success", "")),
         ):
             try:
                 enqueue_dag(
                     steps=[
-                        DagStep(id="s1", prompt="指示A", engine="claude", persona_name="タチコマ"),
+                        DagStep(id="s1", prompt="ペルソナ変換済み: 指示A", engine="claude"),
                         DagStep(id="s2", prompt="指示B", engine="claude"),
                     ],
                     timeout=5.0,
                     idempotency_key=f"dag:ac2:{uuid.uuid4()}",
                     jobs_dir=jobs_dir,
                     exec_done_dir=done_dir,
-                    persona_dir=Path("agents"),
                 )
             except (StopIteration, OSError):
                 pass
 
-        # load_persona は s1 のみ（1回）
-        mock_load.assert_called_once_with("タチコマ", persona_dir=Path("agents"))
         assert len(captured_steps) == 2
         s1 = next(s for s in captured_steps if s.id == "s1")
         s2 = next(s for s in captured_steps if s.id == "s2")

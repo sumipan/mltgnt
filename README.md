@@ -1,8 +1,8 @@
 # mltgnt
 
-> **Persona-first multi-agent runtime: write personas in Markdown, give them skills, memory, and a place to live.**
+> **ghdag を基盤とした、ペルソナを用いたエージェントの高度な実行基盤。** Markdown でペルソナを書き、スキル・メモリ・ルーティングを与える。
 
-`mltgnt` is a Python library for running long-lived **personas** — Markdown files with a YAML frontmatter that describe a character, what skills they have, and where they reply. Drop a persona file into a folder, and a host (a Slack bot, a CLI, a scheduled job) can load it, route a message to the right one, recall what was said before, and run the right skill — all through small, typed Protocols you implement once. mltgnt handles the persona format, the skill matcher, the memory store, and the channel router; **[ghdag](https://github.com/sumipan/ghdag) handles the LLM calls and the pipeline**, and is a hard prerequisite installed via git.
+`mltgnt` は 3 層アーキテクチャ（**L0 ghdag** / **L1 mltgnt** / **L2 ホスト**）の **L1 層** に位置する Python ライブラリです。L1 の責務はペルソナ定義・スキルマッチング・メモリ管理・チャンネルルーティングであり、LLM 呼び出し・ファイル I/O・DAG 投入は `bridges` 経由で **[L0 ghdag](https://github.com/sumipan/ghdag)** に委譲します。ホスト（L2）は `SlackClientProtocol` などの小さな typed Protocol を実装するだけで、Slack bot・CLI・スケジュールジョブとして mltgnt を利用できます。
 
 Status: pre-1.0 (`v0.5.6`). Pin a version; the public surface is still moving.
 
