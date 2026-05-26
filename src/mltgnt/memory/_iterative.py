@@ -32,19 +32,27 @@ class SearchResult:
 
 def _search_skills(
     query: str,
-    skill_bodies: list[str],
+    skill_paths: list[Path],
     max_entries: int,
 ) -> list:
-    """スキル本文リストを TF-IDF 検索する。
+    """skill ディレクトリの SKILL.md 本文を TF-IDF 検索する。
 
     Returns:
         list[ScoredEntry]
     """
-    if not skill_bodies:
+    if not skill_paths:
         return []
+    from mltgnt.skill.loader import discover
     from mltgnt.memory._scoring import score_entries
+    from mltgnt.bridges.files_adapter import md_read
 
-    scored = score_entries(query, skill_bodies)
+    skills = discover(skill_paths)
+    if not skills:
+        return []
+    bodies = [md_read(meta.path.name, repo_root=meta.path.parent).content for meta in skills.values()]
+    if not bodies:
+        return []
+    scored = score_entries(query, bodies)
     return scored[:max_entries]
 
 
@@ -59,14 +67,14 @@ class IterativeRetriever:
         self,
         config: "MemoryConfig",
         persona_stem: str,
-        skill_bodies: list[str],
+        skill_paths: list[Path],
         llm_call: Callable[[str], str],
         *,
         max_iterations: int = 3,
     ) -> None:
         self._config = config
         self._persona_stem = persona_stem
-        self._skill_bodies = skill_bodies
+        self._skill_paths = skill_paths
         self._llm_call = llm_call
         self._max_iterations = max_iterations
 
@@ -107,7 +115,7 @@ class IterativeRetriever:
             if action.source == "memory":
                 new_entries = self._search_memory(action.query, max_entries)
             else:  # "skill"
-                new_entries = _search_skills(action.query, self._skill_bodies, max_entries)
+                new_entries = _search_skills(action.query, self._skill_paths, max_entries)
 
             # Observe: 新規エントリを collected にマージ（重複排除）
             for entry in new_entries:
