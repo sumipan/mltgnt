@@ -7,7 +7,7 @@ import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from zoneinfo import ZoneInfo
 
