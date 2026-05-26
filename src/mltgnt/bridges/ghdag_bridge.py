@@ -62,6 +62,7 @@ def enqueue_dag(
     jobs_dir: Path,
     exec_done_dir: Path,
     persona_dir: Path | None = None,
+    correlation_id: str | None = None,
 ) -> list[tuple[bool, str]]:
     """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
 
@@ -137,7 +138,10 @@ def enqueue_dag(
             [step_config],
             base_context=base_context,
             idempotency_key=idempotency_key if first_submit else None,
-            audit_context=AuditContext(source="mltgnt-scheduler"),
+            audit_context=AuditContext(
+                source="mltgnt-scheduler",
+                correlation_id=correlation_id,
+            ),
         )
         first_submit = False
 
@@ -189,6 +193,7 @@ def enqueue_and_wait(
     exec_done_dir: Path,
     persona_name: str | None = None,
     persona_dir: Path | None = None,
+    correlation_id: str | None = None,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
 
@@ -238,7 +243,10 @@ def enqueue_and_wait(
         [StepConfig(id="skill", template=prompt, engine=engine, model=model or "")],
         base_context={"workflow_name": "scheduler"},
         idempotency_key=idempotency_key,
-        audit_context=AuditContext(source="mltgnt-scheduler"),
+        audit_context=AuditContext(
+            source="mltgnt-scheduler",
+            correlation_id=correlation_id,
+        ),
     )
 
     skill_line = next(
