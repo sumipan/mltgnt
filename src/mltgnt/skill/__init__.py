@@ -4,6 +4,10 @@ mltgnt.skill — Markdown ベーススキルファイルの読み込み・実行
 設計: Issue #124
 公開 API: discover, load, match, run, estimate_skill, resolve_skill
 """
+from __future__ import annotations
+
+from pathlib import Path
+
 from mltgnt.skill._registry import SkillRegistry
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
@@ -12,6 +16,7 @@ from mltgnt.skill.runner import run
 
 __all__ = [
     "discover",
+    "discover_bodies",
     "load",
     "match",
     "resolve_skill",
@@ -20,6 +25,18 @@ __all__ = [
     "SkillFile",
     "SkillRegistry",
 ]
+
+
+def discover_bodies(paths: list[Path]) -> list[str]:
+    """discover + 本文読み込み。memory 層にスキル本文を渡すための便利関数。"""
+    from mltgnt.bridges.files_adapter import md_read
+
+    path_list = [Path(p) for p in paths]
+    skills = discover(path_list)
+    return [
+        md_read(meta.path.name, repo_root=meta.path.parent).content
+        for meta in skills.values()
+    ]
 
 
 async def resolve_skill(
