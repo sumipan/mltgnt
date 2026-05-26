@@ -56,4 +56,13 @@ __all__ = [
     "serialize_entry",
     "assemble_entries_text",
     "tail_utf8_bytes",
+    "LlmCall",
+    "MEMORY_CORRUPT_THRESHOLD_BYTES",
+    "MEMORY_DEDUPE_SCAN_BYTES",
+    "MEMORY_DEDUPE_SCAN_LINES",
+    "_ensure_jsonl",
+    "_resolve_memory_dir",
+    "_scan_tail_for_dedupe_key",
+    "_tail_utf8_bytes",
+    "_search_and_score",
 ]
