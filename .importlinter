@@ -11,15 +11,9 @@ layers =
     scheduler | agent | routing
     persona | chat | skill | memory
     bridges
-    interfaces
+    interfaces | config
 containers =
     mltgnt
-ignore_imports =
-    mltgnt.* -> mltgnt.config
-    mltgnt.persona.* -> mltgnt.chat.*
-    mltgnt.chat.* -> mltgnt.persona.*
-    mltgnt.skill.* -> mltgnt.chat.*
-    mltgnt.memory.* -> mltgnt.skill.*
 
 [importlinter:contract:l3_no_ghdag]
 name = L3 domain must not import ghdag directly

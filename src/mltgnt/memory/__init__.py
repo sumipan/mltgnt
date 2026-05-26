@@ -467,7 +467,7 @@ def read_memory_iterative(
     max_bytes: int,
     max_entries: int,
     llm_call: "Callable[[str], str]",
-    skill_paths: "list[Path] | None" = None,
+    skill_bodies: "list[str] | None" = None,
     max_iterations: int = 3,
 ) -> str:
     """反復検索による情報収集。LLM が十分性を判定し、不足時は source 指定で再検索する。"""
@@ -476,7 +476,7 @@ def read_memory_iterative(
     retriever = IterativeRetriever(
         config=config,
         persona_stem=persona_stem,
-        skill_paths=skill_paths or [],
+        skill_bodies=skill_bodies or [],
         llm_call=llm_call,
         max_iterations=max_iterations,
     )
@@ -491,7 +491,7 @@ def read_memory_agentic(
     max_bytes: int,
     max_entries: int,
     llm_call: "Callable[[str], str]",
-    skill_paths: "list[Path] | None" = None,
+    skill_bodies: "list[str] | None" = None,
     max_iterations: int = 3,
 ) -> str:
     """Deprecated: use read_memory_iterative instead."""
@@ -508,7 +508,7 @@ def read_memory_agentic(
         max_bytes=max_bytes,
         max_entries=max_entries,
         llm_call=llm_call,
-        skill_paths=skill_paths,
+        skill_bodies=skill_bodies,
         max_iterations=max_iterations,
     )
 

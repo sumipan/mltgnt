@@ -9,7 +9,7 @@ TC5: preferences セクションが常に結果に含まれる
 TC6: max_bytes 制限が守られる
 TC7: ループが max_iterations に達した場合、収集済みで打ち切る
 TC8: LLM 呼び出しが例外を投げた場合、初回検索結果にフォールバック
-TC9: skill_paths が空リストの場合
+TC9: skill_bodies が空リストの場合
 TC10: LLM 応答のパースに失敗した場合（不正な形式）
 TC11: memory ファイルが空の場合
 
@@ -35,6 +35,7 @@ import pytest
 from mltgnt.config import MemoryConfig
 from mltgnt.memory import read_memory_iterative, read_memory_agentic, memory_file_path
 from mltgnt.memory._iterative import IterativeRetriever
+from mltgnt.skill import discover_bodies
 
 
 def make_config(tmp_path: Path) -> MemoryConfig:
@@ -222,7 +223,7 @@ def test_tc3_skill_search(tmp_path: Path) -> None:
         max_bytes=4096,
         max_entries=5,
         llm_call=llm_call,
-        skill_paths=[skill_dir],
+        skill_bodies=discover_bodies([skill_dir]),
     )
 
     assert "デプロイ" in result
@@ -374,12 +375,12 @@ def test_tc8_llm_exception_fallback(tmp_path: Path, caplog) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC9: skill_paths が空リストの場合
+# TC9: skill_bodies が空リストの場合
 # ---------------------------------------------------------------------------
 
 
-def test_tc9_empty_skill_paths(tmp_path: Path) -> None:
-    """TC9: skill_paths=[], LLM が SKILL ソースを指定 → skill 検索結果が空、ループ継続。"""
+def test_tc9_empty_skill_bodies(tmp_path: Path) -> None:
+    """TC9: skill_bodies=[], LLM が SKILL ソースを指定 → skill 検索結果が空、ループ継続。"""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
@@ -396,10 +397,20 @@ def test_tc9_empty_skill_paths(tmp_path: Path) -> None:
         max_bytes=4096,
         max_entries=5,
         llm_call=llm_call,
-        skill_paths=[],
+        skill_bodies=[],
     )
 
     assert isinstance(result, str)
+
+
+def test_memory_iterative_does_not_import_skill_module() -> None:
+    """memory/_iterative.py が mltgnt.skill を import しないこと。"""
+    import inspect
+
+    import mltgnt.memory._iterative as mod
+
+    source = inspect.getsource(mod)
+    assert "mltgnt.skill" not in source
 
 
 # ---------------------------------------------------------------------------
