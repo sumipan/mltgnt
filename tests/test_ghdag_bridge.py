@@ -24,6 +24,156 @@ from mltgnt.bridges.ghdag_bridge import (
 )
 
 # ---------------------------------------------------------------------------
+# bridges/__init__ — パッケージ re-export（AC1, AC2, AC7）
+# ---------------------------------------------------------------------------
+
+
+class TestBridgesInitImports:
+    def test_bridges_init_imports(self):
+        """AC1: bridges パッケージ経由で全公開シンボルが import できる。"""
+        from mltgnt.bridges import DagStep, call_llm, create_audit_writer
+        from mltgnt.bridges import enqueue_and_wait, enqueue_dag, md_read, md_write
+
+        assert callable(enqueue_and_wait)
+        assert callable(enqueue_dag)
+        assert DagStep is not None
+        assert callable(md_read)
+        assert callable(md_write)
+        assert callable(create_audit_writer)
+        assert callable(call_llm)
+
+    def test_bridges_all_exports(self):
+        """AC2: __all__ が公開シンボルのみを含む。"""
+        import mltgnt.bridges
+
+        assert set(mltgnt.bridges.__all__) == {
+            "DagStep",
+            "MltgntHooks",
+            "call_llm",
+            "create_audit_writer",
+            "enqueue_and_wait",
+            "enqueue_dag",
+            "files_adapter",
+            "ghdag_bridge",
+            "hooks_adapter",
+            "llm_adapter",
+            "md_read",
+            "md_write",
+        }
+
+    def test_scheduler_shim_imports(self):
+        """AC7: scheduler/ghdag_bridge.py shim が引き続き動作する。"""
+        from mltgnt.scheduler.ghdag_bridge import DagStep, enqueue_and_wait, enqueue_dag
+
+        assert callable(enqueue_and_wait)
+        assert callable(enqueue_dag)
+        assert DagStep is not None
+
+
+# ---------------------------------------------------------------------------
+# correlation_id — AuditContext 伝搬（AC3〜AC5）
+# ---------------------------------------------------------------------------
+
+
+class TestCorrelationIdPropagation:
+    def test_enqueue_and_wait_correlation_id(self, tmp_path):
+        """AC3: enqueue_and_wait の correlation_id が AuditContext に渡される。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir = _make_jobs_dir(tmp_path)
+        captured_contexts: list = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_contexts.append(kwargs.get("audit_context"))
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_and_wait(
+                prompt="prompt",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="scheduler:test:corr",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+                correlation_id="test-123",
+            )
+
+        assert len(captured_contexts) == 1
+        ctx = captured_contexts[0]
+        assert ctx.source == "mltgnt-scheduler"
+        assert ctx.correlation_id == "test-123"
+
+    def test_enqueue_dag_correlation_id(self, tmp_path):
+        """AC4: enqueue_dag の correlation_id が AuditContext に渡される。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        captured_contexts: list = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_contexts.append(kwargs.get("audit_context"))
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_dag(
+                steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
+                timeout=5.0,
+                idempotency_key=f"dag:corr:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+                correlation_id="dag-456",
+            )
+
+        assert len(captured_contexts) == 1
+        ctx = captured_contexts[0]
+        assert ctx.source == "mltgnt-scheduler"
+        assert ctx.correlation_id == "dag-456"
+
+    def test_enqueue_and_wait_default_correlation_id(self, tmp_path):
+        """AC5: correlation_id 省略時は None が AuditContext に渡される。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir = _make_jobs_dir(tmp_path)
+        captured_contexts: list = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_contexts.append(kwargs.get("audit_context"))
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_and_wait(
+                prompt="prompt",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="scheduler:test:default",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+            )
+
+        assert len(captured_contexts) == 1
+        ctx = captured_contexts[0]
+        assert ctx.source == "mltgnt-scheduler"
+        assert ctx.correlation_id is None
+
+
+# ---------------------------------------------------------------------------
 # _order_to_result_filename
 # ---------------------------------------------------------------------------
 
