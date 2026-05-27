@@ -35,7 +35,6 @@ def test_module_not_found_exits_2(capsys):
 
 
 def test_valid_os_getcwd_resolves(capsys, tmp_path):
-    mock_components = [MagicMock()]
     mock_runner = MagicMock()
 
     with patch("mltgnt.cli.run.DaemonRunner", return_value=mock_runner) as mock_runner_cls:
