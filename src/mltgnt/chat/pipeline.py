@@ -11,12 +11,12 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from mltgnt.chat.models import ChatOutput
+from mltgnt.interfaces.types import ChatOutput
 
 logger = logging.getLogger(__name__)
 
 
-def run_chat(
+def run_pipeline(
     prompt: str,
     persona_name: str,
     persona_dir: Path,

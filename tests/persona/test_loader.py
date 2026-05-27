@@ -746,13 +746,6 @@ class TestLoadWithConfig:
             mock_logger.warning.assert_called()
         assert "内容" in result
 
-    def test_ac12_class_var_weight_map_exists(self):
-        """AC-12: Persona.WEIGHT_MAP ClassVar が現行の日本語キー辞書として存在する。"""
-        assert hasattr(Persona, "WEIGHT_MAP")
-        assert "基本情報" in Persona.WEIGHT_MAP
-        assert "価値観" in Persona.WEIGHT_MAP
-        assert Persona.WEIGHT_MAP["基本情報"] == "heavy"
-
     def test_ac13_make_persona_without_weight_map(self):
         """AC-13: weight_map を渡さない Persona 直接生成が動作する（テストヘルパー互換）。"""
         persona = _make_persona("## 基本情報\n\n内容")

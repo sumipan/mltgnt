@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 
-from mltgnt.chat.models import ChatInput
+from mltgnt.interfaces.types import ChatInput
 from mltgnt.skill.models import SkillFile, SkillMeta
 from mltgnt.skill.runner import run
 

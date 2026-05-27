@@ -1,5 +1,5 @@
 """
-mltgnt.memory._compaction — メモリコンパクション（per-section cap 方式）。
+mltgnt.memory.compaction — メモリコンパクション（per-section cap 方式）。
 
 設計: Issue #123, #137, #823, #1135
 Issue #1135: diary の高度な圧縮ロジックを upstream。

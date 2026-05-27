@@ -14,7 +14,6 @@ TC10: LLM 応答のパースに失敗した場合（不正な形式）
 TC11: memory ファイルが空の場合
 
 AC1: read_memory_iterative が動作する
-AC2: read_memory_agentic が DeprecationWarning を発行し同一結果を返す
 AC3: from mltgnt.memory._iterative import IterativeRetriever が成功する
 AC4: judge_sufficiency SUFFICIENT → 即座に返る（TC1 で検証済み）
 AC5: INSUFFICIENT → MEMORY 再検索 → SUFFICIENT（TC2 で検証済み）
@@ -26,14 +25,13 @@ from __future__ import annotations
 
 import json
 import logging
-import warnings
 from pathlib import Path
 import textwrap
 
 import pytest
 
 from mltgnt.config import MemoryConfig
-from mltgnt.memory import read_memory_iterative, read_memory_agentic, memory_file_path
+from mltgnt.memory import read_memory_iterative, memory_file_path
 from mltgnt.memory._iterative import IterativeRetriever
 
 
@@ -88,44 +86,6 @@ def test_ac6_agentic_retriever_import_error() -> None:
     """AC6: from mltgnt.memory._agentic import AgenticRetriever が ImportError。"""
     with pytest.raises(ImportError):
         from mltgnt.memory._agentic import AgenticRetriever  # noqa: F401
-
-
-# ---------------------------------------------------------------------------
-# AC2: read_memory_agentic が DeprecationWarning を発行し同一結果を返す
-# ---------------------------------------------------------------------------
-
-
-def test_ac2_deprecated_alias(tmp_path: Path) -> None:
-    """AC2: read_memory_agentic は DeprecationWarning を発行し、read_memory_iterative と同一結果を返す。"""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_SUSHI)
-
-    def llm_call(_: str) -> str:
-        return "SUFFICIENT"
-
-    result_iterative = read_memory_iterative(
-        config,
-        "persona",
-        "好きな食べ物は？",
-        max_bytes=4096,
-        max_entries=5,
-        llm_call=llm_call,
-    )
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        result_agentic = read_memory_agentic(
-            config,
-            "persona",
-            "好きな食べ物は？",
-            max_bytes=4096,
-            max_entries=5,
-            llm_call=llm_call,
-        )
-
-    assert any(issubclass(warning.category, DeprecationWarning) for warning in w), \
-        "read_memory_agentic should emit DeprecationWarning"
-    assert result_iterative == result_agentic
 
 
 # ---------------------------------------------------------------------------

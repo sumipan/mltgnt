@@ -33,9 +33,7 @@ __all__ = [
     "read_memory_by_relevance",
     "read_memory_with_sufficiency_check",
     "read_memory_iterative",
-    "read_memory_agentic",
     "memory_file_path",
-    "normalize_source_prefix",
     "compact",
     "needs_compaction",
     "LlmCallError",
@@ -66,17 +64,6 @@ def _resolve_memory_dir(config: "MemoryConfig") -> Path:
 def memory_file_path(config: "MemoryConfig", persona_stem: str) -> Path:
     """`_resolve_memory_dir(config) / f\"{persona_stem}.jsonl\"`"""
     return _resolve_memory_dir(config) / f"{persona_stem}.jsonl"
-
-
-def normalize_source_prefix(body: str) -> str:
-    """先頭行のソースタグを正規化する（後方互換）。"""
-    lines = body.splitlines()
-    if not lines:
-        return body
-    if lines[0].strip() == "[file-chat]":
-        lines[0] = "[file]"
-        return "\n".join(lines)
-    return body
 
 
 def _tail_utf8_bytes(s: str, max_bytes: int) -> str:
@@ -483,38 +470,8 @@ def read_memory_iterative(
     return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
 
 
-def read_memory_agentic(
-    config: "MemoryConfig",
-    persona_stem: str,
-    query: str,
-    *,
-    max_bytes: int,
-    max_entries: int,
-    llm_call: "Callable[[str], str]",
-    skill_paths: "list[Path] | None" = None,
-    max_iterations: int = 3,
-) -> str:
-    """Deprecated: use read_memory_iterative instead."""
-    import warnings
-    warnings.warn(
-        "read_memory_agentic is deprecated, use read_memory_iterative",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return read_memory_iterative(
-        config,
-        persona_stem,
-        query,
-        max_bytes=max_bytes,
-        max_entries=max_entries,
-        llm_call=llm_call,
-        skill_paths=skill_paths,
-        max_iterations=max_iterations,
-    )
-
-
 # Lazy imports for compaction
-from mltgnt.memory._compaction import (  # noqa: E402
+from mltgnt.memory.compaction import (  # noqa: E402
     compact,
     needs_compaction,
     LlmCallError,

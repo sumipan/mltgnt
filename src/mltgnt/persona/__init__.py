@@ -113,12 +113,6 @@ def validate_persona(
     for k in persona.fm.unknown_keys:
         messages.append(f"未定義の FM キー: {k!r}")
 
-    # 旧形式キーの警告
-    if persona.fm.legacy_keys:
-        messages.append(
-            f"旧形式の FM キー {persona.fm.legacy_keys} が使用されています"
-        )
-
     # スキルチェック（available_skills が指定された場合のみ）
     if available_skills is not None:
         available_set = set(available_skills)

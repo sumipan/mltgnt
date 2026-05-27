@@ -1,47 +1,36 @@
-import warnings
-from mltgnt.persona.schema import parse_fm
+"""v0.10.0: 旧 FM キーは validate_fm で unknown key エラーになる。"""
+
+from mltgnt.persona.schema import parse_fm, validate_fm
 
 
-def test_flat_chat_model_emits_deprecation():
-    """トップレベル chat_model で DeprecationWarning が出ること。"""
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        parse_fm({"chat_model": "gpt-4", "persona": {"name": "t"}}, file_stem="t")
-        deps = [x for x in w if issubclass(x.category, DeprecationWarning)]
-        assert len(deps) >= 1
-        assert "chat_model" in str(deps[0].message)
+def test_flat_chat_model_is_unknown_key():
+    fm = parse_fm({"chat_model": "gpt-4", "persona": {"name": "t"}}, file_stem="t")
+    result = validate_fm(fm)
+    assert not result.ok
+    assert any("chat_model" in err for err in result.errors)
 
 
-def test_flat_slack_emits_deprecation():
-    """トップレベル slack で DeprecationWarning が出ること。"""
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        parse_fm({"slack": {"username": "bot"}, "persona": {"name": "t"}}, file_stem="t")
-        deps = [x for x in w if issubclass(x.category, DeprecationWarning)]
-        assert len(deps) >= 1
-        assert "slack" in str(deps[0].message)
+def test_flat_slack_is_unknown_key():
+    fm = parse_fm({"slack": {"username": "bot"}, "persona": {"name": "t"}}, file_stem="t")
+    result = validate_fm(fm)
+    assert not result.ok
+    assert any("slack" in err for err in result.errors)
 
 
-def test_ops_chat_model_emits_deprecation():
-    """ops.chat_model で DeprecationWarning が出ること。"""
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        parse_fm(
-            {"persona": {"name": "t"}, "ops": {"chat_model": "gpt-4"}},
-            file_stem="t",
-        )
-        deps = [x for x in w if issubclass(x.category, DeprecationWarning)]
-        assert len(deps) >= 1
-        assert "ops.chat_model" in str(deps[0].message)
+def test_ops_chat_model_is_unknown_key():
+    fm = parse_fm(
+        {"persona": {"name": "t"}, "ops": {"chat_model": "gpt-4"}},
+        file_stem="t",
+    )
+    result = validate_fm(fm)
+    assert not result.ok
+    assert any("ops.chat_model" in err for err in result.errors)
 
 
-def test_no_deprecation_when_clean():
-    """旧キー未使用時は DeprecationWarning が出ないこと。"""
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        parse_fm(
-            {"persona": {"name": "t"}, "ops": {"engine": "claude", "model": "opus"}},
-            file_stem="t",
-        )
-        deps = [x for x in w if issubclass(x.category, DeprecationWarning)]
-        assert len(deps) == 0
+def test_clean_fm_validates():
+    fm = parse_fm(
+        {"persona": {"name": "t"}, "ops": {"engine": "claude", "model": "opus"}},
+        file_stem="t",
+    )
+    result = validate_fm(fm)
+    assert result.ok

@@ -12,7 +12,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -52,39 +51,7 @@ class Persona:
         default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
     )
 
-    # 後方互換（read-only 参照用、format_prompt では使わない）
-    WEIGHT_MAP: ClassVar[dict[str, str]] = {
-        "基本情報": "heavy",
-        "価値観": "heavy",
-        "反応パターン": "heavy",
-        "口調": "heavy",
-        "アウトプット形式": "reference",
-        "軽量": "light",
-    }
-
-    DEFAULT_OP_MODE: ClassVar[str] = "critique"
-
-    # ------------------------------------------------------------------
-    # 後方互換プロパティ
-    # ------------------------------------------------------------------
-
-    @property
-    def ops_config(self) -> "_OpsConfig":
-        return _OpsConfig(self.fm)
-
-    def slack_post_kwargs(self) -> dict[str, str]:
-        """chat.postMessage に渡す辞書（username / icon_emoji / icon_url）。"""
-        out: dict[str, str] = {}
-        if self.fm.slack_username:
-            out["username"] = self.fm.slack_username
-        if self.fm.slack_icon_emoji:
-            out["icon_emoji"] = self.fm.slack_icon_emoji
-        if self.fm.slack_icon_url:
-            out["icon_url"] = self.fm.slack_icon_url
-        return out
-
-    def delegate_ack(self) -> str | None:
-        return self.fm.slack_delegate_ack
+    DEFAULT_OP_MODE: str = "critique"
 
     def format_prompt(self, instruction: str, *, weight: str = "heavy") -> str:
         now = datetime.now(_TZ)
@@ -97,11 +64,11 @@ class Persona:
                     return wv
             return None
 
-        # WEIGHT_MAP に対応しないセクションがあれば warning + フォールバック
+        # weight_map に対応しないセクションがあれば warning + フォールバック
         unknown = [k for k in self.sections if _weight_for(k) is None]
         if unknown:
             logger.warning(
-                "[persona] %r: WEIGHT_MAP に未定義のセクション %s — 全セクションを embed します",
+                "[persona] %r: weight_map に未定義のセクション %s — 全セクションを embed します",
                 self.name,
                 unknown,
             )
@@ -142,31 +109,6 @@ class Persona:
         if output_fmt:
             parts.append(f"## アウトプット形式\n{output_fmt}")
         return "\n\n".join(parts)
-
-
-@dataclass
-class _OpsConfig:
-    """ops namespace へのアクセスヘルパー。"""
-
-    _fm: PersonaFM
-
-    @property
-    def slack(self) -> dict[str, str | None]:
-        return {
-            "username": self._fm.slack_username,
-            "icon_emoji": self._fm.slack_icon_emoji,
-            "icon_url": self._fm.slack_icon_url,
-            "delegate_ack": self._fm.slack_delegate_ack,
-        }
-
-    @property
-    def chat_model(self) -> str | None:
-        return self._fm.chat_model
-
-
-# ---------------------------------------------------------------------------
-# 読み込み関数
-# ---------------------------------------------------------------------------
 
 
 def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:

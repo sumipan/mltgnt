@@ -87,8 +87,8 @@ def test_chat_input_base_missing_session_key_fails() -> None:
 
 
 def test_real_chat_input_conforms() -> None:
-    """chat.models.ChatInput が ChatInputBase を満たす（structural subtyping）。"""
-    from mltgnt.chat.models import ChatInput
+    """interfaces.types.ChatInput が ChatInputBase を満たす（structural subtyping）。"""
+    from mltgnt.interfaces.types import ChatInput
 
     inp = ChatInput(source="slack", session_key="sess-1", messages=[], persona_name="test")
     assert isinstance(inp, ChatInputBase)
@@ -127,8 +127,8 @@ def test_chat_output_base_missing_timestamp_fails() -> None:
 
 
 def test_real_chat_output_conforms() -> None:
-    """chat.models.ChatOutput が ChatOutputBase を満たす（structural subtyping）。"""
-    from mltgnt.chat.models import ChatOutput
+    """interfaces.types.ChatOutput が ChatOutputBase を満たす（structural subtyping）。"""
+    from mltgnt.interfaces.types import ChatOutput
 
     out = ChatOutput(
         content="reply",
