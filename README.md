@@ -12,7 +12,7 @@ Status: pre-1.0 (`v0.5.6`). Pin a version; the public surface is still moving.
 
 - **Many personas, one channel.** Multiple personas can coexist in the same Slack workspace. Routing is deterministic — by primary channel, by secondary observer role, by nickname mention, or by a thread that's already pinned to a persona. Misconfigured routing (two primaries on one channel) fails fast at startup.
 - **A backbone for each persona.** A persona isn't just a prompt template. It comes with **skills** it can execute (`SKILL.md` files matched by slash command, trigger phrase, or LLM intent classification) and a **memory** of past conversations (per-persona JSONL with TF-IDF retrieval, an LLM sufficiency check, and size-triggered compaction).
-- **Hosts plug in via Protocols.** The same persona file works in Slack, in a CLI, or in a scheduled job. The library defines four small Protocols — `SlackClientProtocol`, `PersonaProtocol`, `ChatPipelineProtocol`, `SkillLoaderProtocol` — and the host implements them. There's no framework to live inside.
+- **Hosts plug in via Protocols.** The same persona file works in Slack, in a CLI, or in a scheduled job. The library defines three small Protocols — `SlackClientProtocol`, `PersonaProtocol`, `ChatPipelineProtocol` — and the host implements them. There's no framework to live inside.
 
 ---
 
@@ -173,14 +173,13 @@ For non-Slack hosts, `RoutingRule` + `evaluate(rules, instruction, ctx)` is a ge
 
 ## 6. Hosts and Protocols
 
-Four Protocols define the host boundary. mltgnt calls them; you implement them.
+Three Protocols define the host boundary. mltgnt calls them; you implement them.
 
 | Protocol | What mltgnt expects from you |
 |---|---|
 | `SlackClientProtocol` | `post_message(text, channel, thread_ts=None, ...) -> bool` |
 | `PersonaProtocol` | A persona-shaped object exposing `name`, `fm.*`, and the section dict |
 | `ChatPipelineProtocol` | `run(input: ChatInput) -> ChatOutput` (so you can swap the chat loop) |
-| `SkillLoaderProtocol` | `discover() / load(meta) / match(text, ...)` for skill resolution |
 
 For Slack-bot hosts, `mltgnt.daemon.DaemonRunner` supervises the process: PID file lock, ordered `start()` of components, signal-driven reverse-order `stop()`. The bundled `SkillWatcherComponent` handles mtime-poll skill reloads. Add your own components (Slack event listener, scheduler, mention bridge) by implementing the same `name / start / stop` shape.
 

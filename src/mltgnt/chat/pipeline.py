@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -16,7 +17,7 @@ from mltgnt.interfaces.types import ChatOutput
 logger = logging.getLogger(__name__)
 
 
-def run_chat(
+def run_pipeline(
     prompt: str,
     persona: PersonaProtocol,
     *,
@@ -72,4 +73,31 @@ def run_chat(
         persona_name=persona_name,
         timestamp=datetime.now(tz=ZoneInfo("Asia/Tokyo")),
         session_key="",
+    )
+
+
+def run_chat(
+    prompt: str,
+    persona: PersonaProtocol,
+    *,
+    engine: str = "",
+    model: str = "",
+    timeout: int = 300,
+    memory: str | None = None,
+    audit_writer: Callable[[dict], None] | None = None,
+) -> ChatOutput:
+    """Deprecated: use run_pipeline instead."""
+    warnings.warn(
+        "run_chat() is deprecated, use run_pipeline() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return run_pipeline(
+        prompt,
+        persona,
+        engine=engine,
+        model=model,
+        timeout=timeout,
+        memory=memory,
+        audit_writer=audit_writer,
     )
