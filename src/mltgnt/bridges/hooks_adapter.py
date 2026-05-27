@@ -138,6 +138,7 @@ def create_audit_writer(
     audit_path: Path,
     *,
     source: str = "mltgnt-agent",
+    correlation_id: str | None = None,
 ) -> Callable[[str, dict[str, Any], str], None]:
     """AgentRunner.audit_writer 用コールバックを返す。
 
@@ -153,7 +154,7 @@ def create_audit_writer(
             status="success",
             engine=source,
             model=None,
-            correlation_id=tool_name,
+            correlation_id=correlation_id if correlation_id is not None else tool_name,
             elapsed_sec=None,
             token_count=None,
         )

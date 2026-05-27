@@ -137,3 +137,23 @@ def test_real_chat_output_conforms() -> None:
         session_key="sess-1",
     )
     assert isinstance(out, ChatOutputBase)
+
+
+def test_chat_models_reexport_from_interfaces() -> None:
+    """chat.models と interfaces.types の両方から DTO を import できること。"""
+    from mltgnt.chat.models import ChatInput as ChatInputFromChat
+    from mltgnt.chat.models import ChatOutput as ChatOutputFromChat
+    from mltgnt.chat.models import Message as MessageFromChat
+    from mltgnt.interfaces.types import ChatInput, ChatOutput, Message
+
+    assert ChatInputFromChat is ChatInput
+    assert ChatOutputFromChat is ChatOutput
+    assert MessageFromChat is Message
+
+
+def test_interfaces_init_exports_chat_dtos() -> None:
+    """interfaces パッケージから ChatInput / ChatOutput を import できること。"""
+    from mltgnt.interfaces import ChatInput, ChatOutput, Message
+
+    inp = ChatInput(source="slack", session_key="s", messages=[], persona_name="p")
+    assert isinstance(inp, ChatInputBase)
