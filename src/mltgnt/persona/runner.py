@@ -41,10 +41,10 @@ def run_persona_prompt(
     Raises:
         FileNotFoundError: ペルソナファイルが見つからない場合。
     """
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     pdir = persona_dir if persona_dir is not None else Path("agents")
-    out = run_chat(
+    out = run_pipeline(
         prompt,
         persona_name,
         pdir,

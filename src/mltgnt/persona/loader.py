@@ -12,8 +12,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar
 from zoneinfo import ZoneInfo
+import warnings
 
 import yaml
 
@@ -52,17 +52,7 @@ class Persona:
         default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
     )
 
-    # 後方互換（read-only 参照用、format_prompt では使わない）
-    WEIGHT_MAP: ClassVar[dict[str, str]] = {
-        "基本情報": "heavy",
-        "価値観": "heavy",
-        "反応パターン": "heavy",
-        "口調": "heavy",
-        "アウトプット形式": "reference",
-        "軽量": "light",
-    }
-
-    DEFAULT_OP_MODE: ClassVar[str] = "critique"
+    DEFAULT_OP_MODE: str = "critique"
 
     # ------------------------------------------------------------------
     # 後方互換プロパティ
@@ -70,10 +60,24 @@ class Persona:
 
     @property
     def ops_config(self) -> "_OpsConfig":
+        warnings.warn(
+            "Persona.ops_config は非推奨です。"
+            " persona.fm.engine / persona.fm.model を直接参照してください。"
+            " v0.10 で削除予定。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return _OpsConfig(self.fm)
 
     def slack_post_kwargs(self) -> dict[str, str]:
         """chat.postMessage に渡す辞書（username / icon_emoji / icon_url）。"""
+        warnings.warn(
+            "Persona.slack_post_kwargs() は非推奨です。"
+            " persona.fm.slack_* 属性を直接参照してください。"
+            " v0.10 で削除予定。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         out: dict[str, str] = {}
         if self.fm.slack_username:
             out["username"] = self.fm.slack_username
@@ -84,6 +88,13 @@ class Persona:
         return out
 
     def delegate_ack(self) -> str | None:
+        warnings.warn(
+            "Persona.delegate_ack() は非推奨です。"
+            " persona.fm.slack_delegate_ack を直接参照してください。"
+            " v0.10 で削除予定。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.fm.slack_delegate_ack
 
     def format_prompt(self, instruction: str, *, weight: str = "heavy") -> str:

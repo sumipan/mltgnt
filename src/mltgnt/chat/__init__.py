@@ -1,4 +1,4 @@
-from mltgnt.chat.models import ChatInput, ChatOutput, Message
-from mltgnt.chat.pipeline import run_chat
+from mltgnt.chat.pipeline import run_chat, run_pipeline
+from mltgnt.interfaces.types import ChatInput, ChatOutput, Message
 
-__all__ = ["ChatInput", "ChatOutput", "Message", "run_chat"]
+__all__ = ["ChatInput", "ChatOutput", "Message", "run_chat", "run_pipeline"]

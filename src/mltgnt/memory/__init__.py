@@ -70,10 +70,19 @@ def memory_file_path(config: "MemoryConfig", persona_stem: str) -> Path:
 
 def normalize_source_prefix(body: str) -> str:
     """先頭行のソースタグを正規化する（後方互換）。"""
+    import warnings
+
     lines = body.splitlines()
     if not lines:
         return body
     if lines[0].strip() == "[file-chat]":
+        warnings.warn(
+            "normalize_source_prefix() は非推奨です。"
+            " ソースタグ [file-chat] は廃止済みです。呼び出し元で [file] を使用してください。"
+            " v0.10 で削除予定。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         lines[0] = "[file]"
         return "\n".join(lines)
     return body
@@ -514,7 +523,7 @@ def read_memory_agentic(
 
 
 # Lazy imports for compaction
-from mltgnt.memory._compaction import (  # noqa: E402
+from mltgnt.memory.compaction import (  # noqa: E402
     compact,
     needs_compaction,
     LlmCallError,

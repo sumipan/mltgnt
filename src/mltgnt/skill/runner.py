@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 
-from mltgnt.chat.models import ChatInput, Message
+from mltgnt.interfaces.types import ChatInput, Message
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.skill.models import SkillFile
 

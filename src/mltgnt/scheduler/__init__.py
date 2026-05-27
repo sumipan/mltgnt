@@ -656,7 +656,7 @@ class PersonaScheduler:
             argv_str = " ".join(str(x) for x in argv_list) if argv_list else ""
 
             from mltgnt.skill import runner as skill_runner
-            from mltgnt.chat.models import ChatInput, Message
+            from mltgnt.interfaces.types import ChatInput, Message
 
             chat_input = ChatInput(
                 source="scheduler",

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from mltgnt.config import MemoryConfig
-from mltgnt.memory._compaction import (
+from mltgnt.memory.compaction import (
     CompactionResult,
     PromoteCandidate,
     _effective_bytes_for_ratio,
@@ -101,14 +101,14 @@ class TestExtractPromoteCandidates:
         """extract_promote_candidates 内で md_promote は呼ばれない。"""
         called = []
         monkeypatch.setattr(
-            "mltgnt.memory._compaction.extract_promote_candidates",
+            "mltgnt.memory.compaction.extract_promote_candidates",
             lambda *a, **kw: called.append(True) or [],
             raising=False,
         )
         # 直接 import した関数を呼ぶのでモンキーパッチは不要
         # md_promote が存在しないことだけ確認する
-        import mltgnt.memory._compaction as mod
-        assert not hasattr(mod, "md_promote"), "md_promote が _compaction に混入している"
+        import mltgnt.memory.compaction as mod
+        assert not hasattr(mod, "md_promote"), "md_promote が compaction に混入している"
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +392,7 @@ class TestRedistributeEntries:
 
     def test_uses_config_timezone(self, tmp_path: Path):
         """_redistribute_entries が tools._core.tz を import していないこと。"""
-        import mltgnt.memory._compaction as mod
+        import mltgnt.memory.compaction as mod
         import inspect
         src = inspect.getsource(mod._redistribute_entries)
         assert "tools._core.tz" not in src
@@ -543,7 +543,7 @@ class TestCompactPerSectionCap:
 
     def test_no_diary_dependency(self):
         """_compaction.py が tools._core.tz を import していない（AC-5）。"""
-        import mltgnt.memory._compaction as mod
+        import mltgnt.memory.compaction as mod
         import inspect
         src = inspect.getsource(mod)
         assert "tools._core.tz" not in src
@@ -555,7 +555,7 @@ class TestCompactPerSectionCap:
         assert cfg.timezone == "UTC"
         # UTC timezone でも正常に動作する
         from datetime import datetime, timezone as tz
-        import mltgnt.memory._compaction as mod
+        import mltgnt.memory.compaction as mod
         now = datetime.now(tz.utc)
         entries = [MemoryEntry(
             timestamp="2026-05-01T00:00:00+00:00",

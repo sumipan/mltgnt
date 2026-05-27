@@ -62,8 +62,9 @@ class TestBridgesInitImports:
         }
 
     def test_scheduler_shim_imports(self):
-        """AC7: scheduler/ghdag_bridge.py shim が引き続き動作する。"""
-        from mltgnt.scheduler.ghdag_bridge import DagStep, enqueue_and_wait, enqueue_dag
+        """AC7: scheduler/ghdag_bridge.py shim が引き続き動作する（DeprecationWarning 付き）。"""
+        with pytest.warns(DeprecationWarning, match="mltgnt.scheduler.ghdag_bridge"):
+            from mltgnt.scheduler.ghdag_bridge import DagStep, enqueue_and_wait, enqueue_dag
 
         assert callable(enqueue_and_wait)
         assert callable(enqueue_dag)
