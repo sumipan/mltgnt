@@ -19,7 +19,6 @@ ignore_imports =
     mltgnt.persona.* -> mltgnt.chat.*
     mltgnt.chat.* -> mltgnt.persona.*
     mltgnt.skill.* -> mltgnt.chat.*
-    mltgnt.memory.* -> mltgnt.skill.*
 
 [importlinter:contract:l3_no_ghdag]
 name = L3 domain must not import ghdag directly

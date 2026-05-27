@@ -42,11 +42,13 @@ def _search_skills(
     """
     if not skill_paths:
         return []
-    from mltgnt.skill.loader import discover
+    import importlib
+
+    loader = importlib.import_module("mltgnt.skill.loader")
     from mltgnt.memory._scoring import score_entries
     from mltgnt.bridges.files_adapter import md_read
 
-    skills = discover(skill_paths)
+    skills = loader.discover(skill_paths)
     if not skills:
         return []
     bodies = [md_read(meta.path.name, repo_root=meta.path.parent).content for meta in skills.values()]
