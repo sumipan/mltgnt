@@ -128,6 +128,38 @@ class TestCreateAuditWriter:
         record = json.loads(audit_path.read_text().splitlines()[0])
         assert record["engine"] == "mltgnt-agent"
 
+    def test_uses_explicit_correlation_id_when_given(self, tmp_path):
+        """correlation_id 指定時は tool_name ではなく指定値を使う。"""
+        audit_path = tmp_path / "audit.jsonl"
+        runner = AgentRunner(
+            llm_call=make_llm([
+                '{"tool": "search", "args": {}}',
+                '{"tool": "done", "args": {}}',
+            ]),
+            tool_executor=make_executor({"search": "ok"}),
+            terminal_tools=frozenset({"done"}),
+            audit_writer=create_audit_writer(audit_path, correlation_id="session-123"),
+        )
+        runner.run("prompt")
+        record = json.loads(audit_path.read_text().splitlines()[0])
+        assert record["correlation_id"] == "session-123"
+
+    def test_falls_back_to_tool_name_when_correlation_id_omitted(self, tmp_path):
+        """correlation_id 省略時は従来どおり tool_name を使う。"""
+        audit_path = tmp_path / "audit.jsonl"
+        runner = AgentRunner(
+            llm_call=make_llm([
+                '{"tool": "search", "args": {}}',
+                '{"tool": "done", "args": {}}',
+            ]),
+            tool_executor=make_executor({"search": "ok"}),
+            terminal_tools=frozenset({"done"}),
+            audit_writer=create_audit_writer(audit_path),
+        )
+        runner.run("prompt")
+        record = json.loads(audit_path.read_text().splitlines()[0])
+        assert record["correlation_id"] == "search"
+
 
 def _make_task(uuid: str = "t1") -> Task:
     return Task(uuid=uuid, command="echo hello")
