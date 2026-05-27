@@ -209,6 +209,29 @@ def read_memory_with_sufficiency_check(
     return _tail_utf8_bytes(text, max_bytes)
 
 
+def _make_skill_searcher(skill_paths: list[Path]) -> Callable[[str, int], list]:
+    """skill_paths を閉じ込めた skill 検索コールバックを返す。
+
+    mltgnt.skill は importlib でランタイム解決し、import-linter の静的依存に含めない。
+    """
+
+    def search_skills(query: str, max_entries: int) -> list:
+        import importlib
+
+        from mltgnt.memory._scoring import score_entries
+
+        if not skill_paths:
+            return []
+        discover_bodies = importlib.import_module("mltgnt.skill").discover_bodies
+        bodies = discover_bodies(skill_paths)
+        if not bodies:
+            return []
+        scored = score_entries(query, bodies)
+        return scored[:max_entries]
+
+    return search_skills
+
+
 def read_memory_iterative(
     config: "MemoryConfig",
     persona_stem: str,
@@ -223,11 +246,13 @@ def read_memory_iterative(
     """反復検索による情報収集。LLM が十分性を判定し、不足時は source 指定で再検索する。"""
     from mltgnt.memory._iterative import IterativeRetriever
 
+    search_skills_fn = _make_skill_searcher(skill_paths) if skill_paths else None
+
     retriever = IterativeRetriever(
         config=config,
         persona_stem=persona_stem,
-        skill_paths=skill_paths or [],
         llm_call=llm_call,
+        search_skills=search_skills_fn,
         max_iterations=max_iterations,
     )
     return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
