@@ -542,7 +542,7 @@ class TestCompactPerSectionCap:
         assert len(result.warnings) > 0
 
     def test_no_diary_dependency(self):
-        """_compaction.py が tools._core.tz を import していない（AC-5）。"""
+        """compaction.py が tools._core.tz を import していない（AC-5）。"""
         import mltgnt.memory.compaction as mod
         import inspect
         src = inspect.getsource(mod)

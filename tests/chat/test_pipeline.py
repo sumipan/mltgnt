@@ -259,22 +259,15 @@ def test_chat_pipeline_importable_via_init() -> None:
     from mltgnt.chat import run_pipeline  # noqa: F401
 
 
-def test_run_chat_deprecated_alias(persona_dir: Path) -> None:
-    """run_chat は DeprecationWarning を出しつつ run_pipeline と同じ結果を返すこと。"""
-    from mltgnt.chat.pipeline import run_chat
-
-    persona, engine, model = _load_persona(persona_dir, "タチコマ")
-    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout="応答")):
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            out = run_chat("テスト", persona, engine=engine, model=model)
-
-    assert out.content == "応答"
-    assert len(w) == 1
-    assert issubclass(w[0].category, DeprecationWarning)
-    assert "run_pipeline" in str(w[0].message)
+def test_run_chat_raises_import_error() -> None:
+    """v0.10.0: run_chat は削除済み — ImportError が発生すること。"""
+    import pytest
+    with pytest.raises(ImportError):
+        from mltgnt.chat.pipeline import run_chat  # noqa: F401
 
 
-def test_run_chat_importable_via_init() -> None:
-    """from mltgnt.chat import run_chat が引き続き成功すること（後方互換）。"""
-    from mltgnt.chat import run_chat  # noqa: F401
+def test_run_chat_not_importable_via_init() -> None:
+    """v0.10.0: from mltgnt.chat import run_chat は ImportError になること。"""
+    import pytest
+    with pytest.raises(ImportError):
+        from mltgnt.chat import run_chat  # noqa: F401

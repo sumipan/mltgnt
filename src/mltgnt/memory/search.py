@@ -256,32 +256,3 @@ def read_memory_iterative(
         max_iterations=max_iterations,
     )
     return retriever.retrieve(query, max_bytes=max_bytes, max_entries=max_entries)
-
-
-def read_memory_agentic(
-    config: "MemoryConfig",
-    persona_stem: str,
-    query: str,
-    *,
-    max_bytes: int,
-    max_entries: int,
-    llm_call: "Callable[[str], str]",
-    skill_paths: "list[Path] | None" = None,
-    max_iterations: int = 3,
-) -> str:
-    """Deprecated: use read_memory_iterative instead."""
-    warnings.warn(
-        "read_memory_agentic is deprecated, use read_memory_iterative",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return read_memory_iterative(
-        config,
-        persona_stem,
-        query,
-        max_bytes=max_bytes,
-        max_entries=max_entries,
-        llm_call=llm_call,
-        skill_paths=skill_paths,
-        max_iterations=max_iterations,
-    )

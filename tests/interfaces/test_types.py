@@ -87,7 +87,7 @@ def test_chat_input_base_missing_session_key_fails() -> None:
 
 
 def test_real_chat_input_conforms() -> None:
-    """chat.models.ChatInput が ChatInputBase を満たす（structural subtyping）。"""
+    """interfaces.types.ChatInput が ChatInputBase を満たす（structural subtyping）。"""
     from mltgnt.interfaces.types import ChatInput
 
     inp = ChatInput(source="slack", session_key="sess-1", messages=[], persona_name="test")
@@ -127,7 +127,7 @@ def test_chat_output_base_missing_timestamp_fails() -> None:
 
 
 def test_real_chat_output_conforms() -> None:
-    """chat.models.ChatOutput が ChatOutputBase を満たす（structural subtyping）。"""
+    """interfaces.types.ChatOutput が ChatOutputBase を満たす（structural subtyping）。"""
     from mltgnt.interfaces.types import ChatOutput
 
     out = ChatOutput(
@@ -137,23 +137,3 @@ def test_real_chat_output_conforms() -> None:
         session_key="sess-1",
     )
     assert isinstance(out, ChatOutputBase)
-
-
-def test_chat_models_reexport_from_interfaces() -> None:
-    """chat.models と interfaces.types の両方から DTO を import できること。"""
-    from mltgnt.chat.models import ChatInput as ChatInputFromChat
-    from mltgnt.chat.models import ChatOutput as ChatOutputFromChat
-    from mltgnt.chat.models import Message as MessageFromChat
-    from mltgnt.interfaces.types import ChatInput, ChatOutput, Message
-
-    assert ChatInputFromChat is ChatInput
-    assert ChatOutputFromChat is ChatOutput
-    assert MessageFromChat is Message
-
-
-def test_interfaces_init_exports_chat_dtos() -> None:
-    """interfaces パッケージから ChatInput / ChatOutput を import できること。"""
-    from mltgnt.interfaces import ChatInput, ChatOutput, Message
-
-    inp = ChatInput(source="slack", session_key="s", messages=[], persona_name="p")
-    assert isinstance(inp, ChatInputBase)

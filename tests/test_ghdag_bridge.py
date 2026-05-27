@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -62,14 +61,10 @@ class TestBridgesInitImports:
             "md_write",
         }
 
-    def test_scheduler_shim_imports(self):
-        """AC7: scheduler/ghdag_bridge.py shim が引き続き動作する（DeprecationWarning 付き）。"""
-        with pytest.warns(DeprecationWarning, match="mltgnt.scheduler.ghdag_bridge"):
-            from mltgnt.scheduler.ghdag_bridge import DagStep, enqueue_and_wait, enqueue_dag
-
-        assert callable(enqueue_and_wait)
-        assert callable(enqueue_dag)
-        assert DagStep is not None
+    def test_scheduler_shim_removed(self):
+        """v0.8.0: scheduler/ghdag_bridge.py shim は削除済み。"""
+        with pytest.raises(ImportError):
+            from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -173,120 +168,6 @@ class TestCorrelationIdPropagation:
         ctx = captured_contexts[0]
         assert ctx.source == "mltgnt-scheduler"
         assert ctx.correlation_id is None
-
-
-# ---------------------------------------------------------------------------
-# parent_correlation_id — AuditContext 伝搬（issue #1243）
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _AuditContextWithParent:
-    """ghdag v0.25.5 未導入環境でも parent_correlation_id 伝搬を検証するためのスタブ。"""
-
-    source: str = "unknown"
-    correlation_id: str | None = None
-    parent_correlation_id: str | None = None
-
-
-class TestParentCorrelationIdPropagation:
-    def test_enqueue_dag_passes_parent_correlation_id(self, tmp_path):
-        """enqueue_dag が AuditContext に parent_correlation_id を渡すこと。"""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch("ghdag.pipeline.audit.AuditContext", _AuditContextWithParent),
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_dag(
-                steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
-                timeout=5.0,
-                idempotency_key=f"dag:parent:{uuid.uuid4()}",
-                jobs_dir=jobs_dir,
-                exec_done_dir=done_dir,
-                correlation_id="sess-1",
-                parent_correlation_id="orch-abc123def456",
-            )
-
-        assert len(captured_contexts) == 1
-        ctx = captured_contexts[0]
-        assert ctx.source == "mltgnt-scheduler"
-        assert ctx.correlation_id == "sess-1"
-        assert ctx.parent_correlation_id == "orch-abc123def456"
-
-    def test_enqueue_and_wait_passes_parent_correlation_id(self, tmp_path):
-        """enqueue_and_wait が AuditContext に parent_correlation_id を渡すこと。"""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir = _make_jobs_dir(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch("ghdag.pipeline.audit.AuditContext", _AuditContextWithParent),
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_and_wait(
-                prompt="test",
-                engine="cursor",
-                model="auto",
-                timeout=5.0,
-                idempotency_key="scheduler:test:parent",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-                parent_correlation_id="orch-test1234abcd",
-            )
-
-        assert len(captured_contexts) == 1
-        ctx = captured_contexts[0]
-        assert ctx.source == "mltgnt-scheduler"
-        assert ctx.parent_correlation_id == "orch-test1234abcd"
-
-    def test_enqueue_dag_default_parent_correlation_id_is_none(self, tmp_path):
-        """parent_correlation_id 省略時に AuditContext.parent_correlation_id が None であること。"""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch("ghdag.pipeline.audit.AuditContext", _AuditContextWithParent),
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_dag(
-                steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
-                timeout=5.0,
-                idempotency_key=f"dag:parent-default:{uuid.uuid4()}",
-                jobs_dir=jobs_dir,
-                exec_done_dir=done_dir,
-                correlation_id="sess-1",
-            )
-
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0].parent_correlation_id is None
 
 
 # ---------------------------------------------------------------------------

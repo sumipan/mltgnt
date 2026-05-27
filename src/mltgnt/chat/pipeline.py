@@ -94,34 +94,3 @@ def run_pipeline(
         timestamp=datetime.now(tz=ZoneInfo("Asia/Tokyo")),
         session_key="",
     )
-
-
-def run_chat(
-    prompt: str,
-    persona: PersonaProtocol,
-    *,
-    engine: str = "",
-    model: str = "",
-    timeout: int = 300,
-    memory: str | None = None,
-    orchestration_ctx: OrchestrationContext | None = None,
-    audit_path: Path | None = None,
-    audit_writer: Callable[[dict], None] | None = None,
-) -> ChatOutput:
-    """Deprecated: use run_pipeline instead."""
-    warnings.warn(
-        "run_chat() is deprecated, use run_pipeline() instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return run_pipeline(
-        prompt,
-        persona,
-        engine=engine,
-        model=model,
-        timeout=timeout,
-        memory=memory,
-        orchestration_ctx=orchestration_ctx,
-        audit_path=audit_path,
-        audit_writer=audit_writer,
-    )

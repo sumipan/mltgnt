@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mltgnt.chat.models import ChatInput, ChatOutput, Message
+from mltgnt.interfaces.types import ChatInput, ChatOutput, Message
 from mltgnt.interfaces.chat import ChatPipelineProtocol
 from mltgnt.interfaces.types import ChatInputBase, ChatOutputBase
 

@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-import warnings
 
 import yaml
 
@@ -54,49 +53,6 @@ class Persona:
 
     DEFAULT_OP_MODE: str = "critique"
 
-    # ------------------------------------------------------------------
-    # 後方互換プロパティ
-    # ------------------------------------------------------------------
-
-    @property
-    def ops_config(self) -> "_OpsConfig":
-        warnings.warn(
-            "Persona.ops_config は非推奨です。"
-            " persona.fm.engine / persona.fm.model を直接参照してください。"
-            " v0.10 で削除予定。",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return _OpsConfig(self.fm)
-
-    def slack_post_kwargs(self) -> dict[str, str]:
-        """chat.postMessage に渡す辞書（username / icon_emoji / icon_url）。"""
-        warnings.warn(
-            "Persona.slack_post_kwargs() は非推奨です。"
-            " persona.fm.slack_* 属性を直接参照してください。"
-            " v0.10 で削除予定。",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        out: dict[str, str] = {}
-        if self.fm.slack_username:
-            out["username"] = self.fm.slack_username
-        if self.fm.slack_icon_emoji:
-            out["icon_emoji"] = self.fm.slack_icon_emoji
-        if self.fm.slack_icon_url:
-            out["icon_url"] = self.fm.slack_icon_url
-        return out
-
-    def delegate_ack(self) -> str | None:
-        warnings.warn(
-            "Persona.delegate_ack() は非推奨です。"
-            " persona.fm.slack_delegate_ack を直接参照してください。"
-            " v0.10 で削除予定。",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.fm.slack_delegate_ack
-
     def format_prompt(self, instruction: str, *, weight: str = "heavy") -> str:
         now = datetime.now(_TZ)
         datetime_line = f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
@@ -108,11 +64,11 @@ class Persona:
                     return wv
             return None
 
-        # WEIGHT_MAP に対応しないセクションがあれば warning + フォールバック
+        # weight_map に対応しないセクションがあれば warning + フォールバック
         unknown = [k for k in self.sections if _weight_for(k) is None]
         if unknown:
             logger.warning(
-                "[persona] %r: WEIGHT_MAP に未定義のセクション %s — 全セクションを embed します",
+                "[persona] %r: weight_map に未定義のセクション %s — 全セクションを embed します",
                 self.name,
                 unknown,
             )
@@ -153,31 +109,6 @@ class Persona:
         if output_fmt:
             parts.append(f"## アウトプット形式\n{output_fmt}")
         return "\n\n".join(parts)
-
-
-@dataclass
-class _OpsConfig:
-    """ops namespace へのアクセスヘルパー。"""
-
-    _fm: PersonaFM
-
-    @property
-    def slack(self) -> dict[str, str | None]:
-        return {
-            "username": self._fm.slack_username,
-            "icon_emoji": self._fm.slack_icon_emoji,
-            "icon_url": self._fm.slack_icon_url,
-            "delegate_ack": self._fm.slack_delegate_ack,
-        }
-
-    @property
-    def chat_model(self) -> str | None:
-        return self._fm.chat_model
-
-
-# ---------------------------------------------------------------------------
-# 読み込み関数
-# ---------------------------------------------------------------------------
 
 
 def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:

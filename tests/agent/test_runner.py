@@ -69,17 +69,14 @@ def test_json_in_code_block():
     assert result.tool == "done"
 
 
-def test_args_key_omitted_backward_compat():
-    """#4: args キー省略の後方互換。"""
+def test_args_key_required():
+    """v0.8.0: args キーなし JSON はパース失敗。"""
     runner = AgentRunner(
         llm_call=make_llm(['{"tool": "slack_reply", "message": "hi"}']),
         tool_executor=make_executor({}),
         terminal_tools=frozenset({"slack_reply"}),
     )
-    result = runner.run("prompt")
-    assert result is not None
-    assert result.tool == "slack_reply"
-    assert result.args == {"message": "hi"}
+    assert runner.run("prompt") is None
 
 
 # ---- 異常系 ----

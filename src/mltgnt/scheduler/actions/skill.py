@@ -50,7 +50,7 @@ def run_skill_action(
     argv_list = aa.get("argv", [])
     argv_str = " ".join(str(x) for x in argv_list) if argv_list else ""
 
-    from mltgnt.chat.models import ChatInput, Message
+    from mltgnt.interfaces.types import ChatInput, Message
     from mltgnt.skill import runner as skill_runner
 
     chat_input = ChatInput(

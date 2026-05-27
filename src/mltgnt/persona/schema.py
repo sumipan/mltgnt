@@ -16,7 +16,6 @@ FM 構造:
         icon_emoji: str
         icon_url: str
         delegate_ack: str
-      chat_model: str
       engine: str
       model: str
       skills: list[str]
@@ -24,7 +23,6 @@ FM 構造:
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,7 +32,7 @@ from typing import Any
 
 _KNOWN_PERSONA_KEYS: frozenset[str] = frozenset({"name", "aliases", "description"})
 
-_KNOWN_OPS_KEYS: frozenset[str] = frozenset({"slack", "chat_model", "engine", "model", "skills"})
+_KNOWN_OPS_KEYS: frozenset[str] = frozenset({"slack", "engine", "model", "skills"})
 
 _KNOWN_OPS_SLACK_KEYS: frozenset[str] = frozenset(
     {"username", "icon_emoji", "icon_url", "delegate_ack", "channel",
@@ -66,7 +64,6 @@ class PersonaFM:
     spec_version: str | None = None
 
     # ops namespace
-    chat_model: str | None = None
     engine: str = ""
     model: str = ""
     skills: list[str] = field(default_factory=list)
@@ -81,9 +78,6 @@ class PersonaFM:
     # 未知のキー（バリデーション用に保持）
     unknown_keys: list[str] = field(default_factory=list)
 
-    # 旧形式（flat キー）使用フラグ（P2-B バリデーション用）
-    legacy_keys: list[str] = field(default_factory=list)
-
 
 # ---------------------------------------------------------------------------
 # パース関数
@@ -91,11 +85,7 @@ class PersonaFM:
 
 
 def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
-    """フロントマター dict から PersonaFM を生成する。
-
-    新スキーマ（persona: / ops: 分離）と旧スキーマ（flat キー）の両方を受け付ける。
-    旧キーを使用した場合は deprecation warning を出す。
-    """
+    """フロントマター dict から PersonaFM を生成する。"""
     unknown: list[str] = []
 
     # ── トップレベル spec_version ────────────────────────────────────────────
@@ -119,7 +109,6 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
 
     # ── 新スキーマの ops: namespace ──────────────────────────────────────────
     ops_ns: dict[str, Any] = meta.get("ops") or {}
-    chat_model: str | None = None
     engine: str = ""
     model: str = ""
     skills: list[str] = []
@@ -132,14 +121,6 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
     slack_nickname: str | None = None
 
     if isinstance(ops_ns, dict):
-        chat_model = _str_or_none(ops_ns.get("chat_model"))
-        if chat_model is not None:
-            warnings.warn(
-                "ops.chat_model は非推奨です。ops.engine / ops.model に移行してください。"
-                " 将来のバージョンで削除されます。",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         engine = _str_or_none(ops_ns.get("engine")) or ""
         model = _str_or_none(ops_ns.get("model")) or ""
         _skills_raw = ops_ns.get("skills")
@@ -161,26 +142,11 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
             if k not in _KNOWN_OPS_KEYS:
                 unknown.append(f"ops.{k}")
 
-    # ── 未知トップレベルキー ─────────────────────────────────────────────────
-    _legacy_flat: frozenset[str] = frozenset({"chat_model", "slack"})
-    legacy_keys_list: list[str] = [k for k in meta if k in _legacy_flat]
-
-    for key in legacy_keys_list:
-        warnings.warn(
-            f"トップレベルの FM キー '{key}' は非推奨です。"
-            f"ops: namespace に移行してください（例: ops.{key}）。"
-            " 将来のバージョンで削除されます。",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    # legacy_flat は unknown とは別扱い（validate_fm で個別エラー）
-    known_top: frozenset[str] = frozenset({"persona", "ops", "spec_version"}) | _legacy_flat
+    known_top: frozenset[str] = frozenset({"persona", "ops", "spec_version"})
     for k in meta:
         if k not in known_top:
             unknown.append(k)
 
-    # name フォールバック: 旧スキーマでも persona.name がない場合は file_stem
     if not name:
         name = file_stem
 
@@ -189,7 +155,6 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
         aliases=aliases,
         description=description,
         spec_version=spec_version,
-        chat_model=chat_model,
         engine=engine,
         model=model,
         skills=skills,
@@ -201,7 +166,6 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
         slack_secondary_channels=slack_secondary_channels,
         slack_nickname=slack_nickname,
         unknown_keys=unknown,
-        legacy_keys=legacy_keys_list,
     )
 
 
@@ -227,17 +191,6 @@ def validate_fm(fm: PersonaFM) -> ValidationResult:
 
     for k in fm.unknown_keys:
         errors.append(f"未定義の FM キー: {k!r}（スキーマに追加してから使用してください）")
-
-    if fm.legacy_keys:
-        errors.append(
-            f"旧形式の FM キー {fm.legacy_keys} が使用されています。"
-            "ops: namespace（ops.chat_model / ops.slack.*）に移行してください。"
-        )
-
-    if fm.chat_model is not None:
-        warns.append(
-            "ops.chat_model は非推奨です。ops.engine / ops.model に移行してください。"
-        )
 
     return ValidationResult(ok=len(errors) == 0, warnings=warns, errors=errors)
 
@@ -278,5 +231,4 @@ VALID_ENGINES: frozenset[str] = frozenset({"gemini", "claude", "cursor"})
 
 SYSTEM_DEFAULT_ENGINE: str = "claude"
 SYSTEM_DEFAULT_MODEL: str = ""
-
 

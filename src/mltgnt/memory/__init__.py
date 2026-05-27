@@ -16,7 +16,6 @@ from mltgnt.memory.api import (
     _tail_utf8_bytes,
     append_memory_entry,
     memory_file_path,
-    normalize_source_prefix,
     persona_memory_lock,
     read_memory_preferences,
     read_memory_tail_text,
@@ -24,7 +23,6 @@ from mltgnt.memory.api import (
 )
 from mltgnt.memory.search import (
     _search_and_score,
-    read_memory_agentic,
     read_memory_by_relevance,
     read_memory_iterative,
     read_memory_with_sufficiency_check,
@@ -44,9 +42,7 @@ __all__ = [
     "read_memory_by_relevance",
     "read_memory_with_sufficiency_check",
     "read_memory_iterative",
-    "read_memory_agentic",
     "memory_file_path",
-    "normalize_source_prefix",
     "compact",
     "needs_compaction",
     "LlmCallError",
