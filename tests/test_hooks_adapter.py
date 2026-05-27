@@ -3,8 +3,11 @@ import json
 
 from ghdag.dag.hooks import Task, TaskMetrics
 
-from mltgnt.agent import AgentRunner, create_audit_writer
-from mltgnt.bridges.hooks_adapter import MltgntHooks
+import pytest
+
+from mltgnt.agent import AgentRunner
+from mltgnt.bridges import create_audit_writer as create_audit_writer_from_bridges
+from mltgnt.bridges.hooks_adapter import MltgntHooks, create_audit_writer
 
 
 def make_llm(responses: list):
@@ -124,6 +127,38 @@ class TestCreateAuditWriter:
         runner.run("prompt")
         record = json.loads(audit_path.read_text().splitlines()[0])
         assert record["engine"] == "mltgnt-agent"
+
+    def test_uses_explicit_correlation_id_when_given(self, tmp_path):
+        """correlation_id 指定時は tool_name ではなく指定値を使う。"""
+        audit_path = tmp_path / "audit.jsonl"
+        runner = AgentRunner(
+            llm_call=make_llm([
+                '{"tool": "search", "args": {}}',
+                '{"tool": "done", "args": {}}',
+            ]),
+            tool_executor=make_executor({"search": "ok"}),
+            terminal_tools=frozenset({"done"}),
+            audit_writer=create_audit_writer(audit_path, correlation_id="session-123"),
+        )
+        runner.run("prompt")
+        record = json.loads(audit_path.read_text().splitlines()[0])
+        assert record["correlation_id"] == "session-123"
+
+    def test_falls_back_to_tool_name_when_correlation_id_omitted(self, tmp_path):
+        """correlation_id 省略時は従来どおり tool_name を使う。"""
+        audit_path = tmp_path / "audit.jsonl"
+        runner = AgentRunner(
+            llm_call=make_llm([
+                '{"tool": "search", "args": {}}',
+                '{"tool": "done", "args": {}}',
+            ]),
+            tool_executor=make_executor({"search": "ok"}),
+            terminal_tools=frozenset({"done"}),
+            audit_writer=create_audit_writer(audit_path),
+        )
+        runner.run("prompt")
+        record = json.loads(audit_path.read_text().splitlines()[0])
+        assert record["correlation_id"] == "search"
 
 
 def _make_task(uuid: str = "t1") -> Task:
@@ -255,3 +290,39 @@ class TestMltgntHooks:
         hooks.on_task_start("t1", _make_task())
         record = json.loads(audit_path.read_text().splitlines()[0])
         assert record["engine"] == "mltgnt-scheduler"
+
+
+class TestLayerBoundaryReExports:
+    """Issue #1228: 後方互換 re-export 削除後の import 整合性。"""
+
+    def test_routing_resolve_skill_not_reexported(self) -> None:
+        import mltgnt.routing as routing
+
+        assert "resolve_skill" not in routing.__all__
+        with pytest.raises(ImportError):
+            from mltgnt.routing import resolve_skill  # noqa: F401
+
+    def test_skill_resolve_skill_importable(self) -> None:
+        from mltgnt.skill import resolve_skill
+
+        assert callable(resolve_skill)
+
+    def test_routing_other_exports_unchanged(self) -> None:
+        from mltgnt.routing import ChannelPersonaEntry, load_channel_persona_map
+
+        assert ChannelPersonaEntry is not None
+        assert callable(load_channel_persona_map)
+
+    def test_agent_create_audit_writer_not_reexported(self) -> None:
+        with pytest.raises(ImportError):
+            from mltgnt.agent import create_audit_writer  # noqa: F401
+
+    def test_agent_runner_exports_unchanged(self) -> None:
+        from mltgnt.agent import AgentResult, AgentRunner
+
+        assert AgentRunner is not None
+        assert AgentResult is not None
+
+    def test_bridges_create_audit_writer_importable(self) -> None:
+        assert callable(create_audit_writer)
+        assert callable(create_audit_writer_from_bridges)

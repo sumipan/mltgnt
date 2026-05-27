@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -16,9 +15,12 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
+SkillSearchFn = Callable[[str, int], list]  # (query, max_entries) -> list[ScoredEntry]
+
 __all__ = [
     "SearchResult",
     "IterativeRetriever",
+    "SkillSearchFn",
 ]
 
 
@@ -28,32 +30,6 @@ class SearchResult:
 
     source: Literal["memory", "skill"]
     entries: list  # list[ScoredEntry]
-
-
-def _search_skills(
-    query: str,
-    skill_paths: list[Path],
-    max_entries: int,
-) -> list:
-    """skill ディレクトリの SKILL.md 本文を TF-IDF 検索する。
-
-    Returns:
-        list[ScoredEntry]
-    """
-    if not skill_paths:
-        return []
-    from mltgnt.skill.loader import discover
-    from mltgnt.memory._scoring import score_entries
-    from mltgnt.bridges.files_adapter import md_read
-
-    skills = discover(skill_paths)
-    if not skills:
-        return []
-    bodies = [md_read(meta.path.name, repo_root=meta.path.parent).content for meta in skills.values()]
-    if not bodies:
-        return []
-    scored = score_entries(query, bodies)
-    return scored[:max_entries]
 
 
 class IterativeRetriever:
@@ -67,14 +43,14 @@ class IterativeRetriever:
         self,
         config: "MemoryConfig",
         persona_stem: str,
-        skill_paths: list[Path],
         llm_call: Callable[[str], str],
         *,
+        search_skills: SkillSearchFn | None = None,
         max_iterations: int = 3,
     ) -> None:
         self._config = config
         self._persona_stem = persona_stem
-        self._skill_paths = skill_paths
+        self._search_skills = search_skills
         self._llm_call = llm_call
         self._max_iterations = max_iterations
 
@@ -115,7 +91,10 @@ class IterativeRetriever:
             if action.source == "memory":
                 new_entries = self._search_memory(action.query, max_entries)
             else:  # "skill"
-                new_entries = _search_skills(action.query, self._skill_paths, max_entries)
+                if self._search_skills is None:
+                    new_entries = []
+                else:
+                    new_entries = self._search_skills(action.query, max_entries)
 
             # Observe: 新規エントリを collected にマージ（重複排除）
             for entry in new_entries:
@@ -131,7 +110,7 @@ class IterativeRetriever:
             list[ScoredEntry]
         """
         from mltgnt.memory._scoring import score_entries, ScoredEntry
-        from mltgnt.memory import _ensure_jsonl
+        from mltgnt.memory.api import _ensure_jsonl
         from mltgnt.memory._format import parse_jsonl, assemble_entries_text
 
         jsonl_path = _ensure_jsonl(self._config, self._persona_stem)
@@ -166,7 +145,7 @@ class IterativeRetriever:
 
     def _build_output(self, collected: dict, max_bytes: int, max_entries: int) -> str:
         """preferences + 収集エントリを結合して max_bytes 以内で返す。"""
-        from mltgnt.memory import read_memory_preferences
+        from mltgnt.memory.api import read_memory_preferences
 
         prefs = read_memory_preferences(self._config, self._persona_stem)
 

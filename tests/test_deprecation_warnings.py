@@ -32,15 +32,18 @@ _PERSONA_MD = textwrap.dedent("""\
 def test_run_chat_deprecation(tmp_path: Path) -> None:
     """#2: run_chat() は DeprecationWarning を発する。"""
     from mltgnt.chat.pipeline import run_chat
+    from mltgnt.persona.loader import load
+    from mltgnt.persona.registry import resolve_with_alias
 
     persona_dir = tmp_path / "agents"
     persona_dir.mkdir()
     (persona_dir / "タチコマ.md").write_text(_PERSONA_MD, encoding="utf-8")
+    persona = load(resolve_with_alias("タチコマ", persona_dir))
 
     with patch("mltgnt.bridges.llm_adapter.call_llm") as mock_llm:
         mock_llm.return_value = MagicMock(ok=True, stdout="ok", stderr="")
         with pytest.warns(DeprecationWarning, match="run_chat\\(\\) is deprecated"):
-            run_chat("hi", "タチコマ", persona_dir)
+            run_chat("hi", persona)
 
 
 def test_read_memory_agentic_deprecation(tmp_path: Path) -> None:
