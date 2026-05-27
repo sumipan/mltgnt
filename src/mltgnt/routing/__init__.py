@@ -12,10 +12,11 @@ import logging
 import sys
 from dataclasses import dataclass
 
+from typing import Any, Callable, Literal
+
 from mltgnt.exceptions import DependencyError
 
 _log = logging.getLogger(__name__)
-from typing import Any, Callable, Literal
 
 __all__ = [
     "ChannelPersonaEntry",

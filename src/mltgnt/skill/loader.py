@@ -8,11 +8,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-_log = logging.getLogger(__name__)
-
 from mltgnt.bridges.files_adapter import md_read
-
 from mltgnt.skill.models import SkillFile, SkillMeta
+
+_log = logging.getLogger(__name__)
 
 
 def _build_meta(fm: dict, path: Path) -> SkillMeta:
