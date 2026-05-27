@@ -28,6 +28,22 @@ class DagStep:
     context: dict[str, str] = field(default_factory=dict)
 
 
+def _scheduler_audit_context(
+    correlation_id: str | None,
+    parent_correlation_id: str | None,
+):
+    """mltgnt-scheduler 用 AuditContext。ghdag < v0.25.5 では parent_correlation_id を省略する。"""
+    from ghdag.pipeline.audit import AuditContext
+
+    kwargs: dict = {
+        "source": "mltgnt-scheduler",
+        "correlation_id": correlation_id,
+    }
+    if parent_correlation_id is not None:
+        kwargs["parent_correlation_id"] = parent_correlation_id
+    return AuditContext(**kwargs)
+
+
 def _topological_sort(steps: list[DagStep]) -> list[DagStep]:
     """Kahn's algorithm によるトポロジカルソート。循環依存時は ValueError を送出する。"""
     step_map = {s.id: s for s in steps}
@@ -61,6 +77,7 @@ def enqueue_dag(
     exec_done_dir: Path,
     persona_dir: Path | None = None,
     correlation_id: str | None = None,
+    parent_correlation_id: str | None = None,
 ) -> list[tuple[bool, str]]:
     """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
 
@@ -83,7 +100,6 @@ def enqueue_dag(
         PipelineState,
         wait_for_result,
     )
-    from ghdag.pipeline.audit import AuditContext
     from ghdag.workflow.schema import StepConfig
 
     state = PipelineState(
@@ -131,10 +147,7 @@ def enqueue_dag(
             [step_config],
             base_context=base_context,
             idempotency_key=idempotency_key if first_submit else None,
-            audit_context=AuditContext(
-                source="mltgnt-scheduler",
-                correlation_id=correlation_id,
-            ),
+            audit_context=_scheduler_audit_context(correlation_id, parent_correlation_id),
         )
         first_submit = False
 
@@ -187,6 +200,7 @@ def enqueue_and_wait(
     persona_name: str | None = None,
     persona_dir: Path | None = None,
     correlation_id: str | None = None,
+    parent_correlation_id: str | None = None,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
 
@@ -210,7 +224,6 @@ def enqueue_and_wait(
         PipelineState,
         wait_for_result,
     )
-    from ghdag.pipeline.audit import AuditContext
     from ghdag.workflow.schema import StepConfig
 
     state = PipelineState(
@@ -230,10 +243,7 @@ def enqueue_and_wait(
         [StepConfig(id="skill", template=prompt, engine=engine, model=model or "")],
         base_context={"workflow_name": "scheduler"},
         idempotency_key=idempotency_key,
-        audit_context=AuditContext(
-            source="mltgnt-scheduler",
-            correlation_id=correlation_id,
-        ),
+        audit_context=_scheduler_audit_context(correlation_id, parent_correlation_id),
     )
 
     skill_line = next(
