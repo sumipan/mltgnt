@@ -1,7 +1,8 @@
-"""Tests for mltgnt.chat.pipeline.run_chat"""
+"""Tests for mltgnt.chat.pipeline.run_pipeline"""
 from __future__ import annotations
 
 import textwrap
+import warnings
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -56,109 +57,109 @@ def _make_llm_result(ok: bool = True, stdout: str = "応答", stderr: str = "") 
     return r
 
 
-def test_run_chat_returns_chat_output(persona_dir: Path) -> None:
-    """run_chat は ChatOutput を返すこと。"""
-    from mltgnt.chat.pipeline import run_chat
+def test_run_pipeline_returns_chat_output(persona_dir: Path) -> None:
+    """run_pipeline は ChatOutput を返すこと。"""
+    from mltgnt.chat.pipeline import run_pipeline
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout="テスト応答")):
-        out = run_chat("こんにちは", "タチコマ", persona_dir)
+        out = run_pipeline("こんにちは", "タチコマ", persona_dir)
 
     from mltgnt.chat.models import ChatOutput
     assert isinstance(out, ChatOutput)
 
 
-def test_run_chat_content_has_llm_response(persona_dir: Path) -> None:
+def test_run_pipeline_content_has_llm_response(persona_dir: Path) -> None:
     """ChatOutput.content に LLM 応答テキストが格納されること。"""
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout="テスト応答")):
-        out = run_chat("こんにちは", "タチコマ", persona_dir)
+        out = run_pipeline("こんにちは", "タチコマ", persona_dir)
 
     assert out.content == "テスト応答"
 
 
-def test_run_chat_persona_name_matches(persona_dir: Path) -> None:
+def test_run_pipeline_persona_name_matches(persona_dir: Path) -> None:
     """ChatOutput.persona_name が渡したペルソナ名と一致すること。"""
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result()):
-        out = run_chat("テスト", "タチコマ", persona_dir)
+        out = run_pipeline("テスト", "タチコマ", persona_dir)
 
     assert out.persona_name == "タチコマ"
 
 
-def test_run_chat_timestamp_is_asia_tokyo(persona_dir: Path) -> None:
+def test_run_pipeline_timestamp_is_asia_tokyo(persona_dir: Path) -> None:
     """ChatOutput.timestamp が Asia/Tokyo タイムゾーンの datetime であること。"""
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result()):
-        out = run_chat("テスト", "タチコマ", persona_dir)
+        out = run_pipeline("テスト", "タチコマ", persona_dir)
 
     assert isinstance(out.timestamp, datetime)
     assert out.timestamp.tzinfo is not None
     assert out.timestamp.utcoffset().total_seconds() == 9 * 3600
 
 
-def test_run_chat_memory_prepended(persona_dir: Path) -> None:
+def test_run_pipeline_memory_prepended(persona_dir: Path) -> None:
     """memory が非 None の場合、プロンプト先頭に付加されること。"""
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result()) as mock_call:
-        run_chat("テスト", "タチコマ", persona_dir, memory="メモリ内容")
+        run_pipeline("テスト", "タチコマ", persona_dir, memory="メモリ内容")
 
     called_prompt: str = mock_call.call_args[0][0]
     assert "メモリ内容\n\n" in called_prompt
 
 
-def test_run_chat_ok_false_returns_error_content(persona_dir: Path) -> None:
+def test_run_pipeline_ok_false_returns_error_content(persona_dir: Path) -> None:
     """LLM が ok=False を返した場合、content に "（エラー: ...）" が含まれること。"""
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=False, stderr="engine error")):
-        out = run_chat("テスト", "タチコマ", persona_dir)
+        out = run_pipeline("テスト", "タチコマ", persona_dir)
 
     assert "エラー" in out.content
     assert "engine error" in out.content
 
 
-def test_run_chat_exception_returns_error_content(persona_dir: Path) -> None:
+def test_run_pipeline_exception_returns_error_content(persona_dir: Path) -> None:
     """LLM が RuntimeError を送出した場合、content に "（実行失敗: ...）" が含まれ例外は送出されないこと。"""
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", side_effect=RuntimeError("connection refused")):
-        out = run_chat("テスト", "タチコマ", persona_dir)
+        out = run_pipeline("テスト", "タチコマ", persona_dir)
 
     assert "実行失敗" in out.content
     assert "connection refused" in out.content
 
 
-def test_run_chat_audit_writer_called(persona_dir: Path) -> None:
+def test_run_pipeline_audit_writer_called(persona_dir: Path) -> None:
     """audit_writer が1回呼ばれ、必須キーが含まれること。"""
-    from mltgnt.chat.pipeline import run_chat
+    from mltgnt.chat.pipeline import run_pipeline
 
     mock_writer = MagicMock()
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="応答")):
-        run_chat("テスト", "タチコマ", persona_dir, audit_writer=mock_writer)
+        run_pipeline("テスト", "タチコマ", persona_dir, audit_writer=mock_writer)
 
     mock_writer.assert_called_once()
     audit_dict = mock_writer.call_args[0][0]
     assert set(audit_dict.keys()) >= {"source", "engine", "model", "ok", "timestamp"}
 
 
-def test_run_chat_audit_writer_exception_does_not_affect_result(persona_dir: Path) -> None:
-    """audit_writer が例外を送出しても run_chat の戻り値に影響しないこと。"""
-    from mltgnt.chat.pipeline import run_chat
+def test_run_pipeline_audit_writer_exception_does_not_affect_result(persona_dir: Path) -> None:
+    """audit_writer が例外を送出しても run_pipeline の戻り値に影響しないこと。"""
+    from mltgnt.chat.pipeline import run_pipeline
 
     def failing_writer(_: dict) -> None:
         raise ValueError("audit write error")
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="正常応答")):
-        out = run_chat("テスト", "タチコマ", persona_dir, audit_writer=failing_writer)
+        out = run_pipeline("テスト", "タチコマ", persona_dir, audit_writer=failing_writer)
 
     assert out.content == "正常応答"
 
 
-def test_run_chat_no_ghdag_import_in_pipeline() -> None:
+def test_run_pipeline_no_ghdag_import_in_pipeline() -> None:
     """chat/pipeline.py 内に ghdag の直接 import がないこと（L3→L0 依存排除）。"""
     import inspect
     import mltgnt.chat.pipeline as mod
@@ -174,5 +175,25 @@ def test_bridges_llm_adapter_importable() -> None:
 
 
 def test_chat_pipeline_importable_via_init() -> None:
-    """from mltgnt.chat import run_chat が成功すること。"""
+    """from mltgnt.chat import run_pipeline が成功すること。"""
+    from mltgnt.chat import run_pipeline  # noqa: F401
+
+
+def test_run_chat_deprecated_alias(persona_dir: Path) -> None:
+    """run_chat は DeprecationWarning を出しつつ run_pipeline と同じ結果を返すこと。"""
+    from mltgnt.chat.pipeline import run_chat
+
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout="応答")):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            out = run_chat("テスト", "タチコマ", persona_dir)
+
+    assert out.content == "応答"
+    assert len(w) == 1
+    assert issubclass(w[0].category, DeprecationWarning)
+    assert "run_pipeline" in str(w[0].message)
+
+
+def test_run_chat_importable_via_init() -> None:
+    """from mltgnt.chat import run_chat が引き続き成功すること（後方互換）。"""
     from mltgnt.chat import run_chat  # noqa: F401
