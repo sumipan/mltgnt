@@ -5,12 +5,14 @@ mltgnt.skill.matcher — スキルマッチング（スラッシュ / triggers /
 """
 from __future__ import annotations
 
+import logging
 import re
-import sys
 
 from mltgnt.bridges.llm_adapter import call_llm as llm_call
 
 from mltgnt.skill.models import SkillMeta
+
+_log = logging.getLogger(__name__)
 
 _SLASH_PATTERN = re.compile(r"^/(\S+)(.*)", re.DOTALL)
 
@@ -87,11 +89,11 @@ async def _match_by_llm(
     try:
         result = llm_call(prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30)
         if not result.ok:
-            print(f"[skill.matcher] LLM 意図分類エラー: {result.stderr}", file=sys.stderr)
+            _log.warning("LLM 意図分類エラー: %s", result.stderr)
             return None
         response = result.stdout.strip().lower()
     except Exception as e:
-        print(f"[skill.matcher] LLM 意図分類エラー: {e}", file=sys.stderr)
+        _log.warning("LLM 意図分類エラー: %s", e)
         return None
 
     if response == "none" or response not in filtered:
