@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import sys
 import threading
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from zoneinfo import ZoneInfo
 
+from mltgnt.exceptions import ConfigError
 from mltgnt.scheduler.actions.skill import run_skill_action
 from mltgnt.scheduler.loader import load_schedule_jobs
 from mltgnt.scheduler.models import (
@@ -22,6 +24,8 @@ from mltgnt.scheduler.models import (
     _to_minutes_since_midnight,
 )
 from mltgnt.scheduler.state import SchedulePaths, _hash_offset, atomic_write_text
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mltgnt.config import SchedulerConfig
@@ -103,8 +107,7 @@ class PersonaScheduler:
         try:
             return [j for j in load_schedule_jobs(self._yaml_path, default_timezone=self._default_tz) if j.enabled]
         except Exception as e:
-            print(f"[secretary-schedule] YAML 読込エラー: {e}", file=sys.stderr)
-            return []
+            raise ConfigError(f"YAML 読込エラー: {e}") from e
 
     def _detect_cycles(self, jobs: list[ScheduleJob]) -> list[str]:
         """循環依存があるジョブIDのリストを返す。"""
@@ -128,10 +131,14 @@ class PersonaScheduler:
 
     def reload_jobs(self) -> None:
         with self._jobs_lock:
-            jobs = self._load_jobs()
+            try:
+                jobs = self._load_jobs()
+            except ConfigError as e:
+                _log.error("%s", e)
+                return
             cycled = self._detect_cycles(jobs)
             if cycled:
-                print(f"[secretary-schedule] 循環依存を検知。無効化: {cycled}", file=sys.stderr)
+                _log.warning("循環依存を検知。無効化: %s", cycled)
                 jobs = [j for j in jobs if j.id not in cycled]
             self._jobs = jobs
 

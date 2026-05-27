@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from mltgnt.exceptions import ConfigError
 from mltgnt.scheduler import (
     ScheduleJob,
     PersonaScheduler,
@@ -1119,3 +1120,41 @@ def test_fanout_disabled_does_not_call_enqueue_dag(tmp_path: Path) -> None:
 
     assert ok is True
     mock_dag.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Issue #1252: ConfigError / reload_jobs
+# ---------------------------------------------------------------------------
+
+def test_load_jobs_invalid_yaml_raises_config_error(tmp_path: Path) -> None:
+    """破損 YAML は ConfigError を送出する。"""
+    bad_yaml = tmp_path / "schedule.yaml"
+    bad_yaml.write_text("jobs:\n  - id: [unclosed\n", encoding="utf-8")
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", yaml_path=bad_yaml)
+
+    with pytest.raises(ConfigError, match="YAML 読込エラー"):
+        sch._load_jobs()
+
+
+def test_reload_jobs_keeps_previous_jobs_on_config_error(tmp_path: Path) -> None:
+    """reload_jobs は YAML 破損時に既存 jobs を維持する。"""
+    good_yaml = tmp_path / "schedule.yaml"
+    good_yaml.write_text(
+        "jobs:\n"
+        "  - id: morning\n"
+        "    enabled: true\n"
+        "    mode: scheduled\n"
+        "    every_day_at: '09:00'\n"
+        "    action: noop\n"
+        "    notify: silent\n",
+        encoding="utf-8",
+    )
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", yaml_path=good_yaml)
+    sch.reload_jobs()
+    assert len(sch._jobs) == 1
+    assert sch._jobs[0].id == "morning"
+
+    good_yaml.write_text("jobs:\n  - id: [unclosed\n", encoding="utf-8")
+    sch.reload_jobs()
+    assert len(sch._jobs) == 1
+    assert sch._jobs[0].id == "morning"

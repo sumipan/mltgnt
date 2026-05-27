@@ -92,7 +92,7 @@ module = "mltgnt.memory._scoring"
 disable_error_code = ["no-any-return"]
 
 [[tool.mypy.overrides]]
-module = "mltgnt.scheduler"
+module = "mltgnt.scheduler.*"
 disable_error_code = ["arg-type"]
 
 [tool.coverage.run]

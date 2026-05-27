@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from mltgnt.exceptions import DependencyError
 from mltgnt.routing import ChannelPersonaEntry, load_channel_persona_map
 
 
@@ -84,13 +85,13 @@ def test_load_channel_persona_map_primary_duplicate_exits() -> None:
         load_channel_persona_map(lambda: [persona_a, persona_b])
 
 
-def test_load_channel_persona_map_loader_exception_returns_empty() -> None:
-    """persona_loader が例外を投げた場合、空マップを返す。"""
+def test_load_channel_persona_map_loader_exception_raises_dependency_error() -> None:
+    """persona_loader が例外を投げた場合、DependencyError を送出する。"""
     def failing_loader():
-        raise RuntimeError("loader failed")
+        raise RuntimeError("connection refused")
 
-    result = load_channel_persona_map(failing_loader)
-    assert result == {}
+    with pytest.raises(DependencyError, match="connection refused"):
+        load_channel_persona_map(failing_loader)
 
 
 def test_load_channel_persona_map_no_channel_skipped() -> None:

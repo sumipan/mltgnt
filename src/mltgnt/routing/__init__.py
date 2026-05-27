@@ -8,9 +8,15 @@ OSS 分離: persona_loader を callable 引数で受け取る。
 """
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import dataclass
+
 from typing import Any, Callable, Literal
+
+from mltgnt.exceptions import DependencyError
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "ChannelPersonaEntry",
@@ -85,8 +91,8 @@ def load_channel_persona_map(
     try:
         personas = persona_loader()
     except Exception as e:
-        print(f"[routing] load_channel_persona_map: persona_loader failed: {e}", file=sys.stderr)
-        return result
+        _log.error("load_channel_persona_map: persona_loader failed: %s", e)
+        raise DependencyError(f"persona_loader failed: {e}") from e
 
     for persona in personas:
         try:
@@ -113,15 +119,16 @@ def load_channel_persona_map(
                     nickname=nickname,
                 ))
         except Exception as e:
-            print(f"[routing] load_channel_persona_map: skip persona: {e}", file=sys.stderr)
+            _log.warning("load_channel_persona_map: skip persona: %s", e)
 
     # primary 重複チェック
     for ch, entries in result.items():
         primaries = [e.name for e in entries if e.role == "primary"]
         if len(primaries) > 1:
-            print(
-                f"[routing] ERROR: チャンネル {ch} に primary が複数設定されています: {primaries}",
-                file=sys.stderr,
+            _log.error(
+                "チャンネル %s に primary が複数設定されています: %s",
+                ch,
+                primaries,
             )
             sys.exit(1)
 
