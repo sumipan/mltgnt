@@ -30,7 +30,6 @@ __all__ = [
     "load_channel_persona_map",
     "prepare_profile_for_triage",
     "resolve_responding_persona",
-    "resolve_skill",
 ]
 
 
@@ -135,8 +134,6 @@ def load_channel_persona_map(
 
     return result
 
-
-from mltgnt.skill import resolve_skill  # noqa: F401, E402 — re-export for backward compat (Issue #912)
 
 from mltgnt.routing.channel_router import (  # noqa: E402
     detect_nickname,

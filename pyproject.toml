@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.8.0"
+version = "0.9.0"
 description = "マルチエージェントの型契約とチャット入出力"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,15 +15,18 @@ dependencies = [
     "PyYAML>=6.0",
     "scikit-learn>=1.0",
     "numpy>=1.21",
-    "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.25.3",
+    "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.25.4",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
     "freezegun>=1.2",
     "import-linter>=2.0",
+    "mypy>=1.10",
+    "ruff>=0.4",
 ]
 
 [project.urls]
@@ -41,3 +44,60 @@ include = ["mltgnt*"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "I001",
+    "UP037",
+    "UP045",
+    "E501",
+    "SIM105",
+    "SIM117",
+    "SIM108",
+    "B023",
+    "UP035",
+    "B904",
+    "F401",
+    "UP012",
+    "B007",
+    "B017",
+    "B905",
+    "UP032",
+]
+
+[[tool.mypy.overrides]]
+module = "mltgnt.routing.triage"
+disable_error_code = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "mltgnt.skill.runner"
+disable_error_code = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "mltgnt.memory._scoring"
+disable_error_code = ["no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "mltgnt.scheduler"
+disable_error_code = ["arg-type"]
+
+[tool.coverage.run]
+source = ["mltgnt"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

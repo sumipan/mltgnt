@@ -194,6 +194,16 @@ def test_audit_writer_none_does_not_break(persona_dir: Path) -> None:
     assert result == "応答"
 
 
+def test_persona_runner_does_not_import_chat_module() -> None:
+    """persona/runner.py が mltgnt.chat を import しないこと。"""
+    import inspect
+
+    import mltgnt.persona.runner as mod
+
+    source = inspect.getsource(mod)
+    assert "mltgnt.chat" not in source
+
+
 def test_audit_writer_timestamp_is_iso8601_with_timezone(persona_dir: Path) -> None:
     """timestamp が ISO 8601 形式かつ Asia/Tokyo タイムゾーンを含むこと。"""
     from mltgnt.persona.runner import run_persona_prompt
