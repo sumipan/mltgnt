@@ -115,9 +115,14 @@ def validate_persona(
 
     # 旧形式キーの警告
     if persona.fm.legacy_keys:
-        messages.append(
-            f"旧形式の FM キー {persona.fm.legacy_keys} が使用されています"
+        import warnings
+
+        msg = (
+            f"旧形式の FM キー {persona.fm.legacy_keys} が使用されています。"
+            " v0.10 で削除予定。"
         )
+        messages.append(msg)
+        warnings.warn(msg, DeprecationWarning, stacklevel=2)
 
     # スキルチェック（available_skills が指定された場合のみ）
     if available_skills is not None:

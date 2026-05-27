@@ -80,7 +80,7 @@ from mltgnt.memory import (
     append_memory_entry,
 )
 from mltgnt.config import MemoryConfig
-from mltgnt.chat.models import ChatInput
+from mltgnt import ChatInput
 
 persona = load_persona("Maya", persona_dir=Path("agents"))
 
@@ -209,7 +209,42 @@ ghdag is a hard prerequisite, not a swappable backend. mltgnt's scheduler bridge
 
 ## 9. Status
 
-- Version `v0.5.6`. Pre-1.0; minor versions may break the public surface.
+- Version `v0.7.x`. Pre-1.0; minor versions may break the public surface.
 - The reference host runs ~300 personas across one Slack workspace.
 - Issues and design notes: [github.com/sumipan/mltgnt/issues](https://github.com/sumipan/mltgnt/issues).
 - License: MIT.
+
+## Public API Stability
+
+mltgnt is pre-1.0 (`0.Y.Z`). Minor versions may include breaking changes.
+
+### Stable API (v0.9+)
+
+Symbols listed in `mltgnt.__all__` are considered stable within a minor version.
+Import them from the top-level package:
+
+```python
+from mltgnt import run_pipeline, Persona, load_persona
+```
+
+### Deprecated API (removal in v0.10)
+
+| Symbol | Replacement |
+|--------|-------------|
+| `mltgnt.chat.models.*` | `mltgnt.interfaces.types.*` |
+| `mltgnt.chat.run_chat()` | `mltgnt.chat.run_pipeline()` |
+| `mltgnt.memory.read_memory_agentic()` | `mltgnt.memory.read_memory_iterative()` |
+| `mltgnt.memory._compaction.*` | `mltgnt.memory.compaction.*` |
+| `mltgnt.memory.api.normalize_source_prefix()` | (remove call; use `[file]` tag directly) |
+| `mltgnt.scheduler.ghdag_bridge.*` | `mltgnt.bridges.ghdag_bridge.*` |
+| `mltgnt.agent._parse` flat JSON format | `{"tool": "...", "args": {...}}` format |
+| `Persona.ops_config` | `persona.fm.engine` / `persona.fm.model` |
+| `Persona.slack_post_kwargs()` | `persona.fm.slack_*` attributes |
+| `Persona.delegate_ack()` | `persona.fm.slack_delegate_ack` |
+
+All deprecated symbols emit `DeprecationWarning` when used.
+
+### Internal modules
+
+Modules with a leading underscore (`_compaction`, `_parse`, etc.) are internal.
+Do not depend on them — they may change or disappear without notice.

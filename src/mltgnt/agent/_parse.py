@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 
 
 def _parse_json_response(raw: str) -> dict | None:
@@ -39,6 +40,13 @@ def _parse_json_response(raw: str) -> dict | None:
 
     # args キー後方互換
     if "args" not in data:
+        warnings.warn(
+            "フラット JSON 形式（args キーなし）は非推奨です。"
+            ' {"tool": "...", "args": {...}} 形式に移行してください。'
+            " v0.10 で削除予定。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         args = {k: v for k, v in data.items() if k != "tool"}
         data = {"tool": data["tool"], "args": args}
 
