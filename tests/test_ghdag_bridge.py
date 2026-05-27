@@ -62,7 +62,7 @@ class TestBridgesInitImports:
         }
 
     def test_scheduler_shim_removed(self):
-        """v0.10.0: scheduler/ghdag_bridge.py shim は削除済み。"""
+        """v0.8.0: scheduler/ghdag_bridge.py shim は削除済み。"""
         with pytest.raises(ImportError):
             from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait  # noqa: F401
 
