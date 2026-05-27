@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
-    from mltgnt.memory._scoring import ScoredEntry
 
 _log = logging.getLogger(__name__)
 
