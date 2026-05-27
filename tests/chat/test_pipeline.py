@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import textwrap
+import warnings
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -166,6 +167,60 @@ def test_run_chat_no_ghdag_import_in_pipeline() -> None:
     source = inspect.getsource(mod)
     assert "from ghdag" not in source
     assert "import ghdag" not in source
+
+
+def test_run_pipeline_records_with_orchestration_context(persona_dir: Path, tmp_path: Path) -> None:
+    """orchestration_ctx + audit_path 指定で persona_call が記録される。"""
+    from mltgnt.bridges.audit_adapter import OrchestrationContext
+    from mltgnt.chat.pipeline import run_pipeline
+
+    audit_path = tmp_path / "audit.jsonl"
+    ctx = OrchestrationContext(orchestration_id="orch-1", source="test")
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
+        run_pipeline(
+            "テスト",
+            "タチコマ",
+            persona_dir,
+            orchestration_ctx=ctx,
+            audit_path=audit_path,
+        )
+
+    record = __import__("json").loads(audit_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["event_type"] == "persona_call"
+    assert record["orchestration_id"] == "orch-1"
+
+
+def test_run_pipeline_warns_when_using_audit_writer(persona_dir: Path) -> None:
+    """audit_writer 指定時に DeprecationWarning を出す。"""
+    from mltgnt.chat.pipeline import run_pipeline
+
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            run_pipeline("テスト", "タチコマ", persona_dir, audit_writer=MagicMock())
+
+    assert any(item.category is DeprecationWarning for item in caught)
+
+
+def test_run_pipeline_prefers_orchestration_ctx_over_audit_writer(persona_dir: Path, tmp_path: Path) -> None:
+    """両方指定時は orchestration_ctx 側のみ使う。"""
+    from mltgnt.bridges.audit_adapter import OrchestrationContext
+    from mltgnt.chat.pipeline import run_pipeline
+
+    audit_path = tmp_path / "audit.jsonl"
+    ctx = OrchestrationContext(orchestration_id="orch-2", source="test")
+    writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
+        run_pipeline(
+            "テスト",
+            "タチコマ",
+            persona_dir,
+            orchestration_ctx=ctx,
+            audit_path=audit_path,
+            audit_writer=writer,
+        )
+
+    writer.assert_not_called()
 
 
 def test_bridges_llm_adapter_importable() -> None:
