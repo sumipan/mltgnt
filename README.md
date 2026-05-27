@@ -12,7 +12,7 @@ Status: pre-1.0 (`v0.5.6`). Pin a version; the public surface is still moving.
 
 - **Many personas, one channel.** Multiple personas can coexist in the same Slack workspace. Routing is deterministic — by primary channel, by secondary observer role, by nickname mention, or by a thread that's already pinned to a persona. Misconfigured routing (two primaries on one channel) fails fast at startup.
 - **A backbone for each persona.** A persona isn't just a prompt template. It comes with **skills** it can execute (`SKILL.md` files matched by slash command, trigger phrase, or LLM intent classification) and a **memory** of past conversations (per-persona JSONL with TF-IDF retrieval, an LLM sufficiency check, and size-triggered compaction).
-- **Hosts plug in via Protocols.** The same persona file works in Slack, in a CLI, or in a scheduled job. The library defines four small Protocols — `SlackClientProtocol`, `PersonaProtocol`, `ChatPipelineProtocol`, `SkillLoaderProtocol` — and the host implements them. There's no framework to live inside.
+- **Hosts plug in via Protocols.** The same persona file works in Slack, in a CLI, or in a scheduled job. The library defines three small Protocols — `SlackClientProtocol`, `PersonaProtocol`, `ChatPipelineProtocol` — and the host implements them. There's no framework to live inside.
 
 ---
 
@@ -80,7 +80,7 @@ from mltgnt.memory import (
     append_memory_entry,
 )
 from mltgnt.config import MemoryConfig
-from mltgnt.chat.models import ChatInput
+from mltgnt import ChatInput
 
 persona = load_persona("Maya", persona_dir=Path("agents"))
 
@@ -173,14 +173,13 @@ For non-Slack hosts, `RoutingRule` + `evaluate(rules, instruction, ctx)` is a ge
 
 ## 6. Hosts and Protocols
 
-Four Protocols define the host boundary. mltgnt calls them; you implement them.
+Three Protocols define the host boundary. mltgnt calls them; you implement them.
 
 | Protocol | What mltgnt expects from you |
 |---|---|
 | `SlackClientProtocol` | `post_message(text, channel, thread_ts=None, ...) -> bool` |
 | `PersonaProtocol` | A persona-shaped object exposing `name`, `fm.*`, and the section dict |
 | `ChatPipelineProtocol` | `run(input: ChatInput) -> ChatOutput` (so you can swap the chat loop) |
-| `SkillLoaderProtocol` | `discover() / load(meta) / match(text, ...)` for skill resolution |
 
 For Slack-bot hosts, `mltgnt.daemon.DaemonRunner` supervises the process: PID file lock, ordered `start()` of components, signal-driven reverse-order `stop()`. The bundled `SkillWatcherComponent` handles mtime-poll skill reloads. Add your own components (Slack event listener, scheduler, mention bridge) by implementing the same `name / start / stop` shape.
 
@@ -210,7 +209,42 @@ ghdag is a hard prerequisite, not a swappable backend. mltgnt's scheduler bridge
 
 ## 9. Status
 
-- Version `v0.5.6`. Pre-1.0; minor versions may break the public surface.
+- Version `v0.7.x`. Pre-1.0; minor versions may break the public surface.
 - The reference host runs ~300 personas across one Slack workspace.
 - Issues and design notes: [github.com/sumipan/mltgnt/issues](https://github.com/sumipan/mltgnt/issues).
 - License: MIT.
+
+## Public API Stability
+
+mltgnt is pre-1.0 (`0.Y.Z`). Minor versions may include breaking changes.
+
+### Stable API (v0.9+)
+
+Symbols listed in `mltgnt.__all__` are considered stable within a minor version.
+Import them from the top-level package:
+
+```python
+from mltgnt import run_pipeline, Persona, load_persona
+```
+
+### Deprecated API (removal in v0.10)
+
+| Symbol | Replacement |
+|--------|-------------|
+| `mltgnt.chat.models.*` | `mltgnt.interfaces.types.*` |
+| `mltgnt.chat.run_chat()` | `mltgnt.chat.run_pipeline()` |
+| `mltgnt.memory.read_memory_agentic()` | `mltgnt.memory.read_memory_iterative()` |
+| `mltgnt.memory._compaction.*` | `mltgnt.memory.compaction.*` |
+| `mltgnt.memory.api.normalize_source_prefix()` | (remove call; use `[file]` tag directly) |
+| `mltgnt.scheduler.ghdag_bridge.*` | `mltgnt.bridges.ghdag_bridge.*` |
+| `mltgnt.agent._parse` flat JSON format | `{"tool": "...", "args": {...}}` format |
+| `Persona.ops_config` | `persona.fm.engine` / `persona.fm.model` |
+| `Persona.slack_post_kwargs()` | `persona.fm.slack_*` attributes |
+| `Persona.delegate_ack()` | `persona.fm.slack_delegate_ack` |
+
+All deprecated symbols emit `DeprecationWarning` when used.
+
+### Internal modules
+
+Modules with a leading underscore (`_compaction`, `_parse`, etc.) are internal.
+Do not depend on them — they may change or disappear without notice.

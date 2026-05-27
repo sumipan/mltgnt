@@ -20,6 +20,9 @@ AC5: INSUFFICIENT → MEMORY 再検索 → SUFFICIENT（TC2 で検証済み）
 AC6: from mltgnt.memory._agentic import AgenticRetriever が ImportError
 AC7: llm_call 例外時に初回検索結果が返る（TC8 で検証済み）
 AC8: JSONL ファイルが空 → 空文字列（TC11 で検証済み）
+AC1 (issue): _iterative.py が mltgnt.skill を直接インポートしない
+AC4 (issue): search_skills コールバック注入で skill 検索が動作する
+AC5 (issue): search_skills=None で SKILL ソース指定時もエラーにならない
 """
 from __future__ import annotations
 
@@ -33,6 +36,7 @@ import pytest
 from mltgnt.config import MemoryConfig
 from mltgnt.memory import read_memory_iterative, memory_file_path
 from mltgnt.memory._iterative import IterativeRetriever
+from mltgnt.memory._scoring import ScoredEntry
 
 
 def make_config(tmp_path: Path) -> MemoryConfig:
@@ -75,6 +79,80 @@ def _make_llm_responses(*responses: str):
 def test_ac3_import_iterative_retriever() -> None:
     """AC3: from mltgnt.memory._iterative import IterativeRetriever が成功する。"""
     assert IterativeRetriever is not None
+
+
+def test_issue_ac1_no_skill_import_in_iterative() -> None:
+    """AC1: _iterative.py が mltgnt.skill を直接インポートしない。"""
+    import mltgnt.memory._iterative as iterative_mod
+
+    source_path = Path(iterative_mod.__file__)
+    source = source_path.read_text(encoding="utf-8")
+    assert "from mltgnt.skill" not in source
+    assert "import mltgnt.skill" not in source
+
+
+def test_issue_ac4_callback_injection(tmp_path: Path) -> None:
+    """AC4: search_skills コールバック経由で skill 検索結果がマージされる。"""
+    config = make_config(tmp_path)
+    _write_memory(
+        config,
+        "persona",
+        json.dumps(
+            {
+                "timestamp": "2026-01-01T10:00:00+09:00",
+                "role": "user",
+                "content": "一般情報のみ。",
+                "source_tag": "file",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+    )
+
+    def search_skills(_query: str, _max_entries: int) -> list[ScoredEntry]:
+        return [ScoredEntry(text="デプロイ手順", score=1.0)]
+
+    retriever = IterativeRetriever(
+        config=config,
+        persona_stem="persona",
+        llm_call=_make_llm_responses(
+            "INSUFFICIENT\nSKILL\nデプロイ",
+            "SUFFICIENT",
+        ),
+        search_skills=search_skills,
+    )
+
+    result = retriever.retrieve(
+        "デプロイ手順を教えて",
+        max_bytes=4096,
+        max_entries=5,
+    )
+
+    assert "デプロイ" in result
+
+
+def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
+    """AC5: search_skills=None、LLM が SKILL ソース指定 → 空リストでループ継続。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_PROJECT)
+
+    retriever = IterativeRetriever(
+        config=config,
+        persona_stem="persona",
+        llm_call=_make_llm_responses(
+            "INSUFFICIENT\nSKILL\nデプロイ",
+            "SUFFICIENT",
+        ),
+        search_skills=None,
+    )
+
+    result = retriever.retrieve(
+        "デプロイ手順",
+        max_bytes=4096,
+        max_entries=5,
+    )
+
+    assert isinstance(result, str)
 
 
 # ---------------------------------------------------------------------------

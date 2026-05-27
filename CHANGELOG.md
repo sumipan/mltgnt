@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.8.0
+## v0.10.0
 
 ### BREAKING: 非推奨 API の削除
 
