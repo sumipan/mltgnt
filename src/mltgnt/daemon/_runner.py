@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from . import DaemonComponent
 
+from mltgnt.exceptions import DependencyError
+
 logger = logging.getLogger("mltgnt.daemon")
 
 
@@ -41,7 +43,7 @@ class DaemonRunner:
     def run(self) -> None:
         """
         メインエントリポイント。
-        1. PIDロック取得（失敗時は SystemExit）
+        1. PIDロック取得（失敗時は DependencyError）
         2. SIGTERM/SIGINT ハンドラ登録（メインスレッドの場合）
         3. 全コンポーネントの start() 呼び出し（登録順）
         4. シグナル受信まで待機
@@ -50,7 +52,7 @@ class DaemonRunner:
         """
         if not self._pid_lock.acquire():
             self._logger.error("Another instance is already running.")
-            raise SystemExit(1)
+            raise DependencyError("Another instance is already running.")
 
         if threading.current_thread() is threading.main_thread():
             def _signal_handler(signum, frame):
