@@ -40,6 +40,9 @@ mltgnt = "mltgnt.cli.main:main"
 where = ["src"]
 include = ["mltgnt*"]
 
+[tool.setuptools.package-data]
+"mltgnt" = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

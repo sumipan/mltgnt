@@ -1,9 +1,9 @@
-import importlib
-import sys
 import argparse
+import importlib
 from pathlib import Path
 
 from mltgnt.daemon import DaemonRunner
+from mltgnt.exceptions import ConfigError
 
 
 def execute(args: argparse.Namespace) -> None:
@@ -11,39 +11,33 @@ def execute(args: argparse.Namespace) -> None:
     pid_file = Path(args.pid_file)
 
     if ":" not in components_spec:
-        print(
-            f"Error: --components must be in 'module:function' format, got: {components_spec!r}",
-            file=sys.stderr,
+        raise ConfigError(
+            f"--components must be in 'module:function' format, got: {components_spec!r}"
         )
-        raise SystemExit(1)
 
     module_path, func_name = components_spec.rsplit(":", 1)
 
     if not module_path or not func_name:
-        print(
-            f"Error: --components must be in 'module:function' format, got: {components_spec!r}",
-            file=sys.stderr,
+        raise ConfigError(
+            f"--components must be in 'module:function' format, got: {components_spec!r}"
         )
-        raise SystemExit(1)
 
     try:
         module = importlib.import_module(module_path)
     except ModuleNotFoundError as exc:
-        print(f"ModuleNotFoundError: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise ConfigError(f"module not found: {module_path}") from exc
 
     try:
         factory = getattr(module, func_name)
     except AttributeError as exc:
-        print(f"AttributeError: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise ConfigError(
+            f"function {func_name!r} not found in module {module_path!r}"
+        ) from exc
 
     if not callable(factory):
-        print(
-            f"Error: '{func_name}' in module '{module_path}' is not callable",
-            file=sys.stderr,
+        raise ConfigError(
+            f"'{func_name}' in module '{module_path}' is not callable"
         )
-        raise SystemExit(1)
 
     components = factory()
     runner = DaemonRunner(pid_file=pid_file, components=components)
