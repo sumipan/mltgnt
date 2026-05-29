@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -17,12 +18,15 @@ import pytest
 
 from mltgnt.bridges.ghdag_bridge import (
     DagStep,
+    SkillIOTypeError,
     _extract_result_filename,
     _order_to_result_filename,
     _scheduler_audit_context,
     enqueue_and_wait,
     enqueue_dag,
+    typecheck_dag,
 )
+from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMeta
 
 # ---------------------------------------------------------------------------
 # bridges/__init__ — パッケージ re-export（AC1, AC2, AC7）
@@ -1053,3 +1057,341 @@ class TestEnqueueDagDataFlow:
 
         assert len(results) == 1
         assert results[0][0] is True
+
+
+# ---------------------------------------------------------------------------
+# typecheck_dag / enqueue_dag compose-time typecheck（Issue #1386）
+# ---------------------------------------------------------------------------
+
+
+def _skill_meta(
+    name: str,
+    *,
+    skill_io: str = "v1",
+    produces: ProducesSpec | None = None,
+    consumes: list[ConsumesSpec] | None = None,
+) -> SkillMeta:
+    return SkillMeta(
+        name=name,
+        description="",
+        argument_hint="",
+        model=None,
+        path=Path("."),
+        skill_io=skill_io,
+        produces=produces,
+        consumes=consumes or [],
+    )
+
+
+class TestTypecheckDag:
+    def test_typecheck_dag_matching_types(self):
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/markdown"),
+            ),
+            "downstream": _skill_meta(
+                "consumer-b",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        typecheck_dag(steps, skills)
+
+    def test_typecheck_dag_content_type_mismatch(self):
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/plain"),
+            ),
+            "downstream": _skill_meta(
+                "consumer-b",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        with pytest.raises(SkillIOTypeError) as exc_info:
+            typecheck_dag(steps, skills)
+        msg = str(exc_info.value)
+        assert "content_type" in msg
+        assert "text/markdown" in msg
+        assert "text/plain" in msg
+        assert "downstream" in msg or "consumer-b" in msg
+
+    def test_typecheck_dag_producer_mismatch(self):
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/markdown"),
+            ),
+            "downstream": _skill_meta(
+                "consumer-b",
+                consumes=[
+                    ConsumesSpec(producer="other-producer", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        with pytest.raises(SkillIOTypeError):
+            typecheck_dag(steps, skills)
+
+    def test_typecheck_dag_legacy_skip(self):
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/plain"),
+            ),
+            "downstream": _skill_meta(
+                "consumer-b",
+                skill_io="legacy",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        typecheck_dag(steps, skills)
+
+    def test_typecheck_dag_no_skill_name_skip(self):
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/plain"),
+            ),
+            "downstream": _skill_meta(
+                "consumer-b",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        typecheck_dag(steps, skills)
+
+    def test_typecheck_dag_skill_not_in_dict_skip(self):
+        skills = {
+            "downstream": _skill_meta(
+                "consumer-b",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="missing-upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        typecheck_dag(steps, skills)
+
+    def test_typecheck_dag_empty_consumes_warn(self, capsys):
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/markdown"),
+            ),
+            "downstream": _skill_meta("consumer-b", consumes=[]),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        typecheck_dag(steps, skills)
+        captured = capsys.readouterr()
+        assert "WARN" in captured.err
+        assert "no consumes" in captured.err
+
+    def test_typecheck_dag_multiple_edges(self):
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/markdown"),
+            ),
+            "downstream_ok": _skill_meta(
+                "consumer-ok",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+            "downstream_bad": _skill_meta(
+                "consumer-bad",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/plain")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d1",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream_ok",
+            ),
+            DagStep(
+                id="d2",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream_bad",
+            ),
+        ]
+        with pytest.raises(SkillIOTypeError):
+            typecheck_dag(steps, skills)
+
+
+class TestEnqueueDagTypecheck:
+    def test_enqueue_dag_typecheck_off_by_default(self, tmp_path):
+        """SKILL_IO_TYPECHECK 未設定では typecheck をスキップ（mismatch でも通過）。"""
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/plain"),
+            ),
+            "downstream": _skill_meta(
+                "consumer-b",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        with (
+            patch.dict(os.environ, {}, clear=False),
+            patch(_WAIT, return_value=("success", "")),
+        ):
+            if "SKILL_IO_TYPECHECK" in os.environ:
+                del os.environ["SKILL_IO_TYPECHECK"]
+            try:
+                enqueue_dag(
+                    steps=steps,
+                    timeout=5.0,
+                    idempotency_key=f"dag:tc-off:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=done_dir,
+                    skills=skills,
+                )
+            except (StopIteration, OSError):
+                pass
+
+    def test_enqueue_dag_typecheck_on_with_flag(self, tmp_path):
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        skills = {
+            "upstream": _skill_meta(
+                "producer-a",
+                produces=ProducesSpec(content_type="text/plain"),
+            ),
+            "downstream": _skill_meta(
+                "consumer-b",
+                consumes=[
+                    ConsumesSpec(producer="producer-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        steps = [
+            DagStep(id="u", prompt="P", engine="cursor", skill_name="upstream"),
+            DagStep(
+                id="d",
+                prompt="P",
+                engine="cursor",
+                depends=["u"],
+                skill_name="downstream",
+            ),
+        ]
+        with patch.dict(os.environ, {"SKILL_IO_TYPECHECK": "1"}):
+            with pytest.raises(SkillIOTypeError):
+                enqueue_dag(
+                    steps=steps,
+                    timeout=5.0,
+                    idempotency_key=f"dag:tc-on:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=done_dir,
+                    skills=skills,
+                )
+        assert (jobs_dir / "exec.jsonl").read_text().strip() == ""
+
+    def test_enqueue_dag_typecheck_skills_none(self, tmp_path):
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        with patch.dict(os.environ, {"SKILL_IO_TYPECHECK": "1"}):
+            try:
+                enqueue_dag(
+                    steps=[DagStep(id="s1", prompt="P", engine="cursor")],
+                    timeout=5.0,
+                    idempotency_key=f"dag:tc-none:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=done_dir,
+                    skills=None,
+                )
+            except (StopIteration, OSError):
+                pass
