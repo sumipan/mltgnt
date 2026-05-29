@@ -170,3 +170,134 @@ class TestDiscover:
         )
         with pytest.raises(FileNotFoundError):
             load(meta)
+
+
+# --- Issue #1383 U2: skill_io / produces / consumes パース ---
+
+V1_SKILL_MD = """\
+---
+name: v1-skill
+description: v1 スキル
+skill_io: v1
+input_schema:
+  type: object
+  properties:
+    target:
+      type: string
+produces:
+  content_type: text/plain
+  artifacts:
+    - path: output.txt
+      role: log
+  status_markers:
+    - ACCEPTED
+consumes:
+  - producer: upstream-skill
+    content_type: text/markdown
+---
+
+本文
+"""
+
+
+class TestSkillIoParse:
+    def test_skill_io_v1(self, tmp_path: Path) -> None:
+        """AC1: skill_io: v1 がパースされる"""
+        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        skills = discover([tmp_path])
+        meta = skills["v1-skill"]
+        assert meta.skill_io == "v1"
+
+    def test_skill_io_default_legacy(self, tmp_path: Path) -> None:
+        """AC1: skill_io 未指定時は legacy"""
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        skills = discover([tmp_path])
+        assert skills["review"].skill_io == "legacy"
+
+    def test_produces_parsed(self, tmp_path: Path) -> None:
+        """AC1: produces dict → ProducesSpec"""
+        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        meta = discover([tmp_path])["v1-skill"]
+        assert meta.produces is not None
+        assert meta.produces.content_type == "text/plain"
+        assert len(meta.produces.artifacts) == 1
+        assert meta.produces.artifacts[0].path == "output.txt"
+        assert meta.produces.artifacts[0].role == "log"
+        assert meta.produces.status_markers == ["ACCEPTED"]
+
+    def test_produces_none_when_missing(self, tmp_path: Path) -> None:
+        """AC1: produces 未指定時は None"""
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        assert discover([tmp_path])["review"].produces is None
+
+    def test_consumes_parsed(self, tmp_path: Path) -> None:
+        """AC1: consumes list → list[ConsumesSpec]"""
+        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        meta = discover([tmp_path])["v1-skill"]
+        assert len(meta.consumes) == 1
+        assert meta.consumes[0].producer == "upstream-skill"
+        assert meta.consumes[0].content_type == "text/markdown"
+
+    def test_input_schema_parsed(self, tmp_path: Path) -> None:
+        """AC1: input_schema dict がそのまま設定される"""
+        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        meta = discover([tmp_path])["v1-skill"]
+        assert meta.input_schema["type"] == "object"
+        assert "target" in meta.input_schema["properties"]
+
+    def test_input_schema_default_empty(self, tmp_path: Path) -> None:
+        """AC1: input_schema 未指定時は {}"""
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        assert discover([tmp_path])["review"].input_schema == {}
+
+
+# --- Issue #1383 U4: discover lint 統合 ---
+
+INVALID_SKILL_IO_MD = """\
+---
+name: bad-io
+description: bad skill_io
+skill_io: v2
+---
+
+本文
+"""
+
+NAME_MISMATCH_MD = """\
+---
+name: wrong-name
+description: name mismatch
+---
+
+本文
+"""
+
+
+class TestDiscoverLintIntegration:
+    def test_v4_fail_excluded_from_discover(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC3: V4 FAIL スキルは discover 結果に含まれない"""
+        _write_skill(tmp_path, "bad-io/SKILL.md", INVALID_SKILL_IO_MD)
+        with caplog.at_level(logging.WARNING, logger="mltgnt.skill.loader"):
+            skills = discover([tmp_path])
+        assert skills == {}
+        assert any("skill lint failed" in r.message for r in caplog.records)
+
+    def test_v3_fail_excluded_from_discover(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """AC3: V3 FAIL スキルは discover 結果に含まれない"""
+        _write_skill(tmp_path, "bad-name/SKILL.md", NAME_MISMATCH_MD)
+        with caplog.at_level(logging.WARNING, logger="mltgnt.skill.loader"):
+            skills = discover([tmp_path])
+        assert skills == {}
+        assert any("skill lint failed" in r.message for r in caplog.records)
+
+    def test_legacy_skill_still_discovered(self, tmp_path: Path) -> None:
+        """AC3: legacy スキルは従来どおり discover に含まれる"""
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        skills = discover([tmp_path])
+        assert "review" in skills
+        assert skills["review"].skill_io == "legacy"
+

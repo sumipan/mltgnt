@@ -70,6 +70,7 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "SkillRunResult",
         "discover",
         "discover_bodies",
+        "lint_skill_meta",
         "load",
         "match",
         "resolve_skill",
