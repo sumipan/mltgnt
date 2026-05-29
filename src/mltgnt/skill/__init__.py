@@ -11,7 +11,14 @@ from pathlib import Path
 from mltgnt.skill._registry import SkillRegistry
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
-from mltgnt.skill.models import SkillFile, SkillMeta
+from mltgnt.skill.models import (
+    ArtifactSpec,
+    ConsumesSpec,
+    ProducesSpec,
+    SkillFile,
+    SkillMeta,
+    SkillRunResult,
+)
 from mltgnt.skill.runner import run
 
 __all__ = [
@@ -24,6 +31,10 @@ __all__ = [
     "SkillMeta",
     "SkillFile",
     "SkillRegistry",
+    "ArtifactSpec",
+    "ProducesSpec",
+    "ConsumesSpec",
+    "SkillRunResult",
 ]
 
 
