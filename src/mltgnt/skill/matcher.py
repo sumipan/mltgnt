@@ -1,7 +1,7 @@
 """
-mltgnt.skill.matcher — スキルマッチング（スラッシュ / triggers / LLM）。
+mltgnt.skill.matcher — スキルマッチング（スラッシュ / literal / triggers / LLM）。
 
-設計: Issue #124 §6.3, Issue #208
+設計: Issue #124 §6.3, Issue #208, Issue #1384 U5
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import re
 
 from mltgnt.bridges.llm_adapter import call_llm as llm_call
 
-from mltgnt.skill.models import SkillMeta
+from mltgnt.skill.models import SkillMatchResult, SkillMeta
 
 _log = logging.getLogger(__name__)
 
@@ -36,6 +36,28 @@ def _filter_by_persona(
     return {k: v for k, v in skills.items() if k in persona_skills}
 
 
+def _match_by_literal(
+    user_input: str,
+    skills: dict[str, SkillMeta],
+    persona_skills: list[str] | None,
+) -> SkillMatchResult | None:
+    """スキル名のリテラル一致でスキルを検索する。
+
+    単一ヒット時のみ SkillMatchResult を返す。複数ヒット・ヒットなしは None。
+    """
+    filtered = _filter_by_persona(skills, persona_skills)
+    hits = [meta for meta in filtered.values() if meta.name in user_input]
+    if len(hits) == 1:
+        meta = hits[0]
+        return SkillMatchResult(
+            decisive=meta,
+            candidates=[],
+            rationale=f"literal:{meta.name}",
+            arguments=user_input,
+        )
+    return None
+
+
 def _match_by_triggers(
     user_input: str,
     skills: dict[str, SkillMeta],
@@ -58,6 +80,22 @@ def _match_by_triggers(
             if trigger in user_input:
                 return (meta, user_input)
     return None
+
+
+def _trigger_rationale(
+    user_input: str,
+    meta: SkillMeta,
+    skills: dict[str, SkillMeta],
+    persona_skills: list[str] | None,
+) -> str:
+    filtered = _filter_by_persona(skills, persona_skills)
+    for candidate in filtered.values():
+        if candidate.name != meta.name:
+            continue
+        for trigger in candidate.triggers:
+            if trigger in user_input:
+                return f"trigger:{trigger}"
+    return "trigger:unknown"
 
 
 async def _match_by_llm(
@@ -107,13 +145,13 @@ async def match(
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None = None,
     model: str | None = None,
-) -> tuple[SkillMeta, str] | None:
+) -> SkillMatchResult:
     """
-    ユーザー入力からスキルを特定する（ハイブリッド 2段フォールバック）。
+    ユーザー入力からスキルを特定する（4段フォールバック）。
 
-    優先順位: スラッシュコマンド → triggers 部分一致 → LLM 意図分類
+    優先順位: スラッシュコマンド → literal 一致 → triggers 部分一致 → LLM 意図分類
 
-    戻り値: (SkillMeta, arguments_str) のタプル。マッチしなければ None。
+    戻り値: SkillMatchResult。マッチしなければ decisive=None, rationale="none"。
     """
     # Step 1: スラッシュコマンド
     m = _SLASH_PATTERN.match(user_input)
@@ -122,16 +160,57 @@ async def match(
         rest = m.group(2)
         arguments = rest.lstrip(" ") if rest else ""
         if name not in skills:
-            return None
+            return SkillMatchResult(
+                decisive=None,
+                candidates=[],
+                rationale="none",
+                arguments=arguments,
+            )
         meta = skills[name]
         if persona_skills is not None and name not in persona_skills:
-            return None
-        return (meta, arguments)
+            return SkillMatchResult(
+                decisive=None,
+                candidates=[],
+                rationale="none",
+                arguments=arguments,
+            )
+        return SkillMatchResult(
+            decisive=meta,
+            candidates=[],
+            rationale=f"slash:{name}",
+            arguments=arguments,
+        )
 
-    # Step 2: triggers 部分一致
-    result = _match_by_triggers(user_input, skills, persona_skills)
-    if result is not None:
-        return result
+    # Step 2: literal 一致
+    literal_result = _match_by_literal(user_input, skills, persona_skills)
+    if literal_result is not None:
+        return literal_result
 
-    # Step 3: LLM 意図分類
-    return await _match_by_llm(user_input, skills, persona_skills, model=model)
+    # Step 3: triggers 部分一致
+    trigger_result = _match_by_triggers(user_input, skills, persona_skills)
+    if trigger_result is not None:
+        meta, arguments = trigger_result
+        return SkillMatchResult(
+            decisive=meta,
+            candidates=[],
+            rationale=_trigger_rationale(user_input, meta, skills, persona_skills),
+            arguments=arguments,
+        )
+
+    # Step 4: LLM 意図分類
+    llm_result = await _match_by_llm(user_input, skills, persona_skills, model=model)
+    if llm_result is not None:
+        meta, arguments = llm_result
+        return SkillMatchResult(
+            decisive=meta,
+            candidates=[],
+            rationale=f"llm:{meta.name}",
+            arguments=arguments,
+        )
+
+    return SkillMatchResult(
+        decisive=None,
+        candidates=[],
+        rationale="none",
+        arguments=user_input,
+    )
