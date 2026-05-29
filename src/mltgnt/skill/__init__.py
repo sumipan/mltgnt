@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from mltgnt.skill._registry import SkillRegistry
+from mltgnt.skill.lint import lint_skill_meta
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
 from mltgnt.skill.models import (
@@ -35,6 +36,7 @@ __all__ = [
     "ProducesSpec",
     "ConsumesSpec",
     "SkillRunResult",
+    "lint_skill_meta",
 ]
 
 
