@@ -40,21 +40,18 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
 
     # V6–V7: produces 構造
     produces = fm.get("produces")
-    if produces is not None:
-        if isinstance(produces, dict):
-            content_type = produces.get("content_type", "text/markdown")
-            if not isinstance(content_type, str):
-                errors.append(
-                    f"V6: produces.content_type must be str, got {type(content_type).__name__}"
-                )
-            artifacts = produces.get("artifacts") or []
-            if isinstance(artifacts, list):
-                for i, artifact in enumerate(artifacts):
-                    if not isinstance(artifact, dict):
-                        errors.append(f"V7: produces.artifacts[{i}].path is required")
-                    elif "path" not in artifact or not isinstance(artifact["path"], str):
-                        errors.append(f"V7: produces.artifacts[{i}].path is required")
-        # produces が dict 以外の場合は V6/V7 は lint 時点では触れず V5/V4 等に委譲
+    if produces is not None and isinstance(produces, dict):
+        content_type = produces.get("content_type", "text/markdown")
+        if not isinstance(content_type, str):
+            errors.append(
+                f"V6: produces.content_type must be str, got {type(content_type).__name__}"
+            )
+        artifacts = produces.get("artifacts") or []
+        if isinstance(artifacts, list):
+            for i, artifact in enumerate(artifacts):
+                if not isinstance(artifact, dict) or "path" not in artifact or not isinstance(artifact["path"], str):
+                    errors.append(f"V7: produces.artifacts[{i}].path is required")
+    # produces が dict 以外の場合は V6/V7 は lint 時点では触れず V5/V4 等に委譲
 
     # V8: consumes[*].producer 非空 str
     consumes = fm.get("consumes") or []
