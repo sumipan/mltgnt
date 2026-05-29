@@ -16,7 +16,9 @@ from mltgnt.skill.models import (
     ArtifactSpec,
     ConsumesSpec,
     ProducesSpec,
+    RunOutput,
     SkillFile,
+    SkillMatchResult,
     SkillMeta,
     SkillRunResult,
 )
@@ -36,6 +38,8 @@ __all__ = [
     "ProducesSpec",
     "ConsumesSpec",
     "SkillRunResult",
+    "SkillMatchResult",
+    "RunOutput",
     "lint_skill_meta",
 ]
 
@@ -82,9 +86,8 @@ async def resolve_skill(
         return None
 
     result = await match(user_input, skills, persona_skills=persona_skills, model=matcher_model)
-    if result is None:
+    if result.decisive is None:
         return None
 
-    meta, arguments = result
-    skill_file = load(meta)
-    return (skill_file, arguments)
+    skill_file = load(result.decisive)
+    return (skill_file, result.arguments)

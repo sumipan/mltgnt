@@ -10,7 +10,7 @@ from copy import deepcopy
 
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.interfaces.types import ChatInput, Message
-from mltgnt.skill.models import SkillFile
+from mltgnt.skill.models import RunOutput, SkillFile
 
 _VAR_PATTERN = re.compile(r"\$(\d+|\w+)")
 
@@ -40,14 +40,14 @@ def run(
     persona: PersonaProtocol,
     arguments: str,
     chat_input: ChatInput,
-) -> ChatInput:
+) -> RunOutput:
     """
-    スキル本文の変数を置換し、ペルソナ指示と合成した ChatInput を返す。
+    スキル本文の変数を置換し、ペルソナ指示と合成した RunOutput を返す。
 
     戻り値:
-        新しい ChatInput。
-        - model: skill.meta.model が優先、None なら chat_input.model を引き継ぐ
-        - messages: システムプロンプト（ペルソナ指示 + スキル本文）+ 元のユーザーメッセージ
+        RunOutput（chat_input / expected_markers / skill_io）。
+        chat_input.model: skill.meta.model が優先、None なら chat_input.model を引き継ぐ
+        chat_input.messages: システムプロンプト（ペルソナ指示 + スキル本文）+ 元のユーザーメッセージ
     """
     skill_dir = str(skill.meta.path.parent.resolve())
     body_substituted = _substitute(
@@ -68,4 +68,13 @@ def run(
     new_input.messages = new_messages
     new_input.model = skill.meta.model if skill.meta.model is not None else chat_input.model
 
-    return new_input
+    expected_markers = (
+        list(skill.meta.produces.status_markers)
+        if skill.meta.produces
+        else []
+    )
+    return RunOutput(
+        chat_input=new_input,
+        expected_markers=expected_markers,
+        skill_io=skill.meta.skill_io,
+    )
