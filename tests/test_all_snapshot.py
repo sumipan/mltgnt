@@ -59,9 +59,13 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "tail_utf8_bytes",
     ],
     "mltgnt.skill": [
+        "ArtifactSpec",
+        "ConsumesSpec",
+        "ProducesSpec",
         "SkillFile",
         "SkillMeta",
         "SkillRegistry",
+        "SkillRunResult",
         "discover",
         "discover_bodies",
         "load",
