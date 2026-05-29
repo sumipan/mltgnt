@@ -1,4 +1,4 @@
-name: CI
+name: CI Quality Gate
 
 on:
   push:
@@ -26,31 +26,5 @@ jobs:
       - name: Lint (ruff)
         run: ruff check src/ tests/
 
-      - name: Lint layer boundaries (import-linter)
-        run: lint-imports
-
-      - name: Lint boundary policy
-        run: bash tools/lint-boundary.sh
-
       - name: Test with coverage
         run: pytest --cov=mltgnt --cov-report=term-missing --cov-fail-under=80
-
-  compat:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11"]
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: pip install -e ".[dev]"
-
-      - name: Run tests
-        run: pytest

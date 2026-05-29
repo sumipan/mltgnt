@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import textwrap
+import warnings
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -151,14 +152,32 @@ def test_run_pipeline_exception_returns_error_content(persona_dir: Path) -> None
     assert "connection refused" in out.content
 
 
-def test_run_pipeline_rejects_audit_writer_kwarg(persona_dir: Path) -> None:
-    """audit_writer キーワード引数は TypeError になること。"""
+def test_run_pipeline_audit_writer_called(persona_dir: Path) -> None:
+    """audit_writer が1回呼ばれ、必須キーが含まれること。"""
     from mltgnt.chat.pipeline import run_pipeline
 
     persona, engine, model = _load_persona(persona_dir, "タチコマ")
-    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
-        with pytest.raises(TypeError):
-            run_pipeline("テスト", persona, engine=engine, model=model, audit_writer=MagicMock())
+    mock_writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="応答")):
+        run_pipeline("テスト", persona, engine=engine, model=model, audit_writer=mock_writer)
+
+    mock_writer.assert_called_once()
+    audit_dict = mock_writer.call_args[0][0]
+    assert set(audit_dict.keys()) >= {"source", "engine", "model", "ok", "timestamp"}
+
+
+def test_run_pipeline_audit_writer_exception_does_not_affect_result(persona_dir: Path) -> None:
+    """audit_writer が例外を送出しても run_pipeline の戻り値に影響しないこと。"""
+    from mltgnt.chat.pipeline import run_pipeline
+
+    def failing_writer(_: dict) -> None:
+        raise ValueError("audit write error")
+
+    persona, engine, model = _load_persona(persona_dir, "タチコマ")
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="正常応答")):
+        out = run_pipeline("テスト", persona, engine=engine, model=model, audit_writer=failing_writer)
+
+    assert out.content == "正常応答"
 
 
 def test_run_pipeline_no_ghdag_import_in_pipeline() -> None:
@@ -192,6 +211,42 @@ def test_run_pipeline_records_with_orchestration_context(persona_dir: Path, tmp_
     record = __import__("json").loads(audit_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["event_type"] == "persona_call"
     assert record["orchestration_id"] == "orch-1"
+
+
+def test_run_pipeline_warns_when_using_audit_writer(persona_dir: Path) -> None:
+    """audit_writer 指定時に DeprecationWarning を出す。"""
+    from mltgnt.chat.pipeline import run_pipeline
+
+    persona, engine, model = _load_persona(persona_dir, "タチコマ")
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            run_pipeline("テスト", persona, engine=engine, model=model, audit_writer=MagicMock())
+
+    assert any(item.category is DeprecationWarning for item in caught)
+
+
+def test_run_pipeline_prefers_orchestration_ctx_over_audit_writer(persona_dir: Path, tmp_path: Path) -> None:
+    """両方指定時は orchestration_ctx 側のみ使う。"""
+    from mltgnt.bridges.audit_adapter import OrchestrationContext
+    from mltgnt.chat.pipeline import run_pipeline
+
+    persona, engine, model = _load_persona(persona_dir, "タチコマ")
+    audit_path = tmp_path / "audit.jsonl"
+    ctx = OrchestrationContext(orchestration_id="orch-2", source="test")
+    writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
+        run_pipeline(
+            "テスト",
+            persona,
+            engine=engine,
+            model=model,
+            orchestration_ctx=ctx,
+            audit_path=audit_path,
+            audit_writer=writer,
+        )
+
+    writer.assert_not_called()
 
 
 def test_bridges_llm_adapter_importable() -> None:

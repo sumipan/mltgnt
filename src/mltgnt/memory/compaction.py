@@ -882,10 +882,10 @@ def compact(
                 recent_body = stripped
                 recent_size = len(recent_body.encode("utf-8"))
                 compacted["recent"] = recent_body
-                _log.info(
-                    "stripped observe entries for %s, recent=%.1fKB",
-                    persona_stem,
-                    recent_size / 1024,
+                print(
+                    f"compact: stripped observe entries for {persona_stem}, "
+                    f"recent={recent_size/1024:.1f}KB",
+                    flush=True,
                 )
 
             # --- recent 容量超過時のロールアップ ---
@@ -929,11 +929,10 @@ def compact(
                             )
                             compacted["recent"] = remaining
                             remaining_kb = len(remaining.encode("utf-8")) / 1024
-                            _log.info(
-                                "rollup iter=%d for %s: skipped (no dates), remaining=%.1fKB",
-                                _iter + 1,
-                                persona_stem,
-                                remaining_kb,
+                            print(
+                                f"compact: rollup iter={_iter + 1} for {persona_stem}: "
+                                f"skipped (no dates), remaining={remaining_kb:.1f}KB",
+                                flush=True,
                             )
                             continue
 
@@ -968,13 +967,10 @@ def compact(
                         promoted_kb = len(promoted.encode("utf-8")) / 1024
                         remaining_kb = len(remaining.encode("utf-8")) / 1024
                         chunk_kb = chunk_size / 1024
-                        _log.info(
-                            "rollup iter=%d for %s: chunk=%.1fKB, promoted=%.1fKB, remaining=%.1fKB",
-                            _iter + 1,
-                            persona_stem,
-                            chunk_kb,
-                            promoted_kb,
-                            remaining_kb,
+                        print(
+                            f"compact: rollup iter={_iter + 1} for {persona_stem}: "
+                            f"chunk={chunk_kb:.1f}KB, promoted={promoted_kb:.1f}KB, remaining={remaining_kb:.1f}KB",
+                            flush=True,
                         )
 
                 # ③ ロールアップ完了後、累積昇格テキスト全体で Phase 1 を1回だけ実行
@@ -991,10 +987,10 @@ def compact(
                     if p1_warning:
                         warnings_list.append(f"[attempt {attempt + 1}] {p1_warning}")
                     prefs_size = len(prefs_body.encode("utf-8"))
-                    _log.info(
-                        "Phase 1 done for %s, prefs=%.1fKB",
-                        persona_stem,
-                        prefs_size / 1024,
+                    print(
+                        f"compact: Phase 1 done for {persona_stem}, "
+                        f"prefs={prefs_size/1024:.1f}KB",
+                        flush=True,
                     )
 
             # --- [B] mid_term → long_term 玉突き昇格 ---

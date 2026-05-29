@@ -9,11 +9,12 @@ OSS 分離: persona_loader を callable 引数で受け取る。
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass
 
 from typing import Any, Callable, Literal
 
-from mltgnt.exceptions import ConfigError, DependencyError
+from mltgnt.exceptions import DependencyError
 
 _log = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ def load_channel_persona_map(
     チャンネルマップを構築する。
     {channel_id: list[ChannelPersonaEntry]} の dict を返す。
     channel が未設定のペルソナはマップに含まれない。
-    同一チャンネルに primary が複数ある場合は ConfigError を送出する。
+    同一チャンネルに primary が複数ある場合は stderr にエラー出力して sys.exit(1)。
 
     persona_loader: () -> list of persona objects with attributes:
         - name: str
@@ -124,9 +125,12 @@ def load_channel_persona_map(
     for ch, entries in result.items():
         primaries = [e.name for e in entries if e.role == "primary"]
         if len(primaries) > 1:
-            raise ConfigError(
-                f"チャンネル {ch} に primary が複数設定されています: {primaries}"
+            _log.error(
+                "チャンネル %s に primary が複数設定されています: %s",
+                ch,
+                primaries,
             )
+            sys.exit(1)
 
     return result
 

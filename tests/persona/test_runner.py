@@ -109,13 +109,89 @@ def test_runner_exception_returns_error_string(persona_dir: Path) -> None:
     assert "実行失敗" in result
 
 
-def test_run_persona_prompt_rejects_audit_writer_kwarg(persona_dir: Path) -> None:
-    """audit_writer キーワード引数は TypeError になること。"""
+def test_audit_writer_called_on_success(persona_dir: Path) -> None:
+    """正常系: audit_writer が1回呼ばれ、必須5キーが含まれること。"""
     from mltgnt.persona.runner import run_persona_prompt
 
-    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
-        with pytest.raises(TypeError):
-            run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=MagicMock())
+    mock_writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="応答")):
+        run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=mock_writer)
+
+    mock_writer.assert_called_once()
+    audit_dict = mock_writer.call_args[0][0]
+    assert set(audit_dict.keys()) >= {"source", "engine", "model", "ok", "timestamp"}
+
+
+def test_audit_writer_source_format(persona_dir: Path) -> None:
+    """source の値が 'mltgnt-persona-{persona_name}' 形式であること。"""
+    from mltgnt.persona.runner import run_persona_prompt
+
+    mock_writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result()):
+        run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=mock_writer)
+
+    audit_dict = mock_writer.call_args[0][0]
+    assert audit_dict["source"] == "mltgnt-persona-タチコマ"
+
+
+def test_audit_writer_ok_true_on_success(persona_dir: Path) -> None:
+    """result.ok=True のとき ok=True で audit_writer が呼ばれること。"""
+    from mltgnt.persona.runner import run_persona_prompt
+
+    mock_writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True)):
+        run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=mock_writer)
+
+    audit_dict = mock_writer.call_args[0][0]
+    assert audit_dict["ok"] is True
+
+
+def test_audit_writer_ok_false_on_llm_failure(persona_dir: Path) -> None:
+    """result.ok=False のとき ok=False で audit_writer が呼ばれること。"""
+    from mltgnt.persona.runner import run_persona_prompt
+
+    mock_writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=False, stderr="engine error")):
+        run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=mock_writer)
+
+    audit_dict = mock_writer.call_args[0][0]
+    assert audit_dict["ok"] is False
+
+
+def test_audit_writer_ok_false_on_exception(persona_dir: Path) -> None:
+    """ghdag_llm_call が例外送出した場合も ok=False で audit_writer が呼ばれること。"""
+    from mltgnt.persona.runner import run_persona_prompt
+
+    mock_writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", side_effect=RuntimeError("connection refused")):
+        run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=mock_writer)
+
+    mock_writer.assert_called_once()
+    audit_dict = mock_writer.call_args[0][0]
+    assert audit_dict["ok"] is False
+
+
+def test_audit_writer_exception_does_not_affect_result(persona_dir: Path) -> None:
+    """audit_writer が例外を送出してもペルソナ実行の戻り値に影響しないこと。"""
+    from mltgnt.persona.runner import run_persona_prompt
+
+    def failing_writer(_: dict) -> None:
+        raise ValueError("audit write error")
+
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="正常応答")):
+        result = run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=failing_writer)
+
+    assert result == "正常応答"
+
+
+def test_audit_writer_none_does_not_break(persona_dir: Path) -> None:
+    """audit_writer=None（デフォルト）でも従来通り動くこと。"""
+    from mltgnt.persona.runner import run_persona_prompt
+
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="応答")):
+        result = run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir)
+
+    assert result == "応答"
 
 
 def test_persona_runner_does_not_import_chat_module() -> None:
@@ -126,3 +202,17 @@ def test_persona_runner_does_not_import_chat_module() -> None:
 
     source = inspect.getsource(mod)
     assert "mltgnt.chat" not in source
+
+
+def test_audit_writer_timestamp_is_iso8601_with_timezone(persona_dir: Path) -> None:
+    """timestamp が ISO 8601 形式かつ Asia/Tokyo タイムゾーンを含むこと。"""
+    from mltgnt.persona.runner import run_persona_prompt
+
+    mock_writer = MagicMock()
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result()):
+        run_persona_prompt("タチコマ", "hello", persona_dir=persona_dir, audit_writer=mock_writer)
+
+    audit_dict = mock_writer.call_args[0][0]
+    ts = audit_dict["timestamp"]
+    assert isinstance(ts, str)
+    assert "+09:00" in ts or "Asia/Tokyo" in ts

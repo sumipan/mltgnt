@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import sys
 import threading
 import time
 from datetime import date, datetime
@@ -195,14 +196,20 @@ class PersonaScheduler:
                 dedupe_key=f"{dedupe_base}:assistant",
             )
         except Exception as e:
-            _log.warning("メモリ記録失敗 %s: %s", job.id, e)
+            print(
+                f"[secretary-schedule] メモリ記録失敗 {job.id}: {e}",
+                file=sys.stderr,
+            )
 
 
     def _post(self, job: ScheduleJob, text: str) -> None:
         if not self._should_notify_slack(job):
             return
         if self.slack is None:
-            _log.warning("Slack 未初期化のため通知スキップ: %s", text)
+            print(
+                f"[secretary-schedule] Slack 未初期化のため通知スキップ: {text}",
+                file=sys.stderr,
+            )
             return
         if job.persona and self._persona_post_kwargs_resolver is not None:
             try:
@@ -210,7 +217,7 @@ class PersonaScheduler:
                 if not text and resolved_text:
                     text = resolved_text
             except Exception as e:
-                _log.warning("ペルソナ読込失敗 %s: %s", job.persona, e)
+                print(f"[secretary-schedule] ペルソナ読込失敗 {job.persona}: {e}", file=sys.stderr)
                 post_kwargs = self._default_slack_post_kwargs() if self._default_slack_post_kwargs else {}
         else:
             post_kwargs = self._default_slack_post_kwargs() if self._default_slack_post_kwargs else {}
@@ -329,7 +336,10 @@ class PersonaScheduler:
                 f"[secretary-schedule] ウィンドウ内に完了しませんでした（missed）: `{job.id}` {d.isoformat()}",
             )
         elif job.on_window_missed == "silent":
-            _log.info("missed (silent): %s %s", job.id, d.isoformat())
+            print(
+                f"[secretary-schedule] missed (silent): {job.id} {d.isoformat()}",
+                file=sys.stderr,
+            )
         if job.on_window_missed == "mark_done":
             self._mark_done(job, d)
 
@@ -340,7 +350,7 @@ class PersonaScheduler:
 
     def execute_action(self, job: ScheduleJob) -> tuple[bool, str]:
         if job.action == "noop":
-            _log.debug("noop: %s", job.id)
+            print(f"[secretary-schedule] noop: {job.id}", file=sys.stderr)
             return True, ""
 
         if job.action == "skill":
@@ -365,14 +375,14 @@ class PersonaScheduler:
                 if ok:
                     if job.mode != "interval":
                         self._mark_done(job, d)
-                    _log.info("成功: %s", job.id)
+                    print(f"[secretary-schedule] 成功: {job.id}", file=sys.stderr)
                     if msg:
                         self._post(job, msg)
                     self._record_to_memory(job, msg, True, fired_at)
                 else:
                     if job.mode != "interval":
                         self._mark_failed(job, d, reason=msg[:400])
-                    _log.error("失敗: %s: %s", job.id, msg)
+                    print(f"[secretary-schedule] 失敗: {job.id}: {msg}", file=sys.stderr)
                     snippet = msg.strip()[-400:] if msg.strip() else "(詳細なし)"
                     if len(msg.strip()) > 400:
                         snippet = "…" + snippet
@@ -529,16 +539,16 @@ class PersonaScheduler:
 
     def loop(self) -> None:
         self.reload_jobs()
-        _log.info(
-            "スレッド開始 jobs=%d yaml=%s",
-            len(self._jobs),
-            self.yaml_path,
+        print(
+            f"[secretary-schedule] スレッド開始 jobs={len(self._jobs)} "
+            f"yaml={self.yaml_path}",
+            file=sys.stderr,
         )
         while not self._stop.is_set():
             try:
                 self.tick()
-            except Exception:
-                _log.exception("tick 例外")
+            except Exception as e:
+                print(f"[secretary-schedule] tick 例外: {e}", file=sys.stderr)
             time.sleep(1.0)
 
     def start_background(self) -> None:

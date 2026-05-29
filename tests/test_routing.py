@@ -67,8 +67,8 @@ def test_load_channel_persona_map_nickname_fallback() -> None:
     assert entry.nickname == "PersonaA"
 
 
-def test_load_channel_persona_map_primary_duplicate_raises_config_error() -> None:
-    """同一チャンネルに primary が2つ → ConfigError。"""
+def test_load_channel_persona_map_primary_duplicate_exits() -> None:
+    """同一チャンネルに primary が2つ → sys.exit(1)。"""
     persona_a = MagicMock()
     persona_a.name = "PersonaA"
     persona_a.fm.slack_channel = "C_SAME"
@@ -81,9 +81,7 @@ def test_load_channel_persona_map_primary_duplicate_raises_config_error() -> Non
     persona_b.fm.slack_secondary_channels = []
     persona_b.fm.slack_nickname = "nick_b"
 
-    from mltgnt.exceptions import ConfigError
-
-    with pytest.raises(ConfigError, match="primary"):
+    with pytest.raises(SystemExit):
         load_channel_persona_map(lambda: [persona_a, persona_b])
 
 

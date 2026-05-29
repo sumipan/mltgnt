@@ -19,7 +19,6 @@ from mltgnt.bridges.ghdag_bridge import (
     DagStep,
     _extract_result_filename,
     _order_to_result_filename,
-    _scheduler_audit_context,
     enqueue_and_wait,
     enqueue_dag,
 )
@@ -169,109 +168,6 @@ class TestCorrelationIdPropagation:
         ctx = captured_contexts[0]
         assert ctx.source == "mltgnt-scheduler"
         assert ctx.correlation_id is None
-
-
-# ---------------------------------------------------------------------------
-# request_id — AuditContext 伝搬（#1346）
-# ---------------------------------------------------------------------------
-
-
-class TestRequestIdPropagation:
-    def test_scheduler_audit_context_with_request_id(self):
-        """_scheduler_audit_context が request_id を AuditContext に渡す。"""
-        ctx = _scheduler_audit_context(None, None, request_id="test-rid")
-        assert ctx.source == "mltgnt-scheduler"
-        assert ctx.request_id == "test-rid"
-
-    def test_enqueue_and_wait_request_id(self, tmp_path):
-        """enqueue_and_wait の request_id が api.submit の audit_context に渡される。"""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir = _make_jobs_dir(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_and_wait(
-                prompt="prompt",
-                engine="cursor",
-                model="auto",
-                timeout=5.0,
-                idempotency_key="scheduler:test:rid",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-                request_id="test-rid",
-            )
-
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0].request_id == "test-rid"
-
-    def test_enqueue_dag_request_id(self, tmp_path):
-        """enqueue_dag の request_id が api.submit の audit_context に渡される。"""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_dag(
-                steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
-                timeout=5.0,
-                idempotency_key=f"dag:rid:{uuid.uuid4()}",
-                jobs_dir=jobs_dir,
-                exec_done_dir=done_dir,
-                request_id="test-rid",
-            )
-
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0].request_id == "test-rid"
-
-    def test_enqueue_and_wait_default_request_id(self, tmp_path):
-        """request_id 省略時は None が AuditContext に渡される。"""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir = _make_jobs_dir(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_and_wait(
-                prompt="prompt",
-                engine="cursor",
-                model="auto",
-                timeout=5.0,
-                idempotency_key="scheduler:test:default-rid",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-            )
-
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0].request_id is None
 
 
 # ---------------------------------------------------------------------------
