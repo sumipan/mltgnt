@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,7 @@ def run_skill_action(
     from mltgnt.bridges.ghdag_bridge import enqueue_and_wait
 
     fired_at = datetime.now(ZoneInfo(default_tz))
+    request_id = str(uuid.uuid4())
     ok, msg = enqueue_and_wait(
         prompt=prompt,
         engine=engine,
@@ -79,6 +81,7 @@ def run_skill_action(
         idempotency_key=f"scheduler:{job.id}:{fired_at.isoformat()}",
         jobs_dir=repo_root / "jobs",
         exec_done_dir=repo_root / "jobs" / "done",
+        request_id=request_id,
     )
 
     if ok and aa.get("enable_fanout", False):
@@ -92,6 +95,7 @@ def run_skill_action(
                 idempotency_key=f"scheduler:{job.id}:{fired_at.isoformat()}:fanout",
                 jobs_dir=repo_root / "jobs",
                 exec_done_dir=repo_root / "jobs" / "done",
+                request_id=request_id,
             )
             for i, (step_ok, step_msg) in enumerate(dag_results):
                 if not step_ok:

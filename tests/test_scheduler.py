@@ -480,6 +480,46 @@ def test_skill_action_idempotency_key_format(tmp_path: Path) -> None:
     assert key.startswith(f"scheduler:{job.id}:")
 
 
+_UUID_V4_RE = (
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
+
+def test_skill_action_request_id_uuid_v4(tmp_path: Path) -> None:
+    """run_skill_action が生成する request_id が UUID v4 形式であること。"""
+    import re
+
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ")
+    job = _skill_job()
+
+    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+        sch.execute_action(job)
+
+    request_id = mock_enqueue.call_args.kwargs["request_id"]
+    assert re.match(_UUID_V4_RE, request_id)
+
+
+def test_skill_action_request_id_shared_with_fanout(tmp_path: Path) -> None:
+    """fanout 時に enqueue_and_wait と enqueue_dag が同一 request_id を受け取ること。"""
+    sch, _ = _make_skill_scheduler(tmp_path)
+    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={
+        "skill": "test-skill",
+        "persona": "タチコマ",
+        "enable_fanout": True,
+    })
+
+    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)) as mock_enqueue, \
+         patch(_ENQUEUE_DAG, return_value=[(True, "ok1"), (True, "ok2")]) as mock_dag:
+        sch.execute_action(job)
+
+    wait_rid = mock_enqueue.call_args.kwargs["request_id"]
+    dag_rid = mock_dag.call_args.kwargs["request_id"]
+    assert wait_rid == dag_rid
+    assert wait_rid is not None
+
+
 def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
     """action_args.skill 未指定 → (False, エラーメッセージ)。"""
     sch, _ = _make_skill_scheduler(tmp_path)
