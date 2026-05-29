@@ -34,7 +34,7 @@ class OODARunner:
         act_dispatcher: ActDispatcher,
         memory_append: Callable[..., None],
         memory_read: Callable[..., str],
-        config: OODAConfig = OODAConfig(),
+        config: OODAConfig | None = None,
         audit_writer: Callable[[str, dict, str], None] | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
@@ -43,7 +43,7 @@ class OODARunner:
         self._act_dispatcher = act_dispatcher
         self._memory_append = memory_append
         self._memory_read = memory_read
-        self._config = config
+        self._config = config if config is not None else OODAConfig()
         self._audit_writer = audit_writer
         self._logger = logger or logging.getLogger(__name__)
         self._last_since: str | None = None
