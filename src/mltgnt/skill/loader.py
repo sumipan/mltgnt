@@ -9,7 +9,14 @@ import logging
 from pathlib import Path
 
 from mltgnt.bridges.files_adapter import md_read
-from mltgnt.skill.models import SkillFile, SkillMeta
+from mltgnt.skill.lint import lint_skill_meta
+from mltgnt.skill.models import (
+    ArtifactSpec,
+    ConsumesSpec,
+    ProducesSpec,
+    SkillFile,
+    SkillMeta,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -29,6 +36,40 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         raise ValueError(f"triggers フィールドはリストである必要があります: {triggers_raw!r}")
     else:
         triggers = [str(t) for t in triggers_raw]
+
+    skill_io: str = fm.get("skill_io", "legacy")
+    input_schema: dict = fm.get("input_schema") or {}
+
+    produces_raw = fm.get("produces")
+    produces: ProducesSpec | None = None
+    if produces_raw is not None and isinstance(produces_raw, dict):
+        artifacts_raw = produces_raw.get("artifacts") or []
+        artifacts = [
+            ArtifactSpec(
+                path=a["path"],
+                role=a.get("role", "primary"),
+            )
+            for a in artifacts_raw
+            if isinstance(a, dict) and "path" in a
+        ]
+        produces = ProducesSpec(
+            content_type=produces_raw.get("content_type", "text/markdown"),
+            artifacts=artifacts,
+            status_markers=produces_raw.get("status_markers") or [],
+        )
+
+    consumes_raw = fm.get("consumes") or []
+    consumes: list[ConsumesSpec] = []
+    if isinstance(consumes_raw, list):
+        for c in consumes_raw:
+            if isinstance(c, dict) and "producer" in c:
+                consumes.append(
+                    ConsumesSpec(
+                        producer=c["producer"],
+                        content_type=c.get("content_type", "text/markdown"),
+                    )
+                )
+
     return SkillMeta(
         name=name,
         description=str(description).strip(),
@@ -36,6 +77,10 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         model=model,
         path=path.resolve(),
         triggers=triggers,
+        skill_io=skill_io,
+        input_schema=input_schema,
+        produces=produces,
+        consumes=consumes,
     )
 
 
@@ -67,6 +112,20 @@ def discover(
             except Exception as e:
                 _log.warning("パースエラー（スキップ）: %s: %s", skill_file, e)
                 continue
+
+            errors = lint_skill_meta(md.frontmatter, skill_file)
+            unresolved_errors = [
+                e
+                for e in errors
+                if e.startswith(("V3", "V4", "V5", "V6", "V7", "V8", "V9"))
+            ]
+            if unresolved_errors:
+                for err in unresolved_errors:
+                    _log.warning("skill lint failed: %s: %s", skill_file, err)
+                continue
+
+            for err in errors:
+                _log.warning("skill lint warning: %s: %s", skill_file, err)
 
             if meta.name in result:
                 _log.warning(

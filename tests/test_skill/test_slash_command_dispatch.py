@@ -15,7 +15,7 @@ import pytest
 
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
-from mltgnt.skill.models import SkillMeta
+from mltgnt.skill.models import SkillMatchResult, SkillMeta
 from mltgnt.skill import resolve_skill
 
 
@@ -44,33 +44,31 @@ class TestHyphenatedSlashCommand:
     async def test_persona_create_matches(self) -> None:
         """① /persona-create がそもそもマッチするか"""
         result = await match("/persona-create 古賀史健", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result is not None
-        meta, args = result
-        assert meta.name == "persona-create"
-        assert args == "古賀史健"
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
+        assert result.arguments == "古賀史健"
 
     async def test_persona_create_no_args(self) -> None:
         """/persona-create 引数なしでもマッチ"""
         result = await match("/persona-create", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result is not None
-        meta, args = result
-        assert meta.name == "persona-create"
-        assert args == ""
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
+        assert result.arguments == ""
 
     async def test_triple_hyphen_name(self) -> None:
         """3段ハイフン名でもマッチ"""
         result = await match("/diary-review-sakuma", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result is not None
-        assert result[0].name == "diary-review-sakuma"
+        assert result.decisive is not None
+        assert result.decisive.name == "diary-review-sakuma"
 
     async def test_persona_create_filtered_by_persona_skills(self) -> None:
-        """persona_skills に含まれない場合は None"""
+        """persona_skills に含まれない場合は decisive=None"""
         result = await match(
             "/persona-create 古賀史健",
             SKILLS_WITH_HYPHEN,
             persona_skills=["review"],
         )
-        assert result is None
+        assert result.decisive is None
 
     async def test_persona_create_allowed_by_persona_skills(self) -> None:
         """persona_skills に含まれればマッチ"""
@@ -79,8 +77,8 @@ class TestHyphenatedSlashCommand:
             SKILLS_WITH_HYPHEN,
             persona_skills=["persona-create"],
         )
-        assert result is not None
-        assert result[0].name == "persona-create"
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
 
 
 # --------------- Slack 経由入力の前処理テスト ---------------
@@ -91,31 +89,36 @@ class TestSlackInputEdgeCases:
     """
 
     async def test_leading_whitespace(self) -> None:
-        """先頭にスペースがあるとスラッシュパターンにマッチしない（正常動作の確認）"""
+        """先頭にスペースがあるとスラッシュパターンにマッチしないが、literal matcher が拾う"""
         with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
             result = await match(" /persona-create 古賀史健", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result is None, "先頭空白があると /name パターンにマッチしないのは仕様通り"
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
+        assert result.rationale.startswith("literal:")
 
     async def test_leading_newline(self) -> None:
-        """先頭に改行があるとスラッシュパターンにマッチしない"""
+        """先頭に改行があるとスラッシュパターンにマッチしないが、literal matcher が拾う"""
         with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
             result = await match("\n/persona-create 古賀史健", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result is None, "先頭改行は仕様通り None"
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
+        assert result.rationale.startswith("literal:")
 
     async def test_multiline_with_slash_on_first_line(self) -> None:
         """/name が先頭行にあり、後続に改行テキストがある場合"""
         result = await match("/persona-create 古賀史健\nよろしくお願いします", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result is not None
-        meta, args = result
-        assert meta.name == "persona-create"
-        assert "古賀史健" in args
-        assert "よろしくお願いします" in args
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
+        assert "古賀史健" in result.arguments
+        assert "よろしくお願いします" in result.arguments
 
     async def test_slash_in_middle_of_text(self) -> None:
-        """テキスト中に /name があってもスラッシュパターンにマッチしない（先頭のみ）"""
+        """テキスト中に /name があるとスラッシュパターンには非マッチだが、literal matcher が拾う"""
         with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
             result = await match("今日 /persona-create を使いたい", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result is None
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
+        assert result.rationale.startswith("literal:")
 
 
 # --------------- discover + match 統合テスト（仮説① ファイルシステム） ---------------
@@ -154,19 +157,17 @@ class TestDiscoverAndMatchIntegration:
         _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
         skills = discover([tmp_path])
         result = await match("/persona-create 古賀史健", skills, persona_skills=None)
-        assert result is not None
-        meta, args = result
-        assert meta.name == "persona-create"
-        assert args == "古賀史健"
+        assert result.decisive is not None
+        assert result.decisive.name == "persona-create"
+        assert result.arguments == "古賀史健"
 
     async def test_discover_then_match_then_load(self, tmp_path: Path) -> None:
         """discover → match → load フルパイプライン"""
         _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
         skills = discover([tmp_path])
         result = await match("/persona-create 古賀史健", skills, persona_skills=None)
-        assert result is not None
-        meta, args = result
-        skill_file = load(meta)
+        assert result.decisive is not None
+        skill_file = load(result.decisive)
         assert skill_file.meta.name == "persona-create"
         assert "本文ここ" in skill_file.body
 
@@ -220,7 +221,8 @@ class TestResolveSkillIntegration:
     async def test_resolve_skill_passes_matcher_model(self, tmp_path: Path) -> None:
         """matcher_model="custom" が match() に model="custom" として渡される"""
         _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
-        with patch("mltgnt.skill.match", new=AsyncMock(return_value=None)) as mock_match:
+        no_match = SkillMatchResult(decisive=None, candidates=[], rationale="none", arguments="hello")
+        with patch("mltgnt.skill.match", new=AsyncMock(return_value=no_match)) as mock_match:
             await resolve_skill("hello", [tmp_path], matcher_model="custom-model")
             mock_match.assert_called_once()
             _, kwargs = mock_match.call_args

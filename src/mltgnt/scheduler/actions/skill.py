@@ -61,10 +61,10 @@ def run_skill_action(
         persona_name=persona.name,
         model=model,
     )
-    chat_input = skill_runner.run(skill_file, persona, argv_str, chat_input)
+    run_output = skill_runner.run(skill_file, persona, argv_str, chat_input)
 
-    prompt = next(m["content"] for m in chat_input.messages if m["role"] == "system")
-    resolved_model = chat_input.model
+    prompt = next(m["content"] for m in run_output.chat_input.messages if m["role"] == "system")
+    resolved_model = run_output.chat_input.model
 
     if aa.get("enable_fanout", False):
         prompt = prompt + _FANOUT_PROMPT_SUFFIX

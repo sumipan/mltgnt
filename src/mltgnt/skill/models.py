@@ -7,6 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mltgnt.interfaces.types import ChatInput
 
 
 @dataclass
@@ -42,6 +46,25 @@ class SkillRunResult:
     exit_code: int = 0
     artifacts: list[ArtifactSpec] = field(default_factory=list)
     status_markers: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SkillMatchResult:
+    """matcher.match() の戻り値。マッチ経路と候補を含む。"""
+
+    decisive: SkillMeta | None
+    candidates: list[SkillMeta]
+    rationale: str  # "slash:<name>" | "literal:<name>" | "trigger:<keyword>" | "llm:<name>" | "none"
+    arguments: str
+
+
+@dataclass
+class RunOutput:
+    """runner.run() の pre-execution ラッパー戻り値。"""
+
+    chat_input: "ChatInput"
+    expected_markers: list[str]
+    skill_io: str
 
 
 @dataclass

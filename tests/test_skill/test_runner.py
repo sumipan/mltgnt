@@ -1,7 +1,7 @@
 """
 tests/test_skill/test_runner.py — runner.run のユニットテスト。
 
-設計: Issue #124 §8 AC-4, AC-5
+設計: Issue #124 §8 AC-4, AC-5, Issue #1384 U6
 """
 from __future__ import annotations
 
@@ -10,17 +10,26 @@ from unittest.mock import MagicMock
 
 
 from mltgnt.interfaces.types import ChatInput
-from mltgnt.skill.models import SkillFile, SkillMeta
+from mltgnt.skill.models import ProducesSpec, RunOutput, SkillFile, SkillMeta
 from mltgnt.skill.runner import run
 
 
-def _make_skill(body: str, model: str | None = None, name: str = "review") -> SkillFile:
+def _make_skill(
+    body: str,
+    model: str | None = None,
+    name: str = "review",
+    *,
+    skill_io: str = "legacy",
+    produces: ProducesSpec | None = None,
+) -> SkillFile:
     meta = SkillMeta(
         name=name,
         description="test",
         argument_hint="",
         model=model,
         path=Path("/fake/skills/review/SKILL.md"),
+        skill_io=skill_io,
+        produces=produces,
     )
     return SkillFile(meta=meta, body=body)
 
@@ -47,7 +56,7 @@ class TestRunVariableSubstitution:
         skill = _make_skill("file=$0 mode=$1 all=$ARGUMENTS")
         persona = _make_persona()
         result = run(skill, persona, "日記/2026-04-17.md critique", _make_chat_input())
-        sys_content = result.messages[0]["content"]
+        sys_content = result.chat_input.messages[0]["content"]
         assert "日記/2026-04-17.md critique" in sys_content  # $ARGUMENTS
         assert "file=日記/2026-04-17.md" in sys_content       # $0
         assert "mode=critique" in sys_content                  # $1
@@ -57,7 +66,7 @@ class TestRunVariableSubstitution:
         skill = _make_skill("args=[$ARGUMENTS] pos=[$0]")
         persona = _make_persona()
         result = run(skill, persona, "", _make_chat_input())
-        sys_content = result.messages[0]["content"]
+        sys_content = result.chat_input.messages[0]["content"]
         assert "args=[]" in sys_content
         assert "pos=[]" in sys_content
 
@@ -66,7 +75,7 @@ class TestRunVariableSubstitution:
         skill = _make_skill("persona=$PERSONA")
         persona = _make_persona("タチコマ")
         result = run(skill, persona, "", _make_chat_input())
-        sys_content = result.messages[0]["content"]
+        sys_content = result.chat_input.messages[0]["content"]
         assert "タチコマ" in sys_content
 
     def test_skill_dir_substitution(self) -> None:
@@ -74,7 +83,7 @@ class TestRunVariableSubstitution:
         skill = _make_skill("dir=$SKILL_DIR")
         persona = _make_persona()
         result = run(skill, persona, "", _make_chat_input())
-        sys_content = result.messages[0]["content"]
+        sys_content = result.chat_input.messages[0]["content"]
         assert "/fake/skills/review" in sys_content
 
     def test_out_of_range_positional(self) -> None:
@@ -82,7 +91,7 @@ class TestRunVariableSubstitution:
         skill = _make_skill("$3")
         persona = _make_persona()
         result = run(skill, persona, "a b", _make_chat_input())
-        sys_content = result.messages[0]["content"]
+        sys_content = result.chat_input.messages[0]["content"]
         assert "$3" not in sys_content  # 置換されている
         # $3 → "" なのでその部分は空
         assert "[PERSONA:" in sys_content
@@ -94,8 +103,8 @@ class TestRunPromptComposition:
         skill = _make_skill("スキル本文")
         persona = _make_persona("タチコマ")
         result = run(skill, persona, "", _make_chat_input())
-        assert result.messages[0]["role"] == "system"
-        sys_content = result.messages[0]["content"]
+        assert result.chat_input.messages[0]["role"] == "system"
+        sys_content = result.chat_input.messages[0]["content"]
         assert "タチコマ" in sys_content
         assert "スキル本文" in sys_content
 
@@ -103,20 +112,20 @@ class TestRunPromptComposition:
         """AC-5-2: skill.meta.model が指定されれば返却 model がスキル側の値"""
         skill = _make_skill("body", model="claude-opus-4-6")
         result = run(skill, _make_persona(), "", _make_chat_input(model="default-model"))
-        assert result.model == "claude-opus-4-6"
+        assert result.chat_input.model == "claude-opus-4-6"
 
     def test_null_model_inherits(self) -> None:
         """AC-5-3: skill.meta.model が null なら chat_input.model を引き継ぐ"""
         skill = _make_skill("body", model=None)
         result = run(skill, _make_persona(), "", _make_chat_input(model="default-model"))
-        assert result.model == "default-model"
+        assert result.chat_input.model == "default-model"
 
     def test_user_message_preserved(self) -> None:
         """元のユーザーメッセージが引き継がれる"""
         skill = _make_skill("body")
         chat_input = _make_chat_input()
         result = run(skill, _make_persona(), "", chat_input)
-        user_msgs = [m for m in result.messages if m["role"] == "user"]
+        user_msgs = [m for m in result.chat_input.messages if m["role"] == "user"]
         assert len(user_msgs) == 1
         assert user_msgs[0]["content"] == "hello"
 
@@ -133,7 +142,26 @@ class TestRunPromptComposition:
             model=None,
         )
         result = run(skill, _make_persona(), "", chat_input)
-        system_msgs = [m for m in result.messages if m["role"] == "system"]
+        system_msgs = [m for m in result.chat_input.messages if m["role"] == "system"]
         assert len(system_msgs) == 1
         assert "old system" not in system_msgs[0]["content"]
         assert "new system" in system_msgs[0]["content"]
+
+
+class TestRunOutput:
+    def test_returns_run_output_instance(self) -> None:
+        result = run(_make_skill("body"), _make_persona(), "", _make_chat_input())
+        assert isinstance(result, RunOutput)
+
+    def test_expected_markers_from_produces(self) -> None:
+        produces = ProducesSpec(status_markers=["DONE", "ERROR"])
+        skill = _make_skill("body", produces=produces, skill_io="v1")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        assert result.expected_markers == ["DONE", "ERROR"]
+        assert result.skill_io == "v1"
+
+    def test_expected_markers_empty_when_no_produces(self) -> None:
+        skill = _make_skill("body", produces=None, skill_io="legacy")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        assert result.expected_markers == []
+        assert result.skill_io == "legacy"
