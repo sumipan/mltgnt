@@ -280,12 +280,12 @@ def test_ac7_dispatch_exception_recorded_as_failure():
 
 
 def test_ac10_ooda_package_import_isolated():
-  import importlib
+    import importlib
 
-  mod = importlib.import_module("mltgnt.ooda")
-  assert mod.OODARunner is not None
-  assert mod.OODAConfig is not None
-  assert mod.OODATickResult is not None
+    mod = importlib.import_module("mltgnt.ooda")
+    assert mod.OODARunner is not None
+    assert mod.OODAConfig is not None
+    assert mod.OODATickResult is not None
 
 
 def test_audit_integration_with_audit_jsonl(tmp_path):
