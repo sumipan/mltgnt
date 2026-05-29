@@ -6,8 +6,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
-from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -30,7 +28,6 @@ def run_pipeline(
     memory: str | None = None,
     orchestration_ctx: OrchestrationContext | None = None,
     audit_path: Path | None = None,
-    audit_writer: Callable[[dict], None] | None = None,
 ) -> ChatOutput:
     """1 往復パイプラインの本体。
 
@@ -71,22 +68,6 @@ def run_pipeline(
             )
         except Exception:
             logger.warning("[pipeline] orchestration audit failed for persona=%r", persona_name)
-    elif audit_writer is not None:
-        warnings.warn(
-            "audit_writer is deprecated; use orchestration_ctx + audit_path instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        try:
-            audit_writer({
-                "source": f"mltgnt-persona-{persona_name}",
-                "engine": engine,
-                "model": model,
-                "ok": ok,
-                "timestamp": datetime.now(tz=ZoneInfo("Asia/Tokyo")).isoformat(),
-            })
-        except Exception:
-            logger.warning("[pipeline] audit_writer failed for persona=%r", persona_name)
 
     return ChatOutput(
         content=content,
