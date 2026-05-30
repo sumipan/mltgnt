@@ -6,12 +6,16 @@ scheduler の action: skill から呼ばれ、order/result ファイルを残し
 from __future__ import annotations
 
 import json
+import os
 import re
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ghdag.files import md_read
+
+from mltgnt.skill.models import SkillMeta
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
@@ -26,6 +30,11 @@ class DagStep:
     model: str | None = None
     depends: list[str] = field(default_factory=list)
     context: dict[str, str] = field(default_factory=dict)
+    skill_name: str | None = None
+
+
+class SkillIOTypeError(TypeError):
+    """compose-time typecheck で検出されたパイプ型不整合。"""
 
 
 def _scheduler_audit_context(
@@ -71,6 +80,120 @@ def _topological_sort(steps: list[DagStep]) -> list[DagStep]:
     return result
 
 
+def _format_typecheck_error(
+    downstream: DagStep,
+    downstream_meta: SkillMeta,
+    upstream: DagStep | None,
+    upstream_meta: SkillMeta | None,
+    *,
+    field: str,
+    expected: str,
+    actual: str,
+    consume_index: int | None = None,
+) -> str:
+    lines = [
+        "SkillIOTypeError: pipe type mismatch in DAG step "
+        f"'{downstream.id}' (skill: {downstream.skill_name})",
+    ]
+    if upstream is not None and upstream_meta is not None:
+        lines.append(
+            f"  upstream: '{upstream.id}' (skill: {upstream.skill_name})"
+        )
+    if consume_index is not None:
+        lines.append(f"  field: {field}")
+        lines.append(f"  expected: {expected} (downstream consumes[{consume_index}])")
+        lines.append(f"  actual: {actual}")
+        if upstream_meta is not None:
+            lines.append(
+                "  fix: align content_type in "
+                f"skills/{upstream_meta.name}/SKILL.md produces section"
+            )
+        lines.append("  or: set skill_io: legacy on downstream to skip typecheck")
+    else:
+        lines.append(f"  field: {field}")
+        lines.append(f"  expected producer: {expected}")
+        lines.append(f"  actual upstream skill: {actual}")
+    return "\n".join(lines)
+
+
+def typecheck_dag(
+    steps: list[DagStep],
+    skills: dict[str, SkillMeta],
+) -> None:
+    """DAG エッジの produces/consumes 型整合を検証する。
+
+    不整合があれば SkillIOTypeError を送出する。
+    skill_name が None または skills に存在しないステップはスキップ。
+    skill_io が "legacy" の下流もスキップ。
+    """
+    step_map = {s.id: s for s in steps}
+
+    for downstream in steps:
+        if downstream.skill_name is None or downstream.skill_name not in skills:
+            continue
+        downstream_meta = skills[downstream.skill_name]
+        if downstream_meta.skill_io != "v1":
+            continue
+
+        if not downstream_meta.consumes:
+            print(
+                f"WARN: v1 skill '{downstream_meta.name}' (step '{downstream.id}') "
+                "participates in pipe but declares no consumes",
+                file=sys.stderr,
+            )
+            continue
+
+        for i, req in enumerate(downstream_meta.consumes):
+            resolvable: list[tuple[DagStep, SkillMeta]] = []
+            for dep_id in downstream.depends:
+                dep = step_map.get(dep_id)
+                if dep is None or dep.skill_name is None or dep.skill_name not in skills:
+                    continue
+                resolvable.append((dep, skills[dep.skill_name]))
+
+            upstream_step: DagStep | None = None
+            upstream_meta: SkillMeta | None = None
+            for dep, meta in resolvable:
+                if meta.name == req.producer:
+                    upstream_step = dep
+                    upstream_meta = meta
+                    break
+
+            if upstream_step is None or upstream_meta is None:
+                if not resolvable:
+                    continue
+                msg = _format_typecheck_error(
+                    downstream,
+                    downstream_meta,
+                    None,
+                    None,
+                    field="producer",
+                    expected=req.producer,
+                    actual="(no matching upstream in depends)",
+                    consume_index=i,
+                )
+                raise SkillIOTypeError(msg)
+
+            upstream_produces = upstream_meta.produces
+            actual_ct = (
+                upstream_produces.content_type
+                if upstream_produces is not None
+                else "text/markdown"
+            )
+            if req.content_type != actual_ct:
+                msg = _format_typecheck_error(
+                    downstream,
+                    downstream_meta,
+                    upstream_step,
+                    upstream_meta,
+                    field="content_type",
+                    expected=req.content_type,
+                    actual=f"{actual_ct} (upstream produces.content_type)",
+                    consume_index=i,
+                )
+                raise SkillIOTypeError(msg)
+
+
 def enqueue_dag(
     steps: list[DagStep],
     timeout: float,
@@ -81,6 +204,7 @@ def enqueue_dag(
     correlation_id: str | None = None,
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
+    skills: dict[str, SkillMeta] | None = None,
 ) -> list[tuple[bool, str]]:
     """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
 
@@ -119,6 +243,10 @@ def enqueue_dag(
         return [(True, "")] * len(steps)
 
     sorted_steps = _topological_sort(steps)
+
+    if os.environ.get("SKILL_IO_TYPECHECK") == "1" and skills is not None:
+        typecheck_dag(sorted_steps, skills)
+
     completed_results: dict[str, str] = {}
     failed_steps: set[str] = set()
     results_by_id: dict[str, tuple[bool, str]] = {}

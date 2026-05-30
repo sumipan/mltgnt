@@ -16,6 +16,7 @@ containers =
     mltgnt
 ignore_imports =
     mltgnt.* -> mltgnt.config
+    mltgnt.bridges.* -> mltgnt.skill.*
     mltgnt.persona.* -> mltgnt.chat.*
     mltgnt.chat.* -> mltgnt.persona.*
     mltgnt.skill.* -> mltgnt.chat.*
