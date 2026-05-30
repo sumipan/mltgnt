@@ -251,6 +251,98 @@ class TestSkillIoParse:
         assert discover([tmp_path])["review"].input_schema == {}
 
 
+# --- Issue #1403: mltgnt-create-skill / create-persona v1 テンプレ出力例 ---
+
+CREATE_SKILL_V1_TEMPLATE_MD = """\
+---
+name: example-skill
+description: >
+  例示用スキル（mltgnt-create-skill §3 v1 テンプレ相当）
+argument_hint: "[target-file]"
+skill_io: v1
+input_schema:
+  target_file:
+    type: string
+    description: "対象ファイルパス"
+produces:
+  content_type: text/markdown
+  status_markers: []
+model: null
+---
+
+本文
+"""
+
+CREATE_PERSONA_META_V1_MD = """\
+---
+name: mltgnt-create-persona
+description: >
+  ペルソナ生成メタスキル（v1 フロントマター例）
+skill_io: v1
+input_schema:
+  persona_name:
+    type: string
+    description: "生成するペルソナの人物名"
+produces:
+  content_type: text/markdown
+  artifacts:
+    - path: "agents/example-persona.md"
+      role: primary
+  status_markers: []
+model: null
+---
+
+本文
+"""
+
+
+class TestCreateSkillV1TemplateParse:
+    """Issue #1403 AC-3: v1 生成テンプレ出力例が正しくパースされる"""
+
+    def test_create_skill_template_build_meta(self, tmp_path: Path) -> None:
+        """mltgnt-create-skill §3 v1 テンプレ相当の SKILL.md を _build_meta で検証"""
+        from mltgnt.bridges.files_adapter import md_read
+        from mltgnt.skill.loader import _build_meta
+
+        skill_path = tmp_path / "example-skill" / "SKILL.md"
+        skill_path.parent.mkdir(parents=True)
+        skill_path.write_text(CREATE_SKILL_V1_TEMPLATE_MD, encoding="utf-8")
+        md = md_read("SKILL.md", repo_root=skill_path.parent)
+        meta = _build_meta(md.frontmatter, skill_path)
+        assert meta.skill_io == "v1"
+        assert meta.produces is not None
+        assert isinstance(meta.input_schema, dict)
+        assert meta.input_schema["target_file"]["type"] == "string"
+        assert meta.produces.content_type == "text/markdown"
+        assert meta.produces.status_markers == []
+
+    def test_create_skill_template_discover(self, tmp_path: Path) -> None:
+        """v1 テンプレ出力例が discover + lint 統合後も取得できる"""
+        _write_skill(tmp_path, "example-skill/SKILL.md", CREATE_SKILL_V1_TEMPLATE_MD)
+        meta = discover([tmp_path])["example-skill"]
+        assert meta.skill_io == "v1"
+        assert meta.produces is not None
+        assert isinstance(meta.input_schema, dict)
+
+    def test_create_persona_meta_build_meta(self, tmp_path: Path) -> None:
+        """mltgnt-create-persona v1 フロントマター例を _build_meta で検証"""
+        from mltgnt.bridges.files_adapter import md_read
+        from mltgnt.skill.loader import _build_meta
+
+        skill_path = tmp_path / "mltgnt-create-persona" / "SKILL.md"
+        skill_path.parent.mkdir(parents=True)
+        skill_path.write_text(CREATE_PERSONA_META_V1_MD, encoding="utf-8")
+        md = md_read("SKILL.md", repo_root=skill_path.parent)
+        meta = _build_meta(md.frontmatter, skill_path)
+        assert meta.skill_io == "v1"
+        assert meta.produces is not None
+        assert isinstance(meta.input_schema, dict)
+        assert meta.input_schema["persona_name"]["description"] == "生成するペルソナの人物名"
+        assert len(meta.produces.artifacts) == 1
+        assert meta.produces.artifacts[0].path == "agents/example-persona.md"
+        assert meta.produces.artifacts[0].role == "primary"
+
+
 # --- Issue #1383 U4: discover lint 統合 ---
 
 INVALID_SKILL_IO_MD = """\
