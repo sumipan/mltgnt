@@ -10,17 +10,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mltgnt.skill.matcher import match, _DEFAULT_MATCHER_MODEL
+from mltgnt.skill.matcher import match, match_triggers_only, _DEFAULT_MATCHER_MODEL
 from mltgnt.skill.models import SkillMeta
 
 
-def _meta(name: str) -> SkillMeta:
+def _meta(name: str, triggers: list[str] | None = None) -> SkillMeta:
     return SkillMeta(
         name=name,
         description=f"{name} description",
         argument_hint="",
         model=None,
         path=Path(f"/fake/skills/{name}/SKILL.md"),
+        triggers=triggers or [],
     )
 
 
@@ -121,3 +122,45 @@ class TestMatcherModel:
     async def test_default_matcher_model_constant(self) -> None:
         """_DEFAULT_MATCHER_MODEL が期待値を持つ"""
         assert _DEFAULT_MATCHER_MODEL == "claude-haiku-4-5-20251001"
+
+
+class TestMatchTriggersOnly:
+    def test_match_by_trigger_keyword(self) -> None:
+        """AC1: トリガーキーワードでマッチする"""
+        skills = {"calendar": _meta("calendar", triggers=["予定", "スケジュール"])}
+        assert match_triggers_only("予定を教えて", skills) == "calendar"
+
+    def test_no_match(self) -> None:
+        """AC1: マッチしない入力は None"""
+        skills = {"calendar": _meta("calendar", triggers=["予定", "スケジュール"])}
+        assert match_triggers_only("こんにちは", skills) is None
+
+    def test_empty_skills(self) -> None:
+        """AC1: 空 skills dict は None"""
+        assert match_triggers_only("予定", {}) is None
+
+    def test_empty_triggers_only(self) -> None:
+        """AC1: triggers が空のスキルのみなら None"""
+        skills = {"calendar": _meta("calendar", triggers=[])}
+        assert match_triggers_only("予定", skills) is None
+
+    def test_first_match_wins(self) -> None:
+        """AC1: 複数マッチ時は最初の一致を返す"""
+        skills = {
+            "calendar": _meta("calendar", triggers=["予定"]),
+            "schedule": _meta("schedule", triggers=["予定"]),
+        }
+        assert match_triggers_only("予定を教えて", skills) == "calendar"
+
+    def test_no_persona_filter_parameter(self) -> None:
+        """AC2: 全エントリを対象にマッチ（ペルソナフィルタなし）"""
+        import inspect
+
+        sig = inspect.signature(match_triggers_only)
+        assert "persona_skills" not in sig.parameters
+
+        skills = {
+            "calendar": _meta("calendar", triggers=["予定"]),
+            "other": _meta("other", triggers=["other"]),
+        }
+        assert match_triggers_only("予定", skills) == "calendar"
