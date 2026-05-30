@@ -82,6 +82,22 @@ def _match_by_triggers(
     return None
 
 
+def match_triggers_only(user_input: str, skills: dict[str, SkillMeta]) -> str | None:
+    """トリガーキーワードのみでスキルを検索する（ペルソナフィルタなし）。
+
+    ナレッジ記録経路など、LLM fallback が不要な軽量マッチング用。
+    ペルソナフィルタが必要な場合は呼び出し元で skills を事前フィルタすること。
+
+    Returns:
+        マッチしたスキル名、または None
+    """
+    for meta in skills.values():
+        for trigger in meta.triggers:
+            if trigger in user_input:
+                return meta.name
+    return None
+
+
 def _trigger_rationale(
     user_input: str,
     meta: SkillMeta,
