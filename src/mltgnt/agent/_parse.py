@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+
+_logger = logging.getLogger(__name__)
 
 
 def _parse_json_response(raw: str) -> dict | None:
@@ -12,7 +15,7 @@ def _parse_json_response(raw: str) -> dict | None:
       1. ```json {...} ``` コードブロック内の JSON
       2. 最初の { から最後の } までの部分文字列
 
-    "args" キーは必須。
+    "args" キーは必須。"thought" キーは省略可能（欠落時は WARN ログ）。
     """
     # 1. コードブロック内 JSON
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
@@ -39,5 +42,8 @@ def _parse_json_response(raw: str) -> dict | None:
 
     if not isinstance(data["args"], dict):
         return None
+
+    if "thought" not in data:
+        _logger.warning("thought key missing in LLM response; proceeding without thought")
 
     return data
