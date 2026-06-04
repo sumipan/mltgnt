@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from mltgnt.agent._parse import _parse_json_response
+from mltgnt.agent.action_classifier import ActionClassifier
 
 _logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class AgentRunner:
         max_iterations: int = 3,
         logger: logging.Logger | None = None,
         audit_writer: Callable[[str, dict, str], None] | None = None,
+        classifier: ActionClassifier | None = None,
     ) -> None:
         self._llm_call = llm_call
         self._tool_executor = tool_executor
@@ -56,6 +58,7 @@ class AgentRunner:
         self._max_iterations = max_iterations
         self._logger = logger or _logger
         self._audit_writer = audit_writer
+        self._classifier = classifier
 
     def run(self, prompt: str) -> AgentResult | None:
         tool_trace: list[dict] = []
@@ -83,13 +86,22 @@ class AgentRunner:
                     tool_trace=tool_trace if tool_trace else None,
                 )
 
+            classification: str | None = None
+            if self._classifier is not None:
+                classification = self._classifier.classify(tool_name, args).value
+
             try:
                 tool_result = self._tool_executor(tool_name, args)
             except Exception as exc:
                 self._logger.error("tool_executor raised for tool %r: %s", tool_name, exc)
                 return None
 
-            tool_trace.append({"tool": tool_name, "args": args, "result": tool_result})
+            trace_entry: dict = {"tool": tool_name, "args": args, "result": tool_result}
+            if classification is not None:
+                trace_entry["classification"] = classification
+            if data.get("thought") is not None:
+                trace_entry["thought"] = data["thought"]
+            tool_trace.append(trace_entry)
 
             if self._audit_writer is not None:
                 try:
