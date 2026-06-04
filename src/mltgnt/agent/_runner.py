@@ -99,6 +99,8 @@ class AgentRunner:
             trace_entry: dict = {"tool": tool_name, "args": args, "result": tool_result}
             if classification is not None:
                 trace_entry["classification"] = classification
+            if data.get("thought") is not None:
+                trace_entry["thought"] = data["thought"]
             tool_trace.append(trace_entry)
 
             if self._audit_writer is not None:
