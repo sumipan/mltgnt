@@ -89,7 +89,10 @@ class AgentRunner:
                 self._logger.error("tool_executor raised for tool %r: %s", tool_name, exc)
                 return None
 
-            tool_trace.append({"tool": tool_name, "args": args, "result": tool_result})
+            trace_entry: dict = {"tool": tool_name, "args": args, "result": tool_result}
+            if data.get("thought") is not None:
+                trace_entry["thought"] = data["thought"]
+            tool_trace.append(trace_entry)
 
             if self._audit_writer is not None:
                 try:
