@@ -1,7 +1,7 @@
 """
-mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V9）。
+mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V9, V13）。
 
-設計: Issue #1383 U3
+設計: Issue #1383 U3, Issue #1828 V13
 """
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from pathlib import Path
 
 
 def lint_skill_meta(fm: dict, path: Path) -> list[str]:
-    """フロントマター dict を V1–V9 で検証し、エラーメッセージのリストを返す。
+    """フロントマター dict を V1–V9, V13 で検証し、エラーメッセージのリストを返す。
 
-    空リスト = 検証通過。
+    空リスト = 検証通過。warning レベル（V13 等）はメッセージ末尾 ``(warning)`` で区別する。
     """
     errors: list[str] = []
 
@@ -69,5 +69,10 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
         input_schema = fm.get("input_schema")
         if input_schema is not None and not isinstance(input_schema, dict):
             errors.append(f"V9: input_schema must be dict, got {type(input_schema).__name__}")
+
+    # V13: scripts/ あり + README.md なし → warning（V10–V12 は Phase E 予定）
+    scripts_dir = path.parent / "scripts"
+    if scripts_dir.is_dir() and not (path.parent / "README.md").is_file():
+        errors.append("V13: skills with scripts/ should have README.md (warning)")
 
     return errors
