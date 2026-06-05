@@ -5,12 +5,13 @@ mltgnt.skill.runner — 変数置換とプロンプト合成。
 """
 from __future__ import annotations
 
+import os
 import re
 from copy import deepcopy
 
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.interfaces.types import ChatInput, Message
-from mltgnt.skill.models import RunOutput, SkillFile
+from mltgnt.skill.models import SkillFile, SkillRunResult
 
 _VAR_PATTERN = re.compile(r"\$(\d+|\w+)")
 
@@ -27,6 +28,10 @@ def _substitute(body: str, arguments: str, persona_name: str, skill_dir: str) ->
             return persona_name
         if key == "SKILL_DIR":
             return skill_dir
+        if key == "NIKKI_ROOT":
+            return os.environ.get("NIKKI_ROOT", "")
+        if key == "REPO_ROOT":
+            return os.environ.get("REPO_ROOT", "")
         if key.isdigit():
             idx = int(key)
             return args[idx] if idx < len(args) else ""
@@ -40,12 +45,12 @@ def run(
     persona: PersonaProtocol,
     arguments: str,
     chat_input: ChatInput,
-) -> RunOutput:
+) -> SkillRunResult:
     """
-    スキル本文の変数を置換し、ペルソナ指示と合成した RunOutput を返す。
+    スキル本文の変数を置換し、ペルソナ指示と合成した SkillRunResult を返す。
 
     戻り値:
-        RunOutput（chat_input / expected_markers / skill_io）。
+        SkillRunResult（chat_input / expected_markers / skill_io）。
         chat_input.model: skill.meta.model が優先、None なら chat_input.model を引き継ぐ
         chat_input.messages: システムプロンプト（ペルソナ指示 + スキル本文）+ 元のユーザーメッセージ
     """
@@ -73,7 +78,7 @@ def run(
         if skill.meta.produces
         else []
     )
-    return RunOutput(
+    return SkillRunResult(
         chat_input=new_input,
         expected_markers=expected_markers,
         skill_io=skill.meta.skill_io,
