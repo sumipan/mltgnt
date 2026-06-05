@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 from mltgnt.improvement.loop import run_improvement_cycle
@@ -14,6 +15,7 @@ def main() -> None:
     parser.add_argument("--persona-dir", type=Path, required=True)
     parser.add_argument("--skills-dir", type=Path, required=True)
     parser.add_argument("--since", type=int, default=7)
+    parser.add_argument("--today", type=date.fromisoformat, default=None)
     args = parser.parse_args()
 
     try:
@@ -22,6 +24,7 @@ def main() -> None:
             args.persona_dir,
             args.skills_dir,
             since_days=args.since,
+            today=args.today,
         )
     except FileNotFoundError as exc:
         print(exc, file=sys.stderr)

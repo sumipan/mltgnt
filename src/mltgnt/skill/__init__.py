@@ -16,7 +16,6 @@ from mltgnt.skill.models import (
     ArtifactSpec,
     ConsumesSpec,
     ProducesSpec,
-    RunOutput,
     SkillFile,
     SkillMatchResult,
     SkillMeta,
@@ -39,7 +38,6 @@ __all__ = [
     "ConsumesSpec",
     "SkillRunResult",
     "SkillMatchResult",
-    "RunOutput",
     "lint_skill_meta",
 ]
 
