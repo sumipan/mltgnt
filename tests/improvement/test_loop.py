@@ -157,7 +157,6 @@ def _run_improvement_cli(*args: str, cwd: Path | None = None) -> subprocess.Comp
     )
 
 
-@freeze_time("2026-05-29")
 def test_cli_prints_markdown_report(tmp_path: Path) -> None:
     audit_path = tmp_path / "audit.jsonl"
     persona_dir = tmp_path / "personas"
@@ -174,6 +173,8 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         str(persona_dir),
         "--skills-dir",
         str(skills_dir),
+        "--since",
+        "365",
         "--today",
         "2026-05-29",
         cwd=worktree,
