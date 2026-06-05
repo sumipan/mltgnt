@@ -175,6 +175,8 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         str(skills_dir),
         "--since",
         "365",
+        "--today",
+        "2026-05-29",
         cwd=worktree,
     )
     assert result.returncode == 0

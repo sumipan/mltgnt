@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from mltgnt.interfaces.types import ChatInput
 from mltgnt.skill import (
     ArtifactSpec,
     ConsumesSpec,
@@ -58,12 +59,27 @@ class TestConsumesSpec:
 
 
 class TestSkillRunResult:
+    def _make_chat_input(self) -> ChatInput:
+        return ChatInput(
+            source="test",
+            session_key="session-1",
+            messages=[{"role": "user", "content": "hello"}],
+            model=None,
+        )
+
     def test_defaults(self) -> None:
-        result = SkillRunResult(content="done")
+        ci = self._make_chat_input()
+        result = SkillRunResult(chat_input=ci, expected_markers=[], skill_io="v1", content="done")
         assert result.content == "done"
         assert result.exit_code == 0
+        assert result.diagnostics == []
         assert result.artifacts == []
         assert result.status_markers == []
+
+    def test_diagnostics_defaults_to_empty_list(self) -> None:
+        ci = self._make_chat_input()
+        result = SkillRunResult(chat_input=ci, expected_markers=[], skill_io="v1")
+        assert result.diagnostics == []
 
 
 class TestSkillMetaBackwardCompat:
