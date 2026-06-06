@@ -50,10 +50,14 @@ class SideEffectsSpec:
 
 @dataclass
 class SkillRunResult:
-    """runner の構造化戻り値（raw text からの昇格）。"""
+    """runner.run() の戻り値（pre-execution + post-execution 統合）。"""
 
-    content: str
+    chat_input: "ChatInput"
+    expected_markers: list[str]
+    skill_io: str
+    content: str = ""
     exit_code: int = 0
+    diagnostics: list[str] = field(default_factory=list)
     artifacts: list[ArtifactSpec] = field(default_factory=list)
     status_markers: list[str] = field(default_factory=list)
 
@@ -66,15 +70,6 @@ class SkillMatchResult:
     candidates: list[SkillMeta]
     rationale: str  # "slash:<name>" | "literal:<name>" | "trigger:<keyword>" | "llm:<name>" | "none"
     arguments: str
-
-
-@dataclass
-class RunOutput:
-    """runner.run() の pre-execution ラッパー戻り値。"""
-
-    chat_input: "ChatInput"
-    expected_markers: list[str]
-    skill_io: str
 
 
 @dataclass

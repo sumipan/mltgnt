@@ -8,9 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 
 from mltgnt.interfaces.types import ChatInput
-from mltgnt.skill.models import ProducesSpec, RunOutput, SkillFile, SkillMeta
+from mltgnt.skill.models import ProducesSpec, SkillFile, SkillMeta, SkillRunResult
 from mltgnt.skill.runner import run
 
 
@@ -148,10 +149,14 @@ class TestRunPromptComposition:
         assert "new system" in system_msgs[0]["content"]
 
 
-class TestRunOutput:
-    def test_returns_run_output_instance(self) -> None:
+class TestSkillRunResult:
+    def test_returns_skill_run_result_instance(self) -> None:
         result = run(_make_skill("body"), _make_persona(), "", _make_chat_input())
-        assert isinstance(result, RunOutput)
+        assert isinstance(result, SkillRunResult)
+
+    def test_diagnostics_defaults_to_empty_list(self) -> None:
+        result = run(_make_skill("body"), _make_persona(), "", _make_chat_input())
+        assert result.diagnostics == []
 
     def test_expected_markers_from_produces(self) -> None:
         produces = ProducesSpec(status_markers=["DONE", "ERROR"])
@@ -165,3 +170,33 @@ class TestRunOutput:
         result = run(skill, _make_persona(), "", _make_chat_input())
         assert result.expected_markers == []
         assert result.skill_io == "legacy"
+
+
+class TestRunEnvVarSubstitution:
+    def test_nikki_root_substitution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("NIKKI_ROOT", "/path/to/diary")
+        skill = _make_skill("root=$NIKKI_ROOT")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "/path/to/diary" in sys_content
+
+    def test_repo_root_substitution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("REPO_ROOT", "/path/to/nexus")
+        skill = _make_skill("root=$REPO_ROOT")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "/path/to/nexus" in sys_content
+
+    def test_nikki_root_empty_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NIKKI_ROOT", raising=False)
+        skill = _make_skill("root=[$NIKKI_ROOT]")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "root=[]" in sys_content
+
+    def test_repo_root_empty_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("REPO_ROOT", raising=False)
+        skill = _make_skill("root=[$REPO_ROOT]")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "root=[]" in sys_content

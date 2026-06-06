@@ -1,7 +1,7 @@
 """
-mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V12）。
+mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V12, V13）。
 
-設計: Issue #1383 U3, Issue #1832 (V10–V12 warning)
+設計: Issue #1383 U3, Issue #1832 (V10–V12 warning), Issue #1828 V13
 """
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ _ALLOWED_MUTATES = frozenset({"config", "env", "git", "github", "process"})
 
 
 def lint_skill_meta(fm: dict, path: Path) -> list[str]:
-    """フロントマター dict を V1–V12 で検証し、エラーメッセージのリストを返す。
+    """フロントマター dict を V1–V12, V13 で検証し、エラーメッセージのリストを返す。
 
-    空リスト = 検証通過。
+    空リスト = 検証通過。warning レベル（V10–V12, V13 等）はメッセージ末尾 ``(warning)`` で区別する。
     """
     errors: list[str] = []
 
@@ -101,5 +101,10 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
                                 "{config, env, git, github, process} (warning)"
                             )
                             break
+
+    # V13: scripts/ あり + README.md なし → warning
+    scripts_dir = path.parent / "scripts"
+    if scripts_dir.is_dir() and not (path.parent / "README.md").is_file():
+        errors.append("V13: skills with scripts/ should have README.md (warning)")
 
     return errors

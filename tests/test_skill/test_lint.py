@@ -1,5 +1,5 @@
 """
-tests/test_skill/test_lint.py — lint_skill_meta V1–V12 単体テスト（Issue #1383 U3, #1832）。
+tests/test_skill/test_lint.py — lint_skill_meta V1–V12, V13 単体テスト（Issue #1383 U3, #1832, #1828）。
 """
 from __future__ import annotations
 
@@ -241,6 +241,41 @@ class TestLintV10V12:
             _path(),
         )
         assert any(e == "side_effects must be a mapping (warning)" for e in errors)
+
+
+class TestLintV13:
+    def test_v13_scripts_without_readme(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "diary-draft"
+        skill_dir.mkdir()
+        (skill_dir / "scripts").mkdir()
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "diary-draft", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert any(e.startswith("V13:") and "(warning)" in e for e in errors)
+
+    def test_v13_scripts_with_readme(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "diary-draft"
+        skill_dir.mkdir()
+        (skill_dir / "scripts").mkdir()
+        (skill_dir / "README.md").write_text("# NAME\n")
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "diary-draft", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert not any(e.startswith("V13:") for e in errors)
+
+    def test_v13_no_scripts_dir(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "simple-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "simple-skill", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert not any(e.startswith("V13:") for e in errors)
 
 
 class TestLintPass:
