@@ -40,11 +40,11 @@ def resolve_responding_persona(
     if nickname_persona is not None:
         return nickname_persona
 
-    # 2. スレッド固定
+    # 2. スレッド固定（チャンネルに所属しないペルソナは無視）
     if thread_ts is not None:
         thread_key = f"{channel}:{thread_ts}"
         fixed = thread_persona_map.get(thread_key)
-        if fixed is not None:
+        if fixed is not None and any(e.name == fixed for e in entries):
             return fixed
 
     # 3. primary ペルソナ
