@@ -9,7 +9,7 @@ import logging
 import re
 
 from mltgnt.bridges.llm_adapter import call_llm as llm_call
-from mltgnt.routing.agentic_discover import AgenticSkillDiscoverer, DiscoverResult
+from mltgnt.skill.agentic_discover import AgenticSkillDiscoverer, DiscoverResult
 
 from mltgnt.skill.models import SkillMatchResult, SkillMeta
 

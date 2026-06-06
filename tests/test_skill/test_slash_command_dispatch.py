@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mltgnt.routing.agentic_discover import DiscoverResult
+from mltgnt.skill.agentic_discover import DiscoverResult
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
 from mltgnt.skill.models import SkillMatchResult, SkillMeta
