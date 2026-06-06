@@ -19,6 +19,8 @@ from mltgnt.improvement.rollback import (
 )
 from mltgnt.kpi import KPIReport
 
+_MISSING = object()
+
 
 def _kpi(response_failure_rate: float, re_question_rate: float) -> KPIReport:
     return KPIReport(
@@ -221,9 +223,11 @@ def test_run_improvement_cycle_eval_rollback_true_requires_repo_root(tmp_path: P
 
 def _cycle_result(
     *,
-    baseline_kpis: KPIReport | None = _kpi(0.10, 0.05),
+    baseline_kpis: KPIReport | None | object = _MISSING,
     patch_results: list[PatchResult] | None | object = ...,
 ) -> CycleResult:
+    if baseline_kpis is _MISSING:
+        baseline_kpis = _kpi(0.10, 0.05)
     if patch_results is ...:
         patch_results = [
             PatchResult(
