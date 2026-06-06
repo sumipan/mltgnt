@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import pytest
 from mltgnt.memory._sufficiency import (
+    judge_for_discover,
     judge_sufficiency,
 )
 
@@ -149,3 +150,66 @@ def test_tc9_rewritten_query_insufficient():
 def test_tc10_rewritten_query_sufficient():
     result = judge_sufficiency("質問", "情報", _llm("SUFFICIENT"))
     assert result.rewritten_query is None
+
+
+# ---------------------------------------------------------------------------
+# judge_for_discover
+# ---------------------------------------------------------------------------
+
+
+def test_judge_for_discover_selected():
+    response = "SELECTED\ncalendar"
+    result = judge_for_discover(
+        "カレンダー確認",
+        "calendar: 予定確認 (score: 0.85)",
+        ["calendar", "diary-draft", "review"],
+        _llm(response),
+    )
+    assert result.kind == "selected"
+    assert result.skill_name == "calendar"
+    assert result.next_query is None
+
+
+def test_judge_for_discover_need_more():
+    response = "NEED_MORE\n予定 スケジュール"
+    result = judge_for_discover(
+        "予定",
+        "calendar: 予定確認 (score: 0.50)",
+        ["calendar", "diary-draft"],
+        _llm(response),
+    )
+    assert result.kind == "need_more"
+    assert result.next_query == "予定 スケジュール"
+    assert result.skill_name is None
+
+
+def test_judge_for_discover_unresolved():
+    result = judge_for_discover(
+        "質問",
+        "候補情報",
+        ["calendar", "review"],
+        _llm("UNRESOLVED"),
+    )
+    assert result.kind == "unresolved"
+    assert result.reason == "no_match"
+
+
+def test_judge_for_discover_parse_error(caplog):
+    with caplog.at_level(logging.WARNING, logger="mltgnt.memory._sufficiency"):
+        result = judge_for_discover(
+            "質問",
+            "候補情報",
+            ["calendar"],
+            _llm("INVALID"),
+        )
+    assert result.kind == "unresolved"
+    assert result.reason == "parse_error"
+    assert result.top_candidates == []
+
+
+def test_judge_for_discover_llm_exception():
+    def failing_llm(_prompt: str) -> str:
+        raise RuntimeError("API error")
+
+    with pytest.raises(RuntimeError, match="API error"):
+        judge_for_discover("質問", "候補", ["calendar"], failing_llm)

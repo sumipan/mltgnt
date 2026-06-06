@@ -103,6 +103,15 @@ class IterativeRetriever:
 
         return self._build_output(collected, max_bytes, max_entries)
 
+    def retrieve_skills(self, query: str, max_entries: int) -> list:
+        """skill ソースのみを検索し ScoredEntry のリストを返す。
+
+        search_skills コールバックが未注入の場合は空リストを返す。
+        """
+        if self._search_skills is None:
+            return []
+        return self._search_skills(query, max_entries)
+
     def _search_memory(self, query: str, max_entries: int) -> list:
         """memory ファイルからエントリを TF-IDF でスコアリングして返す（JSONL 対応）。
 

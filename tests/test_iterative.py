@@ -30,6 +30,7 @@ import json
 import logging
 from pathlib import Path
 import textwrap
+from unittest.mock import patch
 
 import pytest
 
@@ -488,3 +489,77 @@ def test_tc11_empty_memory(tmp_path: Path) -> None:
 
     assert isinstance(result, str)
     # エラーにならない
+
+
+# ---------------------------------------------------------------------------
+# retrieve_skills
+# ---------------------------------------------------------------------------
+
+
+def test_retrieve_skills_calls_callback(tmp_path: Path) -> None:
+    """retrieve_skills は search_skills コールバックのみ呼び出す。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_PROJECT)
+
+    calls: list[tuple[str, int]] = []
+
+    def search_skills(query: str, max_entries: int) -> list[ScoredEntry]:
+        calls.append((query, max_entries))
+        return [ScoredEntry(text="日記を書く手順", score=0.9)]
+
+    retriever = IterativeRetriever(
+        config=config,
+        persona_stem="persona",
+        llm_call=lambda _: "SUFFICIENT",
+        search_skills=search_skills,
+    )
+
+    result = retriever.retrieve_skills("日記を書く", max_entries=5)
+
+    assert len(calls) == 1
+    assert calls[0] == ("日記を書く", 5)
+    assert len(result) == 1
+    assert result[0].text == "日記を書く手順"
+
+
+def test_retrieve_skills_none_returns_empty(tmp_path: Path) -> None:
+    """search_skills=None の場合、retrieve_skills は空リストを返す。"""
+    config = make_config(tmp_path)
+    retriever = IterativeRetriever(
+        config=config,
+        persona_stem="persona",
+        llm_call=lambda _: "SUFFICIENT",
+        search_skills=None,
+    )
+
+    result = retriever.retrieve_skills("日記を書く", max_entries=5)
+
+    assert result == []
+
+
+def test_retrieve_skills_does_not_search_memory(tmp_path: Path) -> None:
+    """retrieve_skills は memory ソースを検索しない。"""
+    config = make_config(tmp_path)
+    _write_memory(config, "persona", MEMORY_SUSHI)
+
+    memory_searched = False
+
+    original_search_memory = IterativeRetriever._search_memory
+
+    def tracking_search_memory(self, query, max_entries):
+        nonlocal memory_searched
+        memory_searched = True
+        return original_search_memory(self, query, max_entries)
+
+    retriever = IterativeRetriever(
+        config=config,
+        persona_stem="persona",
+        llm_call=lambda _: "SUFFICIENT",
+        search_skills=lambda q, n: [ScoredEntry(text="skill only", score=1.0)],
+    )
+
+    with patch.object(IterativeRetriever, "_search_memory", tracking_search_memory):
+        result = retriever.retrieve_skills("寿司", max_entries=5)
+
+    assert memory_searched is False
+    assert result[0].text == "skill only"
