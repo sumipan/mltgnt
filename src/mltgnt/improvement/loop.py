@@ -31,9 +31,6 @@ def run_improvement_cycle(
     eval_rollback: bool = False,
     repo_root: Path | None = None,
 ) -> CycleResult:
-    if eval_rollback and repo_root is None:
-        raise ValueError("repo_root is required when eval_rollback=True")
-
     if today is not None:
         period_end = today
     else:
@@ -50,6 +47,9 @@ def run_improvement_cycle(
             period_start=period_start,
             period_end=period_end,
         )
+
+    if repo_root is None:
+        raise ValueError("repo_root is required when eval_rollback=True")
 
     patch_results = [apply_proposal(proposal, repo_root) for proposal in proposals]
     return CycleResult(
