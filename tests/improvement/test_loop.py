@@ -150,7 +150,7 @@ def _run_improvement_cli(*args: str, cwd: Path | None = None) -> subprocess.Comp
     return subprocess.run(
         cmd,
         cwd=cwd or worktree,
-        env={**os.environ, "PYTHONPATH": "src"},
+        env={**os.environ, "PYTHONPATH": "src", "MLTGNT_AS_OF_DATE": date.today().isoformat()},
         capture_output=True,
         text=True,
         check=False,
