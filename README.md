@@ -149,7 +149,7 @@ from mltgnt import run_pipeline, Persona, load_persona
 
 | 変数 | 値 | 説明 |
 |------|-----|------|
-| `SKILL_IO_TYPECHECK` | `"1"` で有効 | `enqueue_dag` 実行時にスキル I/O 型チェックを有効化。未設定時はスキップ |
+| `SKILL_IO_TYPECHECK` | `"0"` で無効 | `enqueue_dag` 実行時にスキル I/O 型チェックを実行。未設定時は有効（opt-out） |
 
 ### 設定 dataclass（`mltgnt.config`）
 
