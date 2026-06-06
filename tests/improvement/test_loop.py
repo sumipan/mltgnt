@@ -168,7 +168,45 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
     skills_dir = tmp_path / "skills"
     _touch(persona_dir / "タチコマ.md")
     _touch(skills_dir / "system-improve-agents" / "SKILL.md")
-    _write_audit(audit_path, _four_category_audit_records())
+    # freeze_time cannot affect subprocesses, so use relative timestamps that
+    # always fall within the default 7-day window regardless of when the test runs.
+    ts = (date.today() - timedelta(days=1)).isoformat()
+    recent_records: list[dict] = []
+    for _ in range(3):
+        recent_records.append({
+            "event_type": "task_failed",
+            "correlation_id": "slack:triage-1",
+            "persona": "タチコマ",
+            "timestamp": f"{ts}T10:00:00+09:00",
+        })
+    recent_records.extend([
+        {"event_type": "task_exit", "correlation_id": "slack:triage-1", "timestamp": f"{ts}T10:01:00+09:00"},
+        {"event_type": "task_exit", "correlation_id": "slack:triage-1", "timestamp": f"{ts}T10:02:00+09:00"},
+    ])
+    for i in range(3):
+        recent_records.append({
+            "event_type": "task_failed",
+            "correlation_id": f"sched:timeout-{i}",
+            "error": "upstream timeout reached",
+            "persona": "タチコマ",
+            "timestamp": f"{ts}T11:00:00+09:00",
+        })
+    for i in range(3):
+        recent_records.append({
+            "event_type": "task_failed",
+            "correlation_id": f"agent:skill-{i}",
+            "skill": "system-improve-agents",
+            "persona": "タチコマ",
+            "timestamp": f"{ts}T12:00:00+09:00",
+        })
+    for i in range(3):
+        recent_records.append({
+            "event_type": "task_failed",
+            "correlation_id": f"agent:quality-{i}",
+            "persona": "タチコマ",
+            "timestamp": f"{ts}T13:00:00+09:00",
+        })
+    _write_audit(audit_path, recent_records)
 
     worktree = Path(__file__).resolve().parents[2]
     result = _run_improvement_cli(

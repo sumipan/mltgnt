@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -141,6 +142,12 @@ def extract_promote_candidates(
 
 def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
     """メモリファイルがコンパクション閾値を超えているか判定する。"""
+    warnings.warn(
+        "needs_compaction() is deprecated and will be removed in a future version. "
+        "mltgnt.scheduler の dream action による自動コンパクションに移行してください。",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from mltgnt.memory import memory_file_path
     path = memory_file_path(config, persona_stem)
     if not path.exists():
@@ -814,6 +821,12 @@ def compact(
     新パラメータ max_retries / skip_min_ratio はすべてデフォルト値付きのため、
     既存の compact(config, stem, llm_call=fn) 呼び出しは変更不要（後方互換）。
     """
+    warnings.warn(
+        "compact() is deprecated and will be removed in a future version. "
+        "mltgnt.scheduler の dream action による自動コンパクションに移行してください。",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from mltgnt.memory import memory_file_path, persona_memory_lock
 
     path = memory_file_path(config, persona_stem)
