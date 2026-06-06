@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mltgnt.skill.agentic_discover import AgenticSkillDiscoverer
+from mltgnt.routing.agentic_discover import AgenticSkillDiscoverer
 from mltgnt.skill.models import SkillMeta
 
 

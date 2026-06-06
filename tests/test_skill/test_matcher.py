@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mltgnt.skill.agentic_discover import DiscoverResult
+from mltgnt.routing.agentic_discover import DiscoverResult
 from mltgnt.skill.matcher import match, match_pipeline, match_triggers_only, split_pipe_segments, _DEFAULT_MATCHER_MODEL
 from mltgnt.skill.models import SkillMeta
 

@@ -1,8 +1,8 @@
 """
-mltgnt.skill.agentic_discover — AgenticSkillDiscoverer によるスキル発見。
+mltgnt.routing.agentic_discover — AgenticSkillDiscoverer によるスキル発見。
 
-skill と memory を横断するが、matcher から直接利用するため skill 層に配置。
-設計: Issue #1895 Subtask 1 / Issue #1922 / Issue #1923
+skill と memory の両層を横断するため routing 層に配置。
+設計: Issue #1895 Subtask 1 / Issue #1922
 """
 from __future__ import annotations
 
