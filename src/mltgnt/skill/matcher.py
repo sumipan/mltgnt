@@ -250,7 +250,7 @@ async def match(
         )
         if not result.ok:
             raise RuntimeError(result.stderr)
-        return result.stdout.strip()
+        return str(result.stdout or "").strip()
 
     try:
         discoverer = AgenticSkillDiscoverer(llm_call=_llm_for_discover, max_iterations=3)
