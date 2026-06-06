@@ -164,7 +164,7 @@ def test_apply_proposal_success_applies_patch_and_creates_pr(tmp_path: Path):
     assert result.pr_url == pr_url
     assert result.requires_human_review is False
     assert result.reason == ""
-    assert "# hello\nadded line\n" == target_file.read_text(encoding="utf-8")
+    assert target_file.read_text(encoding="utf-8") == "# hello\nadded line\n"
     assert calls[-1][0:3] == ["gh", "pr", "create"]
     assert calls[-1][calls[-1].index("--title") + 1] == "RSI: persona 改善"
 
