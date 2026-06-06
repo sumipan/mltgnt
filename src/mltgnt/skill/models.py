@@ -39,6 +39,16 @@ class ConsumesSpec:
 
 
 @dataclass
+class SideEffectsSpec:
+    """スキル実行時の副作用宣言（SKILL.md frontmatter side_effects）。"""
+
+    writes: list[str] = field(default_factory=list)
+    network: list[str] = field(default_factory=list)
+    mutates: list[str] = field(default_factory=list)
+    conditional: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SkillRunResult:
     """runner.run() の戻り値（pre-execution + post-execution 統合）。"""
 
@@ -76,6 +86,7 @@ class SkillMeta:
     input_schema: dict = field(default_factory=dict)  # JSON Schema object
     produces: ProducesSpec | None = None
     consumes: list[ConsumesSpec] = field(default_factory=list)
+    side_effects: SideEffectsSpec | None = None
 
 
 @dataclass
