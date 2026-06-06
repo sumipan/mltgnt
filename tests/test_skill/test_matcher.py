@@ -6,12 +6,23 @@ tests/test_skill/test_matcher.py — matcher.match のユニットテスト。
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mltgnt.routing.agentic_discover import DiscoverResult
 from mltgnt.skill.matcher import match, match_pipeline, match_triggers_only, split_pipe_segments, _DEFAULT_MATCHER_MODEL
 from mltgnt.skill.models import SkillMeta
+
+
+def _mock_agentic_unresolved():
+    """AgenticSkillDiscoverer を unresolved に固定するパッチ。"""
+    patcher = patch("mltgnt.skill.matcher.AgenticSkillDiscoverer")
+    mock_cls = patcher.start()
+    mock_discoverer = MagicMock()
+    mock_discoverer.discover.return_value = DiscoverResult(kind="unresolved")
+    mock_cls.return_value = mock_discoverer
+    return patcher, mock_cls, mock_discoverer
 
 
 def _meta(name: str, triggers: list[str] | None = None) -> SkillMeta:
@@ -58,12 +69,15 @@ class TestMatch:
     @pytest.mark.asyncio
     async def test_plain_message(self) -> None:
         """AC-3-4: 普通のメッセージ → triggers/LLM フォールバック（LLM をモック）"""
-        from unittest.mock import AsyncMock, patch
-        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = None
-            result = await match("普通のメッセージ", SKILLS, persona_skills=None)
-            assert result.decisive is None
-            assert result.rationale == "none"
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = None
+                result = await match("普通のメッセージ", SKILLS, persona_skills=None)
+                assert result.decisive is None
+                assert result.rationale == "none"
+        finally:
+            agentic_patcher.stop()
 
     @pytest.mark.asyncio
     async def test_no_arguments(self) -> None:
@@ -100,44 +114,59 @@ class TestMatch:
     @pytest.mark.asyncio
     async def test_literal_multiple_hits_falls_through(self) -> None:
         """AC1: 複数リテラルヒット → triggers/LLM にフォールバック"""
-        from unittest.mock import AsyncMock
-        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = None
-            result = await match("reviewとeditの両方", SKILLS, persona_skills=None)
-            assert result.decisive is None
-            mock_llm.assert_called_once()
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = None
+                result = await match("reviewとeditの両方", SKILLS, persona_skills=None)
+                assert result.decisive is None
+                mock_llm.assert_called_once()
+        finally:
+            agentic_patcher.stop()
 
 
 class TestMatcherModel:
     @pytest.mark.asyncio
     async def test_model_passed_to_llm(self) -> None:
         """model 引数が _match_by_llm の LLM 呼び出しに渡される"""
-        with patch("mltgnt.skill.matcher.llm_call") as mock:
-            mock.return_value = MagicMock(ok=True, stdout="none")
-            await match("hello", SKILLS, model="custom-model")
-            mock.assert_called_once()
-            _, kwargs = mock.call_args
-            assert kwargs["model"] == "custom-model"
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher.llm_call") as mock:
+                mock.return_value = MagicMock(ok=True, stdout="none")
+                await match("hello", SKILLS, model="custom-model")
+                mock.assert_called_once()
+                _, kwargs = mock.call_args
+                assert kwargs["model"] == "custom-model"
+        finally:
+            agentic_patcher.stop()
 
     @pytest.mark.asyncio
     async def test_default_model_when_none(self) -> None:
         """model=None のとき _DEFAULT_MATCHER_MODEL が使われる"""
-        with patch("mltgnt.skill.matcher.llm_call") as mock:
-            mock.return_value = MagicMock(ok=True, stdout="none")
-            await match("hello", SKILLS, model=None)
-            mock.assert_called_once()
-            _, kwargs = mock.call_args
-            assert kwargs["model"] == "claude-haiku-4-5-20251001"
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher.llm_call") as mock:
+                mock.return_value = MagicMock(ok=True, stdout="none")
+                await match("hello", SKILLS, model=None)
+                mock.assert_called_once()
+                _, kwargs = mock.call_args
+                assert kwargs["model"] == "claude-haiku-4-5-20251001"
+        finally:
+            agentic_patcher.stop()
 
     @pytest.mark.asyncio
     async def test_empty_string_model_falls_back_to_default(self) -> None:
         """model="" の空文字はデフォルトにフォールバックする"""
-        with patch("mltgnt.skill.matcher.llm_call") as mock:
-            mock.return_value = MagicMock(ok=True, stdout="none")
-            await match("hello", SKILLS, model="")
-            mock.assert_called_once()
-            _, kwargs = mock.call_args
-            assert kwargs["model"] == _DEFAULT_MATCHER_MODEL
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher.llm_call") as mock:
+                mock.return_value = MagicMock(ok=True, stdout="none")
+                await match("hello", SKILLS, model="")
+                mock.assert_called_once()
+                _, kwargs = mock.call_args
+                assert kwargs["model"] == _DEFAULT_MATCHER_MODEL
+        finally:
+            agentic_patcher.stop()
 
     @pytest.mark.asyncio
     async def test_default_matcher_model_constant(self) -> None:
@@ -185,6 +214,69 @@ class TestMatchTriggersOnly:
             "other": _meta("other", triggers=["other"]),
         }
         assert match_triggers_only("予定", skills) == "calendar"
+
+
+class TestAgenticDiscover:
+    CALENDAR_SKILLS = {
+        "calendar": _meta("calendar", triggers=[]),
+        "diary": _meta("diary", triggers=[]),
+    }
+
+    @pytest.mark.asyncio
+    async def test_agentic_selected(self) -> None:
+        calendar_meta = self.CALENDAR_SKILLS["calendar"]
+        with patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_cls:
+            mock_discoverer = MagicMock()
+            mock_discoverer.discover.return_value = DiscoverResult(
+                kind="selected", skill=calendar_meta
+            )
+            mock_cls.return_value = mock_discoverer
+            result = await match("予定を教えて", self.CALENDAR_SKILLS, persona_skills=None)
+            assert result.decisive == calendar_meta
+            assert result.rationale == "agentic:calendar"
+
+    @pytest.mark.asyncio
+    async def test_agentic_ambiguous(self) -> None:
+        cal = self.CALENDAR_SKILLS["calendar"]
+        diary = self.CALENDAR_SKILLS["diary"]
+        with patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_cls:
+            mock_discoverer = MagicMock()
+            mock_discoverer.discover.return_value = DiscoverResult(
+                kind="ambiguous",
+                candidates=[(cal, 0.8), (diary, 0.6)],
+            )
+            mock_cls.return_value = mock_discoverer
+            result = await match("予定を教えて", self.CALENDAR_SKILLS, persona_skills=None)
+            assert result.decisive == cal
+            assert result.rationale == "agentic-ambiguous:calendar"
+
+    @pytest.mark.asyncio
+    async def test_agentic_unresolved_falls_to_llm(self) -> None:
+        review_meta = SKILLS["review"]
+        with patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_cls, \
+             patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_discoverer = MagicMock()
+            mock_discoverer.discover.return_value = DiscoverResult(kind="unresolved")
+            mock_cls.return_value = mock_discoverer
+            mock_llm.return_value = (review_meta, "レビューお願い")
+            result = await match("レビューお願い", SKILLS, persona_skills=None)
+            mock_llm.assert_called_once()
+            assert result.decisive == review_meta
+            assert result.rationale == "llm:review"
+
+    @pytest.mark.asyncio
+    async def test_agentic_exception_falls_to_llm(self) -> None:
+        with patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_cls, \
+             patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm, \
+             patch("mltgnt.skill.matcher._log") as mock_log:
+            mock_discoverer = MagicMock()
+            mock_discoverer.discover.side_effect = RuntimeError("LLM down")
+            mock_cls.return_value = mock_discoverer
+            mock_llm.return_value = None
+            result = await match("hello", SKILLS, persona_skills=None)
+            mock_llm.assert_called_once()
+            mock_log.warning.assert_called_once()
+            assert result.rationale == "none"
 
 
 class TestSplitPipeSegments:

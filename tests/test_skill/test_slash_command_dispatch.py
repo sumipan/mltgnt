@@ -9,14 +9,24 @@ tests/test_skill/test_slash_command_dispatch.py — #208 切り分けテスト�
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mltgnt.routing.agentic_discover import DiscoverResult
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
 from mltgnt.skill.models import SkillMatchResult, SkillMeta
 from mltgnt.skill import resolve_skill
+
+
+def _mock_agentic_unresolved():
+    patcher = patch("mltgnt.skill.matcher.AgenticSkillDiscoverer")
+    mock_cls = patcher.start()
+    mock_discoverer = MagicMock()
+    mock_discoverer.discover.return_value = DiscoverResult(kind="unresolved")
+    mock_cls.return_value = mock_discoverer
+    return patcher
 
 
 # --------------- matcher 単体テスト（仮説①） ---------------
@@ -90,19 +100,27 @@ class TestSlackInputEdgeCases:
 
     async def test_leading_whitespace(self) -> None:
         """先頭にスペースがあるとスラッシュパターンにマッチしないが、literal matcher が拾う"""
-        with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
-            result = await match(" /persona-create 古賀史健", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result.decisive is not None
-        assert result.decisive.name == "persona-create"
-        assert result.rationale.startswith("literal:")
+        agentic_patcher = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
+                result = await match(" /persona-create 古賀史健", SKILLS_WITH_HYPHEN, persona_skills=None)
+            assert result.decisive is not None
+            assert result.decisive.name == "persona-create"
+            assert result.rationale.startswith("literal:")
+        finally:
+            agentic_patcher.stop()
 
     async def test_leading_newline(self) -> None:
         """先頭に改行があるとスラッシュパターンにマッチしないが、literal matcher が拾う"""
-        with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
-            result = await match("\n/persona-create 古賀史健", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result.decisive is not None
-        assert result.decisive.name == "persona-create"
-        assert result.rationale.startswith("literal:")
+        agentic_patcher = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
+                result = await match("\n/persona-create 古賀史健", SKILLS_WITH_HYPHEN, persona_skills=None)
+            assert result.decisive is not None
+            assert result.decisive.name == "persona-create"
+            assert result.rationale.startswith("literal:")
+        finally:
+            agentic_patcher.stop()
 
     async def test_multiline_with_slash_on_first_line(self) -> None:
         """/name が先頭行にあり、後続に改行テキストがある場合"""
@@ -114,11 +132,15 @@ class TestSlackInputEdgeCases:
 
     async def test_slash_in_middle_of_text(self) -> None:
         """テキスト中に /name があるとスラッシュパターンには非マッチだが、literal matcher が拾う"""
-        with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
-            result = await match("今日 /persona-create を使いたい", SKILLS_WITH_HYPHEN, persona_skills=None)
-        assert result.decisive is not None
-        assert result.decisive.name == "persona-create"
-        assert result.rationale.startswith("literal:")
+        agentic_patcher = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
+                result = await match("今日 /persona-create を使いたい", SKILLS_WITH_HYPHEN, persona_skills=None)
+            assert result.decisive is not None
+            assert result.decisive.name == "persona-create"
+            assert result.rationale.startswith("literal:")
+        finally:
+            agentic_patcher.stop()
 
 
 # --------------- discover + match 統合テスト（仮説① ファイルシステム） ---------------
@@ -209,9 +231,13 @@ class TestResolveSkillIntegration:
     async def test_resolve_plain_text_returns_none(self, tmp_path: Path) -> None:
         """スラッシュなし平文は LLM をモックした場合 None（スラッシュ/triggers マッチなし）"""
         _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
-        with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
-            result = await resolve_skill("ペルソナ作って", [tmp_path])
-        assert result is None
+        agentic_patcher = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new=AsyncMock(return_value=None)):
+                result = await resolve_skill("ペルソナ作って", [tmp_path])
+            assert result is None
+        finally:
+            agentic_patcher.stop()
 
     async def test_resolve_with_empty_paths(self) -> None:
         """空パスリスト → None"""

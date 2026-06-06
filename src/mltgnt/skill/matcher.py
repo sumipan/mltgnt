@@ -9,6 +9,7 @@ import logging
 import re
 
 from mltgnt.bridges.llm_adapter import call_llm as llm_call
+from mltgnt.routing.agentic_discover import AgenticSkillDiscoverer, DiscoverResult
 
 from mltgnt.skill.models import SkillMatchResult, SkillMeta
 
@@ -191,9 +192,10 @@ async def match(
     model: str | None = None,
 ) -> SkillMatchResult:
     """
-    ユーザー入力からスキルを特定する（4段フォールバック）。
+    ユーザー入力からスキルを特定する（5段フォールバック）。
 
-    優先順位: スラッシュコマンド → literal 一致 → triggers 部分一致 → LLM 意図分類
+    優先順位: スラッシュコマンド → literal 一致 → triggers 部分一致
+    → AgenticSkillDiscoverer → LLM 意図分類
 
     戻り値: SkillMatchResult。マッチしなければ decisive=None, rationale="none"。
     """
@@ -241,7 +243,39 @@ async def match(
             arguments=arguments,
         )
 
-    # Step 4: LLM 意図分類
+    # Step 4: AgenticSkillDiscoverer（反復絞り込み）
+    def _llm_for_discover(prompt: str) -> str:
+        result = llm_call(
+            prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30
+        )
+        if not result.ok:
+            raise RuntimeError(result.stderr)
+        return result.stdout.strip()
+
+    try:
+        discoverer = AgenticSkillDiscoverer(llm_call=_llm_for_discover, max_iterations=3)
+        discover_result = discoverer.discover(user_input, skills, persona_skills=persona_skills)
+    except Exception:
+        _log.warning("AgenticSkillDiscoverer failed, falling back to LLM", exc_info=True)
+        discover_result = DiscoverResult(kind="unresolved")
+
+    if discover_result.kind == "selected" and discover_result.skill is not None:
+        return SkillMatchResult(
+            decisive=discover_result.skill,
+            candidates=[],
+            rationale=f"agentic:{discover_result.skill.name}",
+            arguments=user_input,
+        )
+    if discover_result.kind == "ambiguous" and discover_result.candidates:
+        top_skill, _score = discover_result.candidates[0]
+        return SkillMatchResult(
+            decisive=top_skill,
+            candidates=[],
+            rationale=f"agentic-ambiguous:{top_skill.name}",
+            arguments=user_input,
+        )
+
+    # Step 5: 既存 LLM 意図分類フォールバック（unresolved 時）
     llm_result = await _match_by_llm(user_input, skills, persona_skills, model=model)
     if llm_result is not None:
         meta, arguments = llm_result
