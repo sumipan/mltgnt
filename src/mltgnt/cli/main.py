@@ -2,6 +2,7 @@ import argparse
 import sys
 from typing import Optional
 
+from mltgnt.cli import memory as memory_module
 from mltgnt.cli import run as run_module
 from mltgnt.exceptions import ConfigError, DependencyError, MltgntError
 
@@ -27,6 +28,8 @@ def main(argv: Optional[list[str]] = None) -> None:
         help="Path to PID file (default: /tmp/mltgnt_daemon.pid)",
     )
 
+    memory_module.register(subparsers)
+
     args = parser.parse_args(argv)
 
     if args.subcommand is None:
@@ -45,3 +48,6 @@ def main(argv: Optional[list[str]] = None) -> None:
         except MltgntError as e:
             print(f"Error: {e}", file=sys.stderr)
             raise SystemExit(1) from e
+
+    if args.subcommand == "memory":
+        raise SystemExit(memory_module.execute(args))
