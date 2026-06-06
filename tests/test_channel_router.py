@@ -222,3 +222,28 @@ def test_primary_only_channel_with_thread_fixed():
         thread_persona_map=thread_persona_map,
     )
     assert result == "タチコマ"
+
+
+def test_thread_fixed_persona_not_in_channel_falls_through_to_primary():
+    """thread_persona_map に記録された persona がそのチャンネルの entries にない場合は無視する。
+
+    再現ケース: 合田が別チャンネル(task-society)専属なのに C_TEST のスレッドに
+    delegate 結果として書き込まれ、その後 C_TEST で合田が応答してしまうバグ。
+    """
+    GODA = ChannelPersonaEntry(name="合田一人", role="primary", nickname="合田")
+    goda_channel_map = {"C_TASK_SOCIETY": [GODA]}
+    merged_map = {**CHANNEL_MAP_MULTI, **goda_channel_map}
+
+    thread_ts = "5000.0000"
+    # 合田が C_TEST スレッドに誤って記録されたシナリオ
+    thread_persona_map = {f"{CHANNEL}:{thread_ts}": "合田一人"}
+
+    result = resolve_responding_persona(
+        channel=CHANNEL,
+        text="続きよろしく",
+        thread_ts=thread_ts,
+        channel_map=merged_map,
+        thread_persona_map=thread_persona_map,
+    )
+    # 合田は C_TEST の entries にいないので無視され、primary（タチコマ）が返るべき
+    assert result == "タチコマ"

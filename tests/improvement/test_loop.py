@@ -24,7 +24,12 @@ def _touch(path: Path, text: str = "stub") -> None:
 
 
 def _four_category_audit_records() -> list[dict]:
-    """4カテゴリ各 count>=3 相当の task_failed を含む audit レコード。"""
+    """4カテゴリ各 count>=3 相当の task_failed を含む audit レコード。
+
+    freeze_time コンテキスト内では date.today() が frozen date を返すため、
+    in-process テストでも subprocess テストでも "today-1" が正しい期間内に入る。
+    """
+    d = (date.today() - timedelta(days=1)).isoformat()
     records: list[dict] = []
     for _ in range(3):
         records.append(
@@ -32,13 +37,13 @@ def _four_category_audit_records() -> list[dict]:
                 "event_type": "task_failed",
                 "correlation_id": "slack:triage-1",
                 "persona": "タチコマ",
-                "timestamp": "2026-05-28T10:00:00+09:00",
+                "timestamp": f"{d}T10:00:00+09:00",
             }
         )
     records.extend(
         [
-            {"event_type": "task_exit", "correlation_id": "slack:triage-1", "timestamp": "2026-05-28T10:01:00+09:00"},
-            {"event_type": "task_exit", "correlation_id": "slack:triage-1", "timestamp": "2026-05-28T10:02:00+09:00"},
+            {"event_type": "task_exit", "correlation_id": "slack:triage-1", "timestamp": f"{d}T10:01:00+09:00"},
+            {"event_type": "task_exit", "correlation_id": "slack:triage-1", "timestamp": f"{d}T10:02:00+09:00"},
         ]
     )
     for i in range(3):
@@ -48,7 +53,7 @@ def _four_category_audit_records() -> list[dict]:
                 "correlation_id": f"sched:timeout-{i}",
                 "error": "upstream timeout reached",
                 "persona": "タチコマ",
-                "timestamp": "2026-05-28T11:00:00+09:00",
+                "timestamp": f"{d}T11:00:00+09:00",
             }
         )
     for i in range(3):
@@ -58,7 +63,7 @@ def _four_category_audit_records() -> list[dict]:
                 "correlation_id": f"agent:skill-{i}",
                 "skill": "system-improve-agents",
                 "persona": "タチコマ",
-                "timestamp": "2026-05-28T12:00:00+09:00",
+                "timestamp": f"{d}T12:00:00+09:00",
             }
         )
     for i in range(3):
@@ -67,7 +72,7 @@ def _four_category_audit_records() -> list[dict]:
                 "event_type": "task_failed",
                 "correlation_id": f"agent:quality-{i}",
                 "persona": "タチコマ",
-                "timestamp": "2026-05-28T13:00:00+09:00",
+                "timestamp": f"{d}T13:00:00+09:00",
             }
         )
     return records
@@ -150,7 +155,7 @@ def _run_improvement_cli(*args: str, cwd: Path | None = None) -> subprocess.Comp
     return subprocess.run(
         cmd,
         cwd=cwd or worktree,
-        env={**os.environ, "PYTHONPATH": "src"},
+        env={**os.environ, "PYTHONPATH": "src", "MLTGNT_AS_OF_DATE": date.today().isoformat()},
         capture_output=True,
         text=True,
         check=False,
@@ -211,6 +216,8 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         str(persona_dir),
         "--skills-dir",
         str(skills_dir),
+        "--since",
+        "365",
         cwd=worktree,
     )
     assert result.returncode == 0
@@ -237,3 +244,24 @@ def test_cli_missing_required_args_exits_two() -> None:
     worktree = Path(__file__).resolve().parents[2]
     result = _run_improvement_cli(cwd=worktree)
     assert result.returncode == 2
+
+
+@freeze_time("2026-05-29")
+def test_run_improvement_cycle_eval_rollback_true_captures_baseline_kpis(
+    tmp_path: Path,
+) -> None:
+    from mltgnt.kpi import KPIReport
+
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+
+    result = run_improvement_cycle(
+        audit_path,
+        tmp_path / "personas",
+        tmp_path / "skills",
+        eval_rollback=True,
+        repo_root=tmp_path,
+    )
+
+    assert isinstance(result.baseline_kpis, KPIReport)
+    assert result.patch_results == []

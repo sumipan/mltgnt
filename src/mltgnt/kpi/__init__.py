@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from mltgnt.kpi._metrics import re_question_rate, response_failure_rate
+from mltgnt.kpi._metrics import (
+    memory_recall_rate,
+    re_question_rate,
+    response_failure_rate,
+    task_completion_time_ms,
+)
 from mltgnt.kpi._parser import filter_records_by_period, iter_audit_records, period_bounds
 
 
@@ -18,6 +23,8 @@ class KPIReport:
     re_question_rate: float
     re_question_detail: tuple[int, int]
     skill_resolution_rate: float | None
+    memory_recall_rate: float | None = None
+    task_completion_time_ms: float | None = None
 
 
 def compute_kpis(
@@ -42,6 +49,8 @@ def compute_kpis(
 
     rfr, rfd = response_failure_rate(records)
     rqr, rqd = re_question_rate(records)
+    mrr, (mrr_hit, mrr_total) = memory_recall_rate(records)
+    tct_ms = task_completion_time_ms(records)
     p_start, p_end = period_bounds(records)
 
     return KPIReport(
@@ -52,6 +61,8 @@ def compute_kpis(
         re_question_rate=rqr,
         re_question_detail=rqd,
         skill_resolution_rate=None,
+        memory_recall_rate=mrr if mrr_total > 0 else None,
+        task_completion_time_ms=tct_ms,
     )
 
 

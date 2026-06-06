@@ -27,7 +27,7 @@ from mltgnt.scheduler.state import SchedulePaths, _hash_offset, atomic_write_tex
 _log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from mltgnt.config import SchedulerConfig
+    from mltgnt.config import MemoryConfig, SchedulerConfig
     from mltgnt.interfaces.slack import SlackClientProtocol
 
 class PersonaScheduler:
@@ -54,6 +54,7 @@ class PersonaScheduler:
         persona_dir: Optional[Path] = None,
         append_memory_fn: Optional[Callable[..., bool]] = None,
         actions: Optional[dict[str, "ActionFn"]] = None,
+        memory_config: Optional["MemoryConfig"] = None,
     ) -> None:
         # config が指定された場合、config から設定を取得
         if config is not None:
@@ -96,6 +97,22 @@ class PersonaScheduler:
 
         from mltgnt.skill import discover
         self._skill_registry = discover(paths=[self.repo_root / "skills"])
+
+        if memory_config is not None and memory_config.use_dream_summary:
+            from mltgnt.scheduler.actions.dream import run_dream_action
+
+            def _memory_dream_action(job: ScheduleJob) -> tuple[bool, str]:
+                persona_stem = job.persona or str(job.action_args.get("persona", "")).strip()
+                if not persona_stem:
+                    return False, f"job {job.id}: persona が未指定です"
+                target_dir = self.persona_dir / persona_stem
+                return run_dream_action(
+                    job,
+                    persona_dir=target_dir,
+                    memory_config=memory_config,
+                )
+
+            self.register_action("memory_dream", _memory_dream_action)
 
     def register_action(self, name: str, fn: "ActionFn") -> None:
         self._actions[name] = fn
