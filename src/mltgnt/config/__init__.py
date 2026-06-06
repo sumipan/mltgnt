@@ -60,6 +60,7 @@ class MemoryConfig:
     dream_model: str = "claude-haiku-4-5-20251001"
     use_dream_summary: bool = False
     dream_dir_name: str = "memory"
+    global_dream_exclude_personas: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
