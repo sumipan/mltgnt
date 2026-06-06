@@ -38,7 +38,7 @@ def run_dream_action(
     def llm_call(prompt: str) -> str:
         from mltgnt.bridges.llm_adapter import call_llm
 
-        return call_llm(prompt, model=memory_config.dream_model)
+        return str(call_llm(prompt, model=memory_config.dream_model))
 
     try:
         summary = Synthesizer.synthesize(
