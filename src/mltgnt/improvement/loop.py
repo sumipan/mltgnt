@@ -22,8 +22,9 @@ def run_improvement_cycle(
     skills_dir: Path,
     *,
     since_days: int = 7,
+    today: date | None = None,
 ) -> CycleResult:
-    period_end = date.today()
+    period_end = today if today is not None else date.today()
     period_start = period_end - timedelta(days=since_days)
     patterns = analyze_failures(audit_path, since=period_start, until=period_end)
     proposals = generate_proposals(patterns, persona_dir, skills_dir)

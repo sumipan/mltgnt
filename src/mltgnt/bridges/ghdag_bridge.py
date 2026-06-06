@@ -244,7 +244,7 @@ def enqueue_dag(
 
     sorted_steps = _topological_sort(steps)
 
-    if os.environ.get("SKILL_IO_TYPECHECK") == "1" and skills is not None:
+    if os.environ.get("SKILL_IO_TYPECHECK") != "0" and skills is not None:
         typecheck_dag(sorted_steps, skills)
 
     completed_results: dict[str, str] = {}
