@@ -39,11 +39,25 @@ class ConsumesSpec:
 
 
 @dataclass
-class SkillRunResult:
-    """runner の構造化戻り値（raw text からの昇格）。"""
+class SideEffectsSpec:
+    """スキル実行時の副作用宣言（SKILL.md frontmatter side_effects）。"""
 
-    content: str
+    writes: list[str] = field(default_factory=list)
+    network: list[str] = field(default_factory=list)
+    mutates: list[str] = field(default_factory=list)
+    conditional: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SkillRunResult:
+    """runner.run() の戻り値（pre-execution + post-execution 統合）。"""
+
+    chat_input: "ChatInput"
+    expected_markers: list[str]
+    skill_io: str
+    content: str = ""
     exit_code: int = 0
+    diagnostics: list[str] = field(default_factory=list)
     artifacts: list[ArtifactSpec] = field(default_factory=list)
     status_markers: list[str] = field(default_factory=list)
 
@@ -56,15 +70,6 @@ class SkillMatchResult:
     candidates: list[SkillMeta]
     rationale: str  # "slash:<name>" | "literal:<name>" | "trigger:<keyword>" | "llm:<name>" | "none"
     arguments: str
-
-
-@dataclass
-class RunOutput:
-    """runner.run() の pre-execution ラッパー戻り値。"""
-
-    chat_input: "ChatInput"
-    expected_markers: list[str]
-    skill_io: str
 
 
 @dataclass
@@ -81,6 +86,7 @@ class SkillMeta:
     input_schema: dict = field(default_factory=dict)  # JSON Schema object
     produces: ProducesSpec | None = None
     consumes: list[ConsumesSpec] = field(default_factory=list)
+    side_effects: SideEffectsSpec | None = None
 
 
 @dataclass
