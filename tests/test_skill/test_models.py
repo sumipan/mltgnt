@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from mltgnt.interfaces.types import ChatInput
 from mltgnt.skill import (
     ArtifactSpec,
     ConsumesSpec,
@@ -12,10 +13,12 @@ from mltgnt.skill import (
     SkillMeta,
     SkillRunResult,
 )
+from mltgnt.skill.loader import _build_meta
 from mltgnt.skill.models import (
     ArtifactSpec as ArtifactSpecFromModels,
     ConsumesSpec as ConsumesSpecFromModels,
     ProducesSpec as ProducesSpecFromModels,
+    SideEffectsSpec,
     SkillRunResult as SkillRunResultFromModels,
 )
 
@@ -57,13 +60,49 @@ class TestConsumesSpec:
         assert spec.content_type == "text/markdown"
 
 
-class TestSkillRunResult:
+class TestSideEffectsSpec:
     def test_defaults(self) -> None:
-        result = SkillRunResult(content="done")
+        spec = SideEffectsSpec()
+        assert spec.writes == []
+        assert spec.network == []
+        assert spec.mutates == []
+        assert spec.conditional == []
+
+    def test_all_fields(self) -> None:
+        spec = SideEffectsSpec(
+            writes=["jobs/*.jsonl"],
+            network=["api.github.com"],
+            mutates=["git", "github"],
+            conditional=["--force 時のみ git push"],
+        )
+        assert spec.writes == ["jobs/*.jsonl"]
+        assert spec.network == ["api.github.com"]
+        assert spec.mutates == ["git", "github"]
+        assert spec.conditional == ["--force 時のみ git push"]
+
+
+class TestSkillRunResult:
+    def _make_chat_input(self) -> ChatInput:
+        return ChatInput(
+            source="test",
+            session_key="session-1",
+            messages=[{"role": "user", "content": "hello"}],
+            model=None,
+        )
+
+    def test_defaults(self) -> None:
+        ci = self._make_chat_input()
+        result = SkillRunResult(chat_input=ci, expected_markers=[], skill_io="v1", content="done")
         assert result.content == "done"
         assert result.exit_code == 0
+        assert result.diagnostics == []
         assert result.artifacts == []
         assert result.status_markers == []
+
+    def test_diagnostics_defaults_to_empty_list(self) -> None:
+        ci = self._make_chat_input()
+        result = SkillRunResult(chat_input=ci, expected_markers=[], skill_io="v1")
+        assert result.diagnostics == []
 
 
 class TestSkillMetaBackwardCompat:
@@ -79,6 +118,7 @@ class TestSkillMetaBackwardCompat:
         assert meta.input_schema == {}
         assert meta.produces is None
         assert meta.consumes == []
+        assert meta.side_effects is None
 
     def test_v1_fields(self) -> None:
         produces = ProducesSpec()
@@ -93,6 +133,29 @@ class TestSkillMetaBackwardCompat:
         )
         assert meta.skill_io == "v1"
         assert meta.produces is produces
+
+
+class TestBuildMetaSideEffects:
+    def test_build_meta_parses_side_effects(self) -> None:
+        path = Path("/skills/audit/SKILL.md")
+        fm = {
+            "name": "audit",
+            "description": "desc",
+            "side_effects": {"writes": ["jobs/*.jsonl"]},
+        }
+        meta = _build_meta(fm, path)
+        assert meta.side_effects == SideEffectsSpec(
+            writes=["jobs/*.jsonl"],
+            network=[],
+            mutates=[],
+            conditional=[],
+        )
+
+    def test_build_meta_without_side_effects_key(self) -> None:
+        path = Path("/skills/plain/SKILL.md")
+        fm = {"name": "plain", "description": "desc"}
+        meta = _build_meta(fm, path)
+        assert meta.side_effects is None
 
 
 class TestImportPaths:
