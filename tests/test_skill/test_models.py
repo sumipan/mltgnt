@@ -12,10 +12,12 @@ from mltgnt.skill import (
     SkillMeta,
     SkillRunResult,
 )
+from mltgnt.skill.loader import _build_meta
 from mltgnt.skill.models import (
     ArtifactSpec as ArtifactSpecFromModels,
     ConsumesSpec as ConsumesSpecFromModels,
     ProducesSpec as ProducesSpecFromModels,
+    SideEffectsSpec,
     SkillRunResult as SkillRunResultFromModels,
 )
 
@@ -57,6 +59,27 @@ class TestConsumesSpec:
         assert spec.content_type == "text/markdown"
 
 
+class TestSideEffectsSpec:
+    def test_defaults(self) -> None:
+        spec = SideEffectsSpec()
+        assert spec.writes == []
+        assert spec.network == []
+        assert spec.mutates == []
+        assert spec.conditional == []
+
+    def test_all_fields(self) -> None:
+        spec = SideEffectsSpec(
+            writes=["jobs/*.jsonl"],
+            network=["api.github.com"],
+            mutates=["git", "github"],
+            conditional=["--force 時のみ git push"],
+        )
+        assert spec.writes == ["jobs/*.jsonl"]
+        assert spec.network == ["api.github.com"]
+        assert spec.mutates == ["git", "github"]
+        assert spec.conditional == ["--force 時のみ git push"]
+
+
 class TestSkillRunResult:
     def test_defaults(self) -> None:
         result = SkillRunResult(content="done")
@@ -79,6 +102,7 @@ class TestSkillMetaBackwardCompat:
         assert meta.input_schema == {}
         assert meta.produces is None
         assert meta.consumes == []
+        assert meta.side_effects is None
 
     def test_v1_fields(self) -> None:
         produces = ProducesSpec()
@@ -93,6 +117,29 @@ class TestSkillMetaBackwardCompat:
         )
         assert meta.skill_io == "v1"
         assert meta.produces is produces
+
+
+class TestBuildMetaSideEffects:
+    def test_build_meta_parses_side_effects(self) -> None:
+        path = Path("/skills/audit/SKILL.md")
+        fm = {
+            "name": "audit",
+            "description": "desc",
+            "side_effects": {"writes": ["jobs/*.jsonl"]},
+        }
+        meta = _build_meta(fm, path)
+        assert meta.side_effects == SideEffectsSpec(
+            writes=["jobs/*.jsonl"],
+            network=[],
+            mutates=[],
+            conditional=[],
+        )
+
+    def test_build_meta_without_side_effects_key(self) -> None:
+        path = Path("/skills/plain/SKILL.md")
+        fm = {"name": "plain", "description": "desc"}
+        meta = _build_meta(fm, path)
+        assert meta.side_effects is None
 
 
 class TestImportPaths:

@@ -14,6 +14,7 @@ from mltgnt.skill.models import (
     ArtifactSpec,
     ConsumesSpec,
     ProducesSpec,
+    SideEffectsSpec,
     SkillFile,
     SkillMeta,
 )
@@ -70,6 +71,16 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
                     )
                 )
 
+    se_raw = fm.get("side_effects")
+    side_effects: SideEffectsSpec | None = None
+    if isinstance(se_raw, dict):
+        side_effects = SideEffectsSpec(
+            writes=se_raw.get("writes") or [],
+            network=se_raw.get("network") or [],
+            mutates=se_raw.get("mutates") or [],
+            conditional=se_raw.get("conditional") or [],
+        )
+
     return SkillMeta(
         name=name,
         description=str(description).strip(),
@@ -81,6 +92,7 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         input_schema=input_schema,
         produces=produces,
         consumes=consumes,
+        side_effects=side_effects,
     )
 
 

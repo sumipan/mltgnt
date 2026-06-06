@@ -1,15 +1,18 @@
 """
-mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V9）。
+mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V12）。
 
-設計: Issue #1383 U3
+設計: Issue #1383 U3, Issue #1832 (V10–V12 warning)
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 
+_ALLOWED_MUTATES = frozenset({"config", "env", "git", "github", "process"})
+
+
 def lint_skill_meta(fm: dict, path: Path) -> list[str]:
-    """フロントマター dict を V1–V9 で検証し、エラーメッセージのリストを返す。
+    """フロントマター dict を V1–V12 で検証し、エラーメッセージのリストを返す。
 
     空リスト = 検証通過。
     """
@@ -69,5 +72,34 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
         input_schema = fm.get("input_schema")
         if input_schema is not None and not isinstance(input_schema, dict):
             errors.append(f"V9: input_schema must be dict, got {type(input_schema).__name__}")
+
+    # V10–V12: side_effects（warning レベル。キー存在時のみ検証）
+    if "side_effects" in fm:
+        side_effects = fm["side_effects"]
+        if not isinstance(side_effects, dict):
+            errors.append("side_effects must be a mapping (warning)")
+        else:
+            if "writes" in side_effects:
+                writes = side_effects["writes"]
+                if not isinstance(writes, list) or not all(isinstance(w, str) for w in writes):
+                    errors.append(
+                        "V10: side_effects.writes must be a list of strings (warning)"
+                    )
+            if "network" in side_effects:
+                network = side_effects["network"]
+                if not isinstance(network, list) or not all(isinstance(n, str) for n in network):
+                    errors.append(
+                        "V11: side_effects.network must be a list of strings (warning)"
+                    )
+            if "mutates" in side_effects:
+                mutates = side_effects["mutates"]
+                if isinstance(mutates, list):
+                    for value in mutates:
+                        if value not in _ALLOWED_MUTATES:
+                            errors.append(
+                                "V12: side_effects.mutates values must be from "
+                                "{config, env, git, github, process} (warning)"
+                            )
+                            break
 
     return errors
