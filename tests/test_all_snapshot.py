@@ -62,7 +62,6 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "ArtifactSpec",
         "ConsumesSpec",
         "ProducesSpec",
-        "RunOutput",
         "SkillFile",
         "SkillMatchResult",
         "SkillMeta",

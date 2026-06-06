@@ -1,5 +1,5 @@
 """
-tests/test_skill/test_lint.py — lint_skill_meta V1–V9 単体テスト（Issue #1383 U3）。
+tests/test_skill/test_lint.py — lint_skill_meta V1–V12, V13 単体テスト（Issue #1383 U3, #1832, #1828）。
 """
 from __future__ import annotations
 
@@ -155,6 +155,127 @@ class TestLintV9:
             _path(),
         )
         assert not any(e.startswith("V9:") for e in errors)
+
+
+class TestLintV10V12:
+    def test_v10_writes_not_list(self) -> None:
+        errors = lint_skill_meta(
+            {
+                "name": "review",
+                "description": "desc",
+                "side_effects": {"writes": "not-a-list"},
+            },
+            _path(),
+        )
+        assert any(
+            e == "V10: side_effects.writes must be a list of strings (warning)"
+            for e in errors
+        )
+
+    def test_v10_writes_valid(self) -> None:
+        errors = lint_skill_meta(
+            {
+                "name": "review",
+                "description": "desc",
+                "side_effects": {"writes": ["valid"]},
+            },
+            _path(),
+        )
+        assert not any(e.startswith("V10:") for e in errors)
+
+    def test_v11_network_not_list(self) -> None:
+        errors = lint_skill_meta(
+            {
+                "name": "review",
+                "description": "desc",
+                "side_effects": {"network": 123},
+            },
+            _path(),
+        )
+        assert any(
+            e == "V11: side_effects.network must be a list of strings (warning)"
+            for e in errors
+        )
+
+    def test_v12_mutates_valid(self) -> None:
+        errors = lint_skill_meta(
+            {
+                "name": "review",
+                "description": "desc",
+                "side_effects": {"mutates": ["git", "github"]},
+            },
+            _path(),
+        )
+        assert not any(e.startswith("V12:") for e in errors)
+
+    def test_v12_mutates_invalid(self) -> None:
+        errors = lint_skill_meta(
+            {
+                "name": "review",
+                "description": "desc",
+                "side_effects": {"mutates": ["invalid_value"]},
+            },
+            _path(),
+        )
+        assert any(
+            e
+            == "V12: side_effects.mutates values must be from "
+            "{config, env, git, github, process} (warning)"
+            for e in errors
+        )
+
+    def test_no_side_effects_key_skips_v10_v12(self) -> None:
+        errors = lint_skill_meta(
+            {"name": "review", "description": "desc"},
+            _path(),
+        )
+        assert not any(e.startswith(("V10:", "V11:", "V12:")) for e in errors)
+
+    def test_side_effects_not_mapping(self) -> None:
+        errors = lint_skill_meta(
+            {
+                "name": "review",
+                "description": "desc",
+                "side_effects": "bad",
+            },
+            _path(),
+        )
+        assert any(e == "side_effects must be a mapping (warning)" for e in errors)
+
+
+class TestLintV13:
+    def test_v13_scripts_without_readme(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "diary-draft"
+        skill_dir.mkdir()
+        (skill_dir / "scripts").mkdir()
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "diary-draft", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert any(e.startswith("V13:") and "(warning)" in e for e in errors)
+
+    def test_v13_scripts_with_readme(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "diary-draft"
+        skill_dir.mkdir()
+        (skill_dir / "scripts").mkdir()
+        (skill_dir / "README.md").write_text("# NAME\n")
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "diary-draft", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert not any(e.startswith("V13:") for e in errors)
+
+    def test_v13_no_scripts_dir(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "simple-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "simple-skill", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert not any(e.startswith("V13:") for e in errors)
 
 
 class TestLintPass:

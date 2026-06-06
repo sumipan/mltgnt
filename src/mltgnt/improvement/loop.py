@@ -23,9 +23,13 @@ def run_improvement_cycle(
     skills_dir: Path,
     *,
     since_days: int = 7,
+    today: date | None = None,
 ) -> CycleResult:
-    _as_of = os.environ.get("MLTGNT_AS_OF_DATE")
-    period_end = date.fromisoformat(_as_of) if _as_of else date.today()
+    if today is not None:
+        period_end = today
+    else:
+        _as_of = os.environ.get("MLTGNT_AS_OF_DATE")
+        period_end = date.fromisoformat(_as_of) if _as_of else date.today()
     period_start = period_end - timedelta(days=since_days)
     patterns = analyze_failures(audit_path, since=period_start, until=period_end)
     proposals = generate_proposals(patterns, persona_dir, skills_dir)
