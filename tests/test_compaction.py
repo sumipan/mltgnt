@@ -22,6 +22,7 @@ from mltgnt.memory.compaction import (
     _sanitize_phase1_output,
     compact,
     extract_promote_candidates,
+    needs_compaction,
 )
 from mltgnt.memory._format import MemoryEntry, serialize_entry
 
@@ -400,10 +401,84 @@ class TestRedistributeEntries:
 
 
 # ---------------------------------------------------------------------------
+# DeprecationWarning（warn フェーズ）
+# ---------------------------------------------------------------------------
+
+
+class TestDeprecationWarnings:
+    def test_compact_emits_deprecation_warning(self, tmp_path: Path):
+        cfg = _make_config(tmp_path, target_bytes=25_600)
+        path = tmp_path / "test_persona.jsonl"
+        entries = [
+            MemoryEntry(
+                timestamp="2026-05-01T00:00:00+09:00",
+                role="user",
+                content="hello",
+                source_tag="chat",
+                layer="recent",
+            )
+        ]
+        _write_jsonl(path, entries)
+
+        with pytest.warns(DeprecationWarning, match="compact.*deprecated"):
+            compact(cfg, "test_persona", llm_call=lambda p: "ok")
+
+    def test_needs_compaction_emits_deprecation_warning(self, tmp_path: Path):
+        cfg = _make_config(tmp_path, target_bytes=25_600)
+        path = tmp_path / "test_persona.jsonl"
+        _write_jsonl(path, [_entry("chat", "hello")])
+
+        with pytest.warns(DeprecationWarning, match="needs_compaction.*deprecated"):
+            needs_compaction(cfg, "test_persona")
+
+    def test_warning_message_contains_migration_guide(self, tmp_path: Path):
+        cfg = _make_config(tmp_path, target_bytes=25_600)
+        path = tmp_path / "test_persona.jsonl"
+        entries = [
+            MemoryEntry(
+                timestamp="2026-05-01T00:00:00+09:00",
+                role="user",
+                content="hello",
+                source_tag="chat",
+                layer="recent",
+            )
+        ]
+        _write_jsonl(path, entries)
+
+        with pytest.warns(DeprecationWarning, match="dream action"):
+            compact(cfg, "test_persona", llm_call=lambda p: "ok")
+
+    def test_warning_stacklevel_points_to_caller(self, tmp_path: Path):
+        import warnings
+
+        cfg = _make_config(tmp_path, target_bytes=25_600)
+        path = tmp_path / "test_persona.jsonl"
+        entries = [
+            MemoryEntry(
+                timestamp="2026-05-01T00:00:00+09:00",
+                role="user",
+                content="hello",
+                source_tag="chat",
+                layer="recent",
+            )
+        ]
+        _write_jsonl(path, entries)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            compact(cfg, "test_persona", llm_call=lambda p: "ok")
+
+        assert len(caught) == 1
+        assert caught[0].category is DeprecationWarning
+        assert "test_compaction.py" in str(caught[0].filename)
+
+
+# ---------------------------------------------------------------------------
 # compact() — per-section cap 方式（AC-1, AC-2, AC-3, AC-5, AC-6, AC-7, AC-8, AC-10）
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestCompactPerSectionCap:
     def _make_entry(
         self, ts: str, content: str, layer: str, source_tag: str = "chat"

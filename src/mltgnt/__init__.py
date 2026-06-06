@@ -8,12 +8,13 @@ from mltgnt.chat.pipeline import run_pipeline
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.interfaces.types import ChatInput, ChatOutput, Message
 from mltgnt.memory import (
-    compact,
-    needs_compaction,
+    compact,  # deprecated: use scheduler dream action
+    needs_compaction,  # deprecated: use scheduler dream action
     read_memory_by_relevance,
     read_memory_iterative,
     read_memory_with_sufficiency_check,
 )
+from mltgnt.memory.dream import DreamSection, DreamSummary, read_dream, write_dream
 from mltgnt.persona import (
     Persona,
     list_personas,
@@ -35,8 +36,12 @@ __all__ = [
     "read_memory_iterative",
     "read_memory_by_relevance",
     "read_memory_with_sufficiency_check",
-    "compact",
-    "needs_compaction",
+    "compact",  # deprecated: use scheduler dream action
+    "needs_compaction",  # deprecated: use scheduler dream action
+    "DreamSection",
+    "DreamSummary",
+    "read_dream",
+    "write_dream",
     # persona
     "Persona",
     "load_persona",

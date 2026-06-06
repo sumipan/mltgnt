@@ -26,6 +26,10 @@ def _format_text(report: KPIReport) -> str:
         f"Re-question Rate:      {_format_pct(report.re_question_rate)}  "
         f"({retried} retried / {threads} threads)",
         "Skill Resolution Rate:  N/A   (requires skill audit events)",
+        f"Memory Recall Rate:     {_format_pct(report.memory_recall_rate) if report.memory_recall_rate is not None else 'N/A'}",
+        f"Task Completion Time:   {report.task_completion_time_ms:.1f} ms"
+        if report.task_completion_time_ms is not None
+        else "Task Completion Time:   N/A",
     ]
     return "\n".join(lines) + "\n"
 
@@ -45,6 +49,8 @@ def _format_json(report: KPIReport) -> str:
             "total_threads": report.re_question_detail[1],
         },
         "skill_resolution_rate": report.skill_resolution_rate,
+        "memory_recall_rate": report.memory_recall_rate,
+        "task_completion_time_ms": report.task_completion_time_ms,
     }
     return json.dumps(payload, ensure_ascii=False) + "\n"
 

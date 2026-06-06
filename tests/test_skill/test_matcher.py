@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mltgnt.skill.matcher import match, match_triggers_only, _DEFAULT_MATCHER_MODEL
+from mltgnt.skill.matcher import match, match_pipeline, match_triggers_only, split_pipe_segments, _DEFAULT_MATCHER_MODEL
 from mltgnt.skill.models import SkillMeta
 
 
@@ -185,3 +185,61 @@ class TestMatchTriggersOnly:
             "other": _meta("other", triggers=["other"]),
         }
         assert match_triggers_only("予定", skills) == "calendar"
+
+
+class TestSplitPipeSegments:
+    def test_two_segments(self) -> None:
+        assert split_pipe_segments("/skill-a foo | /skill-b") == ["/skill-a foo", "/skill-b"]
+
+    def test_three_segments(self) -> None:
+        assert split_pipe_segments("/skill-a foo | /skill-b bar | /skill-c") == [
+            "/skill-a foo",
+            "/skill-b bar",
+            "/skill-c",
+        ]
+
+    def test_no_spaces_around_pipe(self) -> None:
+        assert split_pipe_segments("/skill-a foo|bar") == ["/skill-a foo|bar"]
+
+    def test_no_pipe(self) -> None:
+        assert split_pipe_segments("plain text") == ["plain text"]
+
+
+class TestMatchPipeline:
+    PIPELINE_SKILLS = {
+        "skill-a": _meta("skill-a"),
+        "skill-b": _meta("skill-b"),
+        "skill-c": _meta("skill-c"),
+    }
+
+    @pytest.mark.asyncio
+    async def test_two_skill_pipeline(self) -> None:
+        results = await match_pipeline("/skill-a foo | /skill-b", self.PIPELINE_SKILLS)
+        assert len(results) == 2
+        assert results[0].decisive is not None
+        assert results[0].decisive.name == "skill-a"
+        assert results[0].arguments == "foo"
+        assert results[1].decisive is not None
+        assert results[1].decisive.name == "skill-b"
+        assert results[1].arguments == ""
+
+    @pytest.mark.asyncio
+    async def test_single_skill_backward_compat(self) -> None:
+        results = await match_pipeline("/single-skill arg", {"single-skill": _meta("single-skill")})
+        assert len(results) == 1
+        assert results[0].decisive is not None
+        assert results[0].decisive.name == "single-skill"
+        assert results[0].arguments == "arg"
+
+    @pytest.mark.asyncio
+    async def test_trigger_pipeline(self) -> None:
+        skills = {
+            "skill-a": _meta("skill-a", triggers=["trigger-a"]),
+            "skill-b": _meta("skill-b", triggers=["trigger-b"]),
+        }
+        results = await match_pipeline("trigger-a | trigger-b", skills)
+        assert len(results) == 2
+        assert results[0].decisive is not None
+        assert results[0].decisive.name == "skill-a"
+        assert results[1].decisive is not None
+        assert results[1].decisive.name == "skill-b"

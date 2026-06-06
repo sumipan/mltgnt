@@ -156,6 +156,34 @@ async def _match_by_llm(
     return (filtered[response], user_input)
 
 
+def split_pipe_segments(user_input: str) -> list[str]:
+    """ユーザー入力を ' | ' (前後スペース必須) で分割する。
+
+    Returns:
+        分割後のセグメントリスト。パイプなしの場合は要素 1 のリスト。
+    """
+    return user_input.split(" | ")
+
+
+async def match_pipeline(
+    user_input: str,
+    skills: dict[str, SkillMeta],
+    persona_skills: list[str] | None = None,
+    model: str | None = None,
+) -> list[SkillMatchResult]:
+    """パイプ入力を分割し、各セグメントを match() に委譲する。
+
+    Returns:
+        match() の戻り値リスト（入力順）。非パイプ入力は要素 1。
+    """
+    segments = split_pipe_segments(user_input)
+    results: list[SkillMatchResult] = []
+    for segment in segments:
+        result = await match(segment, skills, persona_skills=persona_skills, model=model)
+        results.append(result)
+    return results
+
+
 async def match(
     user_input: str,
     skills: dict[str, SkillMeta],
