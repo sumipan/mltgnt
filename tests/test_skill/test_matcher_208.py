@@ -6,12 +6,22 @@ tests/test_skill/test_matcher_208.py — Issue #208 ハイブリッドマッチ�
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mltgnt.routing.agentic_discover import DiscoverResult
 from mltgnt.skill.matcher import match, _match_by_triggers
 from mltgnt.skill.models import SkillMeta
+
+
+def _mock_agentic_unresolved():
+    patcher = patch("mltgnt.skill.matcher.AgenticSkillDiscoverer")
+    mock_cls = patcher.start()
+    mock_discoverer = MagicMock()
+    mock_discoverer.discover.return_value = DiscoverResult(kind="unresolved")
+    mock_cls.return_value = mock_discoverer
+    return patcher
 
 
 def _meta(name: str, triggers: list[str] | None = None) -> SkillMeta:
@@ -61,12 +71,16 @@ async def test_ac1_3_unknown_skill():
 
 @pytest.mark.asyncio
 async def test_ac1_4_plain_message_falls_through():
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = None
-        result = await match("普通のメッセージ", SKILLS_NO_TRIGGERS, persona_skills=None)
-        assert result.decisive is None
-        assert result.rationale == "none"
-        mock_llm.assert_called_once()
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = None
+            result = await match("普通のメッセージ", SKILLS_NO_TRIGGERS, persona_skills=None)
+            assert result.decisive is None
+            assert result.rationale == "none"
+            mock_llm.assert_called_once()
+    finally:
+        agentic_patcher.stop()
 
 
 # --- AC-2: triggers 部分一致 ---
@@ -82,22 +96,30 @@ async def test_ac2_1_triggers_partial_match():
 
 @pytest.mark.asyncio
 async def test_ac2_2_no_trigger_match_falls_to_llm():
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = None
-        skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-        result = await match("今日の天気は？", skills, persona_skills=None)
-        assert result.decisive is None
-        mock_llm.assert_called_once()
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = None
+            skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
+            result = await match("今日の天気は？", skills, persona_skills=None)
+            assert result.decisive is None
+            mock_llm.assert_called_once()
+    finally:
+        agentic_patcher.stop()
 
 
 @pytest.mark.asyncio
 async def test_ac2_3_trigger_match_but_filtered_by_persona():
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = None
-        skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-        result = await match("ペルソナを作りたい", skills, persona_skills=["review"])
-        assert result.decisive is None
-        mock_llm.assert_called_once()
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = None
+            skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
+            result = await match("ペルソナを作りたい", skills, persona_skills=["review"])
+            assert result.decisive is None
+            mock_llm.assert_called_once()
+    finally:
+        agentic_patcher.stop()
 
 
 @pytest.mark.asyncio
@@ -116,40 +138,56 @@ async def test_ac2_4_multiple_trigger_match_first_wins():
 @pytest.mark.asyncio
 async def test_ac3_1_llm_returns_skill_name():
     skills = {"review": _meta("review", triggers=[])}
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = (skills["review"], "レビューお願い")
-        result = await match("レビューお願い", skills, persona_skills=None)
-        assert result.decisive is not None
-        assert result.decisive.name == "review"
-        assert result.rationale == "llm:review"
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = (skills["review"], "レビューお願い")
+            result = await match("レビューお願い", skills, persona_skills=None)
+            assert result.decisive is not None
+            assert result.decisive.name == "review"
+            assert result.rationale == "llm:review"
+    finally:
+        agentic_patcher.stop()
 
 
 @pytest.mark.asyncio
 async def test_ac3_2_llm_returns_none():
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = None
-        result = await match("おはよう", SKILLS_WITH_TRIGGERS, persona_skills=None)
-        assert result.decisive is None
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = None
+            result = await match("おはよう", SKILLS_WITH_TRIGGERS, persona_skills=None)
+            assert result.decisive is None
+    finally:
+        agentic_patcher.stop()
 
 
 @pytest.mark.asyncio
 async def test_ac3_3_llm_returns_unknown_skill():
     # "レビュー" が triggers にあるため、triggers にヒットしないスキルセットを使う
     skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = None  # LLM が登録外スキル名を返す場合と同じく None
-        result = await match("レビューして", skills, persona_skills=None)
-        assert result.decisive is None
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = None  # LLM が登録外スキル名を返す場合と同じく None
+            result = await match("レビューして", skills, persona_skills=None)
+            assert result.decisive is None
+    finally:
+        agentic_patcher.stop()
 
 
 @pytest.mark.asyncio
 async def test_ac3_4_llm_api_error():
     # triggers にヒットしないスキルセットで LLM エラー時の動作を確認
     skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = None
-        result = await match("レビューして", skills, persona_skills=None)
-        assert result.decisive is None
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = None
+            result = await match("レビューして", skills, persona_skills=None)
+            assert result.decisive is None
+    finally:
+        agentic_patcher.stop()
 
 
 # --- AC-4: フォールバック順序 ---
@@ -158,40 +196,50 @@ async def test_ac3_4_llm_api_error():
 async def test_ac4_1_slash_match_skips_triggers_and_llm():
     with patch("mltgnt.skill.matcher._match_by_literal") as mock_literal, \
          patch("mltgnt.skill.matcher._match_by_triggers") as mock_triggers, \
+         patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_agentic, \
          patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
         result = await match("/persona tanaka", SKILLS_WITH_TRIGGERS, persona_skills=None)
         assert result.decisive is not None
         mock_literal.assert_not_called()
         mock_triggers.assert_not_called()
+        mock_agentic.assert_not_called()
         mock_llm.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_ac4_2_literal_match_skips_triggers_and_llm():
     with patch("mltgnt.skill.matcher._match_by_triggers") as mock_triggers, \
+         patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_agentic, \
          patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
         result = await match("reviewをお願い", SKILLS_NO_TRIGGERS, persona_skills=None)
         assert result.decisive is not None
         assert result.rationale == "literal:review"
         mock_triggers.assert_not_called()
+        mock_agentic.assert_not_called()
         mock_llm.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_ac4_3_triggers_match_skips_llm():
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+    with patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_agentic, \
+         patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
         result = await match("ペルソナを作ってほしい", SKILLS_WITH_TRIGGERS, persona_skills=None)
         assert result.decisive is not None
+        mock_agentic.assert_not_called()
         mock_llm.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_ac4_4_no_match_calls_llm():
-    with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = None
-        skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-        await match("今日の天気は？", skills, persona_skills=None)
-        mock_llm.assert_called_once()
+    agentic_patcher = _mock_agentic_unresolved()
+    try:
+        with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+            mock_llm.return_value = None
+            skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
+            await match("今日の天気は？", skills, persona_skills=None)
+            mock_llm.assert_called_once()
+    finally:
+        agentic_patcher.stop()
 
 
 # --- _match_by_triggers 単体テスト ---
