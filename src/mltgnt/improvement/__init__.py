@@ -2,6 +2,7 @@
 
 from mltgnt.improvement.analyzer import FailurePattern, analyze_failures
 from mltgnt.improvement.loop import CycleResult, run_improvement_cycle
+from mltgnt.improvement.patch import PatchResult
 from mltgnt.improvement.proposal import ImprovementProposal, generate_proposals
 
 __all__ = [
@@ -9,6 +10,7 @@ __all__ = [
     "analyze_failures",
     "ImprovementProposal",
     "generate_proposals",
+    "PatchResult",
     "CycleResult",
     "run_improvement_cycle",
 ]
