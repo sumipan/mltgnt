@@ -171,7 +171,6 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
     _write_audit(audit_path, _four_category_audit_records())
 
     worktree = Path(__file__).resolve().parents[2]
-    today = date.today().isoformat()
     result = _run_improvement_cli(
         "--audit",
         str(audit_path),
@@ -181,8 +180,6 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         str(skills_dir),
         "--since",
         "365",
-        "--today",
-        today,
         cwd=worktree,
     )
     assert result.returncode == 0

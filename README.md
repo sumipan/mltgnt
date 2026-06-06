@@ -156,9 +156,18 @@ mltgnt は LLM 呼び出しライブラリではありません。ペルソナ�
 
 | 変数名 | 定義箇所 | 用途 |
 |--------|---------|------|
-| `SKILL_IO_TYPECHECK` | `bridges/ghdag_bridge.py` | `"1"` で skill I/O 型検査を有効化。未設定時はスキップ |
+| `SKILL_IO_TYPECHECK` | `bridges/ghdag_bridge.py` | `"0"` で無効化。未設定時は skill I/O 型検査を実行（opt-out） |
 | `NIKKI_ROOT` | `skill/runner.py` | nikki（diary/memory）ルートパス。スキル本文の `$NIKKI_ROOT` 変数置換に使用 |
 | `REPO_ROOT` | `skill/runner.py` | リポジトリルートのフォールバック。スキル本文の `$REPO_ROOT` 変数置換に使用 |
+
+### 設定 dataclass（`mltgnt.config`）
+
+| dataclass | 主なフィールド | 用途 |
+|-----------|--------------|------|
+| `MemoryConfig` | `chat_dir`, `inject_max_bytes`, `compact_threshold_bytes`, `timezone` 等 | メモリ JSONL のパス・閾値・圧縮設定 |
+| `PersonaConfig` | `weight_map` | ペルソナ Markdown セクションの重み付け（`light` / `heavy` / `reference`） |
+| `SchedulerConfig` | `schedule_yaml`, `state_dir`, `timezone`, `salt` | スケジュール YAML と状態ディレクトリ |
+| `ChatConfig` | `persona_dir`, `memory_dir`, `matcher_model` | チャットパイプラインのパス・マッチャモデル |
 
 ---
 
