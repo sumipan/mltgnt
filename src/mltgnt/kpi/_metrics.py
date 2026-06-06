@@ -6,6 +6,9 @@ from collections import defaultdict
 _TASK_COMPLETE = frozenset({"task_complete"})
 _TASK_FAILED = frozenset({"task_failed"})
 _TASK_EXIT = _TASK_COMPLETE | _TASK_FAILED
+_TASK_COMPLETION = _TASK_EXIT
+_MEMORY_HIT = frozenset({"memory_hit"})
+_MEMORY_MISS = frozenset({"memory_miss"})
 
 
 def response_failure_rate(records: list[dict]) -> tuple[float, tuple[int, int]]:
@@ -39,4 +42,29 @@ def re_question_rate(records: list[dict]) -> tuple[float, tuple[int, int]]:
     if total_threads == 0:
         return 0.0, (retried, total_threads)
     return retried / total_threads, (retried, total_threads)
+
+
+def memory_recall_rate(records: list[dict]) -> tuple[float, tuple[int, int]]:
+    """メモリリコール率と (hit, total) を返す。hit + miss == 0 のとき rate は 0.0。"""
+    hit = sum(1 for r in records if r.get("event_type") in _MEMORY_HIT)
+    miss = sum(1 for r in records if r.get("event_type") in _MEMORY_MISS)
+    total = hit + miss
+    if total == 0:
+        return 0.0, (hit, total)
+    return hit / total, (hit, total)
+
+
+def task_completion_time_ms(records: list[dict]) -> float | None:
+    """タスク完了時間の平均（ミリ秒）。有効レコードが 0 件のとき None。"""
+    elapsed_secs: list[float] = []
+    for record in records:
+        if record.get("event_type") not in _TASK_COMPLETION:
+            continue
+        elapsed = record.get("elapsed_sec")
+        if elapsed is None:
+            continue
+        elapsed_secs.append(float(elapsed))
+    if not elapsed_secs:
+        return None
+    return sum(elapsed_secs) / len(elapsed_secs) * 1000.0
 
