@@ -57,6 +57,9 @@ class MemoryConfig:
     preferences_section_name: str = "ユーザーの好み・傾向"
     protected_layers: tuple[str, ...] = ("caveat",)
     timezone: str = "Asia/Tokyo"  # _redistribute_entries で使用
+    dream_model: str = "claude-haiku-4-5-20251001"
+    use_dream_summary: bool = False
+    dream_dir_name: str = "memory"
 
 
 @dataclass(frozen=True)

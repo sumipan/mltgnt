@@ -14,6 +14,7 @@ from mltgnt.memory import (
     read_memory_iterative,
     read_memory_with_sufficiency_check,
 )
+from mltgnt.memory.dream import DreamSection, DreamSummary, read_dream, write_dream
 from mltgnt.persona import (
     Persona,
     list_personas,
@@ -37,6 +38,10 @@ __all__ = [
     "read_memory_with_sufficiency_check",
     "compact",
     "needs_compaction",
+    "DreamSection",
+    "DreamSummary",
+    "read_dream",
+    "write_dream",
     # persona
     "Persona",
     "load_persona",
