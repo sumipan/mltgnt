@@ -3,10 +3,15 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from mltgnt.improvement.patch import PatchResult
-from mltgnt.kpi import KPIReport
+from mltgnt.kpi import KPIReport, compute_kpis
+
+if TYPE_CHECKING:
+    from mltgnt.improvement.loop import CycleResult
 
 _METRICS = (
     ("response_failure_rate", "response_failure_rate"),
@@ -112,3 +117,29 @@ def execute_rollback(
                 messages.append(f"Created revert PR for #{number}")
 
     return messages
+
+
+def evaluate_cycle_outcome(
+    previous: CycleResult,
+    audit_path: Path,
+    repo_root: Path,
+    *,
+    today: date | None = None,
+    window_days: int = 7,
+    threshold: float = 0.05,
+) -> RollbackDecision:
+    if previous.baseline_kpis is None:
+        raise ValueError("previous cycle did not capture baseline KPIs")
+
+    today = today or date.today()
+    after = compute_kpis(
+        audit_path,
+        since=today - timedelta(days=window_days),
+        until=today,
+    )
+    decision = evaluate_rollback(previous.baseline_kpis, after, threshold)
+
+    if decision.should_rollback and previous.patch_results:
+        execute_rollback(previous.patch_results, repo_root)
+
+    return decision

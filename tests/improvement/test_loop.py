@@ -206,3 +206,24 @@ def test_cli_missing_required_args_exits_two() -> None:
     worktree = Path(__file__).resolve().parents[2]
     result = _run_improvement_cli(cwd=worktree)
     assert result.returncode == 2
+
+
+@freeze_time("2026-05-29")
+def test_run_improvement_cycle_eval_rollback_true_captures_baseline_kpis(
+    tmp_path: Path,
+) -> None:
+    from mltgnt.kpi import KPIReport
+
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+
+    result = run_improvement_cycle(
+        audit_path,
+        tmp_path / "personas",
+        tmp_path / "skills",
+        eval_rollback=True,
+        repo_root=tmp_path,
+    )
+
+    assert isinstance(result.baseline_kpis, KPIReport)
+    assert result.patch_results == []
