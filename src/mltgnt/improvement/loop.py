@@ -9,6 +9,7 @@ from mltgnt.improvement.analyzer import FailurePattern, analyze_failures
 from mltgnt.improvement.patch import PatchResult, apply_proposal
 from mltgnt.improvement.proposal import ImprovementProposal, generate_proposals
 from mltgnt.improvement.rollback import RollbackDecision
+from mltgnt.kpi import KPIReport, compute_kpis
 
 
 @dataclass
@@ -19,6 +20,7 @@ class CycleResult:
     period_end: date
     patch_results: list[PatchResult] | None = None
     rollback_decision: RollbackDecision | None = None
+    baseline_kpis: KPIReport | None = None
 
 
 def run_improvement_cycle(
@@ -51,6 +53,7 @@ def run_improvement_cycle(
     if repo_root is None:
         raise ValueError("repo_root is required when eval_rollback=True")
 
+    baseline_kpis = compute_kpis(audit_path, since=period_start, until=period_end)
     patch_results = [apply_proposal(proposal, repo_root) for proposal in proposals]
     return CycleResult(
         patterns=patterns,
@@ -58,4 +61,5 @@ def run_improvement_cycle(
         period_start=period_start,
         period_end=period_end,
         patch_results=patch_results,
+        baseline_kpis=baseline_kpis,
     )

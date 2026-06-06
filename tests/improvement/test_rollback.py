@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,8 +10,13 @@ import pytest
 from freezegun import freeze_time
 
 from mltgnt.improvement import RollbackDecision
+from mltgnt.improvement.loop import CycleResult
 from mltgnt.improvement.patch import PatchResult
-from mltgnt.improvement.rollback import evaluate_rollback, execute_rollback
+from mltgnt.improvement.rollback import (
+    evaluate_cycle_outcome,
+    evaluate_rollback,
+    execute_rollback,
+)
 from mltgnt.kpi import KPIReport
 
 
@@ -211,3 +217,141 @@ def test_run_improvement_cycle_eval_rollback_true_requires_repo_root(tmp_path: P
             tmp_path / "skills",
             eval_rollback=True,
         )
+
+
+def _cycle_result(
+    *,
+    baseline_kpis: KPIReport | None = _kpi(0.10, 0.05),
+    patch_results: list[PatchResult] | None | object = ...,
+) -> CycleResult:
+    if patch_results is ...:
+        patch_results = [
+            PatchResult(
+                proposal_id="proposal:1",
+                applied=True,
+                pr_url="https://github.com/sumipan/mltgnt/pull/42",
+                requires_human_review=False,
+                reason="",
+            )
+        ]
+    return CycleResult(
+        patterns=[],
+        proposals=[],
+        period_start=date(2026, 5, 22),
+        period_end=date(2026, 5, 29),
+        patch_results=patch_results,
+        baseline_kpis=baseline_kpis,
+    )
+
+
+def test_evaluate_cycle_outcome_no_degradation(tmp_path: Path) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+    previous = _cycle_result()
+
+    with patch(
+        "mltgnt.improvement.rollback.compute_kpis",
+        return_value=_kpi(0.14, 0.09),
+    ) as mock_compute:
+        with patch("mltgnt.improvement.rollback.execute_rollback") as mock_execute:
+            decision = evaluate_cycle_outcome(
+                previous,
+                audit_path,
+                tmp_path,
+                today=date(2026, 6, 5),
+            )
+
+    assert decision.should_rollback is False
+    mock_execute.assert_not_called()
+    mock_compute.assert_called_once_with(
+        audit_path,
+        since=date(2026, 5, 29),
+        until=date(2026, 6, 5),
+    )
+
+
+def test_evaluate_cycle_outcome_degradation_triggers_execute_rollback(
+    tmp_path: Path,
+) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+    patch_results = [
+        PatchResult(
+            proposal_id="proposal:1",
+            applied=True,
+            pr_url="https://github.com/sumipan/mltgnt/pull/42",
+            requires_human_review=False,
+            reason="",
+        )
+    ]
+    previous = _cycle_result(patch_results=patch_results)
+
+    with patch(
+        "mltgnt.improvement.rollback.compute_kpis",
+        return_value=_kpi(0.20, 0.05),
+    ):
+        with patch(
+            "mltgnt.improvement.rollback.execute_rollback",
+            return_value=["Closed PR #42"],
+        ) as mock_execute:
+            decision = evaluate_cycle_outcome(previous, audit_path, tmp_path)
+
+    assert decision.should_rollback is True
+    mock_execute.assert_called_once_with(patch_results, tmp_path)
+
+
+def test_evaluate_cycle_outcome_missing_baseline_kpis_raises(tmp_path: Path) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+    previous = _cycle_result(baseline_kpis=None)
+
+    with pytest.raises(
+        ValueError,
+        match="previous cycle did not capture baseline KPIs",
+    ):
+        evaluate_cycle_outcome(previous, audit_path, tmp_path)
+
+
+@pytest.mark.parametrize("patch_results", [None, []])
+def test_evaluate_cycle_outcome_no_patch_results_skips_execute_rollback(
+    tmp_path: Path,
+    patch_results: list[PatchResult] | None,
+) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+    previous = _cycle_result(patch_results=patch_results)
+
+    with patch(
+        "mltgnt.improvement.rollback.compute_kpis",
+        return_value=_kpi(0.20, 0.05),
+    ):
+        with patch("mltgnt.improvement.rollback.execute_rollback") as mock_execute:
+            decision = evaluate_cycle_outcome(previous, audit_path, tmp_path)
+
+    assert decision.should_rollback is True
+    mock_execute.assert_not_called()
+
+
+def test_evaluate_cycle_outcome_window_days(tmp_path: Path) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+    previous = _cycle_result()
+
+    with patch(
+        "mltgnt.improvement.rollback.compute_kpis",
+        return_value=_kpi(0.14, 0.09),
+    ) as mock_compute:
+        with patch("mltgnt.improvement.rollback.execute_rollback"):
+            evaluate_cycle_outcome(
+                previous,
+                audit_path,
+                tmp_path,
+                today=date(2026, 6, 5),
+                window_days=14,
+            )
+
+    mock_compute.assert_called_once_with(
+        audit_path,
+        since=date(2026, 5, 22),
+        until=date(2026, 6, 5),
+    )

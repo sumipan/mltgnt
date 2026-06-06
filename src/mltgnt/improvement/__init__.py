@@ -6,6 +6,7 @@ from mltgnt.improvement.patch import PatchResult
 from mltgnt.improvement.proposal import ImprovementProposal, generate_proposals
 from mltgnt.improvement.rollback import (
     RollbackDecision,
+    evaluate_cycle_outcome,
     evaluate_rollback,
     execute_rollback,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "generate_proposals",
     "PatchResult",
     "RollbackDecision",
+    "evaluate_cycle_outcome",
     "evaluate_rollback",
     "execute_rollback",
     "CycleResult",
