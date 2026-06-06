@@ -4,15 +4,18 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from mltgnt.config import MemoryConfig
 from mltgnt.memory._format import MemoryEntry, assemble_entries_text
 from mltgnt.memory.dream._format import DreamSection, DreamSummary
 from mltgnt.memory.dream.api import read_dream, read_global
-from mltgnt.persona.registry import list_personas
 
 LlmCall = Callable[[str], str]
+
+# persona.registry と同じ除外規則（レイヤー境界のためローカル定義）
+_EXCLUDE_PERSONA_STEMS = frozenset({"サンプル"})
 
 _DEFAULT_CATEGORIES = ("行動パターン", "好み・傾向")
 
@@ -91,7 +94,7 @@ class Synthesizer:
     ) -> DreamSummary:
         exclude = set(config.global_dream_exclude_personas)
         persona_summaries: list[DreamSummary] = []
-        for stem in list_personas(config.chat_dir):
+        for stem in _list_chat_persona_stems(config.chat_dir):
             if stem in exclude:
                 continue
             dream = read_dream(
@@ -136,6 +139,20 @@ class Synthesizer:
         merged = _merge_sections(existing, parsed)
         updated_at = datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(timespec="seconds")
         return DreamSummary(persona="__global__", sections=merged, updated_at=updated_at)
+
+
+def _list_chat_persona_stems(chat_dir: Path) -> list[str]:
+    """chat_dir 直下のペルソナ .md から stem 一覧を返す（persona 層非依存）。"""
+    if not chat_dir.is_dir():
+        return []
+    stems: list[str] = []
+    for path in chat_dir.iterdir():
+        if not path.is_file() or path.suffix.lower() != ".md":
+            continue
+        if path.stem in _EXCLUDE_PERSONA_STEMS:
+            continue
+        stems.append(path.stem)
+    return sorted(stems)
 
 
 def _parse_sections(raw: str, *, source_entries: int) -> list[DreamSection]:
