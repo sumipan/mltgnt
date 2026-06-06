@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,7 @@ class ImprovementProposal:
     diff_preview: str
     confidence: float
     source_patterns: list[str]
+    diff_content: str | None = None
 
 
 def _persona_exists(persona_dir: Path, persona_name: str) -> bool:
@@ -32,6 +34,61 @@ def _skill_exists(skills_dir: Path, skill_name: str) -> bool:
         or (skills_dir / f"{skill_name}.md").exists()
         or (skills_dir / skill_name).exists()
     )
+
+
+def _resolve_persona_path(persona_dir: Path, persona_name: str) -> Path | None:
+    for candidate in [
+        persona_dir / f"{persona_name}.md",
+        persona_dir / persona_name / "PERSONA.md",
+    ]:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _resolve_skill_path(skills_dir: Path, skill_name: str) -> Path | None:
+    for candidate in [
+        skills_dir / skill_name / "SKILL.md",
+        skills_dir / f"{skill_name}.md",
+    ]:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _build_diff_content(file_path: Path, diff_preview: str) -> str | None:
+    additions = []
+    for line in diff_preview.splitlines():
+        if line.startswith("+ "):
+            additions.append(line[2:])
+        else:
+            return None
+    if not additions:
+        return None
+
+    original = file_path.read_text(encoding="utf-8")
+    original_lines = original.splitlines(keepends=True)
+    if original_lines and not original_lines[-1].endswith("\n"):
+        original_lines[-1] += "\n"
+    modified_lines = original_lines + [a + "\n" for a in additions]
+
+    diff = list(
+        difflib.unified_diff(
+            original_lines,
+            modified_lines,
+            fromfile=file_path.name,
+            tofile=file_path.name,
+        )
+    )
+    return "".join(diff) if diff else None
+
+
+def _set_diff_content_for_proposal(
+    proposal: ImprovementProposal,
+    target_path: Path | None,
+) -> None:
+    if target_path is not None:
+        proposal.diff_content = _build_diff_content(target_path, proposal.diff_preview)
 
 
 def generate_proposals(
@@ -107,6 +164,13 @@ def generate_proposals(
             )
         else:
             continue
+
+        if proposal.target_type in {"persona", "trigger"}:
+            if proposal.target_type == "persona":
+                target_path = _resolve_persona_path(persona_dir, target_name)
+            else:
+                target_path = _resolve_skill_path(skills_dir, target_name)
+            _set_diff_content_for_proposal(proposal, target_path)
 
         if proposal.confidence >= min_confidence and proposal.diff_preview.strip():
             proposals.append(proposal)
