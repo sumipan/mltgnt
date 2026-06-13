@@ -7,9 +7,9 @@ import pytest
 
 chromadb = pytest.importorskip("chromadb")
 
-from mltgnt.config import MemoryConfig
-from mltgnt.memory._chroma import get_collection, query_similar, upsert_entry
-from mltgnt.memory.api import append_memory_entry, memory_file_path
+from mltgnt.config import MemoryConfig  # noqa: E402
+from mltgnt.memory._chroma import get_collection, query_similar, upsert_entry  # noqa: E402
+from mltgnt.memory.api import append_memory_entry, memory_file_path  # noqa: E402
 
 
 @pytest.fixture
