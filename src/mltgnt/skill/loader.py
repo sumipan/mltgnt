@@ -5,7 +5,9 @@ mltgnt.skill.loader — SKILL.md の glob 探索とフロントマターパー�
 """
 from __future__ import annotations
 
+import json
 import logging
+import subprocess
 from pathlib import Path
 
 from mltgnt.bridges.files_adapter import md_read
@@ -16,6 +18,7 @@ from mltgnt.skill.models import (
     ProducesSpec,
     SideEffectsSpec,
     SkillFile,
+    SkillLoadError,
     SkillMeta,
 )
 
@@ -37,6 +40,14 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         raise ValueError(f"triggers フィールドはリストである必要があります: {triggers_raw!r}")
     else:
         triggers = [str(t) for t in triggers_raw]
+
+    tools_raw = fm.get("tools")
+    if tools_raw is None:
+        tools: list[str] = []
+    elif not isinstance(tools_raw, list):
+        raise ValueError(f"tools フィールドはリストである必要があります: {tools_raw!r}")
+    else:
+        tools = [str(t) for t in tools_raw]
 
     skill_io: str = fm.get("skill_io", "legacy")
     input_schema: dict = fm.get("input_schema") or {}
@@ -88,6 +99,7 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
         model=model,
         path=path.resolve(),
         triggers=triggers,
+        tools=tools,
         skill_io=skill_io,
         input_schema=input_schema,
         produces=produces,
@@ -153,6 +165,67 @@ def discover(
             result[meta.name] = meta
 
     return result
+
+
+def _get_available_tools(tools_path: Path) -> set[str]:
+    """ghdag tools list --path <path> --json を subprocess 呼出し、Tool 名の集合を返す。
+
+    Raises:
+        SkillLoadError: subprocess 失敗 or JSON パースエラー時
+    """
+    try:
+        result = subprocess.run(
+            ["ghdag", "tools", "list", "--path", str(tools_path), "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise SkillLoadError(f"ghdag tools list がタイムアウトしました: {tools_path}") from e
+
+    if result.returncode != 0:
+        raise SkillLoadError(
+            f"ghdag tools list が失敗しました (exit {result.returncode}): {result.stderr}"
+        )
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        raise SkillLoadError(f"ghdag tools list の JSON パースに失敗: {e}") from e
+
+    tools_list = data.get("tools", [])
+    return {
+        t["name"]
+        for t in tools_list
+        if isinstance(t, dict) and "name" in t
+    }
+
+
+def validate_tool_refs(
+    skills: dict[str, SkillMeta],
+    tools_path: Path,
+) -> None:
+    """各スキルの tools フィールドを利用可能 Tool と突合。
+
+    - tools が空のスキルはスキップ
+    - 未知 Tool があるスキルのエラーを全件収集し、1 つの SkillLoadError にまとめて raise
+    - エラーメッセージ形式: "スキル '<name>': 未知 Tool ['x', 'y']"
+
+    Raises:
+        SkillLoadError: 未知 Tool 参照または ghdag tools list 失敗時
+    """
+    skills_with_tools = {name: meta for name, meta in skills.items() if meta.tools}
+    if not skills_with_tools:
+        return
+
+    available = _get_available_tools(tools_path)
+    errors: list[str] = []
+    for name, meta in skills_with_tools.items():
+        unknown = [t for t in meta.tools if t not in available]
+        if unknown:
+            errors.append(f"スキル '{name}': 未知 Tool {unknown!r}")
+    if errors:
+        raise SkillLoadError("\n".join(errors))
 
 
 def load(meta: SkillMeta) -> SkillFile:
