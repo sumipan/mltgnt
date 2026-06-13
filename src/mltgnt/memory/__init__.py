@@ -5,6 +5,7 @@ from mltgnt.memory._format import (
     parse_jsonl,
     serialize_entry,
 )
+from mltgnt.memory._chroma import get_collection, query_similar, upsert_entry
 from mltgnt.memory.api import (
     LlmCall,
     MEMORY_CORRUPT_THRESHOLD_BYTES,
@@ -51,6 +52,9 @@ __all__ = [
     "parse_jsonl",
     "serialize_entry",
     "assemble_entries_text",
+    "get_collection",
+    "query_similar",
+    "upsert_entry",
     "tail_utf8_bytes",
     "LlmCall",
     "MEMORY_CORRUPT_THRESHOLD_BYTES",

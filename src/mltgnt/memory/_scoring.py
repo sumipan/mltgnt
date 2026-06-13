@@ -1,10 +1,17 @@
 """cosine similarity によるスコアリング。"""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    import chromadb
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,18 +50,44 @@ def cosine_similarity_matrix(
 def score_entries(
     query: str,
     entries: list[str],
+    *,
+    chroma_collection: "chromadb.Collection | None" = None,
 ) -> list[ScoredEntry]:
-    """各エントリを TF-IDF + cosine similarity でスコアリングし、スコア降順でソートして返す。
+    """各エントリをスコアリングし、スコア降順でソートして返す。
 
-    内部で `_tfidf.vectorize()` と `cosine_similarity_matrix()` を呼び出す。
+    Chroma コレクションが利用可能な場合は意味検索を優先する。
+    不可時または失敗時は TF-IDF + cosine similarity にフォールバックする。
 
     Args:
         query: ユーザーの入力テキスト
         entries: memory エントリ本文のリスト
+        chroma_collection: Chroma コレクション（None なら TF-IDF）
 
     Returns:
         ScoredEntry のリスト（スコア降順）
     """
+    if chroma_collection is not None:
+        try:
+            from mltgnt.memory._chroma import query_similar
+
+            chroma_results = query_similar(
+                chroma_collection, query, n_results=len(entries)
+            )
+            if chroma_results:
+                entry_set = set(entries)
+                scored: list[ScoredEntry] = []
+                seen: set[str] = set()
+                for text, score in chroma_results:
+                    if text in entry_set and text not in seen:
+                        scored.append(ScoredEntry(text=text, score=score))
+                        seen.add(text)
+                if scored:
+                    return sorted(scored, key=lambda x: x.score, reverse=True)
+        except Exception as exc:
+            _log.warning(
+                "score_entries: Chroma query failed, fallback to TF-IDF: %s", exc
+            )
+
     from mltgnt.memory._tfidf import vectorize
 
     query_vec, entry_vecs = vectorize(query, entries)

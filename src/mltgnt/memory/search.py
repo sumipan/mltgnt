@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from mltgnt.memory._format import MemoryEntry, assemble_entries_text, parse_jsonl
 from mltgnt.memory.api import (
     _ensure_jsonl,
+    _resolve_memory_dir,
     _tail_utf8_bytes,
     read_memory_tail_text,
 )
@@ -44,8 +45,12 @@ def _search_and_score(
         assemble_entries_text([e], preferences_heading=config.preferences_section_name).strip()
         for e in non_prefs
     ]
+    from mltgnt.memory._chroma import get_collection
     from mltgnt.memory._scoring import score_entries
-    scored = score_entries(query, entry_texts)
+
+    memory_dir = _resolve_memory_dir(config)
+    chroma_collection = get_collection(memory_dir, persona_stem)
+    scored = score_entries(query, entry_texts, chroma_collection=chroma_collection)
     return scored[:max_entries]
 
 
@@ -93,8 +98,12 @@ def read_memory_by_relevance(
             assemble_entries_text([e], preferences_heading=config.preferences_section_name).strip()
             for e in non_prefs
         ]
+        from mltgnt.memory._chroma import get_collection
         from mltgnt.memory._scoring import score_entries
-        scored = score_entries(query, entry_texts)
+
+        memory_dir = _resolve_memory_dir(config)
+        chroma_collection = get_collection(memory_dir, persona_stem)
+        scored = score_entries(query, entry_texts, chroma_collection=chroma_collection)
         top_texts = [s.text for s in scored[:max_entries]]
     except Exception as e:
         _log.warning(
