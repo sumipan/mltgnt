@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -401,56 +402,12 @@ class TestRedistributeEntries:
 
 
 # ---------------------------------------------------------------------------
-# DeprecationWarning（warn フェーズ）
+# DeprecationWarning 非発行（#2128）
 # ---------------------------------------------------------------------------
 
 
-class TestDeprecationWarnings:
-    def test_compact_emits_deprecation_warning(self, tmp_path: Path):
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-        entries = [
-            MemoryEntry(
-                timestamp="2026-05-01T00:00:00+09:00",
-                role="user",
-                content="hello",
-                source_tag="chat",
-                layer="recent",
-            )
-        ]
-        _write_jsonl(path, entries)
-
-        with pytest.warns(DeprecationWarning, match="compact.*deprecated"):
-            compact(cfg, "test_persona", llm_call=lambda p: "ok")
-
-    def test_needs_compaction_emits_deprecation_warning(self, tmp_path: Path):
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-        _write_jsonl(path, [_entry("chat", "hello")])
-
-        with pytest.warns(DeprecationWarning, match="needs_compaction.*deprecated"):
-            needs_compaction(cfg, "test_persona")
-
-    def test_warning_message_contains_migration_guide(self, tmp_path: Path):
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-        entries = [
-            MemoryEntry(
-                timestamp="2026-05-01T00:00:00+09:00",
-                role="user",
-                content="hello",
-                source_tag="chat",
-                layer="recent",
-            )
-        ]
-        _write_jsonl(path, entries)
-
-        with pytest.warns(DeprecationWarning, match="dream action"):
-            compact(cfg, "test_persona", llm_call=lambda p: "ok")
-
-    def test_warning_stacklevel_points_to_caller(self, tmp_path: Path):
-        import warnings
-
+class TestNoDeprecationWarnings:
+    def test_compact_does_not_emit_deprecation_warning(self, tmp_path: Path):
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
         entries = [
@@ -468,9 +425,25 @@ class TestDeprecationWarnings:
             warnings.simplefilter("always")
             compact(cfg, "test_persona", llm_call=lambda p: "ok")
 
-        assert len(caught) == 1
-        assert caught[0].category is DeprecationWarning
-        assert "test_compaction.py" in str(caught[0].filename)
+        assert not any(w.category is DeprecationWarning for w in caught)
+
+    def test_needs_compaction_does_not_emit_deprecation_warning(self, tmp_path: Path):
+        cfg = _make_config(tmp_path, target_bytes=25_600)
+        path = tmp_path / "test_persona.jsonl"
+        _write_jsonl(path, [_entry("chat", "hello")])
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            needs_compaction(cfg, "test_persona")
+
+        assert not any(w.category is DeprecationWarning for w in caught)
+
+    def test_memory_import_compact_and_needs_compaction(self):
+        from mltgnt.memory import compact as imported_compact
+        from mltgnt.memory import needs_compaction as imported_needs_compaction
+
+        assert callable(imported_compact)
+        assert callable(imported_needs_compaction)
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +451,6 @@ class TestDeprecationWarnings:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestCompactPerSectionCap:
     def _make_entry(
         self, ts: str, content: str, layer: str, source_tag: str = "chat"
