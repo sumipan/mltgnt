@@ -9,6 +9,17 @@ from zoneinfo import ZoneInfo
 
 from mltgnt.scheduler.fanout import _FANOUT_PROMPT_SUFFIX, _parse_fanout_steps
 from mltgnt.scheduler.models import ScheduleJob
+from mltgnt.skill.models import ExitStatus
+
+
+def _determine_exit_code(ok: bool, msg: str) -> int:
+    if ok:
+        if "PIPELINE_STATUS: ALREADY_APPLIED" in msg:
+            return ExitStatus.ALREADY_APPLIED
+        return ExitStatus.SUCCESS
+    if "PIPELINE_STATUS: INVALID_STATE" in msg:
+        return ExitStatus.INVALID_STATE
+    return ExitStatus.USAGE_ERROR
 
 
 def run_skill_action(
@@ -61,10 +72,10 @@ def run_skill_action(
         persona_name=persona.name,
         model=model,
     )
-    result = skill_runner.run(skill_file, persona, argv_str, chat_input)
+    run_output = skill_runner.run(skill_file, persona, argv_str, chat_input)
 
-    prompt = next(m["content"] for m in result.chat_input.messages if m["role"] == "system")
-    resolved_model = result.chat_input.model
+    prompt = next(m["content"] for m in run_output.chat_input.messages if m["role"] == "system")
+    resolved_model = run_output.chat_input.model
 
     if aa.get("enable_fanout", False):
         prompt = prompt + _FANOUT_PROMPT_SUFFIX
@@ -103,4 +114,12 @@ def run_skill_action(
                     return False, f"fanout: step '{step_id}' failed: {step_msg}"
             return True, f"fanout: {len(dag_results)} steps completed"
 
-    return ok, msg
+    run_output.exit_code = _determine_exit_code(ok, msg)
+    run_output.content = msg
+    if run_output.exit_code == ExitStatus.SUCCESS:
+        return True, msg
+    if run_output.exit_code == ExitStatus.ALREADY_APPLIED:
+        return True, "already_applied"
+    if run_output.exit_code == ExitStatus.INVALID_STATE:
+        return False, "invalid_state"
+    return False, msg
