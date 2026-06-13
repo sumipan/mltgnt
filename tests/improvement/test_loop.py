@@ -208,6 +208,8 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         })
     _write_audit(audit_path, recent_records)
 
+    _since = 2  # records are from yesterday; subprocess cannot use freeze_time
+
     worktree = Path(__file__).resolve().parents[2]
     result = _run_improvement_cli(
         "--audit",
@@ -217,7 +219,7 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         "--skills-dir",
         str(skills_dir),
         "--since",
-        "365",
+        str(_since),
         cwd=worktree,
     )
     assert result.returncode == 0
