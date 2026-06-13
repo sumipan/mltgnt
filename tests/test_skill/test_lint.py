@@ -168,7 +168,7 @@ class TestLintV10V12:
             _path(),
         )
         assert any(
-            e == "V10: side_effects.writes must be a list of strings (warning)"
+            e == "V10: side_effects.writes must be a list of strings"
             for e in errors
         )
 
@@ -193,7 +193,7 @@ class TestLintV10V12:
             _path(),
         )
         assert any(
-            e == "V11: side_effects.network must be a list of strings (warning)"
+            e == "V11: side_effects.network must be a list of strings"
             for e in errors
         )
 
@@ -220,7 +220,7 @@ class TestLintV10V12:
         assert any(
             e
             == "V12: side_effects.mutates values must be from "
-            "{config, env, git, github, process} (warning)"
+            "{config, env, git, github, process}"
             for e in errors
         )
 
@@ -240,7 +240,47 @@ class TestLintV10V12:
             },
             _path(),
         )
-        assert any(e == "side_effects must be a mapping (warning)" for e in errors)
+        assert any(e == "V10: side_effects must be a mapping" for e in errors)
+
+
+class TestLintV14:
+    def test_v14_scripts_without_side_effects(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "diary-draft"
+        skill_dir.mkdir()
+        (skill_dir / "scripts").mkdir()
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "diary-draft", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert any(
+            e == "V14: skills with scripts/ must declare side_effects" for e in errors
+        )
+
+    def test_v14_scripts_with_side_effects(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "diary-draft"
+        skill_dir.mkdir()
+        (skill_dir / "scripts").mkdir()
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {
+                "name": "diary-draft",
+                "description": "desc",
+                "side_effects": {"writes": ["out.md"]},
+            },
+            skill_dir / "SKILL.md",
+        )
+        assert not any(e.startswith("V14:") for e in errors)
+
+    def test_v14_no_scripts_dir(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "simple-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").touch()
+        errors = lint_skill_meta(
+            {"name": "simple-skill", "description": "desc"},
+            skill_dir / "SKILL.md",
+        )
+        assert not any(e.startswith("V14:") for e in errors)
 
 
 class TestLintV13:

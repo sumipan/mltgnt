@@ -1,7 +1,7 @@
 """
-mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V12, V13）。
+mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V14）。
 
-設計: Issue #1383 U3, Issue #1832 (V10–V12 warning), Issue #1828 V13
+設計: Issue #1383 U3, Issue #1832 (V10–V12), Issue #1828 V13, Issue #2066 (V14)
 """
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ _ALLOWED_MUTATES = frozenset({"config", "env", "git", "github", "process"})
 
 
 def lint_skill_meta(fm: dict, path: Path) -> list[str]:
-    """フロントマター dict を V1–V12, V13 で検証し、エラーメッセージのリストを返す。
+    """フロントマター dict を V1–V14 で検証し、エラーメッセージのリストを返す。
 
-    空リスト = 検証通過。warning レベル（V10–V12, V13 等）はメッセージ末尾 ``(warning)`` で区別する。
+    空リスト = 検証通過。warning レベル（V13 等）はメッセージ末尾 ``(warning)`` で区別する。
     """
     errors: list[str] = []
 
@@ -73,23 +73,23 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
         if input_schema is not None and not isinstance(input_schema, dict):
             errors.append(f"V9: input_schema must be dict, got {type(input_schema).__name__}")
 
-    # V10–V12: side_effects（warning レベル。キー存在時のみ検証）
+    # V10–V12: side_effects（キー存在時のみ検証）
     if "side_effects" in fm:
         side_effects = fm["side_effects"]
         if not isinstance(side_effects, dict):
-            errors.append("side_effects must be a mapping (warning)")
+            errors.append("V10: side_effects must be a mapping")
         else:
             if "writes" in side_effects:
                 writes = side_effects["writes"]
                 if not isinstance(writes, list) or not all(isinstance(w, str) for w in writes):
                     errors.append(
-                        "V10: side_effects.writes must be a list of strings (warning)"
+                        "V10: side_effects.writes must be a list of strings"
                     )
             if "network" in side_effects:
                 network = side_effects["network"]
                 if not isinstance(network, list) or not all(isinstance(n, str) for n in network):
                     errors.append(
-                        "V11: side_effects.network must be a list of strings (warning)"
+                        "V11: side_effects.network must be a list of strings"
                     )
             if "mutates" in side_effects:
                 mutates = side_effects["mutates"]
@@ -98,12 +98,17 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
                         if value not in _ALLOWED_MUTATES:
                             errors.append(
                                 "V12: side_effects.mutates values must be from "
-                                "{config, env, git, github, process} (warning)"
+                                "{config, env, git, github, process}"
                             )
                             break
 
-    # V13: scripts/ あり + README.md なし → warning
     scripts_dir = path.parent / "scripts"
+
+    # V14: scripts/ あり + side_effects 未宣言 → error
+    if scripts_dir.is_dir() and "side_effects" not in fm:
+        errors.append("V14: skills with scripts/ must declare side_effects")
+
+    # V13: scripts/ あり + README.md なし → warning
     if scripts_dir.is_dir() and not (path.parent / "README.md").is_file():
         errors.append("V13: skills with scripts/ should have README.md (warning)")
 
