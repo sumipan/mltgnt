@@ -129,7 +129,9 @@ def discover(
             unresolved_errors = [
                 e
                 for e in errors
-                if e.startswith(("V3", "V4", "V5", "V6", "V7", "V8", "V9"))
+                if e.startswith(
+                    ("V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12", "V14")
+                )
             ]
             if unresolved_errors:
                 for err in unresolved_errors:
