@@ -3,6 +3,7 @@ mltgnt.memory.api — パス解決・ロック・追記・読み取り（CRUD �
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -114,6 +115,38 @@ def _scan_tail_for_dedupe_key(path: Path, dedupe_key: str) -> bool:
     return False
 
 
+def _chroma_entry_id(entry: MemoryEntry) -> str:
+    if entry.dedupe_key:
+        return entry.dedupe_key
+    digest = hashlib.sha256(
+        f"{entry.timestamp}:{entry.content}".encode("utf-8")
+    ).hexdigest()
+    return digest[:32]
+
+
+def _sync_chroma_entry(
+    config: "MemoryConfig", persona_stem: str, entry: MemoryEntry
+) -> None:
+    """JSONL 追記後に Chroma へ upsert する。失敗時は warning のみ。"""
+    from mltgnt.memory._chroma import get_collection, upsert_entry
+
+    memory_dir = _resolve_memory_dir(config)
+    collection = get_collection(memory_dir, persona_stem)
+    if collection is None:
+        return
+    try:
+        text = assemble_entries_text(
+            [entry],
+            preferences_heading=config.preferences_section_name,
+        ).strip()
+        upsert_entry(collection, _chroma_entry_id(entry), text)
+    except Exception as exc:
+        _log.warning(
+            "append_memory_entry: Chroma upsert failed (JSONL write succeeded): %s",
+            exc,
+        )
+
+
 def append_memory_entry(
     config: "MemoryConfig",
     persona_stem: str,
@@ -146,6 +179,7 @@ def append_memory_entry(
         line = serialize_entry(entry) + "\n"
         with mp.open("a", encoding="utf-8") as f:
             f.write(line)
+        _sync_chroma_entry(config, persona_stem, entry)
 
     mp = memory_file_path(config, persona_stem)
 
