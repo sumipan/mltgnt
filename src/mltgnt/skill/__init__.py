@@ -15,6 +15,7 @@ from mltgnt.skill.matcher import match
 from mltgnt.skill.models import (
     ArtifactSpec,
     ConsumesSpec,
+    ExitStatus,
     ProducesSpec,
     SkillFile,
     SkillMatchResult,

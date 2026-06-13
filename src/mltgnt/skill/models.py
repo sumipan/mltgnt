@@ -38,6 +38,13 @@ class ConsumesSpec:
     content_type: str = "text/markdown"
 
 
+class ExitStatus:
+    SUCCESS = 0
+    ALREADY_APPLIED = 1
+    INVALID_STATE = 2
+    USAGE_ERROR = 64
+
+
 @dataclass
 class SideEffectsSpec:
     """スキル実行時の副作用宣言（SKILL.md frontmatter side_effects）。"""
