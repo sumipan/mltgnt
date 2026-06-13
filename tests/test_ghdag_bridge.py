@@ -451,21 +451,22 @@ class TestEnqueueAndWaitJsonlIntegration:
         assert "# idempotency:" not in content
 
     def test_exec_jsonl_cursor_engine_command_format(self, tmp_path):
-        """cursor エンジン時の command が agent -p --force < order_path 形式。"""
+        """cursor エンジン時の command が agent -p < order_path 形式（TEXT_ONLY デフォルト）。"""
         exec_jsonl = self._run(tmp_path, engine="cursor")
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "agent" in record["command"]
         assert "-p" in record["command"]
-        assert "--force" in record["command"]
+        assert "--force" not in record["command"]
 
     def test_exec_jsonl_claude_engine_command_format(self, tmp_path):
-        """claude エンジン時の command が claude -p ... 形式。"""
+        """claude エンジン時の command が claude -p ... 形式（TEXT_ONLY デフォルト）。"""
         exec_jsonl = self._run(tmp_path, engine="claude", model="claude-sonnet-4-6")
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
         assert "claude" in record["command"]
-        assert "--dangerously-skip-permissions" in record["command"]
+        assert "--dangerously-skip-permissions" not in record["command"]
+        assert "--permission-mode default" in record["command"]
 
     def test_idempotency_prevents_duplicate_submission(self, tmp_path):
         """同じ idempotency_key で 2 回呼ぶと exec.jsonl の行数が増えない。"""
