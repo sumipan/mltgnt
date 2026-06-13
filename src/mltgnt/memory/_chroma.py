@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     import chromadb
@@ -11,11 +11,11 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-def _import_chromadb() -> "type[chromadb] | None":
+def _import_chromadb() -> type[Any] | None:
     try:
         import chromadb as _chromadb
 
-        return _chromadb
+        return cast(type[Any], _chromadb)
     except ImportError:
         return None
 
