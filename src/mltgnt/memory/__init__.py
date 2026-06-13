@@ -30,8 +30,8 @@ from mltgnt.memory.search import (
 from mltgnt.memory.compaction import (
     CompactionResult,
     LlmCallError,
-    compact,  # deprecated: use scheduler dream action
-    needs_compaction,  # deprecated: use scheduler dream action
+    compact,
+    needs_compaction,
 )
 
 __all__ = [
@@ -43,8 +43,8 @@ __all__ = [
     "read_memory_with_sufficiency_check",
     "read_memory_iterative",
     "memory_file_path",
-    "compact",  # deprecated: use scheduler dream action
-    "needs_compaction",  # deprecated: use scheduler dream action
+    "compact",
+    "needs_compaction",
     "LlmCallError",
     "CompactionResult",
     "MemoryEntry",
