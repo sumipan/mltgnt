@@ -79,6 +79,10 @@ class SkillMatchResult:
     arguments: str
 
 
+class SkillLoadError(Exception):
+    """スキルロード・Tool バリデーション失敗時の例外。"""
+
+
 @dataclass
 class SkillMeta:
     """discover 時にロードされるメタ情報（Progressive Disclosure）。"""
@@ -89,6 +93,7 @@ class SkillMeta:
     model: str | None
     path: Path
     triggers: list[str] = field(default_factory=list)
+    tools: list[str] = field(default_factory=list)
     skill_io: str = "legacy"  # "legacy" | "v1"
     input_schema: dict = field(default_factory=dict)  # JSON Schema object
     produces: ProducesSpec | None = None
