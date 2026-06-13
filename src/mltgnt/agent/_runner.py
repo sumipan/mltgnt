@@ -100,9 +100,11 @@ class AgentRunner:
     def _backoff_delay(self, attempt: int) -> float:
         config = self._retry_config
         assert config is not None
-        return min(
-            config.base_delay_s * (2 ** attempt) + random.uniform(0, 0.5),
-            config.max_delay_s,
+        return float(
+            min(
+                config.base_delay_s * (2 ** attempt) + random.uniform(0, 0.5),
+                config.max_delay_s,
+            )
         )
 
     def _call_llm_and_parse(
