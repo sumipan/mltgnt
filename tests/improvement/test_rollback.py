@@ -203,7 +203,6 @@ def test_run_improvement_cycle_eval_rollback_false_unchanged(tmp_path: Path) -> 
     )
 
     assert result.patch_results is None
-    assert result.rollback_decision is None
 
 
 def test_run_improvement_cycle_eval_rollback_true_requires_repo_root(tmp_path: Path) -> None:

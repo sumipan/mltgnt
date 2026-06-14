@@ -8,7 +8,6 @@ from pathlib import Path
 from mltgnt.improvement.analyzer import FailurePattern, analyze_failures
 from mltgnt.improvement.patch import PatchResult, apply_proposal
 from mltgnt.improvement.proposal import ImprovementProposal, generate_proposals
-from mltgnt.improvement.rollback import RollbackDecision
 from mltgnt.kpi import KPIReport, compute_kpis
 
 
@@ -19,7 +18,6 @@ class CycleResult:
     period_start: date
     period_end: date
     patch_results: list[PatchResult] | None = None
-    rollback_decision: RollbackDecision | None = None
     baseline_kpis: KPIReport | None = None
 
 
