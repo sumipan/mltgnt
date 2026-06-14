@@ -128,6 +128,15 @@ def evaluate_cycle_outcome(
     window_days: int = 7,
     threshold: float = 0.05,
 ) -> RollbackDecision:
+    """パッチ適用後の KPI 変化を評価してロールバック判定を返す。
+
+    run_improvement_cycle(eval_rollback=True) の 2 ステップ目として呼び出す。
+    パッチ適用から window_days 経過後に呼ぶことで意味ある判定ができる。
+
+    previous.baseline_kpis が None の場合は ValueError を送出する。
+    判定結果が should_rollback=True かつ previous.patch_results がある場合は
+    execute_rollback() を自動実行する。
+    """
     if previous.baseline_kpis is None:
         raise ValueError("previous cycle did not capture baseline KPIs")
 
