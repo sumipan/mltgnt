@@ -165,6 +165,34 @@ def test_interval_fires_multiple_times(tmp_path: Path) -> None:
     assert sch._interval_last_fired.get("interval_test") is not None
 
 
+def test_interval_persists_last_fired_across_restart(tmp_path: Path) -> None:
+    """interval の last_fired がディスクに永続化され、再起動後も復元される。"""
+    j = ScheduleJob.from_dict({
+        "id": "persist_test",
+        "mode": "interval",
+        "interval_minutes": 60,
+        "action": "noop",
+        "notify": "silent",
+    })
+    state_dir = tmp_path / "state"
+
+    sch1 = make_scheduler(state_dir, [j])
+    now = dt_jst(2026, 4, 17, 10, 0)
+    sch1.tick(now)
+    time.sleep(0.3)
+    assert sch1._interval_last_fired.get("persist_test") is not None
+    assert sch1.paths.interval_last_fired_path("persist_test").exists()
+
+    sch2 = make_scheduler(state_dir, [j])
+    assert sch2._interval_last_fired.get("persist_test") is not None
+
+    almost_now = dt_jst(2026, 4, 17, 10, 30)
+    fired_before = dict(sch2._interval_last_fired)
+    sch2.tick(almost_now)
+    time.sleep(0.3)
+    assert sch2._interval_last_fired["persist_test"] == fired_before["persist_test"]
+
+
 # ---------------------------------------------------------------------------
 # AC-3: 依存チェーン
 # ---------------------------------------------------------------------------
