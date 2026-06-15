@@ -536,6 +536,74 @@ class TestEnqueueAndWaitJsonlIntegration:
 
 
 # ---------------------------------------------------------------------------
+# enqueue_and_wait — permission 透過テスト（Issue #2191）
+# ---------------------------------------------------------------------------
+
+
+class TestEnqueueAndWaitPermissionPassthrough:
+    def test_permission_none_passed_to_step_config(self, tmp_path):
+        """permission 未指定時、StepConfig.permission が None であること。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir = _make_jobs_dir(tmp_path)
+        captured_steps: list = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_steps.extend(steps)
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_and_wait(
+                prompt="prompt",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="scheduler:test:perm-none",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+            )
+
+        assert len(captured_steps) == 1
+        assert captured_steps[0].permission is None
+
+    def test_permission_dangerous_full_access_passed_to_step_config(self, tmp_path):
+        """permission='dangerous_full_access' 指定時、StepConfig.permission に設定されること。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir = _make_jobs_dir(tmp_path)
+        captured_steps: list = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_steps.extend(steps)
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_and_wait(
+                prompt="prompt",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="scheduler:test:perm-dfa",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+                permission="dangerous_full_access",
+            )
+
+        assert len(captured_steps) == 1
+        assert captured_steps[0].permission == "dangerous_full_access"
+
+
+# ---------------------------------------------------------------------------
 # enqueue_and_wait — プロンプト受け渡しテスト
 # ---------------------------------------------------------------------------
 

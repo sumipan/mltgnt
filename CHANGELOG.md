@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1
+
+### Added
+
+- scheduler permission pass-through: `action_args.permission` を `enqueue_and_wait` → `StepConfig.permission` へ透過
+
 ## v0.10.0
 
 ### BREAKING: 非推奨 API の削除
