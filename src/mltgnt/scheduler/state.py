@@ -5,8 +5,6 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from zoneinfo import ZoneInfo
-
 
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
