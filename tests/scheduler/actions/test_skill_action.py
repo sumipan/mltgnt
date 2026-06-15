@@ -124,6 +124,56 @@ class TestDetermineExitCode:
         assert _determine_exit_code(False, "generic error") == ExitStatus.USAGE_ERROR
 
 
+class TestRunSkillActionPermissionPassthrough:
+    def test_permission_none_when_not_in_action_args(self, tmp_path: Path) -> None:
+        """action_args に permission キーがない場合、enqueue_and_wait に permission=None が渡される。"""
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path)
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        captured_kwargs: dict = {}
+
+        def capture_enqueue(**kwargs):
+            captured_kwargs.update(kwargs)
+            return True, "ok"
+
+        with patch(_ENQUEUE, side_effect=capture_enqueue):
+            run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert captured_kwargs.get("permission") is None
+
+    def test_permission_passed_from_action_args(self, tmp_path: Path) -> None:
+        """action_args.permission='dangerous_full_access' が enqueue_and_wait に渡される。"""
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path)
+        job = _skill_job(action_args={
+            "skill": "test-skill",
+            "persona": "タチコマ",
+            "permission": "dangerous_full_access",
+        })
+        captured_kwargs: dict = {}
+
+        def capture_enqueue(**kwargs):
+            captured_kwargs.update(kwargs)
+            return True, "ok"
+
+        with patch(_ENQUEUE, side_effect=capture_enqueue):
+            run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert captured_kwargs.get("permission") == "dangerous_full_access"
+
+
 class TestRunSkillActionExitCodeBranch:
     def test_success_returns_original_msg(self, tmp_path: Path) -> None:
         ok, msg = _run_skill(tmp_path, enqueue_return=(True, "応答テキスト"))

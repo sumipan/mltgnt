@@ -84,6 +84,7 @@ def run_skill_action(
 
     fired_at = datetime.now(ZoneInfo(default_tz))
     request_id = str(uuid.uuid4())
+    permission = aa.get("permission")
     ok, msg = enqueue_and_wait(
         prompt=prompt,
         engine=engine,
@@ -93,6 +94,7 @@ def run_skill_action(
         jobs_dir=repo_root / "jobs",
         exec_done_dir=repo_root / "jobs" / "done",
         request_id=request_id,
+        permission=permission,
     )
 
     if ok and aa.get("enable_fanout", False):
