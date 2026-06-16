@@ -335,6 +335,7 @@ def enqueue_and_wait(
     correlation_id: str | None = None,
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
+    permission: str | None = None,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
 
@@ -374,7 +375,7 @@ def enqueue_and_wait(
         return True, ""
 
     exec_lines = api.submit(
-        [StepConfig(id="skill", template=prompt, engine=engine, model=model or "")],
+        [StepConfig(id="skill", template=prompt, engine=engine, model=model or "", permission=permission)],
         base_context={"workflow_name": "scheduler"},
         idempotency_key=idempotency_key,
         audit_context=_scheduler_audit_context(

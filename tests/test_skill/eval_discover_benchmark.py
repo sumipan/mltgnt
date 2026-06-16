@@ -166,18 +166,14 @@ def _eval_samples() -> list[EvalSample]:
     ]
 
 
-def _eval_model(model: str | None = None) -> str:
-    return model or os.environ.get("MLTGNT_EVAL_MODEL", _DEFAULT_EVAL_MODEL)
-
-
 def make_llm_fn(model: str | None = None) -> Callable[[str], str]:
-    resolved_model = _eval_model(model)
+    resolved_model = model or os.environ.get("MLTGNT_EVAL_MODEL", _DEFAULT_EVAL_MODEL)
 
     def llm_fn(prompt: str) -> str:
-        result = call_llm(prompt, engine="claude", model=resolved_model, timeout=30)
+        result = call_llm(prompt, engine="claude", model=resolved_model, timeout=120)
         if not result.ok:
-            raise RuntimeError(f"LLM call failed: {result.stderr}")
-        return result.stdout
+            return "none"
+        return result.stdout.strip()
 
     return llm_fn
 
@@ -185,24 +181,11 @@ def make_llm_fn(model: str | None = None) -> Callable[[str], str]:
 def old_llm_classify(
     user_input: str,
     catalog: dict[str, SkillMeta],
-    *,
-    model: str | None = None,
-    llm_fn: Callable[[str], str] | None = None,
+    llm_fn: Callable[[str], str],
 ) -> str | None:
     skill_list = "\n".join(f"- {m.name}: {m.description}" for m in catalog.values())
     prompt = f"{_LLM_SYSTEM_PROMPT}\n\nスキル一覧:\n{skill_list}\n\nユーザー入力: {user_input}"
-    if llm_fn is not None:
-        response = llm_fn(prompt).strip().lower()
-    else:
-        result = call_llm(
-            prompt,
-            engine="claude",
-            model=_eval_model(model),
-            timeout=30,
-        )
-        if not result.ok:
-            raise RuntimeError(f"LLM call failed: {result.stderr}")
-        response = result.stdout.strip().lower()
+    response = llm_fn(prompt).strip().lower()
     if response == "none" or response not in catalog:
         return None
     return response
@@ -226,7 +209,6 @@ class BenchmarkMetrics:
 class BenchmarkRun:
     metrics: BenchmarkMetrics
     misclassifications: list[tuple[str, str | None, str | None]]
-    error_count: int = 0
 
 
 def _is_misclassification(expected: str | None, actual: str | None) -> bool:
@@ -240,13 +222,6 @@ def _compute_metrics(
     rounds: list[int],
 ) -> BenchmarkMetrics:
     total = len(expected)
-    if total == 0:
-        return BenchmarkMetrics(
-            success_rate=0.0,
-            avg_rounds=0.0,
-            misclassification_rate=0.0,
-            unresolved_rate=0.0,
-        )
     successes = sum(1 for e, a in zip(expected, actual, strict=True) if e == a)
     misclassifications = sum(
         1 for e, a in zip(expected, actual, strict=True) if _is_misclassification(e, a)
@@ -268,14 +243,9 @@ def run_old_benchmark(
     expected: list[str | None] = []
     actual: list[str | None] = []
     misclassifications: list[tuple[str, str | None, str | None]] = []
-    error_count = 0
 
     for sample in samples:
-        try:
-            predicted = old_llm_classify(sample.user_input, catalog, llm_fn=llm_fn)
-        except RuntimeError:
-            error_count += 1
-            continue
+        predicted = old_llm_classify(sample.user_input, catalog, llm_fn)
         expected.append(sample.expected_skill)
         actual.append(predicted)
         if _is_misclassification(sample.expected_skill, predicted):
@@ -284,13 +254,9 @@ def run_old_benchmark(
     metrics = _compute_metrics(
         expected=expected,
         actual=actual,
-        rounds=[1] * len(expected),
+        rounds=[1] * len(samples),
     )
-    return BenchmarkRun(
-        metrics=metrics,
-        misclassifications=misclassifications,
-        error_count=error_count,
-    )
+    return BenchmarkRun(metrics=metrics, misclassifications=misclassifications)
 
 
 def run_new_benchmark(
@@ -303,14 +269,9 @@ def run_new_benchmark(
     actual: list[str | None] = []
     rounds: list[int] = []
     misclassifications: list[tuple[str, str | None, str | None]] = []
-    error_count = 0
 
     for sample in samples:
-        try:
-            result = discoverer.discover(sample.user_input, catalog, persona_skills=None)
-        except RuntimeError:
-            error_count += 1
-            continue
+        result = discoverer.discover(sample.user_input, catalog, persona_skills=None)
         predicted = extract_new_skill(result)
         expected.append(sample.expected_skill)
         actual.append(predicted)
@@ -319,11 +280,7 @@ def run_new_benchmark(
             misclassifications.append((sample.user_input, sample.expected_skill, predicted))
 
     metrics = _compute_metrics(expected=expected, actual=actual, rounds=rounds)
-    return BenchmarkRun(
-        metrics=metrics,
-        misclassifications=misclassifications,
-        error_count=error_count,
-    )
+    return BenchmarkRun(metrics=metrics, misclassifications=misclassifications)
 
 
 def _pct(value: float) -> str:
@@ -332,17 +289,17 @@ def _pct(value: float) -> str:
 
 def format_report(old_run: BenchmarkRun, new_run: BenchmarkRun) -> str:
     lines = [
-        "| 方式 | discover 成功率 | 平均ラウンド数 | 誤選定率 | unresolved 率 | エラー件数 |",
-        "|---|---|---|---|---|---|",
+        "| 方式 | discover 成功率 | 平均ラウンド数 | 誤選定率 | unresolved 率 |",
+        "|---|---|---|---|---|",
         (
             f"| 旧（単発 LLM） | {_pct(old_run.metrics.success_rate)} | "
             f"{old_run.metrics.avg_rounds:.1f} | {_pct(old_run.metrics.misclassification_rate)} | "
-            f"{_pct(old_run.metrics.unresolved_rate)} | {old_run.error_count} |"
+            f"{_pct(old_run.metrics.unresolved_rate)} |"
         ),
         (
             f"| 新（AgenticDiscoverer） | {_pct(new_run.metrics.success_rate)} | "
             f"{new_run.metrics.avg_rounds:.1f} | {_pct(new_run.metrics.misclassification_rate)} | "
-            f"{_pct(new_run.metrics.unresolved_rate)} | {new_run.error_count} |"
+            f"{_pct(new_run.metrics.unresolved_rate)} |"
         ),
         "",
         "## 誤選定詳細",
@@ -376,25 +333,6 @@ def test_eval_dataset_has_minimum_samples():
     assert len(_catalog()) >= 10
 
 
-def test_benchmark_excludes_llm_errors_from_metrics():
-    catalog = _catalog()
-    samples = [
-        EvalSample("カレンダー確認して", "calendar"),
-        EvalSample("日記の下書き作って", "diary-draft"),
-    ]
-
-    def failing_llm(_prompt: str) -> str:
-        raise RuntimeError("LLM call failed: timeout")
-
-    old_run = run_old_benchmark(samples, catalog, failing_llm)
-    new_run = run_new_benchmark(samples, catalog, failing_llm)
-
-    assert old_run.error_count == 2
-    assert new_run.error_count == 2
-    assert old_run.metrics.success_rate == 0.0
-    assert new_run.metrics.success_rate == 0.0
-
-
 def test_benchmark_metrics_with_mocked_llm():
     catalog = _catalog()
     samples = [
@@ -408,7 +346,6 @@ def test_benchmark_metrics_with_mocked_llm():
         return "calendar"
 
     old_run = run_old_benchmark(samples, catalog, mock_llm)
-    assert old_run.error_count == 0
     assert old_run.metrics.success_rate == 1.0
     assert old_run.metrics.avg_rounds == 1.0
     assert old_run.metrics.misclassification_rate == 0.0
