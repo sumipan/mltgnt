@@ -333,6 +333,26 @@ def test_eval_dataset_has_minimum_samples():
     assert len(_catalog()) >= 10
 
 
+def test_benchmark_metrics_with_mocked_llm():
+    catalog = _catalog()
+    samples = [
+        EvalSample("カレンダー確認して", "calendar"),
+        EvalSample("天気教えて", None),
+    ]
+
+    def mock_llm(prompt: str) -> str:
+        if "天気" in prompt:
+            return "none"
+        return "calendar"
+
+    old_run = run_old_benchmark(samples, catalog, mock_llm)
+    assert old_run.metrics.success_rate == 1.0
+    assert old_run.metrics.avg_rounds == 1.0
+    assert old_run.metrics.misclassification_rate == 0.0
+    assert old_run.metrics.unresolved_rate == 0.5
+    assert old_run.misclassifications == []
+
+
 @pytest.mark.slow
 def test_eval_discover_benchmark():
     run_benchmark()
