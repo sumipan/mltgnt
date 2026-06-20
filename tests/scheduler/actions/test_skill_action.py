@@ -297,11 +297,11 @@ class TestSideEffectAuditIntegration:
 
         if audit_path.exists():
             lines = [
-                json.loads(l)
-                for l in audit_path.read_text().splitlines()
-                if l.strip()
+                json.loads(line)
+                for line in audit_path.read_text().splitlines()
+                if line.strip()
             ]
-            assert not any(l.get("event_type") == "side_effect_audit" for l in lines)
+            assert not any(line.get("event_type") == "side_effect_audit" for line in lines)
 
     def test_no_audit_when_writes_is_empty_list(self, tmp_path: Path) -> None:
         se = SideEffectsSpec(writes=[])
@@ -313,11 +313,11 @@ class TestSideEffectAuditIntegration:
 
         if audit_path.exists():
             lines = [
-                json.loads(l)
-                for l in audit_path.read_text().splitlines()
-                if l.strip()
+                json.loads(line)
+                for line in audit_path.read_text().splitlines()
+                if line.strip()
             ]
-            assert not any(l.get("event_type") == "side_effect_audit" for l in lines)
+            assert not any(line.get("event_type") == "side_effect_audit" for line in lines)
 
     def test_all_declared_covered_false_when_unmatched(self, tmp_path: Path) -> None:
         se = SideEffectsSpec(writes=["jobs/*.md"])
@@ -344,9 +344,9 @@ class TestSideEffectAuditIntegration:
 
         lines = audit_path.read_text().splitlines()
         records = [
-            json.loads(l)
-            for l in lines
-            if l.strip() and json.loads(l).get("event_type") == "side_effect_audit"
+            json.loads(line)
+            for line in lines
+            if line.strip() and json.loads(line).get("event_type") == "side_effect_audit"
         ]
         assert len(records) == 1
         assert records[0]["all_declared_covered"] is False
