@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import fnmatch
+import json
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +13,68 @@ from zoneinfo import ZoneInfo
 from mltgnt.scheduler.fanout import _FANOUT_PROMPT_SUFFIX, _parse_fanout_steps
 from mltgnt.scheduler.models import ScheduleJob
 from mltgnt.skill.models import ExitStatus
+
+
+def _snapshot_writes(patterns: list[str], repo_root: Path) -> dict[str, float]:
+    result: dict[str, float] = {}
+    scanned: set[Path] = set()
+    for pattern in patterns:
+        # Find the non-wildcard prefix directory to scan broadly
+        dir_parts: list[str] = []
+        for part in Path(pattern).parts:
+            if any(c in part for c in "*?["):
+                break
+            dir_parts.append(part)
+        scan_dir = repo_root.joinpath(*dir_parts) if dir_parts else repo_root
+        if scan_dir in scanned or not scan_dir.is_dir():
+            continue
+        scanned.add(scan_dir)
+        for p in scan_dir.iterdir():
+            if p.is_file():
+                rel = str(p.relative_to(repo_root))
+                result[rel] = p.stat().st_mtime
+    return result
+
+
+def _compute_write_diff(
+    before: dict[str, float],
+    after: dict[str, float],
+) -> list[str]:
+    changed = []
+    for key, mtime in after.items():
+        if key not in before or before[key] != mtime:
+            changed.append(key)
+    return changed
+
+
+def _write_side_effect_audit(
+    audit_path: Path,
+    *,
+    skill_name: str,
+    job_id: str,
+    declared_writes: list[str],
+    actual_writes: list[str],
+) -> None:
+    all_covered = all(
+        any(fnmatch.fnmatch(f, pat) for pat in declared_writes)
+        for f in actual_writes
+    ) if actual_writes else True
+
+    record = {
+        "schema_version": 1,
+        "event_type": "side_effect_audit",
+        "timestamp": datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(),
+        "skill_name": skill_name,
+        "job_id": job_id,
+        "declared_writes": declared_writes,
+        "actual_writes": actual_writes,
+        "all_declared_covered": all_covered,
+    }
+    try:
+        with audit_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"side_effect_audit: write failed: {e}", file=sys.stderr)
 
 
 def _determine_exit_code(ok: bool, msg: str) -> int:
@@ -82,6 +147,9 @@ def run_skill_action(
 
     from mltgnt.bridges.ghdag_bridge import enqueue_and_wait
 
+    write_patterns = meta.side_effects.writes if meta.side_effects else []
+    before = _snapshot_writes(write_patterns, repo_root) if write_patterns else {}
+
     fired_at = datetime.now(ZoneInfo(default_tz))
     request_id = str(uuid.uuid4())
     permission = aa.get("permission")
@@ -96,6 +164,17 @@ def run_skill_action(
         request_id=request_id,
         permission=permission,
     )
+
+    if write_patterns:
+        after = _snapshot_writes(write_patterns, repo_root)
+        actual = _compute_write_diff(before, after)
+        _write_side_effect_audit(
+            repo_root / "jobs" / "audit.jsonl",
+            skill_name=skill_name,
+            job_id=job.id,
+            declared_writes=write_patterns,
+            actual_writes=actual,
+        )
 
     if ok and aa.get("enable_fanout", False):
         fanout_steps = _parse_fanout_steps(msg, engine=engine, model=resolved_model)
