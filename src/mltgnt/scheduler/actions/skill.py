@@ -102,6 +102,7 @@ def run_skill_action(
         if fanout_steps:
             from mltgnt.bridges.ghdag_bridge import enqueue_dag
 
+            permission = aa.get("permission")
             dag_results = enqueue_dag(
                 fanout_steps,
                 timeout=job.timeout_seconds or 120,
@@ -109,6 +110,7 @@ def run_skill_action(
                 jobs_dir=repo_root / "jobs",
                 exec_done_dir=repo_root / "jobs" / "done",
                 request_id=request_id,
+                permission=permission,
             )
             for i, (step_ok, step_msg) in enumerate(dag_results):
                 if not step_ok:

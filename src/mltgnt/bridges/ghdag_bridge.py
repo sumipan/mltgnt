@@ -205,6 +205,7 @@ def enqueue_dag(
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
     skills: dict[str, SkillMeta] | None = None,
+    permission: str | None = None,
 ) -> list[tuple[bool, str]]:
     """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
 
@@ -272,6 +273,7 @@ def enqueue_dag(
             engine=step.engine,
             model=step.model or "",
             depends=[],  # 順序制御は enqueue_dag 側が担保するため不要
+            permission=permission,
         )
 
         exec_lines = api.submit(
