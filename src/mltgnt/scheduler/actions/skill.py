@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import fnmatch
-import glob
 import json
 import sys
 import uuid
