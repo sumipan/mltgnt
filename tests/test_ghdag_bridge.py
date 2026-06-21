@@ -536,6 +536,74 @@ class TestEnqueueAndWaitJsonlIntegration:
 
 
 # ---------------------------------------------------------------------------
+# enqueue_and_wait — permission 透過テスト（Issue #2191）
+# ---------------------------------------------------------------------------
+
+
+class TestEnqueueAndWaitPermissionPassthrough:
+    def test_permission_none_passed_to_step_config(self, tmp_path):
+        """permission 未指定時、StepConfig.permission が None であること。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir = _make_jobs_dir(tmp_path)
+        captured_steps: list = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_steps.extend(steps)
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_and_wait(
+                prompt="prompt",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="scheduler:test:perm-none",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+            )
+
+        assert len(captured_steps) == 1
+        assert captured_steps[0].permission is None
+
+    def test_permission_dangerous_full_access_passed_to_step_config(self, tmp_path):
+        """permission='dangerous_full_access' 指定時、StepConfig.permission に設定されること。"""
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir = _make_jobs_dir(tmp_path)
+        captured_steps: list = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_steps.extend(steps)
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_and_wait(
+                prompt="prompt",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key="scheduler:test:perm-dfa",
+                jobs_dir=jobs_dir,
+                exec_done_dir=jobs_dir / "done",
+                permission="dangerous_full_access",
+            )
+
+        assert len(captured_steps) == 1
+        assert captured_steps[0].permission == "dangerous_full_access"
+
+
+# ---------------------------------------------------------------------------
 # enqueue_and_wait — プロンプト受け渡しテスト
 # ---------------------------------------------------------------------------
 
@@ -1436,3 +1504,94 @@ class TestEnqueueDagTypecheck:
                 )
             except (StopIteration, OSError):
                 pass
+
+
+# ---------------------------------------------------------------------------
+# TestFanoutPermissionInheritance — permission pass-through (#2235)
+# ---------------------------------------------------------------------------
+
+
+class TestFanoutPermissionInheritance:
+    """enqueue_dag() の permission パラメータが StepConfig に伝搬されることを検証する。"""
+
+    def test_permission_passed_to_step_config(self, tmp_path):
+        """permission='dangerous_full_access' を指定すると各 StepConfig に伝搬される。"""
+        from ghdag.pipeline import LLMPipelineAPI
+        from ghdag.workflow.schema import StepConfig
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        captured_steps: list[StepConfig] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_steps.extend(steps)
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_dag(
+                steps=[
+                    DagStep(id="s1", prompt="P1", engine="cursor"),
+                    DagStep(id="s2", prompt="P2", engine="cursor"),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:perm:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+                permission="dangerous_full_access",
+            )
+
+        assert len(captured_steps) == 2
+        for step in captured_steps:
+            assert step.permission == "dangerous_full_access"
+
+    def test_permission_none_when_not_specified(self, tmp_path):
+        """permission 未指定時は各 StepConfig の permission が None になる。"""
+        from ghdag.pipeline import LLMPipelineAPI
+        from ghdag.workflow.schema import StepConfig
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        captured_steps: list[StepConfig] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, steps, **kwargs):
+            captured_steps.extend(steps)
+            return original_submit(self_api, steps, **kwargs)
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_dag(
+                steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
+                timeout=5.0,
+                idempotency_key=f"dag:perm-none:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        assert len(captured_steps) == 1
+        assert captured_steps[0].permission is None
+
+    def test_backward_compat_existing_callers(self, tmp_path):
+        """既存の enqueue_dag() 呼び出し（permission 未指定）が後方互換で動作する。"""
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+
+        with patch(_WAIT, return_value=("success", "")):
+            try:
+                results = enqueue_dag(
+                    steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
+                    timeout=5.0,
+                    idempotency_key=f"dag:bc:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=done_dir,
+                )
+            except (StopIteration, OSError):
+                results = [(True, "")]
+
+        assert len(results) == 1
+        assert results[0][0] is True
