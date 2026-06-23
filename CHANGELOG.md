@@ -1,5 +1,21 @@
 # Changelog
 
+## Phase Progress
+
+### Phase D: exit_code routing ✓
+- SkillRunResult.exit_code → ExitStatus enum 変換 実装済み
+- scheduler permission pass-through (v0.15.1)
+- ⚠️ enqueue_dag() 子タスクへの exit_code 伝播は未対応（#2235）
+
+### Phase E: side_effects audit ⚠️ In Progress
+- SkillMeta.side_effects 宣言は存在。実測 audit ラッパは未実装（#2234）
+- BaseRunner ABC 抽出・ActDispatcher Protocol 統一 (v0.16.0)
+- deprecated compact() / needs_compaction() 公開 API 削除（予定）
+
+### Phase F: pipe composition runtime ⚠️ Not Started
+- typecheck_dag() は存在するが skill_io != "v1" で全スキップ（silent compatibility mode）
+- skill_io: v1 明示化・型検証の強制化は未着手
+
 ## v0.15.1
 
 ### Added
