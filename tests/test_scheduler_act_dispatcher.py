@@ -79,7 +79,7 @@ def test_execute_action_custom_action_dispatched(tmp_path):
     ok, msg = sched.execute_action(job)
     assert ok is True
     assert msg == "custom_ok"
-    assert called == [f"test-my_custom"]
+    assert called == ["test-my_custom"]
 
 
 def test_run_skill_action_not_called_directly_in_execute_action(tmp_path):
