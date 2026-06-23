@@ -1,58 +1,62 @@
 # mltgnt
 
-**L1: persona-driven multi-agent orchestration layer.** 3 層アーキテクチャ（**L0 [ghdag](https://github.com/sumipan/ghdag)** / **L1 mltgnt** / **L2 ホストアプリ**）の中間層として、ペルソナ定義・スキルマッチング・メモリ管理・チャネルルーティング・スケジューリングを担います。LLM 呼び出し・ファイル I/O・DAG 投入は `bridges` 経由で L0 ghdag に委譲します。
+**L1: persona-driven multi-agent orchestration layer.** mltgnt sits in the middle tier of a three-layer architecture — **L0 [ghdag](https://github.com/sumipan/ghdag)** / **L1 mltgnt** / **L2 host app** — and owns persona loading, skill matching, memory management, channel routing, and scheduling. LLM calls, file I/O, and DAG enqueuing are delegated to L0 ghdag via the `bridges` package.
 
-**Status:** Pre-1.0 (`v0.15.0`)
+**Status:** Pre-1.0 (`v0.16.1`)
 
 ---
 
-## Not（これは何でないか）
+## Not
 
-| 項目 | 説明 |
-|------|------|
-| LLM ライブラリではない | LLM 呼び出しは ghdag（L0）経由。mltgnt 自体はモデル推論を行わない |
-| 汎用チャットボットフレームワークではない | ペルソナ駆動のマルチエージェントオーケストレーション層に特化 |
-| DAG 実行エンジンではない | DAG 実行は ghdag の責務。mltgnt は `enqueue_dag` / `enqueue_and_wait` で投入する |
-| ホストアプリではない | Slack 連携・ファイル保存・チャネル固有ロジックは L2 ホストが実装する |
+mltgnt is not:
+
+| What | Why |
+|------|-----|
+| An LLM library | LLM calls go through ghdag (L0); mltgnt does not perform model inference itself |
+| A general-purpose chatbot framework | It is purpose-built for persona-driven multi-agent orchestration |
+| A DAG execution engine | DAG execution is ghdag's responsibility; mltgnt enqueues work via `enqueue_dag` / `enqueue_and_wait` |
+| A host application | Slack integration, file persistence, and channel-specific logic belong to the L2 host |
 
 ---
 
 ## Installation
 
-| 項目 | 内容 |
-|------|------|
-| インストール | `pip install mltgnt` |
-| Python | 3.10 以上（`requires-python = ">=3.10"`） |
-| コア依存 | [ghdag](https://github.com/sumipan/ghdag)（`pyproject.toml` で pin 済み）、`PyYAML`、`scikit-learn`、`numpy` |
+```bash
+pip install mltgnt
+```
 
-ghdag は差し替え不可の前提依存です。LLM 呼び出し・DAG 投入はすべて ghdag 経由で行われます。
+| Requirement | Value |
+|-------------|-------|
+| Python | ≥ 3.10 |
+| Core dependencies | [ghdag](https://github.com/sumipan/ghdag) v0.30.4, PyYAML ≥ 6.0, scikit-learn ≥ 1.0, numpy ≥ 1.21 |
+
+ghdag is a non-optional prerequisite. All LLM calls and DAG submissions flow through it.
 
 ---
 
 ## Quick Start
 
-`load_persona()` でペルソナを読み込み、`run_pipeline()` で 1 往復チャットを実行します。以下は `tests/chat/test_pipeline.py` と同型の最小例です。
+Load a persona with `load_persona()`, then run a single-turn exchange with `run_pipeline()`.
+The pattern below matches the test structure in `tests/chat/test_pipeline.py`.
 
 ```python
 from pathlib import Path
-
 from mltgnt import load_persona, run_pipeline
 
-persona_dir = Path("agents")
-persona = load_persona("タチコマ", persona_dir=persona_dir)
+persona = load_persona("my-persona", persona_dir=Path("agents"))
 
 output = run_pipeline(
-    "こんにちは",
+    "Hello!",
     persona,
     engine=persona.fm.engine,
     model=persona.fm.model,
 )
 
-print(output.content)       # LLM 応答テキスト
-print(output.persona_name)  # "タチコマ"
+print(output.content)       # LLM response text
+print(output.persona_name)  # "my-persona"
 ```
 
-`run_pipeline` は例外を送出せず、失敗時は `ChatOutput.content` にエラー文字列を格納します。
+`run_pipeline` does not raise on LLM errors; failures are surfaced in `output.content` as an error string.
 
 ---
 
@@ -60,200 +64,224 @@ print(output.persona_name)  # "タチコマ"
 
 ### `mltgnt run`
 
-デーモンプロセスを起動します。
-
-| オプション | 必須 | デフォルト | 説明 |
-|-----------|------|-----------|------|
-| `--components MODULE:FUNCTION` | ✅ | — | コンポーネントファクトリ。`importlib` でモジュールを読み込み、callable を呼び出して `DaemonComponent` のリストを取得 |
-| `--pid-file PATH` | — | `/tmp/mltgnt_daemon.pid` | PID ロックファイルのパス |
+Start the mltgnt daemon process.
 
 ```bash
-mltgnt run --components myhost.daemon:build_components --pid-file /tmp/mltgnt.pid
+mltgnt run --components myhost.daemon:build_components [--pid-file /tmp/mltgnt_daemon.pid]
 ```
 
-| 終了コード | 意味 | 対応例外 |
-|-----------|------|---------|
-| 0 | 正常終了（ヘルプ表示・シグナルシャットダウン含む） | — |
-| 1 | 一般エラー | `MltgntError` その他 |
-| 2 | 設定エラー | `ConfigError` |
-| 3 | 依存エラー | `DependencyError` |
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--components MODULE:FUNCTION` | Yes | — | Component factory spec loaded via `importlib`; the callable must return a list of `DaemonComponent` |
+| `--pid-file PATH` | No | `/tmp/mltgnt_daemon.pid` | Path to the PID lock file |
+
+**Exit codes**
+
+| Code | Meaning | Exception |
+|------|---------|-----------|
+| 0 | Normal exit (including help display and signal-based shutdown) | — |
+| 1 | General error | `MltgntError` and other unhandled exceptions |
+| 2 | Configuration error | `ConfigError` |
+| 3 | Dependency error | `DependencyError` |
 
 ### `mltgnt memory dream show`
 
-ペルソナの dream サマリーを表示します。
-
-| 引数 / オプション | 必須 | 説明 |
-|------------------|------|------|
-| `persona` | ✅ | ペルソナ名（stem） |
-| `--chat-dir PATH` | ✅ | ペルソナディレクトリの親パス |
+Print the dream summary for a persona.
 
 ```bash
-mltgnt memory dream show タチコマ --chat-dir /path/to/chat
+mltgnt memory dream show PERSONA --chat-dir DIR
 ```
 
-| 終了コード | 意味 |
-|-----------|------|
-| 0 | 正常終了（dream サマリー未存在時も 0） |
+| Argument / Option | Required | Description |
+|-------------------|----------|-------------|
+| `persona` | Yes | Persona name or stem |
+| `--chat-dir PATH` | Yes | Parent path of persona directories |
+
+Exit code is always `0` (including when no dream summary exists).
 
 ### `mltgnt memory dream forget`
 
-dream サマリーから指定カテゴリを削除します。
-
-| 引数 / オプション | 必須 | 説明 |
-|------------------|------|------|
-| `persona` | ✅ | ペルソナ名（stem） |
-| `--category NAME` | ✅ | 削除するカテゴリ名 |
-| `--chat-dir PATH` | ✅ | ペルソナディレクトリの親パス |
+Remove a category from a persona's dream summary.
 
 ```bash
-mltgnt memory dream forget タチコマ --category "会話の傾向" --chat-dir /path/to/chat
+mltgnt memory dream forget PERSONA --category CATEGORY --chat-dir DIR
 ```
 
-| 終了コード | 意味 |
-|-----------|------|
-| 0 | カテゴリ削除成功 |
-| 1 | dream サマリー未存在、またはカテゴリ未発見 |
+| Argument / Option | Required | Description |
+|-------------------|----------|-------------|
+| `persona` | Yes | Persona name or stem |
+| `--category NAME` | Yes | Category name to remove |
+| `--chat-dir PATH` | Yes | Parent path of persona directories |
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | Category removed successfully |
+| 1 | Dream summary not found, or category not present |
 
 ---
 
 ## Public API
 
-`mltgnt.__init__.__all__` に列挙された公開シンボルです。トップレベルから import してください。
+All symbols exported from `mltgnt.__all__` (26 total). Import directly from the top-level package:
 
 ```python
-from mltgnt import run_pipeline, Persona, load_persona
+from mltgnt import run_pipeline, load_persona, Persona
 ```
 
-| カテゴリ | シンボル | 型 | 備考 |
-|---------|---------|-----|------|
-| Chat | `run_pipeline` | function | |
-| Memory | `read_memory_iterative` | function | |
-| Memory | `read_memory_by_relevance` | function | |
-| Memory | `read_memory_with_sufficiency_check` | function | |
-| Memory | `compact` | function | ⚠️ deprecated — 代替: `PersonaScheduler` dream アクション |
-| Memory | `needs_compaction` | function | ⚠️ deprecated — 代替: `PersonaScheduler` dream アクション |
-| Memory | `DreamSection` | dataclass | |
-| Memory | `DreamSummary` | dataclass | |
-| Memory | `read_dream` | function | |
-| Memory | `write_dream` | function | |
-| Persona | `Persona` | class | |
-| Persona | `load_persona` | function | |
-| Persona | `list_personas` | function | |
-| Persona | `validate_persona` | function | |
-| Persona | `run_persona_prompt` | function | |
-| Types | `ChatInput` | dataclass | |
-| Types | `ChatOutput` | dataclass | |
-| Types | `Message` | TypedDict | |
-| Persona | `PersonaProtocol` | Protocol | |
-| Agent | `AgentResult` | dataclass | |
-| Agent | `AgentRunner` | class | |
-| Bridge | `enqueue_dag` | function | |
-| Bridge | `enqueue_and_wait` | function | |
-| Scheduler | `PersonaScheduler` | class | |
-| Scheduler | `ScheduleJob` | dataclass | |
-| Version | `__version__` | str | |
+| Category | Symbol | Type | Notes |
+|----------|--------|------|-------|
+| Chat | `run_pipeline` | function | Single-turn LLM pipeline |
+| Memory | `read_memory_iterative` | function | Iterative memory retrieval |
+| Memory | `read_memory_by_relevance` | function | TF-IDF relevance search |
+| Memory | `read_memory_with_sufficiency_check` | function | Retrieval with sufficiency guard |
+| Memory | `compact` | function | **Deprecated** — use `PersonaScheduler` dream action |
+| Memory | `needs_compaction` | function | **Deprecated** — use `PersonaScheduler` dream action |
+| Memory | `DreamSection` | dataclass | One section of a dream summary |
+| Memory | `DreamSummary` | dataclass | Full dream summary for a persona |
+| Memory | `read_dream` | function | Read dream summary from disk |
+| Memory | `write_dream` | function | Write dream summary to disk |
+| Persona | `Persona` | dataclass | Loaded persona (body + frontmatter) |
+| Persona | `load_persona` | function | Load a persona by name from a directory |
+| Persona | `list_personas` | function | List available persona names |
+| Persona | `validate_persona` | function | Validate persona frontmatter |
+| Persona | `run_persona_prompt` | function | Run a raw prompt through a persona |
+| Types | `ChatInput` | dataclass | Pipeline input (source, session_key, messages, persona_name) |
+| Types | `ChatOutput` | dataclass | Pipeline output (content, persona_name, timestamp, session_key) |
+| Types | `Message` | TypedDict | `{role: str, content: str}` chat message |
+| Types | `PersonaProtocol` | Protocol | L1 contract for persona objects |
+| Agent | `AgentResult` | dataclass | Result of a single agent loop tick |
+| Agent | `AgentRunner` | class | Generic agent loop (LLM + tool execution) |
+| Bridge | `enqueue_dag` | function | Enqueue a DAG order to ghdag |
+| Bridge | `enqueue_and_wait` | function | Enqueue a DAG order and block until result |
+| Scheduler | `PersonaScheduler` | class | Cron-style job scheduler for personas |
+| Scheduler | `ScheduleJob` | dataclass | A single scheduler job entry |
+| Version | `__version__` | str | Installed package version string |
 
 ### Public API Stability
 
-Pre-1.0（`0.Y.Z`）のため、マイナー・パッチリリース間で破壊的変更が入る場合があります。安定版 API は `__all__` に列挙されたシンボルに限定してください。SemVer 運用では `0.Y.Z` の Y バンプが破壊的変更、`Z` バンプが後方互換変更を示します。
+mltgnt follows pre-1.0 SemVer (`0.Y.Z`):
+
+- **Y bump** — breaking change: public API removed, renamed, or signature changed
+- **Z bump** — backward-compatible: bug fixes, new opt-in parameters, new symbols added to `__all__`
+
+Only symbols listed in `__all__` are covered by this stability policy.
 
 ---
 
 ## Deprecated API
 
-以下のシンボルは `__all__` に残存しますが、新規コードでの使用は非推奨です。Public API 表では deprecated としてマーク済みです。
+The following symbols remain in `__all__` for backward compatibility but should not be used in new code.
 
-| シンボル | 廃止予定 | 代替手段 |
-|---------|---------|---------|
-| `compact` | v0.16.0 削除予定 | `PersonaScheduler` の dream アクション（スケジューラ経由のメモリ圧縮） |
-| `needs_compaction` | v0.16.0 削除予定 | `PersonaScheduler` の dream アクション（スケジューラ経由の圧縮判定） |
+| Symbol | Deprecated since | Replacement |
+|--------|-----------------|-------------|
+| `compact` | v0.15.x | `PersonaScheduler` dream action (scheduler-driven memory compaction) |
+| `needs_compaction` | v0.15.x | `PersonaScheduler` dream action (scheduler-driven compaction check) |
+
+These will be removed in a future version.
 
 ---
 
 ## Architecture
 
-`src/mltgnt/` 配下のパッケージ構成です。
+All packages live under `src/mltgnt/`.
 
-| モジュール | 責務 |
-|-----------|------|
-| `agent/` | 汎用エージェントループ（LLM + ツール実行） |
-| `bridges/` | アダプタ層（ファイル・audit・hooks・LLM・ghdag 連携） |
-| `chat/` | 1 ラウンドトリップチャットパイプライン |
-| `cli/` | CLI エントリ（`mltgnt run` / `mltgnt memory dream`） |
-| `config/` | 設定 dataclass（`MemoryConfig` / `PersonaConfig` / `SchedulerConfig` / `ChatConfig`） |
-| `daemon/` | デーモンランナー（PID ロック・skill ウォッチャー） |
-| `exceptions.py` | `MltgntError` 階層の定義 |
-| `improvement/` | 改善分析・提案・パッチ適用・ロールバック判定 |
-| `interfaces/` | Protocol 定義（chat, persona, slack, types, ooda） |
-| `kpi/` | audit.jsonl からの KPI 集計 |
-| `memory/` | メモリ検索・圧縮・dream サマリー API |
-| `ooda/` | OODA ループ実行基盤（audit_source, exec_dispatcher, runner） |
-| `persona/` | ペルソナ読み込み・レジストリ・スキーマ検証 |
-| `routing/` | チャネルルーティング・トリアージ |
-| `scheduler/` | ペルソナスケジューラ（scheduled, interval, fuzzy_window, chained） |
-| `skill/` | スキル読み込み・マッチング・実行・lint |
+| Module | Responsibility |
+|--------|---------------|
+| `agent/` | Generic agent loop — `AgentRunner` drives LLM + tool execution cycles; `AgentResult` carries tick output |
+| `bridges/` | Adapter layer — `ghdag_bridge` (DAG enqueue/wait), `audit_adapter` (orchestration audit), `files_adapter` (file read/write), `hooks_adapter` (lifecycle hooks), `llm_adapter` (LLM call shim) |
+| `chat/` | Single round-trip chat pipeline — `run_pipeline` formats prompt, calls LLM via bridges, records audit |
+| `cli/` | CLI entry point — `mltgnt run` daemon launcher, `mltgnt memory dream show/forget` subcommands |
+| `config/` | Configuration dataclasses — `MemoryConfig`, `PersonaConfig`, `SchedulerConfig`, `ChatConfig` |
+| `daemon/` | Daemon lifecycle — PID lock, signal handling, component start/stop coordination |
+| `exceptions.py` | Shared error hierarchy — `MltgntError`, `ConfigError`, `DependencyError` |
+| `execution/` | Runner base ABC — `BaseRunner.tick()` defines the common interface for all tick-based runners *(new in v0.16.0)* |
+| `improvement/` | Failure analysis cycle — analyzes audit logs, generates improvement proposals, applies patches |
+| `interfaces/` | L1 Protocol and DTO definitions — `chat.py`, `persona.py`, `slack.py`, `types.py`, `ooda.py`, `dispatch.py` |
+| `kpi/` | KPI aggregation — parses `audit.jsonl` for response failure rate, re-question rate |
+| `memory/` | Memory API — `read_memory_iterative`, `read_memory_by_relevance`, `read_memory_with_sufficiency_check`; dream summary synthesis in `memory/dream/` |
+| `ooda/` | OODA loop runtime — `OODARunner` drives observe → orient → decide → act cycles |
+| `persona/` | Persona management — YAML frontmatter loading, alias registry, schema validation |
+| `routing/` | Channel routing — maps channels to personas; triage via TF-IDF classifier |
+| `scheduler/` | Persona scheduler — `scheduled`, `interval`, `fuzzy_window`, `chained` job modes; `side_effect_audit` hook; interval state persistence |
+| `skill/` | Skill system — YAML skill loading, semantic matching, execution, lint |
 
-### Protocols / 拡張点
+---
 
-ホスト（L2）が実装する拡張点です。mltgnt はこれらの Protocol を呼び出し側として利用します。
+## Protocols / Extension Points
 
-| Protocol | モジュール | 責務 |
-|----------|-----------|------|
-| `PersonaProtocol` | `mltgnt.interfaces.persona` | `name`、`fm`（frontmatter）、`format_prompt(instruction) -> str` — ペルソナ契約 |
-| `ChatPipelineProtocol` | `mltgnt.interfaces.chat` | `run(inp, repo_root) -> ChatOutputBase` — ホスト側チャットパイプライン差し替え |
-| `SlackClientProtocol` | `mltgnt.interfaces.slack` | `post_message(text, channel, ...) -> bool` — Slack 投稿。失敗時は `False`（例外なし） |
-| `ChatInputBase` | `mltgnt.interfaces.types` | チャットパイプライン入力の L1 Protocol |
-| `ChatOutputBase` | `mltgnt.interfaces.types` | チャットパイプライン出力の L1 Protocol |
-| `PersonaFMBase` | `mltgnt.interfaces.types` | ペルソナフロントマターの L1 Protocol（`name` 必須） |
+These Protocols define the L2 host implementation contracts. mltgnt calls into them; the L2 host provides the concrete implementations.
+
+| Protocol | Module | Key interface |
+|----------|--------|---------------|
+| `PersonaProtocol` | `mltgnt.interfaces.persona` | `name: str`, `fm: PersonaFMBase`, `format_prompt(instruction: str) -> str` |
+| `ChatPipelineProtocol` | `mltgnt.interfaces.chat` | `run(inp: ChatInputBase, repo_root: Path) -> ChatOutputBase` |
+| `SlackClientProtocol` | `mltgnt.interfaces.slack` | `post_message(text, channel, thread_ts, blocks, reply_broadcast) -> bool` — returns `False` on failure, never raises |
+| `ObserveSource` | `mltgnt.interfaces.ooda` | `observe(*, since: str | None) -> list[ObservationEvent]` — returns events since the given ISO 8601 timestamp |
+| `ActDispatcher` | `mltgnt.interfaces.dispatch` | `dispatch(action: str, args: dict) -> ActResult` — executes an OODA action *(moved to `interfaces/dispatch.py` in v0.16.0)* |
+| `PersonaFMBase` | `mltgnt.interfaces.types` | `name: str` — base Protocol for persona frontmatter; hosts extend with engine, model, etc. |
+| `ChatInputBase` | `mltgnt.interfaces.types` | `source`, `session_key`, `messages`, `persona_name` — L1 input contract |
+| `ChatOutputBase` | `mltgnt.interfaces.types` | `content`, `persona_name`, `timestamp`, `session_key` — L1 output contract |
+
+Also available as data companions for the OODA Protocols:
+
+| Type | Module | Description |
+|------|--------|-------------|
+| `ActResult` | `mltgnt.interfaces.dispatch` | `action: str`, `success: bool`, `detail: str` — result of a dispatched action |
+| `ObservationEvent` | `mltgnt.interfaces.ooda` | `event_id`, `event_type`, `status`, `timestamp`, `payload` — single observed event |
+| `OODAConfig` | `mltgnt.interfaces.ooda` | `max_recovery_attempts`, `escalate_after`, `observe_filter` |
+| `OODATickResult` | `mltgnt.interfaces.ooda` | `observed_events`, `actions_taken`, `escalated` |
 
 ---
 
 ## Configuration
 
-### 環境変数
+### Environment variables
 
-| 変数名 | 定義箇所 | 用途 |
-|--------|---------|------|
-| `SKILL_IO_TYPECHECK` | `bridges/ghdag_bridge.py` | `"0"` で無効化。未設定時は skill I/O 型検査を実行（opt-out） |
-| `NIKKI_ROOT` | `skill/runner.py` | nikki（diary/memory）ルートパス。スキル本文の `$NIKKI_ROOT` 変数置換に使用 |
-| `REPO_ROOT` | `skill/runner.py` | リポジトリルートのフォールバック。スキル本文の `$REPO_ROOT` 変数置換に使用 |
-| `MLTGNT_AS_OF_DATE` | `improvement/loop.py` | 改善サイクルの基準日（`YYYY-MM-DD`）。未設定時は `date.today()` |
+| Variable | Defined in | Purpose |
+|----------|-----------|---------|
+| `SKILL_IO_TYPECHECK` | `bridges/ghdag_bridge.py` | Set to `"0"` to disable skill I/O type checking. Enabled by default (opt-out). |
+| `NIKKI_ROOT` | `skill/runner.py` | Diary/memory root path; used for `$NIKKI_ROOT` variable substitution in skill bodies |
+| `REPO_ROOT` | `skill/runner.py` | Repository root fallback; used for `$REPO_ROOT` variable substitution in skill bodies |
+| `MLTGNT_AS_OF_DATE` | `improvement/loop.py` | Analysis period end date in ISO 8601 format (`YYYY-MM-DD`). Defaults to `date.today()`. |
 
-### 設定 dataclass（`mltgnt.config`）
+### Configuration dataclasses (`mltgnt.config`)
 
-| dataclass | 主なフィールド | 用途 |
-|-----------|--------------|------|
-| `MemoryConfig` | `chat_dir`, `inject_max_bytes`, `compact_threshold_bytes`, `timezone`, `dream_model` 等 | メモリ JSONL のパス・閾値・圧縮・dream 設定 |
-| `PersonaConfig` | `weight_map` | ペルソナ Markdown セクションの重み付け（`light` / `heavy` / `reference`） |
-| `SchedulerConfig` | `schedule_yaml`, `state_dir`, `timezone`, `salt` | スケジュール YAML と状態ディレクトリ |
-| `ChatConfig` | `persona_dir`, `memory_dir`, `matcher_model` | チャットパイプラインのパス・マッチャモデル |
+| Dataclass | Key fields | Purpose |
+|-----------|-----------|---------|
+| `MemoryConfig` | `chat_dir`, `inject_max_bytes` (10240), `inject_max_entries` (12), `preferences_max_bytes` (5120), `compact_threshold_bytes` (40960), `compact_target_bytes` (25600), `timezone` ("Asia/Tokyo"), `dream_model`, `use_dream_summary`, `dream_dir_name`, `raw_days` (7), `mid_weeks` (3) | Memory JSONL paths, thresholds, compaction, dream settings |
+| `PersonaConfig` | `weight_map` | Section weight map for persona Markdown (`light` / `heavy` / `reference`) |
+| `SchedulerConfig` | `schedule_yaml`, `state_dir`, `timezone` ("Asia/Tokyo"), `salt` | Schedule YAML path and job state directory |
+| `ChatConfig` | `persona_dir`, `memory_dir`, `matcher_model` ("claude-haiku-4-5-20251001") | Chat pipeline paths and matcher model |
 
 ---
 
 ## Error Reference
 
-### MltgntError 階層
+### MltgntError hierarchy
 
 ```
-MltgntError (mltgnt.exceptions) ← 基底
-├── ConfigError (mltgnt.exceptions)
-└── DependencyError (mltgnt.exceptions)
+Exception
+└── MltgntError          (mltgnt.exceptions)  — common base; catch with `except MltgntError`
+    ├── ConfigError       (mltgnt.exceptions)  — config file read/parse failure
+    └── DependencyError   (mltgnt.exceptions)  — external dependency call failure
 ```
 
-### 全公開例外型
+### All public exception types
 
-| クラス | モジュール | 継承 | 用途 |
-|--------|-----------|------|------|
-| `MltgntError` | `mltgnt.exceptions` | `Exception` | 共通基底。`except MltgntError` で一括捕捉可能 |
-| `ConfigError` | `mltgnt.exceptions` | `MltgntError` | 設定ファイルの読み込み・パースエラー、`--components` 形式不正 |
-| `DependencyError` | `mltgnt.exceptions` | `MltgntError` | 外部依存（callable, subprocess, API, PID ロック）の呼び出し失敗 |
-| `PersonaValidationError` | `mltgnt.persona` | `Exception` | ペルソナ frontmatter 不正（`MltgntError` 階層外） |
-| `LlmCallError` | `mltgnt.memory.compaction` | `RuntimeError` | メモリ圧縮 LLM 呼び出し失敗（`MltgntError` 階層外） |
-| `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | `TypeError` | DAG ステップ間の skill I/O 型不整合（`MltgntError` 階層外） |
-| `SkillLoadError` | `mltgnt.skill.models` | `Exception` | スキル読み込み失敗・未知 Tool 参照（`MltgntError` 階層外） |
+| Class | Module | Base | Raised when |
+|-------|--------|------|-------------|
+| `MltgntError` | `mltgnt.exceptions` | `Exception` | Base class for all mltgnt-hierarchy errors |
+| `ConfigError` | `mltgnt.exceptions` | `MltgntError` | Config YAML is malformed or `--components` spec is invalid |
+| `DependencyError` | `mltgnt.exceptions` | `MltgntError` | External callable, subprocess, API, or PID lock fails |
+| `PersonaValidationError` | `mltgnt.persona` | `Exception` | Persona frontmatter is invalid (outside MltgntError hierarchy) |
+| `LlmCallError` | `mltgnt.memory.compaction` | `RuntimeError` | LLM call during memory compaction fails (outside MltgntError hierarchy) |
+| `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | `TypeError` | Skill I/O type mismatch between DAG steps (outside MltgntError hierarchy) |
+| `SkillLoadError` | `mltgnt.skill.models` | `Exception` | Skill file fails to load or references an unknown tool (outside MltgntError hierarchy) |
 
 ---
 
 ## License
 
-MIT — SPDX: `MIT`（`pyproject.toml` の `license = "MIT"` と一致）
+MIT — SPDX identifier: `MIT`
+
+Matches `license = "MIT"` in `pyproject.toml`.
