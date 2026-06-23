@@ -439,11 +439,11 @@ class TestNoDeprecationWarnings:
         assert not any(w.category is DeprecationWarning for w in caught)
 
     def test_memory_import_compact_and_needs_compaction(self):
-        from mltgnt.memory import compact as imported_compact
-        from mltgnt.memory import needs_compaction as imported_needs_compaction
-
-        assert callable(imported_compact)
-        assert callable(imported_needs_compaction)
+        import pytest
+        with pytest.raises(ImportError):
+            from mltgnt.memory import compact  # noqa: F401
+        with pytest.raises(ImportError):
+            from mltgnt.memory import needs_compaction  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
