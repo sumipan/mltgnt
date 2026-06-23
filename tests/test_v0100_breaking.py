@@ -52,6 +52,10 @@ def test_removed_imports() -> None:
         from mltgnt.memory import normalize_source_prefix  # noqa: F401
     with pytest.raises(ImportError):
         from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait  # noqa: F401
+    with pytest.raises(ImportError):
+        from mltgnt import compact  # noqa: F401
+    with pytest.raises(ImportError):
+        from mltgnt.memory import compact  # noqa: F401
 
 
 def test_canonical_imports() -> None:
