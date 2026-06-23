@@ -55,7 +55,11 @@ def test_removed_imports() -> None:
     with pytest.raises(ImportError):
         from mltgnt import compact  # noqa: F401
     with pytest.raises(ImportError):
+        from mltgnt import needs_compaction  # noqa: F401
+    with pytest.raises(ImportError):
         from mltgnt.memory import compact  # noqa: F401
+    with pytest.raises(ImportError):
+        from mltgnt.memory import needs_compaction  # noqa: F401
 
 
 def test_canonical_imports() -> None:
