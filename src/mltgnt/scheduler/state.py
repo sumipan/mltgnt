@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from typing import Optional
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -27,6 +28,7 @@ class SchedulePaths:
         self.planned_dir = state_dir / "planned"
         self.missed_dir = state_dir / "missed"
         self.failed_dir = state_dir / "failed"
+        self.interval_dir = state_dir / "interval"
 
     def done_path(self, job_id: str, d: date) -> Path:
         return self.done_dir / f"{job_id}_{d.isoformat()}.done"
@@ -39,3 +41,32 @@ class SchedulePaths:
 
     def failed_path(self, job_id: str, d: date) -> Path:
         return self.failed_dir / f"{job_id}_{d.isoformat()}.failed"
+
+    def interval_last_fired_path(self, job_id: str) -> Path:
+        return self.interval_dir / f"{job_id}.last"
+
+    def read_interval_last_fired(self, job_id: str) -> Optional[datetime]:
+        p = self.interval_last_fired_path(job_id)
+        if not p.exists():
+            return None
+        try:
+            return datetime.fromisoformat(p.read_text(encoding="utf-8").strip())
+        except (ValueError, OSError):
+            return None
+
+    def write_interval_last_fired(self, job_id: str, dt: datetime) -> None:
+        atomic_write_text(self.interval_last_fired_path(job_id), dt.isoformat())
+
+    def load_all_interval_last_fired(self) -> dict[str, datetime]:
+        result: dict[str, datetime] = {}
+        if not self.interval_dir.exists():
+            return result
+        for p in self.interval_dir.glob("*.last"):
+            job_id = p.stem
+            try:
+                result[job_id] = datetime.fromisoformat(
+                    p.read_text(encoding="utf-8").strip()
+                )
+            except (ValueError, OSError):
+                continue
+        return result

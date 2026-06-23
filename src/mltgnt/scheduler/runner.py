@@ -82,7 +82,7 @@ class PersonaScheduler:
         self._calendar_date: Optional[date] = None
         self._scheduled_fired_slot: dict[str, tuple[date, int, int]] = {}
         self._fuzzy_last_dispatch_slot: dict[str, tuple[date, int, int]] = {}
-        self._interval_last_fired: dict[str, datetime] = {}
+        self._interval_last_fired: dict[str, datetime] = self.paths.load_all_interval_last_fired()
         self._running: set[str] = set()
         self._run_lock = threading.Lock()
         self._stop = threading.Event()
@@ -481,6 +481,7 @@ class PersonaScheduler:
                     if job.id in self._running:
                         continue
                 self._interval_last_fired[job.id] = now
+                self.paths.write_interval_last_fired(job.id, now)
                 self._spawn_job(job, d)
                 continue
 
