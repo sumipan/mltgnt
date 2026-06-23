@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 from zoneinfo import ZoneInfo
 
 from mltgnt.exceptions import ConfigError
+from mltgnt.execution import BaseRunner
 from mltgnt.scheduler.actions.skill import run_skill_action
 from mltgnt.scheduler.loader import load_schedule_jobs
 from mltgnt.scheduler.models import (
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig, SchedulerConfig
     from mltgnt.interfaces.slack import SlackClientProtocol
 
-class PersonaScheduler:
+class PersonaScheduler(BaseRunner):
     """
     1 秒周期で tick する想定。main からデーモンスレッドで起動する。
 
@@ -97,6 +98,17 @@ class PersonaScheduler:
 
         from mltgnt.skill import discover
         self._skill_registry = discover(paths=[self.repo_root / "skills"])
+
+        self.register_action(
+            "skill",
+            lambda job: run_skill_action(
+                job,
+                persona_dir=self.persona_dir,
+                skill_registry=self._skill_registry,
+                default_tz=self._default_tz,
+                repo_root=self.repo_root,
+            ),
+        )
 
         if memory_config is not None and memory_config.use_dream_summary:
             from mltgnt.scheduler.actions.dream import run_dream_action
@@ -359,15 +371,6 @@ class PersonaScheduler:
         if job.action == "noop":
             _log.debug("noop: %s", job.id)
             return True, ""
-
-        if job.action == "skill":
-            return run_skill_action(
-                job,
-                persona_dir=self.persona_dir,
-                skill_registry=self._skill_registry,
-                default_tz=self._default_tz,
-                repo_root=self.repo_root,
-            )
 
         if job.action in self._actions:
             return self._actions[job.action](job)

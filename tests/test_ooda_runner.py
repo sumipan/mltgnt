@@ -107,7 +107,7 @@ def test_ac1_recover_task_flow(tmp_path):
         dispatcher=dispatcher,
         memory=memory,
     )
-    result = runner.run_tick()
+    result = runner.tick()
     assert any(action.action == "recover_task" and action.success for action in result.actions_taken)
 
 
@@ -140,7 +140,7 @@ def test_ac2_feedback_visible_in_orient_prompt():
         dispatcher=_RecordingDispatcher(),
         memory=memory,
     )
-    runner.run_tick()
+    runner.tick()
     assert len(captured) == 1
     assert "evt-1" in captured[0]
     assert "recover_task" in captured[0]
@@ -179,7 +179,7 @@ def test_ac3_escalate_after_forces_slack_without_agent():
         memory=memory,
         config=OODAConfig(escalate_after=2),
     )
-    result = runner.run_tick()
+    result = runner.tick()
     assert agent_called["count"] == 0
     assert result.escalated is True
     assert dispatcher.calls[0][0] == "escalate_to_slack"
@@ -211,7 +211,7 @@ def test_ac4_max_recovery_attempts_excludes_event():
         memory=memory,
         config=OODAConfig(max_recovery_attempts=3),
     )
-    result = runner.run_tick()
+    result = runner.tick()
     assert result.observed_events == 1
     assert result.actions_taken == []
 
@@ -228,7 +228,7 @@ def test_ac5_empty_observe_returns_zero_actions():
         dispatcher=_RecordingDispatcher(),
         memory=memory,
     )
-    result = runner.run_tick()
+    result = runner.tick()
     assert result.observed_events == 0
     assert result.actions_taken == []
     assert result.escalated is False
@@ -248,7 +248,7 @@ def test_ac6_agent_none_skips_event(caplog):
         logger=logging.getLogger("test.ooda"),
     )
     with caplog.at_level(logging.WARNING, logger="test.ooda"):
-        result = runner.run_tick()
+        result = runner.tick()
     assert result.actions_taken == []
     assert any("returned None" in record.message for record in caplog.records)
 
@@ -272,7 +272,7 @@ def test_ac7_dispatch_exception_recorded_as_failure():
         dispatcher=_RaisingDispatcher(),
         memory=memory,
     )
-    result = runner.run_tick()
+    result = runner.tick()
     assert len(result.actions_taken) == 1
     assert result.actions_taken[0].success is False
     assert memory.entries
@@ -318,6 +318,6 @@ def test_audit_integration_with_audit_jsonl(tmp_path):
         dispatcher=dispatcher,
         memory=memory,
     )
-    result = runner.run_tick()
+    result = runner.tick()
     assert result.observed_events == 1
     assert result.actions_taken[0].action == "recover_task"

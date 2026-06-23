@@ -4,6 +4,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from mltgnt.interfaces.dispatch import ActDispatcher, ActResult
+
+__all__ = [
+    "ActDispatcher",
+    "ActResult",
+    "ObservationEvent",
+    "OODAConfig",
+    "OODATickResult",
+    "ObserveSource",
+]
+
 
 @dataclass(frozen=True)
 class ObservationEvent:
@@ -12,13 +23,6 @@ class ObservationEvent:
     status: str
     timestamp: str
     payload: dict[str, Any]
-
-
-@dataclass(frozen=True)
-class ActResult:
-    action: str
-    success: bool
-    detail: str
 
 
 @dataclass(frozen=True)
@@ -39,11 +43,4 @@ class OODATickResult:
 class ObserveSource(Protocol):
     def observe(self, *, since: str | None = None) -> list[ObservationEvent]:
         """前回観測以降の新規イベントを返す。since は ISO 8601 タイムスタンプ。"""
-        ...
-
-
-@runtime_checkable
-class ActDispatcher(Protocol):
-    def dispatch(self, action: str, args: dict[str, Any]) -> ActResult:
-        """アクションを実行し結果を返す。"""
         ...
