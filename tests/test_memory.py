@@ -20,10 +20,9 @@ from mltgnt.memory import (
     read_memory_tail_text,
     memory_file_path,
     persona_memory_lock,
-    compact,
-    needs_compaction,
     CompactionResult,
 )
+from mltgnt.memory.compaction import compact, needs_compaction
 from mltgnt.memory._format import (
     MemoryEntry,
     parse_jsonl,
