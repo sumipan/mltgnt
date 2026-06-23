@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from mltgnt.agent import AgentRunner
+from mltgnt.execution import BaseRunner
 from mltgnt.interfaces.ooda import (
     ActDispatcher,
     ActResult,
@@ -23,7 +24,7 @@ _JST = ZoneInfo("Asia/Tokyo")
 _OODA_DEDUPE_RE = re.compile(r"ooda:([^:]+):(\d+)")
 
 
-class OODARunner:
+class OODARunner(BaseRunner):
     """Observe → Orient → Decide → Act → Feedback の 1 tick を実行する。"""
 
     def __init__(
@@ -48,7 +49,7 @@ class OODARunner:
         self._logger = logger or logging.getLogger(__name__)
         self._last_since: str | None = None
 
-    def run_tick(self) -> OODATickResult:
+    def tick(self, now: datetime | None = None) -> OODATickResult:  # noqa: ARG002
         events = self._observe_source.observe(since=self._last_since)
         self._last_since = _max_timestamp(events) or self._last_since
 
