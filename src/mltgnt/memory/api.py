@@ -67,6 +67,19 @@ def persona_memory_lock(
         timeout_sec = config.lock_timeout_sec
     lock_path = config.chat_dir / f".lock-memory-{persona_stem}"
     config.chat_dir.mkdir(parents=True, exist_ok=True)
+    if lock_path.exists():
+        try:
+            st = lock_path.stat()
+            if st.st_size == 0:
+                age = time.time() - st.st_mtime
+                if age > config.lock_stale_threshold_sec:
+                    lock_path.unlink(missing_ok=True)
+                    _log.warning(
+                        "Removed stale lock %s (age=%.0fs, threshold=%.0fs)",
+                        lock_path, age, config.lock_stale_threshold_sec,
+                    )
+        except OSError:
+            pass
     deadline = time.monotonic() + timeout_sec
     acquired = False
     while time.monotonic() < deadline:

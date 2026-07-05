@@ -50,6 +50,7 @@ class MemoryConfig:
     inject_max_entries: int = 12
     preferences_max_bytes: int = 5_120
     lock_timeout_sec: float = 30.0
+    lock_stale_threshold_sec: float = 300.0
     raw_days: int = 7
     mid_weeks: int = 3
     compact_threshold_bytes: int = 40_960

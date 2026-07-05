@@ -367,6 +367,29 @@ def test_persona_memory_lock_blocks_second_acquire(tmp_path: Path) -> None:
     t.join(timeout=3.0)
 
 
+def test_persona_memory_lock_removes_stale_lock(tmp_path: Path) -> None:
+    """閾値より古い空の lock ファイルは自動削除されてロック取得が成功する。"""
+    config = make_config(tmp_path)
+    config.chat_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = config.chat_dir / ".lock-memory-stale_test"
+    lock_path.touch()
+    import os
+    old_mtime = time.time() - 600
+    os.utime(lock_path, (old_mtime, old_mtime))
+    with persona_memory_lock(config, "stale_test", timeout_sec=1.0) as ok:
+        assert ok
+
+
+def test_persona_memory_lock_keeps_fresh_lock(tmp_path: Path) -> None:
+    """閾値未満の lock ファイルは削除されず、タイムアウトする。"""
+    config = make_config(tmp_path)
+    config.chat_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = config.chat_dir / ".lock-memory-fresh_test"
+    lock_path.touch()
+    with persona_memory_lock(config, "fresh_test", timeout_sec=0.1) as ok:
+        assert not ok
+
+
 # ---------------------------------------------------------------------------
 # memory_file_path
 # ---------------------------------------------------------------------------
