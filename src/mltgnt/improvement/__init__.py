@@ -1,6 +1,7 @@
 """mltgnt.improvement public API."""
 
 from mltgnt.improvement.analyzer import FailurePattern, analyze_failures
+from mltgnt.improvement.hub import ImprovementHub, ImprovementSource, MltgntSource
 from mltgnt.improvement.loop import CycleResult, run_improvement_cycle
 from mltgnt.improvement.patch import PatchResult
 from mltgnt.improvement.proposal import ImprovementProposal, generate_proposals
@@ -14,6 +15,9 @@ from mltgnt.improvement.rollback import (
 __all__ = [
     "FailurePattern",
     "analyze_failures",
+    "ImprovementHub",
+    "ImprovementSource",
+    "MltgntSource",
     "ImprovementProposal",
     "generate_proposals",
     "PatchResult",
