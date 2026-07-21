@@ -28,6 +28,7 @@ class SchedulePaths:
         self.planned_dir = state_dir / "planned"
         self.missed_dir = state_dir / "missed"
         self.failed_dir = state_dir / "failed"
+        self.skipped_dir = state_dir / "skipped"
         self.interval_dir = state_dir / "interval"
 
     def done_path(self, job_id: str, d: date) -> Path:
@@ -41,6 +42,9 @@ class SchedulePaths:
 
     def failed_path(self, job_id: str, d: date) -> Path:
         return self.failed_dir / f"{job_id}_{d.isoformat()}.failed"
+
+    def skipped_path(self, job_id: str, d: date) -> Path:
+        return self.skipped_dir / f"{job_id}_{d.isoformat()}.skipped"
 
     def interval_last_fired_path(self, job_id: str) -> Path:
         return self.interval_dir / f"{job_id}.last"
