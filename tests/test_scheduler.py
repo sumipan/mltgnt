@@ -1226,3 +1226,95 @@ def test_reload_jobs_keeps_previous_jobs_on_config_error(tmp_path: Path) -> None
     sch.reload_jobs()
     assert len(sch._jobs) == 1
     assert sch._jobs[0].id == "morning"
+
+
+# ---------------------------------------------------------------------------
+# Issue #2379: OnExitPolicy パース + SchedulePaths.skipped_path
+# ---------------------------------------------------------------------------
+
+from mltgnt.scheduler.models import OnExitPolicy  # noqa: E402
+from mltgnt.scheduler.state import SchedulePaths as _SchedulePaths  # noqa: E402
+
+
+def test_from_dict_on_exit_skip() -> None:
+    """`on_exit: {nonzero: skip}` → `OnExitPolicy(nonzero="skip")`。"""
+    job = ScheduleJob.from_dict({
+        "id": "j",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "noop",
+        "notify": "silent",
+        "on_exit": {"nonzero": "skip"},
+    })
+    assert job.on_exit == OnExitPolicy(nonzero="skip")
+
+
+def test_from_dict_on_exit_fail_explicit() -> None:
+    """`on_exit: {nonzero: fail}` → `OnExitPolicy(nonzero="fail")`。"""
+    job = ScheduleJob.from_dict({
+        "id": "j",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "noop",
+        "notify": "silent",
+        "on_exit": {"nonzero": "fail"},
+    })
+    assert job.on_exit == OnExitPolicy(nonzero="fail")
+
+
+def test_from_dict_on_exit_none() -> None:
+    """`on_exit` 未指定 → `job.on_exit is None`。"""
+    job = ScheduleJob.from_dict({
+        "id": "j",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "noop",
+        "notify": "silent",
+    })
+    assert job.on_exit is None
+
+
+def test_from_dict_on_exit_invalid_value() -> None:
+    """`on_exit: {nonzero: retry}` → `ValueError`。"""
+    with pytest.raises(ValueError, match="fail.*skip|skip.*fail"):
+        ScheduleJob.from_dict({
+            "id": "j",
+            "mode": "scheduled",
+            "every_day_at": "10:00",
+            "action": "noop",
+            "notify": "silent",
+            "on_exit": {"nonzero": "retry"},
+        })
+
+
+def test_from_dict_on_exit_empty_dict() -> None:
+    """`on_exit: {}` (空辞書) → `ValueError`。"""
+    with pytest.raises(ValueError, match="nonzero"):
+        ScheduleJob.from_dict({
+            "id": "j",
+            "mode": "scheduled",
+            "every_day_at": "10:00",
+            "action": "noop",
+            "notify": "silent",
+            "on_exit": {},
+        })
+
+
+def test_from_dict_on_exit_not_dict() -> None:
+    """`on_exit: "skip"` (文字列) → `ValueError`。"""
+    with pytest.raises(ValueError, match="dict"):
+        ScheduleJob.from_dict({
+            "id": "j",
+            "mode": "scheduled",
+            "every_day_at": "10:00",
+            "action": "noop",
+            "notify": "silent",
+            "on_exit": "skip",
+        })
+
+
+def test_skipped_path_format(tmp_path: Path) -> None:
+    """`SchedulePaths.skipped_path("j1", date(2026,1,1))` → `<state_dir>/skipped/j1_2026-01-01.skipped`。"""
+    p = _SchedulePaths(tmp_path / "state")
+    result = p.skipped_path("j1", date(2026, 1, 1))
+    assert result == tmp_path / "state" / "skipped" / "j1_2026-01-01.skipped"

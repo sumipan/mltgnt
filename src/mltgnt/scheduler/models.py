@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 
 
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+@dataclass
+class OnExitPolicy:
+    nonzero: Literal["fail", "skip"] = "fail"
 _DEFAULT_TIMEZONE = "Asia/Tokyo"
 
 
@@ -44,6 +49,7 @@ class ScheduleJob:
     depends_on: list[str] = field(default_factory=list)
     on_chain_failure: str = "abort_notify"  # abort_notify | silent
     every_week_on: Optional[str] = None  # "monday" | ... | "sunday" (None = daily)
+    on_exit: Optional[OnExitPolicy] = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any], *, default_timezone: str = _DEFAULT_TIMEZONE) -> "ScheduleJob":
@@ -119,6 +125,21 @@ class ScheduleJob:
                 f"job {jid}: every_week_on は {DAY_NAMES} のいずれかである必要があります: {every_week_on!r}"
             )
 
+        raw_on_exit = raw.get("on_exit")
+        if raw_on_exit is not None:
+            if not isinstance(raw_on_exit, dict):
+                raise ValueError(f"on_exit must be a dict, got {type(raw_on_exit).__name__}")
+            nonzero = raw_on_exit.get("nonzero")
+            if nonzero is None:
+                raise ValueError("on_exit.nonzero is required")
+            if nonzero not in ("fail", "skip"):
+                raise ValueError(
+                    f"on_exit.nonzero must be 'fail' or 'skip', got '{nonzero}'"
+                )
+            on_exit: Optional[OnExitPolicy] = OnExitPolicy(nonzero=nonzero)
+        else:
+            on_exit = None
+
         return cls(
             id=jid,
             mode=mode,
@@ -140,6 +161,7 @@ class ScheduleJob:
             depends_on=depends_on,
             on_chain_failure=on_chain_failure,
             every_week_on=every_week_on,
+            on_exit=on_exit,
         )
 
     def target_hhmm_scheduled(self) -> tuple[int, int]:
