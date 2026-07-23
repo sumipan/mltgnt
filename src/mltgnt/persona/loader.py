@@ -17,11 +17,11 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-PromptFilter = Callable[[str, dict[str, Any]], str]
-
 from mltgnt.bridges.files_adapter import md_read
 from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
+
+PromptFilter = Callable[[str, dict[str, Any]], str]
 
 _TZ = ZoneInfo("Asia/Tokyo")
 
