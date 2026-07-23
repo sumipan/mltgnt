@@ -12,9 +12,12 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 import yaml
+
+PromptFilter = Callable[[str, dict[str, Any]], str]
 
 from mltgnt.bridges.files_adapter import md_read
 from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
@@ -23,6 +26,11 @@ from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validat
 _TZ = ZoneInfo("Asia/Tokyo")
 
 logger = logging.getLogger(__name__)
+
+
+def _default_datetime_filter(accumulated: str, ctx: dict[str, Any]) -> str:
+    now: datetime = ctx.get("now") or datetime.now(_TZ)
+    return accumulated + f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -50,12 +58,24 @@ class Persona:
     weight_map: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
     )
+    _prompt_filters: list[tuple[str, PromptFilter]] = field(
+        default_factory=list, init=False, repr=False
+    )
 
     DEFAULT_OP_MODE: str = "critique"
 
+    def __post_init__(self) -> None:
+        self._prompt_filters = [("datetime", _default_datetime_filter)]
+
+    def register_prompt_filter(self, name: str, fn: PromptFilter) -> None:
+        self._prompt_filters = [(n, f) for n, f in self._prompt_filters if n != name]
+        self._prompt_filters.append((name, fn))
+
     def format_prompt(self, instruction: str, *, weight: str = "heavy") -> str:
-        now = datetime.now(_TZ)
-        datetime_line = f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
+        ctx: dict[str, Any] = {"now": datetime.now(_TZ), "persona": self}
+        prefix = ""
+        for _, fn in self._prompt_filters:
+            prefix = fn(prefix, ctx)
 
         def _weight_for(key: str) -> str | None:
             """weight_map の前方一致でセクションの weight を返す。マッチなしは None。"""
@@ -82,10 +102,10 @@ class Persona:
             body_part = "\n\n".join(selected)
 
         return (
-            f"あなたは以下のキャラクターになりきり、その口調・性格で応答してください。\n\n"
-            f"{datetime_line}"
+            "あなたは以下のキャラクターになりきり、その口調・性格で応答してください。\n\n"
+            f"{prefix}"
             f"{body_part}\n\n"
-            f"--- ユーザーからの指示 ---\n\n"
+            "--- ユーザーからの指示 ---\n\n"
             f"{instruction}"
         )
 
