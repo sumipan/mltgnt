@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ghdag.files import md_read
+from ghdag.pipeline.order import OrderBuilder
 
 from mltgnt.skill.models import SkillMeta
 
@@ -206,6 +207,7 @@ def enqueue_dag(
     request_id: str | None = None,
     skills: dict[str, SkillMeta] | None = None,
     permission: str | None = None,
+    order_builder: OrderBuilder | None = None,
 ) -> list[tuple[bool, str]]:
     """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
 
@@ -236,7 +238,7 @@ def enqueue_dag(
     )
     api = LLMPipelineAPI(
         pipeline_state=state,
-        order_builder=InlineOrderBuilder(),
+        order_builder=order_builder or InlineOrderBuilder(),
         queue_dir=str(jobs_dir),
     )
 
@@ -338,6 +340,7 @@ def enqueue_and_wait(
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
     permission: str | None = None,
+    order_builder: OrderBuilder | None = None,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
 
@@ -369,7 +372,7 @@ def enqueue_and_wait(
     )
     api = LLMPipelineAPI(
         pipeline_state=state,
-        order_builder=InlineOrderBuilder(),
+        order_builder=order_builder or InlineOrderBuilder(),
         queue_dir=str(jobs_dir),
     )
 
