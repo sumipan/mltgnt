@@ -9,7 +9,7 @@ def _expected() -> frozenset:
 
 
 def test_valid_engines_equals_engine_specs_minus_shell():
-    assert VALID_ENGINES == _expected()
+    assert _expected() == VALID_ENGINES
 
 
 def test_codex_in_valid_engines():
