@@ -227,7 +227,7 @@ def _str_or_none(val: Any) -> str | None:
 # エンジン・コマンドビルダー
 # ---------------------------------------------------------------------------
 
-VALID_ENGINES: frozenset[str] = frozenset({"gemini", "claude", "cursor"})
+VALID_ENGINES: frozenset[str] = frozenset({"claude", "gemini", "cursor", "codex"})
 
 SYSTEM_DEFAULT_ENGINE: str = "claude"
 SYSTEM_DEFAULT_MODEL: str = ""
