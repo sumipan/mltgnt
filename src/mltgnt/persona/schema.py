@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from ghdag.llm.spec import ENGINE_SPECS
+
 # ---------------------------------------------------------------------------
 # 既知の許容キー
 # ---------------------------------------------------------------------------
@@ -227,7 +229,7 @@ def _str_or_none(val: Any) -> str | None:
 # エンジン・コマンドビルダー
 # ---------------------------------------------------------------------------
 
-VALID_ENGINES: frozenset[str] = frozenset({"gemini", "claude", "cursor"})
+VALID_ENGINES: frozenset[str] = frozenset(ENGINE_SPECS.keys()) - {"shell"}
 
 SYSTEM_DEFAULT_ENGINE: str = "claude"
 SYSTEM_DEFAULT_MODEL: str = ""
