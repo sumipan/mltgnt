@@ -266,6 +266,13 @@ class PersonaScheduler(BaseRunner):
     def _is_failed(self, job: ScheduleJob, d: date) -> bool:
         return self.paths.failed_path(job.id, d).is_file()
 
+    def _mark_skipped(self, job: ScheduleJob, d: date) -> None:
+        p = self.paths.skipped_path(job.id, d)
+        atomic_write_text(p, f"skipped\t{datetime.now().isoformat(timespec='seconds')}\n")
+
+    def _is_skipped(self, job: ScheduleJob, d: date) -> bool:
+        return self.paths.skipped_path(job.id, d).is_file()
+
     def _read_failed_reason(self, job_id: str, d: date) -> str:
         """failed マーカーからエラー理由を読み取る。なければ空文字。"""
         p = self.paths.failed_path(job_id, d)
@@ -283,12 +290,15 @@ class PersonaScheduler(BaseRunner):
         return None
 
     def _check_depends(self, job: ScheduleJob, d: date) -> str:
-        """Returns: 'ok' | 'pending' | 'failed'"""
+        """Returns: 'ok' | 'pending' | 'failed' | 'skipped'"""
         for dep_id in job.depends_on:
             dep_done_path = self.paths.done_path(dep_id, d)
             dep_failed_path = self.paths.failed_path(dep_id, d)
+            dep_skipped_path = self.paths.skipped_path(dep_id, d)
             if dep_failed_path.is_file():
                 return "failed"
+            if dep_skipped_path.is_file():
+                return "skipped"
             if not dep_done_path.is_file():
                 return "pending"
         return "ok"
@@ -390,18 +400,23 @@ class PersonaScheduler(BaseRunner):
                         self._post(job, msg)
                     self._record_to_memory(job, msg, True, fired_at)
                 else:
-                    if job.mode != "interval":
-                        self._mark_failed(job, d, reason=msg[:400])
-                    _log.error("失敗: %s: %s", job.id, msg)
-                    snippet = msg.strip()[-400:] if msg.strip() else "(詳細なし)"
-                    if len(msg.strip()) > 400:
-                        snippet = "…" + snippet
-                    fail_text = (
-                        f"[secretary-schedule] ジョブ失敗 `{job.id}`\n"
-                        f"```\n{snippet}\n```"
-                    )
-                    self._post(job, fail_text)
-                    self._record_to_memory(job, fail_text, False, fired_at)
+                    if job.on_exit is not None and job.on_exit.nonzero == "skip":
+                        if job.mode != "interval":
+                            self._mark_skipped(job, d)
+                        _log.info("skip (on_exit): %s", job.id)
+                    else:
+                        if job.mode != "interval":
+                            self._mark_failed(job, d, reason=msg[:400])
+                        _log.error("失敗: %s: %s", job.id, msg)
+                        snippet = msg.strip()[-400:] if msg.strip() else "(詳細なし)"
+                        if len(msg.strip()) > 400:
+                            snippet = "…" + snippet
+                        fail_text = (
+                            f"[secretary-schedule] ジョブ失敗 `{job.id}`\n"
+                            f"```\n{snippet}\n```"
+                        )
+                        self._post(job, fail_text)
+                        self._record_to_memory(job, fail_text, False, fired_at)
             finally:
                 with self._run_lock:
                     self._running.discard(job.id)
@@ -445,6 +460,8 @@ class PersonaScheduler(BaseRunner):
                     continue
                 if self._is_failed(job, d):
                     continue
+                if self._is_skipped(job, d):
+                    continue
 
             if job.mode == "scheduled":
                 th, tm = job.target_hhmm_scheduled()
@@ -463,6 +480,9 @@ class PersonaScheduler(BaseRunner):
                         self._mark_failed(job, d)
                         if job.on_chain_failure == "abort_notify":
                             self._post(job, self._chain_failure_text(job, d))
+                    continue
+                if dep_status == "skipped":
+                    self._mark_skipped(job, d)
                     continue
                 if dep_status == "pending":
                     continue
@@ -505,6 +525,9 @@ class PersonaScheduler(BaseRunner):
                         if job.on_chain_failure == "abort_notify":
                             self._post(job, self._chain_failure_text(job, d))
                     continue
+                if dep_status == "skipped":
+                    self._mark_skipped(job, d)
+                    continue
                 if dep_status == "pending":
                     continue
                 with self._run_lock:
@@ -524,6 +547,9 @@ class PersonaScheduler(BaseRunner):
                         self._mark_failed(job, d)
                         if job.on_chain_failure == "abort_notify":
                             self._post(job, self._chain_failure_text(job, d))
+                    continue
+                if dep_status == "skipped":
+                    self._mark_skipped(job, d)
                     continue
                 if dep_status == "ok":
                     with self._run_lock:
