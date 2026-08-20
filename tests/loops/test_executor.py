@@ -31,5 +31,36 @@ def test_executor_delegates_to_bridge(tmp_path):
     ):
         assert executor.submit(prompt="p", idempotency_key="k") is sub
         mock_enqueue.assert_called_once()
+        assert mock_enqueue.call_args.kwargs["engine"] == "claude"
+        assert mock_enqueue.call_args.kwargs["model"] is None
         assert executor.poll(uuid="u1", result_filename="r1.md") is poll
         mock_poll.assert_called_once()
+
+
+def test_executor_submit_overrides_engine_model(tmp_path):
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    executor = GhdagSubtaskExecutor(
+        jobs_dir=jobs,
+        exec_done_dir=jobs / "done",
+        engine="claude",
+        model="",
+    )
+    sub = StepSubmission(
+        uuid="u1",
+        result_filename="r1.md",
+        submitted_at="2026-08-20T12:00:00+09:00",
+        reused=False,
+    )
+    with patch("mltgnt.loops.executor.enqueue_step", return_value=sub) as mock_enqueue:
+        assert (
+            executor.submit(
+                prompt="p",
+                idempotency_key="k",
+                engine="cursor",
+                model="auto",
+            )
+            is sub
+        )
+        assert mock_enqueue.call_args.kwargs["engine"] == "cursor"
+        assert mock_enqueue.call_args.kwargs["model"] == "auto"

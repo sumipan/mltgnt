@@ -255,3 +255,266 @@ def test_poll_errors_fail_after_three_consecutive_ticks(tmp_path):
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.status == "failed"
     assert state.consecutive_errors == 3
+
+
+def _persona_with_ops(*, engine: str = "", model: str = "") -> MagicMock:
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    persona.fm.engine = engine
+    persona.fm.model = model
+    return persona
+
+
+def _config_with_llm(tmp_path: Path, **overrides) -> LoopsConfig:
+    kwargs = dict(
+        objectives_dir=tmp_path / "objectives",
+        state_dir=tmp_path / "state",
+        status_dir=tmp_path / "status",
+        jobs_dir=tmp_path / "jobs",
+        exec_done_dir=tmp_path / "jobs" / "done",
+        persona_dir=tmp_path / "personas",
+        default_persona="mizuho",
+        fallback_channel="C-fallback",
+        llm_engine="cursor",
+        llm_model="auto",
+        subtask_engine="cursor",
+        subtask_model="auto",
+    )
+    kwargs.update(overrides)
+    return LoopsConfig(**kwargs)
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_clarify")
+def test_clarify_uses_persona_engine_model(mock_clarify, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops(engine="claude", model="claude-sonnet-4-6")
+    mock_clarify.return_value = (
+        prompts.ClarifyResponse(
+            clear=True, question="", reason="", reasoning="", uncertain_flag=False
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    cfg = _config_with_llm(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    engine.start_loop(_objective())
+    engine.tick()
+
+    mock_clarify.assert_called_once()
+    assert mock_clarify.call_args.kwargs["engine"] == "claude"
+    assert mock_clarify.call_args.kwargs["model"] == "claude-sonnet-4-6"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+def test_decompose_uses_persona_engine_model(mock_decompose, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops(engine="claude", model="claude-sonnet-4-6")
+    mock_decompose.return_value = (
+        prompts.DecomposeResponse(
+            subtasks=[prompts.DecomposeSubtask(id="s1", title="T", kind="auto", prompt="p")],
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    cfg = _config_with_llm(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="decomposing",
+        iteration=1,
+        max_iterations=5,
+        persona="tachikoma",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+
+    assert mock_decompose.call_args.kwargs["engine"] == "claude"
+    assert mock_decompose.call_args.kwargs["model"] == "claude-sonnet-4-6"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_evaluate")
+def test_evaluate_uses_persona_engine_model(mock_evaluate, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops(engine="claude", model="claude-sonnet-4-6")
+    mock_evaluate.return_value = (
+        prompts.EvaluateResponse(
+            achieved=True,
+            score=100,
+            summary="done",
+            next_focus="",
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    cfg = _config_with_llm(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="evaluating",
+        iteration=1,
+        max_iterations=5,
+        persona="tachikoma",
+        subtasks=[Subtask(id="s1", title="S1", kind="auto", prompt="p", status="success", result="ok")],
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+
+    assert mock_evaluate.call_args.kwargs["engine"] == "claude"
+    assert mock_evaluate.call_args.kwargs["model"] == "claude-sonnet-4-6"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_clarify")
+def test_clarify_falls_back_to_config_when_persona_ops_empty(mock_clarify, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops(engine="", model="")
+    mock_clarify.return_value = (
+        prompts.ClarifyResponse(
+            clear=True, question="", reason="", reasoning="", uncertain_flag=False
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    cfg = _config_with_llm(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    engine.start_loop(_objective())
+    engine.tick()
+
+    assert mock_clarify.call_args.kwargs["engine"] == "cursor"
+    assert mock_clarify.call_args.kwargs["model"] == "auto"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_submit_uses_persona_engine_model(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops(engine="claude", model="claude-sonnet-4-6")
+    executor = FakeExecutor()
+    cfg = _config_with_llm(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=executor,
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="tachikoma",
+        subtasks=[Subtask(id="s1", title="S1", kind="auto", prompt="do it", status="pending")],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+
+    assert len(executor.submit_kwargs) == 1
+    assert executor.submit_kwargs[0]["engine"] == "claude"
+    assert executor.submit_kwargs[0]["model"] == "claude-sonnet-4-6"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_submit_falls_back_to_subtask_config_when_persona_ops_empty(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops(engine="", model="")
+    executor = FakeExecutor()
+    cfg = _config_with_llm(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=executor,
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        subtasks=[Subtask(id="s1", title="S1", kind="auto", prompt="do it", status="pending")],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+
+    assert executor.submit_kwargs[0]["engine"] == "cursor"
+    assert executor.submit_kwargs[0]["model"] == "auto"
+
+
+def test_resolve_llm_falls_back_on_persona_load_failure_and_does_not_raise(tmp_path):
+    """読込失敗時は例外を上げず config にフォールバックする（呼び出し側はループ継続可能）。"""
+    cfg = _config_with_llm(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+    )
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="clarifying",
+        iteration=1,
+        max_iterations=5,
+        persona="missing",
+        created_at="t",
+        updated_at="t",
+    )
+    with patch("mltgnt.loops.engine.load_persona", side_effect=FileNotFoundError("missing")):
+        assert engine._resolve_llm_engine_model(state) == ("cursor", "auto")
+        assert engine._resolve_subtask_engine_model(state) == ("cursor", "auto")

@@ -186,6 +186,37 @@ class LoopsEngine(BaseRunner):
         persona = load_persona(persona_path)
         return persona.format_prompt(instruction, weight="heavy")
 
+    def _resolve_persona_engine_model(
+        self,
+        state: LoopState,
+        *,
+        fallback_engine: str,
+        fallback_model: str,
+    ) -> tuple[str, str]:
+        """ペルソナ fm.engine/model を優先し、空または読込失敗時は fallback を返す。"""
+        persona_path = self.config.persona_dir / f"{state.persona}.md"
+        try:
+            persona = load_persona(persona_path)
+            engine = persona.fm.engine or fallback_engine
+            model = persona.fm.model or fallback_model
+            return engine, model
+        except Exception:
+            return fallback_engine, fallback_model
+
+    def _resolve_llm_engine_model(self, state: LoopState) -> tuple[str, str]:
+        return self._resolve_persona_engine_model(
+            state,
+            fallback_engine=self.config.llm_engine,
+            fallback_model=self.config.llm_model,
+        )
+
+    def _resolve_subtask_engine_model(self, state: LoopState) -> tuple[str, str]:
+        return self._resolve_persona_engine_model(
+            state,
+            fallback_engine=self.config.subtask_engine,
+            fallback_model=self.config.subtask_model,
+        )
+
     def _ensure_persona(self, state: LoopState) -> bool:
         persona_path = self.config.persona_dir / f"{state.persona}.md"
         try:
@@ -362,10 +393,11 @@ class LoopsEngine(BaseRunner):
         )
         try:
             prompt = self._format_with_persona(state, instruction)
+            engine, model = self._resolve_llm_engine_model(state)
             resp, trace = prompts.run_clarify(
                 prompt,
-                engine=self.config.llm_engine,
-                model=self.config.llm_model,
+                engine=engine,
+                model=model,
             )
             self._log_llm(state, trace)
             self._clear_errors(state)
@@ -424,10 +456,11 @@ class LoopsEngine(BaseRunner):
         )
         try:
             prompt = self._format_with_persona(state, instruction)
+            engine, model = self._resolve_llm_engine_model(state)
             resp, trace = prompts.run_decompose(
                 prompt,
-                engine=self.config.llm_engine,
-                model=self.config.llm_model,
+                engine=engine,
+                model=model,
                 max_subtasks=self.config.max_subtasks_per_iteration,
             )
             self._log_llm(state, trace)
@@ -490,7 +523,13 @@ class LoopsEngine(BaseRunner):
         if st.status == "pending":
             key = f"loops:{state.loop_id}:i{state.iteration}:{st.id}"
             try:
-                submission = self.executor.submit(prompt=st.prompt, idempotency_key=key)
+                engine, model = self._resolve_subtask_engine_model(state)
+                submission = self.executor.submit(
+                    prompt=st.prompt,
+                    idempotency_key=key,
+                    engine=engine,
+                    model=model,
+                )
                 st.submission = submission
                 st.status = "running"
                 self._clear_errors(state)
@@ -580,10 +619,11 @@ class LoopsEngine(BaseRunner):
         )
         try:
             prompt = self._format_with_persona(state, instruction)
+            engine, model = self._resolve_llm_engine_model(state)
             resp, trace = prompts.run_evaluate(
                 prompt,
-                engine=self.config.llm_engine,
-                model=self.config.llm_model,
+                engine=engine,
+                model=model,
             )
             self._log_llm(state, trace)
             self._clear_errors(state)
