@@ -20,10 +20,13 @@ from mltgnt.bridges.ghdag_bridge import (
     DagStep,
     SkillIOTypeError,
     _extract_result_filename,
+    _loops_audit_context,
     _order_to_result_filename,
     _scheduler_audit_context,
     enqueue_and_wait,
     enqueue_dag,
+    enqueue_step,
+    poll_step,
     typecheck_dag,
 )
 from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMeta
@@ -1595,3 +1598,127 @@ class TestFanoutPermissionInheritance:
 
         assert len(results) == 1
         assert results[0][0] is True
+
+
+# ---------------------------------------------------------------------------
+# enqueue_step / poll_step — loops サブタスク実行（Issue #2511）
+# ---------------------------------------------------------------------------
+
+
+class TestEnqueueStep:
+    def test_enqueue_step_new_submission(self, tmp_path):
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir = _make_jobs_dir(tmp_path)
+        uid = str(uuid.uuid4())
+        exec_line = json.dumps(
+            {
+                "uuid": uid,
+                "result_path": f"jobs/20260820120000-claude-result-{uid}.md",
+                "idempotency_key": "loops:loop1:i1:s1",
+            }
+        )
+
+        with patch.object(LLMPipelineAPI, "submit", return_value=[exec_line]):
+            sub = enqueue_step(
+                prompt="do task",
+                engine="claude",
+                model=None,
+                idempotency_key="loops:loop1:i1:s1",
+                jobs_dir=jobs_dir,
+            )
+
+        assert sub.uuid == uid
+        assert sub.reused is False
+        assert sub.result_filename.endswith(".md")
+
+    def test_enqueue_step_idempotency_restore(self, tmp_path):
+        jobs_dir = _make_jobs_dir(tmp_path)
+        uid = str(uuid.uuid4())
+        record = {
+            "uuid": uid,
+            "result_path": f"jobs/20260820120000-claude-result-{uid}.md",
+            "idempotency_key": "loops:loop1:i1:s1",
+        }
+        (jobs_dir / "exec.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+        sub = enqueue_step(
+            prompt="do task",
+            engine="claude",
+            model=None,
+            idempotency_key="loops:loop1:i1:s1",
+            jobs_dir=jobs_dir,
+        )
+
+        assert sub.reused is True
+        assert sub.uuid == uid
+        lines = (jobs_dir / "exec.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+
+
+class TestPollStep:
+    def test_poll_pending(self, tmp_path):
+        jobs_dir = _make_jobs_dir(tmp_path)
+        done_dir = jobs_dir / "done"
+        done_dir.mkdir(exist_ok=True)
+        poll = poll_step(
+            exec_done_dir=done_dir,
+            jobs_dir=jobs_dir,
+            uuid="missing-uuid",
+            result_filename="r.md",
+        )
+        assert poll.status == "pending"
+
+    def test_poll_success(self, tmp_path):
+        jobs_dir = _make_jobs_dir(tmp_path)
+        done_dir = jobs_dir / "done"
+        done_dir.mkdir(exist_ok=True)
+        uid = str(uuid.uuid4())
+        (done_dir / uid).write_text("0\n", encoding="utf-8")
+
+        with patch(_MD_READ, return_value=MagicMock(content="# Result\nbody")):
+            poll = poll_step(
+                exec_done_dir=done_dir,
+                jobs_dir=jobs_dir,
+                uuid=uid,
+                result_filename="r.md",
+            )
+
+        assert poll.status == "success"
+        assert "body" in poll.content
+
+    def test_poll_failed_exit(self, tmp_path):
+        jobs_dir = _make_jobs_dir(tmp_path)
+        done_dir = jobs_dir / "done"
+        done_dir.mkdir(exist_ok=True)
+        uid = str(uuid.uuid4())
+        (done_dir / uid).write_text("1\nerror detail", encoding="utf-8")
+
+        poll = poll_step(
+            exec_done_dir=done_dir,
+            jobs_dir=jobs_dir,
+            uuid=uid,
+            result_filename="r.md",
+        )
+        assert poll.status == "failed_exit"
+        assert poll.content == "1"
+
+    def test_poll_rejected(self, tmp_path):
+        jobs_dir = _make_jobs_dir(tmp_path)
+        done_dir = jobs_dir / "done"
+        done_dir.mkdir(exist_ok=True)
+        uid = str(uuid.uuid4())
+        (done_dir / uid).write_text("REJECTED\n", encoding="utf-8")
+
+        poll = poll_step(
+            exec_done_dir=done_dir,
+            jobs_dir=jobs_dir,
+            uuid=uid,
+            result_filename="r.md",
+        )
+        assert poll.status == "rejected"
+
+    def test_loops_audit_context_source(self):
+        ctx = _loops_audit_context("corr-1")
+        assert ctx.source == "mltgnt-loops"
+        assert ctx.correlation_id == "corr-1"

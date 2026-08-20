@@ -7,7 +7,7 @@ include_external_packages = True
 name = mltgnt layered architecture
 type = layers
 layers =
-    daemon
+    daemon | loops
     scheduler | agent | routing
     persona | chat | skill | memory
     bridges
@@ -31,6 +31,7 @@ source_modules =
     mltgnt.chat
     mltgnt.skill
     mltgnt.memory
+    mltgnt.loops
 forbidden_modules =
     ghdag
 allow_indirect_imports = True
