@@ -176,6 +176,7 @@ Operational form: `mltgnt memory dream show Tachikoma --chat-dir /path/to/chat`
 | Exit code | Meaning |
 |-----------|---------|
 | 0 | Printed sections, or no dream file (`No dream summary found for …`) |
+| 2 | Argparse error (missing `persona` or `--chat-dir`) |
 
 ### `mltgnt memory dream forget`
 
@@ -198,6 +199,7 @@ Operational form: `mltgnt memory dream forget Tachikoma --category "Conversation
 |-----------|---------|
 | 0 | Category removed |
 | 1 | No dream summary, or category not found |
+| 2 | Argparse error (missing `persona`, `--category`, or `--chat-dir`) |
 
 ### `python -m mltgnt.kpi`
 
@@ -215,7 +217,7 @@ Operational form: `mltgnt memory dream forget Tachikoma --category "Conversation
 |-----------|---------|
 | 0 | Report written to stdout |
 | 1 | `FileNotFoundError` (`audit file not found: …`) |
-| 2 | Argparse error (missing `audit_path` or invalid `--format`) |
+| 2 | Argparse error (missing `audit_path`, invalid date, or invalid `--format`) |
 
 ### `python -m mltgnt.improvement`
 
@@ -234,7 +236,7 @@ Runs `run_improvement_cycle` and prints `format_cycle_report`.
 |-----------|---------|
 | 0 | Report printed |
 | 1 | `FileNotFoundError` from the cycle |
-| 2 | Argparse error (missing required flags) |
+| 2 | Argparse error (missing required flags or invalid `--since` / `--today`) |
 
 ---
 
@@ -332,7 +334,7 @@ Body must be non-empty. `cancelled` files are not started. Duplicate `id` values
 | Clarify rounds | `LoopsConfig.max_clarify_rounds` | `1..3`, default `3` |
 | Subtasks per iteration | `LoopsConfig.max_subtasks_per_iteration` | `1..5`, default `5` |
 | Subtask timeout | `LoopsConfig.subtask_timeout_sec` | `> 0`, default `1800.0` (30 minutes) |
-| Consecutive engine errors | `LoopsEngine._MAX_CONSECUTIVE_ERRORS` | `3` then `failed` |
+| Consecutive engine errors | `mltgnt.loops.engine._MAX_CONSECUTIVE_ERRORS` | `3` then `failed` |
 
 Status Markdown is written to `<status_dir>/<loop_id>.md`.
 
@@ -437,6 +439,7 @@ Every `os.environ` / `os.getenv` use in `src/mltgnt/**/*.py`:
 | `SchedulerConfig` | `mltgnt.config` | `schedule_yaml: Path`; `state_dir: Path`; `timezone="Asia/Tokyo"`; `salt=""`. |
 | `ChatConfig` | `mltgnt.config` | `persona_dir: Path`; `memory_dir: Path \| None = None`; `matcher_model="claude-haiku-4-5-20251001"`. |
 | `LoopsConfig` | `mltgnt.config` | Required: `objectives_dir`, `state_dir`, `status_dir`, `jobs_dir`, `exec_done_dir`, `persona_dir`, `default_persona`, `fallback_channel` (all paths except the two strings). Optional: `poll_interval_sec=10.0` (`> 0`); `max_iterations=5` (`1..10`); `max_clarify_rounds=3` (`1..3`); `max_subtasks_per_iteration=5` (`1..5`); `subtask_timeout_sec=1800.0` (`> 0`); `llm_engine="claude"`; `llm_model=""`; `subtask_engine="claude"`; `subtask_model=""`; `on_status_written: Callable[[Path], None] \| None = None`. Empty `default_persona` raises `ValueError`. **Not** listed in `mltgnt.config.__all__`; import `from mltgnt.config import LoopsConfig`. |
+| `RetryConfig` | `mltgnt.agent._runner` | `max_retries=2`; `base_delay_s=1.0`; `max_delay_s=30.0`. Optional retry policy accepted by `AgentRunner(retry_config=...)`; it is not exported from `mltgnt.agent.__all__`. |
 | `OODAConfig` | `mltgnt.interfaces.ooda` / `mltgnt.ooda` | `max_recovery_attempts=3`; `escalate_after=2`; `observe_filter: str \| None = None`. |
 
 `mltgnt.config.__all__` is `DEFAULT_WEIGHT_MAP`, `MemoryConfig`, `PersonaConfig`, `SchedulerConfig`, `ChatConfig`.
