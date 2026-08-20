@@ -406,11 +406,13 @@ class LoopsEngine(BaseRunner):
                 self._log_llm(state, exc.trace)
         except Exception as log_exc:
             logger.warning("failed to log llm trace during error record: %s", log_exc)
+        errors_before_record = state.consecutive_errors
         try:
             self._record_error(state, "llm_error", {"phase": phase, "error": summary})
         except Exception as record_exc:
             logger.warning("failed to record llm_error event: %s", record_exc)
-            state.consecutive_errors += 1
+            if state.consecutive_errors == errors_before_record:
+                state.consecutive_errors += 1
             if state.consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
                 state.status = "failed"
 

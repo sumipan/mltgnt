@@ -675,3 +675,27 @@ def test_record_llm_error_increments_once_per_tick(mock_clarify, mock_persona, t
     assert state is not None
     assert state.consecutive_errors == 1
     assert state.status == "clarifying"
+
+
+def test_record_llm_error_increments_once_when_event_write_fails(tmp_path):
+    """イベント記録失敗時も consecutive_errors を二重加算しない。"""
+    engine = _engine(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="clarifying",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        created_at="t",
+        updated_at="t",
+    )
+
+    with patch("mltgnt.loops.engine.store.append_event", side_effect=OSError("disk full")):
+        engine._record_llm_error(state, "clarify", RuntimeError("llm failed"))
+
+    assert state.consecutive_errors == 1
+    assert state.status == "clarifying"
