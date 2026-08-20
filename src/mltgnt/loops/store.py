@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -37,12 +38,27 @@ def loop_state_dir(state_dir: Path, loop_id: str) -> Path:
 
 def atomic_write_json(path: Path, data: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    tmp_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            tmp_name = f.name
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        if tmp_name is not None:
+            try:
+                Path(tmp_name).unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def save_state(state_dir: Path, state: LoopState) -> None:
@@ -136,6 +152,14 @@ def list_inbox_messages(state_dir: Path, loop_id: str) -> list[InboxMessage]:
                 logger.warning("skipping inbox missing %s: %s", field, path)
                 break
         else:
+            if data["kind"] not in ("answer", "cancel"):
+                logger.warning("skipping inbox invalid kind: %s", path)
+                continue
+            if not all(isinstance(data[field], str) for field in (
+                "kind", "message_id", "question_id", "text", "received_at"
+            )):
+                logger.warning("skipping inbox with non-string field: %s", path)
+                continue
             messages.append(
                 InboxMessage(
                     kind=str(data["kind"]),

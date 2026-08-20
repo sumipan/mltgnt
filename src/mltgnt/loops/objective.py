@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from yaml import YAMLError
+
 from mltgnt.bridges.files_adapter import md_read
 
 logger = logging.getLogger("mltgnt.loops.objective")
@@ -72,7 +74,7 @@ def parse_objective(
     stem = path.stem
     try:
         md = md_read(path.name, repo_root=path.parent)
-    except OSError as exc:
+    except (OSError, YAMLError) as exc:
         return ObjectiveError(loop_id=stem, message=f"read failed: {exc}", path=path)
 
     meta = md.frontmatter or {}

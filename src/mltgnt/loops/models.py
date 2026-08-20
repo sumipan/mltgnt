@@ -103,6 +103,7 @@ class LoopState:
     delivered_events: dict[str, bool] = field(default_factory=dict)
     content_change_warning: str = ""
     next_focus: str = ""
+    clarification_context: list[str] = field(default_factory=list)
 
     def is_terminal(self) -> bool:
         return self.status in TERMINAL_STATUSES
@@ -123,8 +124,31 @@ class LoopState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopState:
+        required_types: dict[str, type] = {
+            "loop_id": str,
+            "objective_path": str,
+            "objective_hash": str,
+            "title": str,
+            "body": str,
+            "status": str,
+            "iteration": int,
+            "max_iterations": int,
+            "persona": str,
+        }
+        for key, expected in required_types.items():
+            if key not in data or not isinstance(data[key], expected):
+                raise ValueError(f"{key} must be {expected.__name__}")
+            if expected is int and isinstance(data[key], bool):
+                raise ValueError(f"{key} must be int, not bool")
         if data.get("schema_version", 1) != SCHEMA_VERSION:
             raise ValueError(f"unsupported schema_version: {data.get('schema_version')}")
+        if data["status"] not in {
+            "clarifying", "awaiting_answer", "decomposing", "executing",
+            "awaiting_human", "evaluating", "done", "failed", "cancelled",
+        }:
+            raise ValueError(f"invalid status: {data['status']!r}")
+        if data["iteration"] < 0 or data["max_iterations"] < 0:
+            raise ValueError("iteration values must be non-negative")
 
         thread = None
         if data.get("thread"):
@@ -159,6 +183,7 @@ class LoopState:
             delivered_events=dict(data.get("delivered_events", {})),
             content_change_warning=str(data.get("content_change_warning", "")),
             next_focus=str(data.get("next_focus", "")),
+            clarification_context=[str(item) for item in data.get("clarification_context", [])],
         )
 
 

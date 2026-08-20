@@ -90,22 +90,36 @@ class LoopsComponent:
             return
         self._snapshot = current
 
-        seen_ids: set[str] = set()
         new_objectives: dict[str, Objective] = {}
         new_errors: dict[str, ObjectiveError] = {}
 
-        for path in paths:
-            result = parse_objective(
+        parsed: list[Objective | ObjectiveError] = [
+            parse_objective(
                 path,
                 default_persona=self._config.default_persona,
                 default_max_iterations=self._config.max_iterations,
-                known_ids=seen_ids,
             )
+            for path in paths
+        ]
+        id_counts: dict[str, int] = {}
+        for result in parsed:
+            if isinstance(result, Objective):
+                id_counts[result.loop_id] = id_counts.get(result.loop_id, 0) + 1
+
+        for result in parsed:
             if isinstance(result, ObjectiveError):
                 new_errors[result.loop_id] = result
                 self._write_error_status(result)
                 continue
-            seen_ids.add(result.loop_id)
+            if id_counts[result.loop_id] > 1:
+                err = ObjectiveError(
+                    loop_id=result.loop_id,
+                    message=f"duplicate id: {result.loop_id!r}",
+                    path=result.path,
+                )
+                new_errors[result.loop_id] = err
+                self._write_error_status(err)
+                continue
             new_objectives[result.loop_id] = result
 
         for loop_id, obj in new_objectives.items():
@@ -138,7 +152,16 @@ class LoopsComponent:
         for loop_id in store.list_restorable_loops(self._config.state_dir):
             try:
                 state = store.load_state(self._config.state_dir, loop_id)
-            except ValueError:
+            except ValueError as exc:
+                store.mark_state_corrupt(self._config.state_dir, loop_id, str(exc))
+                try:
+                    self._engine.human_channel.notify_fallback(
+                        loop_id=loop_id,
+                        text=f"Corrupt loop state isolated: {exc}",
+                        event_id=f"loops:{loop_id}:fallback:corrupt-state",
+                    )
+                except Exception:
+                    logger.exception("failed to notify corrupt state for %s", loop_id)
                 continue
             if state and not state.is_terminal():
                 logger.info("restored non-terminal loop: %s", loop_id)

@@ -1,6 +1,8 @@
 """tests/loops/test_prompts.py — JSON 抽出・契約検証テスト。"""
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from mltgnt.loops import prompts
@@ -42,3 +44,16 @@ def test_validate_evaluate_next_focus_required():
         prompts._validate_evaluate(
             {"achieved": False, "score": 50, "summary": "s", "next_focus": "", "reasoning": "", "uncertain_flag": False}
         )
+
+
+def test_failed_json_retry_preserves_failure_trace():
+    with patch("mltgnt.loops.prompts.call_llm", side_effect=["not json", "still not json"]):
+        with pytest.raises(prompts.LlmCallError) as exc_info:
+            prompts.run_clarify("prompt", engine="claude", model="model")
+
+    trace = exc_info.value.trace
+    assert trace.input == "prompt"
+    assert trace.raw_output == "still not json"
+    assert trace.error
+    assert trace.metadata["retry"] is True
+    assert trace.metadata["token_usage_reason"]

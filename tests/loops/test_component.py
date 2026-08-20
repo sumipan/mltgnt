@@ -45,3 +45,27 @@ def test_excludes_subdirectory(tmp_path):
     files = list_objective_files(cfg.objectives_dir)
     assert len(files) == 1
     assert files[0].name == "visible.md"
+
+
+def test_duplicate_ids_do_not_start_either_objective(tmp_path):
+    cfg = _config(tmp_path)
+    (cfg.objectives_dir / "one.md").write_text("---\nid: duplicate\n---\nbody one", encoding="utf-8")
+    (cfg.objectives_dir / "two.md").write_text("---\nid: duplicate\n---\nbody two", encoding="utf-8")
+    comp = LoopsComponent(cfg, FakeHumanChannel(), FakeExecutor())
+
+    comp._refresh_objectives(initial=True)
+
+    assert "duplicate" not in comp._objectives
+    assert not (cfg.state_dir / "duplicate" / "state.json").exists()
+    assert "duplicate id" in (cfg.status_dir / "duplicate.md").read_text(encoding="utf-8")
+
+
+def test_malformed_yaml_writes_error_status(tmp_path):
+    cfg = _config(tmp_path)
+    (cfg.objectives_dir / "broken.md").write_text("---\nid: [unterminated\n---\nbody", encoding="utf-8")
+    comp = LoopsComponent(cfg, FakeHumanChannel(), FakeExecutor())
+
+    comp._refresh_objectives(initial=True)
+
+    assert "broken" in comp._errors
+    assert (cfg.status_dir / "broken.md").exists()

@@ -59,6 +59,14 @@ class LlmTrace:
     error: str | None = None
 
 
+class LlmCallError(ValueError):
+    """失敗時のトレースを失わない LLM 呼び出しエラー。"""
+
+    def __init__(self, message: str, trace: LlmTrace) -> None:
+        super().__init__(message)
+        self.trace = trace
+
+
 def prompt_version() -> str:
     try:
         out = subprocess.check_output(
@@ -177,8 +185,34 @@ def _call_with_retry(
     trace_id = f"loops-{int(time.time() * 1000)}"
     config = {"engine": engine, "model": model, "prompt_version": version}
 
+    def _metadata(*, retry: bool) -> dict[str, Any]:
+        return {
+            "duration_ms": int((time.monotonic() - start) * 1000),
+            "trace_id": trace_id,
+            "token_usage": None,
+            "token_usage_reason": "call_llm does not expose token usage",
+            "retry": retry,
+        }
+
+    def _failure_trace(raw: str, error: str, *, retry: bool) -> LlmTrace:
+        return LlmTrace(
+            input=prompt,
+            raw_output=raw,
+            parsed=None,
+            reasoning="",
+            config=config,
+            metadata=_metadata(retry=retry),
+            uncertain_flag=False,
+            error=error,
+        )
+
     def _attempt(p: str) -> tuple[str, dict[str, Any] | None, str, str | None]:
-        raw = call_llm(p, engine=engine, model=model)
+        try:
+            raw = call_llm(p, engine=engine, model=model)
+        except Exception as exc:
+            raise LlmCallError(
+                str(exc), _failure_trace("", str(exc), retry=p != prompt)
+            ) from exc
         try:
             parsed = extract_json(raw)
             validator(parsed)
@@ -190,24 +224,9 @@ def _call_with_retry(
     raw, parsed, reasoning, err = _attempt(prompt)
     if err is not None:
         raw2, parsed2, reasoning2, err2 = _attempt(prompt + retry_suffix)
-        duration_ms = int((time.monotonic() - start) * 1000)
         if err2 is not None:
-            trace = LlmTrace(
-                input=prompt,
-                raw_output=raw2,
-                parsed=None,
-                reasoning="",
-                config=config,
-                metadata={
-                    "duration_ms": duration_ms,
-                    "trace_id": trace_id,
-                    "token_usage": None,
-                    "retry": True,
-                },
-                uncertain_flag=False,
-                error=err2,
-            )
-            raise ValueError(err2) from None
+            trace = _failure_trace(raw2, err2, retry=True)
+            raise LlmCallError(err2, trace) from None
         result = validator(parsed2)  # type: ignore[arg-type]
         trace = LlmTrace(
             input=prompt,
@@ -215,17 +234,11 @@ def _call_with_retry(
             parsed=parsed2,
             reasoning=reasoning2,
             config=config,
-            metadata={
-                "duration_ms": duration_ms,
-                "trace_id": trace_id,
-                "token_usage": None,
-                "retry": True,
-            },
+            metadata=_metadata(retry=True),
             uncertain_flag=bool(parsed2.get("uncertain_flag", False)) if parsed2 else False,
         )
         return result, trace
 
-    duration_ms = int((time.monotonic() - start) * 1000)
     result = validator(parsed)  # type: ignore[arg-type]
     trace = LlmTrace(
         input=prompt,
@@ -233,7 +246,7 @@ def _call_with_retry(
         parsed=parsed,
         reasoning=reasoning,
         config=config,
-        metadata={"duration_ms": duration_ms, "trace_id": trace_id, "token_usage": None, "retry": False},
+        metadata=_metadata(retry=False),
         uncertain_flag=bool(parsed.get("uncertain_flag", False)) if parsed else False,
     )
     return result, trace
@@ -272,18 +285,36 @@ def run_evaluate(
     return _call_with_retry(instruction, engine=engine, model=model, validator=_validate_evaluate)
 
 
-def build_clarify_instruction(body: str, *, round_num: int, max_rounds: int) -> str:
+def build_clarify_instruction(
+    body: str,
+    *,
+    round_num: int,
+    max_rounds: int,
+    clarification_context: list[str] | None = None,
+) -> str:
+    context = ""
+    if clarification_context:
+        context = "\nClarification history:\n" + "\n".join(clarification_context) + "\n"
     return (
         f"You are clarifying an objective (round {round_num}/{max_rounds}).\n"
-        f"Objective:\n{body}\n\n"
+        f"Objective:\n{body}\n{context}\n"
         "Respond with JSON: "
         '{"clear": bool, "question": str|null, "reason": str, '
         '"reasoning": str, "uncertain_flag": bool}'
     )
 
 
-def build_decompose_instruction(body: str, *, iteration: int, max_subtasks: int, next_focus: str = "") -> str:
+def build_decompose_instruction(
+    body: str,
+    *,
+    iteration: int,
+    max_subtasks: int,
+    next_focus: str = "",
+    clarification_context: list[str] | None = None,
+) -> str:
     extra = f"\nFocus for this iteration: {next_focus}\n" if next_focus else ""
+    if clarification_context:
+        extra += "\nClarification history:\n" + "\n".join(clarification_context) + "\n"
     return (
         f"Decompose the objective into subtasks (iteration {iteration}). "
         f"Maximum {max_subtasks} subtasks.\n"

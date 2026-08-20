@@ -194,12 +194,23 @@ class LoopsEngine(BaseRunner):
         except Exception as exc:
             eid = _event_id(state.loop_id, "fallback", "persona")
             if not state.delivered_events.get(eid):
-                self.human_channel.notify_fallback(
-                    loop_id=state.loop_id,
-                    text=f"Persona {state.persona!r} not found: {exc}",
-                    event_id=eid,
-                )
-                state.delivered_events[eid] = True
+                state.delivered_events[eid] = False
+                store.save_state(self.config.state_dir, state)
+                try:
+                    self.human_channel.notify_fallback(
+                        loop_id=state.loop_id,
+                        text=f"Persona {state.persona!r} not found: {exc}",
+                        event_id=eid,
+                    )
+                    state.delivered_events[eid] = True
+                except Exception as notify_exc:
+                    store.append_event(
+                        self.config.state_dir,
+                        state.loop_id,
+                        "channel_error",
+                        {"action": "notify_fallback", "error": str(notify_exc)},
+                        iteration=state.iteration,
+                    )
             state.status = "failed"
             return False
 
@@ -210,6 +221,8 @@ class LoopsEngine(BaseRunner):
         if state.delivered_events.get(eid) and state.thread:
             return state.thread
         try:
+            state.delivered_events[eid] = False
+            store.save_state(self.config.state_dir, state)
             ref = self.human_channel.open_thread(
                 loop_id=state.loop_id,
                 persona=state.persona,
@@ -221,6 +234,8 @@ class LoopsEngine(BaseRunner):
                 state.thread = ref
                 state.delivered_events[eid] = True
                 self._clear_errors(state)
+            else:
+                self._record_error(state, "channel_error", {"action": "open_thread", "error": "no thread returned"})
             return ref
         except Exception as exc:
             self._record_error(state, "channel_error", {"action": "open_thread", "error": str(exc)})
@@ -234,6 +249,9 @@ class LoopsEngine(BaseRunner):
         if state.delivered_events.get(eid):
             return True
         try:
+            state.delivered_events[eid] = False
+            state.pending_question = PendingQuestion(question_id=question_id, text=text, kind=kind)
+            store.save_state(self.config.state_dir, state)
             ok = self.human_channel.ask(
                 loop_id=state.loop_id,
                 persona=state.persona,
@@ -244,7 +262,6 @@ class LoopsEngine(BaseRunner):
             )
             if ok:
                 state.delivered_events[eid] = True
-                state.pending_question = PendingQuestion(question_id=question_id, text=text, kind=kind)
                 self._clear_errors(state)
             return ok
         except Exception as exc:
@@ -259,6 +276,8 @@ class LoopsEngine(BaseRunner):
         if state.delivered_events.get(eid):
             return
         try:
+            state.delivered_events[eid] = False
+            store.save_state(self.config.state_dir, state)
             ok = self.human_channel.notify(
                 loop_id=state.loop_id,
                 persona=state.persona,
@@ -293,6 +312,8 @@ class LoopsEngine(BaseRunner):
         if state.delivered_events.get(eid):
             return
         try:
+            state.delivered_events[eid] = False
+            store.save_state(self.config.state_dir, state)
             ok = self.human_channel.close_thread(
                 loop_id=state.loop_id,
                 persona=state.persona,
@@ -321,6 +342,11 @@ class LoopsEngine(BaseRunner):
             iteration=state.iteration,
         )
 
+    def _record_llm_error(self, state: LoopState, phase: str, exc: Exception) -> None:
+        if isinstance(exc, prompts.LlmCallError):
+            self._log_llm(state, exc.trace)
+        self._record_error(state, "llm_error", {"phase": phase, "error": str(exc)})
+
     def _tick_clarifying(self, state: LoopState) -> bool:
         if not self._ensure_persona(state):
             return True
@@ -332,6 +358,7 @@ class LoopsEngine(BaseRunner):
             state.body,
             round_num=state.clarify_round + 1,
             max_rounds=self.config.max_clarify_rounds,
+            clarification_context=state.clarification_context,
         )
         try:
             prompt = self._format_with_persona(state, instruction)
@@ -343,7 +370,7 @@ class LoopsEngine(BaseRunner):
             self._log_llm(state, trace)
             self._clear_errors(state)
         except Exception as exc:
-            self._record_error(state, "llm_error", {"phase": "clarify", "error": str(exc)})
+            self._record_llm_error(state, "clarify", exc)
             return True
 
         if resp.clear:
@@ -370,6 +397,9 @@ class LoopsEngine(BaseRunner):
             if msg.kind != "answer" or msg.question_id != pending.question_id:
                 continue
             store.consume_inbox_message(self.config.state_dir, state.loop_id, msg.filename)
+            state.clarification_context.append(
+                f"Q: {pending.text}\nA: {msg.text}"
+            )
             state.pending_question = None
             state.status = "clarifying"
             store.append_event(
@@ -390,6 +420,7 @@ class LoopsEngine(BaseRunner):
             iteration=state.iteration,
             max_subtasks=self.config.max_subtasks_per_iteration,
             next_focus=state.next_focus,
+            clarification_context=state.clarification_context,
         )
         try:
             prompt = self._format_with_persona(state, instruction)
@@ -402,7 +433,7 @@ class LoopsEngine(BaseRunner):
             self._log_llm(state, trace)
             self._clear_errors(state)
         except Exception as exc:
-            self._record_error(state, "llm_error", {"phase": "decompose", "error": str(exc)})
+            self._record_llm_error(state, "decompose", exc)
             return True
 
         state.subtasks = [
@@ -469,7 +500,12 @@ class LoopsEngine(BaseRunner):
 
         if st.status == "running" and st.submission is not None:
             sub = st.submission
-            poll = self.executor.poll(uuid=sub.uuid, result_filename=sub.result_filename)
+            try:
+                poll = self.executor.poll(uuid=sub.uuid, result_filename=sub.result_filename)
+                self._clear_errors(state)
+            except Exception as exc:
+                self._record_error(state, "executor_error", {"action": "poll", "error": str(exc)})
+                return True
 
             if poll.status == "pending":
                 if self._subtask_timed_out(sub.submitted_at):
@@ -552,7 +588,7 @@ class LoopsEngine(BaseRunner):
             self._log_llm(state, trace)
             self._clear_errors(state)
         except Exception as exc:
-            self._record_error(state, "llm_error", {"phase": "evaluate", "error": str(exc)})
+            self._record_llm_error(state, "evaluate", exc)
             return True
 
         if resp.achieved:

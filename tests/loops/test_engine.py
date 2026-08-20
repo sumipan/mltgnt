@@ -97,6 +97,7 @@ def test_clarify_ask_then_answer(mock_clarify, mock_persona, tmp_path):
     engine.tick()
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.status == "clarifying"
+    assert state.clarification_context == ["Q: 公開日はいつですか\nA: 来月"]
 
 
 @patch("mltgnt.loops.engine.load_persona")
@@ -214,3 +215,43 @@ def test_consecutive_errors_reset(mock_persona, tmp_path):
 
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.consecutive_errors == 0
+
+
+def test_poll_errors_fail_after_three_consecutive_ticks(tmp_path):
+    executor = FakeExecutor()
+    executor.poll = MagicMock(side_effect=RuntimeError("poll unavailable"))
+    engine = _engine(tmp_path, executor=executor)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        subtasks=[Subtask(
+            id="s1",
+            title="S1",
+            kind="auto",
+            prompt="do it",
+            status="running",
+            submission=StepSubmission(
+                uuid="u1",
+                result_filename="r1.md",
+                submitted_at="2026-08-20T12:00:00+09:00",
+                reused=False,
+            ),
+        )],
+        current_subtask_id="s1",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+
+    engine.tick()
+    engine.tick()
+    engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.status == "failed"
+    assert state.consecutive_errors == 3

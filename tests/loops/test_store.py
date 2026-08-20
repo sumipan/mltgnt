@@ -6,6 +6,7 @@ from pathlib import Path
 
 from mltgnt.loops.models import LoopState, state_from_json, state_to_json
 from mltgnt.loops import store
+import pytest
 
 
 def _sample_state(loop_id: str = "test") -> LoopState:
@@ -73,3 +74,16 @@ def test_list_restorable_loops(tmp_path):
     state_dir = tmp_path / "state"
     store.save_state(state_dir, _sample_state("a"))
     assert "a" in store.list_restorable_loops(state_dir)
+
+
+def test_state_load_rejects_wrong_required_type(tmp_path):
+    state_dir = tmp_path / "state"
+    state = _sample_state()
+    data = state.to_dict()
+    data["iteration"] = "1"
+    path = store.loop_state_dir(state_dir, "test") / "state.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="iteration must be int"):
+        store.load_state(state_dir, "test")
