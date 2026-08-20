@@ -59,9 +59,20 @@ class FakeExecutor:
     submissions: list[StepSubmission] = field(default_factory=list)
     poll_results: dict[str, StepPoll] = field(default_factory=dict)
     submit_calls: list[str] = field(default_factory=list)
+    submit_kwargs: list[dict] = field(default_factory=list)
 
-    def submit(self, *, prompt: str, idempotency_key: str) -> StepSubmission:
+    def submit(
+        self,
+        *,
+        prompt: str,
+        idempotency_key: str,
+        engine: str | None = None,
+        model: str | None = None,
+    ) -> StepSubmission:
         self.submit_calls.append(idempotency_key)
+        self.submit_kwargs.append(
+            {"prompt": prompt, "idempotency_key": idempotency_key, "engine": engine, "model": model}
+        )
         if self.submissions:
             return self.submissions.pop(0)
         return StepSubmission(

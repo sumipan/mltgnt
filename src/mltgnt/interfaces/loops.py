@@ -97,6 +97,13 @@ class HumanChannel(Protocol):
 
 
 class SubtaskExecutor(Protocol):
-    def submit(self, *, prompt: str, idempotency_key: str) -> StepSubmission: ...
+    def submit(
+        self,
+        *,
+        prompt: str,
+        idempotency_key: str,
+        engine: str | None = None,
+        model: str | None = None,
+    ) -> StepSubmission: ...
 
     def poll(self, *, uuid: str, result_filename: str) -> StepPoll: ...

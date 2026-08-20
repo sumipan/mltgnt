@@ -16,11 +16,20 @@ class GhdagSubtaskExecutor:
     model: str
     correlation_id: str | None = None
 
-    def submit(self, *, prompt: str, idempotency_key: str) -> StepSubmission:
+    def submit(
+        self,
+        *,
+        prompt: str,
+        idempotency_key: str,
+        engine: str | None = None,
+        model: str | None = None,
+    ) -> StepSubmission:
+        resolved_engine = engine if engine is not None else self.engine
+        resolved_model = model if model is not None else self.model
         return enqueue_step(
             prompt=prompt,
-            engine=self.engine,
-            model=self.model or None,
+            engine=resolved_engine,
+            model=resolved_model or None,
             idempotency_key=idempotency_key,
             jobs_dir=self.jobs_dir,
             correlation_id=self.correlation_id,
