@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.18.0
+
+### Added
+
+- **`mltgnt.loops`**: Objective 駆動ループ実行（clarify → decompose → execute → evaluate）
+- **`LoopsComponent`**: `DaemonComponent` 準拠の Objective snapshot ポーリング（既定 10 秒）
+- **`LoopsConfig`**: objectives/state/status/jobs パス、LLM/subtask エンジン、上限値
+- **`HumanChannel` / `SubtaskExecutor` Protocol**: Slack/ghdag 実装はホスト（nexus #2512）側
+- **`enqueue_step` / `poll_step`**: ghdag_bridge の非ブロックサブタスク投入・完了確認
+- **status Markdown**: `<status_dir>/<loop_id>.md` に人間向け現在状態を出力
+
+### Compatibility
+
+- 後方互換。既存 scheduler / chat / OODA API に変更なし。
+- nexus ホスト配線は #2512 で別途実装。
+
+### Operational limits
+
+- `max_iterations`: 1..10（既定 5）
+- `max_clarify_rounds`: 1..3（既定 3）
+- `max_subtasks_per_iteration`: 1..5（既定 5）
+- `subtask_timeout_sec`: 1800 秒（30 分）
+
 ## Phase Progress
 
 ### Phase D: exit_code routing ✓

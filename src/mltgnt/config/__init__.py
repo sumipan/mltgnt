@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 __all__ = [
     "DEFAULT_WEIGHT_MAP",
@@ -79,3 +80,40 @@ class ChatConfig:
     persona_dir: Path
     memory_dir: Path | None = None
     matcher_model: str = "claude-haiku-4-5-20251001"
+
+
+@dataclass(frozen=True)
+class LoopsConfig:
+    """loops コンポーネントに必要なパス・閾値。"""
+    objectives_dir: Path
+    state_dir: Path
+    status_dir: Path
+    jobs_dir: Path
+    exec_done_dir: Path
+    persona_dir: Path
+    default_persona: str
+    fallback_channel: str
+    poll_interval_sec: float = 10.0
+    max_iterations: int = 5
+    max_clarify_rounds: int = 3
+    max_subtasks_per_iteration: int = 5
+    subtask_timeout_sec: float = 1800.0
+    llm_engine: str = "claude"
+    llm_model: str = ""
+    subtask_engine: str = "claude"
+    subtask_model: str = ""
+    on_status_written: Callable[[Path], None] | None = None
+
+    def __post_init__(self) -> None:
+        if self.poll_interval_sec <= 0:
+            raise ValueError("poll_interval_sec must be positive")
+        if self.subtask_timeout_sec <= 0:
+            raise ValueError("subtask_timeout_sec must be positive")
+        if not (1 <= self.max_iterations <= 10):
+            raise ValueError("max_iterations must be in 1..10")
+        if not (1 <= self.max_clarify_rounds <= 3):
+            raise ValueError("max_clarify_rounds must be in 1..3")
+        if not (1 <= self.max_subtasks_per_iteration <= 5):
+            raise ValueError("max_subtasks_per_iteration must be in 1..5")
+        if not self.default_persona.strip():
+            raise ValueError("default_persona must not be empty")

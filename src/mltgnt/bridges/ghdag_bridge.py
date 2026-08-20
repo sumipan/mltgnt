@@ -11,11 +11,15 @@ import re
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+from typing import cast
+from zoneinfo import ZoneInfo
 
 from ghdag.files import md_read
 from ghdag.pipeline.order import OrderBuilder
 
+from mltgnt.interfaces.loops import StepPoll, StepStatus, StepSubmission
 from mltgnt.skill.models import SkillMeta
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -36,6 +40,24 @@ class DagStep:
 
 class SkillIOTypeError(TypeError):
     """compose-time typecheck で検出されたパイプ型不整合。"""
+
+
+def _loops_audit_context(
+    correlation_id: str | None,
+    parent_correlation_id: str | None = None,
+    request_id: str | None = None,
+):
+    """mltgnt-loops 用 AuditContext。"""
+    from ghdag.pipeline.audit import AuditContext
+
+    kwargs: dict = {
+        "source": "mltgnt-loops",
+        "correlation_id": correlation_id,
+        "request_id": request_id,
+    }
+    if parent_correlation_id is not None:
+        kwargs["parent_correlation_id"] = parent_correlation_id
+    return AuditContext(**kwargs)
 
 
 def _scheduler_audit_context(
@@ -411,6 +433,151 @@ def enqueue_and_wait(
         return True, content
 
     return False, f"{status}: {first_line}"
+
+
+_TZ = ZoneInfo("Asia/Tokyo")
+
+
+def _submitted_at_from_result_path(result_path: str) -> str:
+    """result_path のタイムスタンプ prefix から ISO 8601 を導出する。"""
+    name = Path(result_path).name
+    m = re.match(r"^(\d{14})", name)
+    if m:
+        ts = m.group(1)
+        dt = datetime.strptime(ts, "%Y%m%d%H%M%S").replace(tzinfo=_TZ)
+        return dt.isoformat()
+    return datetime.now(_TZ).isoformat()
+
+
+def _find_exec_record_by_idempotency(jobs_dir: Path, idempotency_key: str) -> dict | None:
+    exec_path = jobs_dir / "exec.jsonl"
+    if not exec_path.is_file():
+        return None
+    for line in exec_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        try:
+            record = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if record.get("idempotency_key") == idempotency_key:
+            return cast(dict, record)
+    return None
+
+
+def _record_to_step_submission(record: dict, *, reused: bool) -> StepSubmission:
+    uuid_val = record.get("uuid", "")
+    result_path = record.get("result_path", "")
+    result_filename = Path(result_path).name if result_path else ""
+    if not uuid_val or not result_filename:
+        raise ValueError(f"incomplete exec record for idempotency restore: {record!r}")
+    submitted_at = _submitted_at_from_result_path(result_path)
+    return StepSubmission(
+        uuid=uuid_val,
+        result_filename=result_filename,
+        submitted_at=submitted_at,
+        reused=reused,
+    )
+
+
+def enqueue_step(
+    *,
+    prompt: str,
+    engine: str,
+    model: str | None,
+    idempotency_key: str,
+    jobs_dir: Path,
+    correlation_id: str | None = None,
+    order_builder: OrderBuilder | None = None,
+) -> StepSubmission:
+    """LLMPipelineAPI で 1 ステップを投入し StepSubmission を返す。
+
+    既存 idempotency_key の exec レコードがあれば復元して reused=True を返す。
+    """
+    from ghdag.pipeline import InlineOrderBuilder, LLMPipelineAPI, PipelineState
+    from ghdag.workflow.schema import StepConfig
+
+    existing = _find_exec_record_by_idempotency(jobs_dir, idempotency_key)
+    if existing is not None:
+        return _record_to_step_submission(existing, reused=True)
+
+    state = PipelineState(
+        state_dir=jobs_dir / ".pipeline-state",
+        exec_jsonl_path=jobs_dir / "exec.jsonl",
+    )
+    api = LLMPipelineAPI(
+        pipeline_state=state,
+        order_builder=order_builder or InlineOrderBuilder(),
+        queue_dir=str(jobs_dir),
+    )
+
+    if not api.check_idempotency(idempotency_key):
+        restored = _find_exec_record_by_idempotency(jobs_dir, idempotency_key)
+        if restored is not None:
+            return _record_to_step_submission(restored, reused=True)
+        raise ValueError(
+            f"idempotency key {idempotency_key!r} marked used but no exec record found"
+        )
+
+    exec_lines = api.submit(
+        [StepConfig(id="loops", template=prompt, engine=engine, model=model or "")],
+        base_context={"workflow_name": "loops"},
+        idempotency_key=idempotency_key,
+        audit_context=_loops_audit_context(correlation_id),
+    )
+
+    data_lines = [ln for ln in exec_lines if not ln.startswith("#") and ln.strip()]
+    if not data_lines:
+        raise ValueError("no exec line returned from submit")
+
+    exec_line = data_lines[0]
+    record: dict
+    if exec_line.strip().startswith("{"):
+        record = json.loads(exec_line)
+    else:
+        m = _UUID_RE.search(exec_line)
+        if not m:
+            raise ValueError(f"exec_line に UUID が見つかりません: {exec_line!r}")
+        result_filename = _extract_result_filename(exec_line)
+        record = {
+            "uuid": m.group(0),
+            "result_path": f"{jobs_dir}/{result_filename}",
+            "idempotency_key": idempotency_key,
+        }
+
+    return _record_to_step_submission(record, reused=False)
+
+
+def poll_step(
+    *,
+    exec_done_dir: Path,
+    jobs_dir: Path,
+    uuid: str,
+    result_filename: str,
+) -> StepPoll:
+    """done marker を非ブロックで読み、StepPoll を返す。"""
+    from ghdag.pipeline.status import interpret_done, read_done_content
+
+    raw = read_done_content(exec_done_dir, uuid)
+    if raw is None:
+        return StepPoll(status="pending", content="")
+
+    status = interpret_done(raw)
+    if status is None:
+        return StepPoll(status="pending", content="")
+
+    if status == "success":
+        try:
+            content = md_read(result_filename, repo_root=jobs_dir).content.strip()
+        except OSError:
+            content = ""
+        return StepPoll(status="success", content=content)
+
+    first_line = raw.strip().splitlines()[0] if raw.strip() else ""
+    if status in ("failed_exit", "rejected", "empty_result", "other"):
+        return StepPoll(status=cast(StepStatus, status), content=first_line)
+    return StepPoll(status="other", content=first_line)
 
 
 def _extract_result_filename(exec_line: str) -> str:
