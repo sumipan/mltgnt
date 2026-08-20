@@ -518,3 +518,160 @@ def test_resolve_llm_falls_back_on_persona_load_failure_and_does_not_raise(tmp_p
     with patch("mltgnt.loops.engine.load_persona", side_effect=FileNotFoundError("missing")):
         assert engine._resolve_llm_engine_model(state) == ("cursor", "auto")
         assert engine._resolve_subtask_engine_model(state) == ("cursor", "auto")
+
+
+def _llm_call_error(message: str = "llm failed") -> prompts.LlmCallError:
+    from tests.loops.fakes import FakeLLMResult
+
+    # raw_output に非 JSON ネイティブを混ぜても記録経路が落ちないこと
+    trace = prompts.LlmTrace(
+        input="prompt",
+        raw_output=FakeLLMResult(stdout="bad", stderr="boom", returncode=1),  # type: ignore[arg-type]
+        parsed=None,
+        reasoning="",
+        config={"engine": "claude", "model": "m"},
+        metadata={"retry": True},
+        uncertain_flag=False,
+        error=message,
+    )
+    return prompts.LlmCallError(message, trace)
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_clarify")
+def test_clarify_llm_errors_fail_after_three_consecutive_ticks(mock_clarify, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    mock_clarify.side_effect = _llm_call_error("clarify failed")
+
+    engine = _engine(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="clarifying",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+
+    engine.tick()
+    engine.tick()
+    engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state is not None
+    assert state.status == "failed"
+    assert state.consecutive_errors == 3
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    llm_errors = [e for e in events if e["event"] == "llm_error"]
+    assert len(llm_errors) == 3
+    assert all(isinstance(e["data"]["error"], str) for e in llm_errors)
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+def test_decompose_llm_errors_fail_after_three_consecutive_ticks(mock_decompose, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    mock_decompose.side_effect = _llm_call_error("decompose failed")
+
+    engine = _engine(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="decomposing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+
+    engine.tick()
+    engine.tick()
+    engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state is not None
+    assert state.status == "failed"
+    assert state.consecutive_errors == 3
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_evaluate")
+def test_evaluate_llm_errors_fail_after_three_consecutive_ticks(mock_evaluate, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    mock_evaluate.side_effect = _llm_call_error("evaluate failed")
+
+    engine = _engine(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="evaluating",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        subtasks=[Subtask(id="s1", title="S1", kind="auto", prompt="p", status="success", result="ok")],
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+
+    engine.tick()
+    engine.tick()
+    engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state is not None
+    assert state.status == "failed"
+    assert state.consecutive_errors == 3
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_clarify")
+def test_record_llm_error_increments_once_per_tick(mock_clarify, mock_persona, tmp_path):
+    """1 tick の LlmCallError で consecutive_errors は 1 だけ増える。"""
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    mock_clarify.side_effect = _llm_call_error("once")
+
+    engine = _engine(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="clarifying",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+
+    engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state is not None
+    assert state.consecutive_errors == 1
+    assert state.status == "clarifying"

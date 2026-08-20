@@ -87,3 +87,32 @@ def test_state_load_rejects_wrong_required_type(tmp_path):
 
     with pytest.raises(ValueError, match="iteration must be int"):
         store.load_state(state_dir, "test")
+
+
+def test_append_event_accepts_non_json_native_objects(tmp_path):
+    """LLMResult / dataclass を含む data でも TypeError にならず JSONL に追記する。"""
+    from dataclasses import dataclass
+
+    from tests.loops.fakes import FakeLLMResult
+
+    @dataclass
+    class _Sample:
+        name: str
+
+    state_dir = tmp_path / "state"
+    store.append_event(
+        state_dir,
+        "test",
+        "llm_error",
+        {
+            "phase": "clarify",
+            "result": FakeLLMResult(stdout="x", stderr="e", returncode=1),
+            "payload": _Sample(name="n"),
+        },
+        iteration=1,
+    )
+    events = store.read_events(state_dir, "test")
+    assert len(events) == 1
+    assert events[0]["event"] == "llm_error"
+    assert isinstance(events[0]["data"]["result"], str)
+    assert isinstance(events[0]["data"]["payload"], str)

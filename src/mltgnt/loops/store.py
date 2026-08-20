@@ -86,8 +86,9 @@ def append_event(state_dir: Path, loop_id: str, event: str, data: dict[str, Any]
         "event": event,
         "data": data,
     }
+    # LLMResult / dataclass 等が混ざっても状態遷移を止めない
     with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
 def read_events(state_dir: Path, loop_id: str) -> list[dict[str, Any]]:
