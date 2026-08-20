@@ -357,13 +357,15 @@ class LoopsEngine(BaseRunner):
             logger.warning("close_thread failed: %s", exc)
 
     def _log_llm(self, state: LoopState, trace: prompts.LlmTrace) -> None:
+        raw = trace.raw_output
+        raw_s = raw if isinstance(raw, str) else str(raw)
         store.append_event(
             self.config.state_dir,
             state.loop_id,
             "llm_call",
             {
                 "input": trace.input,
-                "output": {"raw": trace.raw_output, "parsed": trace.parsed},
+                "output": {"raw": raw_s, "parsed": trace.parsed},
                 "reasoning": trace.reasoning,
                 "config": trace.config,
                 "metadata": trace.metadata,
@@ -373,10 +375,46 @@ class LoopsEngine(BaseRunner):
             iteration=state.iteration,
         )
 
+    @staticmethod
+    def _summarize_llm_error(exc: Exception) -> str:
+        """エラー記録用にプリミティブな文字列要約へ正規化する。"""
+        if not isinstance(exc, prompts.LlmCallError):
+            return str(exc)
+        parts = [str(exc)]
+        cfg = exc.trace.config or {}
+        engine = cfg.get("engine")
+        model = cfg.get("model")
+        if engine:
+            parts.append(f"engine={engine}")
+        if model:
+            parts.append(f"model={model}")
+        raw = exc.trace.raw_output
+        returncode = getattr(raw, "returncode", None)
+        stderr = getattr(raw, "stderr", None)
+        if returncode is not None:
+            parts.append(f"returncode={returncode}")
+        if stderr:
+            stderr_s = stderr if isinstance(stderr, str) else str(stderr)
+            parts.append(f"stderr={stderr_s[:200]}")
+        return "; ".join(parts)
+
     def _record_llm_error(self, state: LoopState, phase: str, exc: Exception) -> None:
-        if isinstance(exc, prompts.LlmCallError):
-            self._log_llm(state, exc.trace)
-        self._record_error(state, "llm_error", {"phase": phase, "error": str(exc)})
+        """LLM 失敗を記録する。記録経路自体は例外を外へ出さない。"""
+        summary = self._summarize_llm_error(exc)
+        try:
+            if isinstance(exc, prompts.LlmCallError):
+                self._log_llm(state, exc.trace)
+        except Exception as log_exc:
+            logger.warning("failed to log llm trace during error record: %s", log_exc)
+        errors_before_record = state.consecutive_errors
+        try:
+            self._record_error(state, "llm_error", {"phase": phase, "error": summary})
+        except Exception as record_exc:
+            logger.warning("failed to record llm_error event: %s", record_exc)
+            if state.consecutive_errors == errors_before_record:
+                state.consecutive_errors += 1
+            if state.consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                state.status = "failed"
 
     def _tick_clarifying(self, state: LoopState) -> bool:
         if not self._ensure_persona(state):

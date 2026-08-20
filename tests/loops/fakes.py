@@ -7,6 +7,33 @@ from mltgnt.interfaces.loops import HumanThreadRef, StepPoll, StepSubmission
 
 
 @dataclass
+class FakeLLMResult:
+    """ghdag.llm.LLMResult 相当（stdout / stderr / returncode / ok）。"""
+
+    stdout: str = ""
+    stderr: str = ""
+    returncode: int = 0
+    latency_ms: float = 0.0
+
+    @property
+    def ok(self) -> bool:
+        return self.returncode == 0
+
+
+def make_llm_result(
+    *,
+    ok: bool = True,
+    stdout: str = "",
+    stderr: str = "",
+    returncode: int | None = None,
+) -> FakeLLMResult:
+    """テスト用に LLMResult 相当を返すヘルパ。"""
+    if returncode is None:
+        returncode = 0 if ok else 1
+    return FakeLLMResult(stdout=stdout, stderr=stderr, returncode=returncode)
+
+
+@dataclass
 class FakeHumanChannel:
     threads: list[HumanThreadRef] = field(default_factory=list)
     asks: list[dict] = field(default_factory=list)

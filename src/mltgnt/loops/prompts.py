@@ -172,6 +172,28 @@ def _validate_evaluate(data: dict[str, Any]) -> EvaluateResponse:
     )
 
 
+def _unwrap_llm_result(result: Any) -> tuple[str, str | None]:
+    """call_llm の戻り値から (stdout テキスト, 失敗時エラー要約) を取り出す。
+
+    ghdag.llm.LLMResult（stdout / stderr / returncode / ok）を想定する。
+    ok=False は retryable failure としてエラー要約を返す。
+    """
+    stdout = getattr(result, "stdout", None)
+    ok = getattr(result, "ok", None)
+    if stdout is None or ok is None:
+        raise TypeError(
+            f"call_llm must return LLMResult-like object, got {type(result).__name__}"
+        )
+    text = stdout if isinstance(stdout, str) else str(stdout)
+    if ok:
+        return text, None
+    stderr = getattr(result, "stderr", "") or ""
+    stderr_s = stderr if isinstance(stderr, str) else str(stderr)
+    returncode = getattr(result, "returncode", None)
+    summary = f"llm call failed (returncode={returncode}): {stderr_s[:200]}"
+    return text, summary
+
+
 def _call_with_retry(
     prompt: str,
     *,
@@ -208,11 +230,17 @@ def _call_with_retry(
 
     def _attempt(p: str) -> tuple[str, dict[str, Any] | None, str, str | None]:
         try:
-            raw = call_llm(p, engine=engine, model=model)
+            result = call_llm(p, engine=engine, model=model)
         except Exception as exc:
             raise LlmCallError(
                 str(exc), _failure_trace("", str(exc), retry=p != prompt)
             ) from exc
+        try:
+            raw, call_err = _unwrap_llm_result(result)
+        except TypeError as exc:
+            return str(result), None, "", str(exc)
+        if call_err is not None:
+            return raw, None, "", call_err
         try:
             parsed = extract_json(raw)
             validator(parsed)
