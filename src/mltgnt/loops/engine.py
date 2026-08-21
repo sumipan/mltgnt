@@ -423,7 +423,23 @@ class LoopsEngine(BaseRunner):
         if not self._ensure_persona(state):
             return True
         if state.clarify_round >= self.config.max_clarify_rounds:
-            self._record_error(state, "clarify_limit", {"rounds": state.clarify_round})
+            # 上限到達は正常系: 仮定して decompose へ進む（エラー連発で failed にしない）
+            self._notify(
+                state,
+                "明確化はここまでにして、不明点は仮定して進めるね",
+                "clarify_limit",
+            )
+            try:
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "clarify_limit",
+                    {"rounds": state.clarify_round},
+                    iteration=state.iteration,
+                )
+            except Exception as exc:
+                logger.warning("failed to record clarify_limit event: %s", exc)
+            state.status = "decomposing"
             return True
 
         instruction = prompts.build_clarify_instruction(
