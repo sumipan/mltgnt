@@ -699,3 +699,43 @@ def test_record_llm_error_increments_once_when_event_write_fails(tmp_path):
 
     assert state.consecutive_errors == 1
     assert state.status == "clarifying"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_clarify")
+def test_start_loop_inherits_thread_without_open_thread(mock_clarify, mock_persona, tmp_path):
+    from mltgnt.interfaces.loops import HumanThreadRef
+
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    mock_clarify.return_value = (
+        prompts.ClarifyResponse(
+            clear=False, question="Q?", reason="", reasoning="", uncertain_flag=False
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    thread = HumanThreadRef(channel_id="C1", thread_ts="123.456")
+    engine.start_loop(_objective(), thread=thread)
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.thread == thread
+    assert channel.open_thread_calls == 0
+
+    engine.tick()
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.status == "awaiting_answer"
+    assert channel.open_thread_calls == 0
+    assert channel.asks[0]["thread"] == thread
+
+
+def test_start_loop_without_thread_still_opens(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    engine.start_loop(_objective())
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.thread is None
+    assert channel.open_thread_calls == 0

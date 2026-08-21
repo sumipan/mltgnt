@@ -76,6 +76,21 @@ def test_list_restorable_loops(tmp_path):
     assert "a" in store.list_restorable_loops(state_dir)
 
 
+def test_archive_terminal_state_excluded_from_restorable(tmp_path):
+    state_dir = tmp_path / "state"
+    state = _sample_state("done-loop")
+    state.status = "done"
+    store.save_state(state_dir, state)
+
+    dest = store.archive_terminal_state(state_dir, "done-loop")
+    assert dest is not None
+    assert dest.parent.name == "archive"
+    assert dest.name.startswith("done-loop.archived-")
+    assert not (state_dir / "done-loop").exists()
+    assert "done-loop" not in store.list_restorable_loops(state_dir)
+    assert "archive" not in store.list_restorable_loops(state_dir)
+
+
 def test_state_load_rejects_wrong_required_type(tmp_path):
     state_dir = tmp_path / "state"
     state = _sample_state()

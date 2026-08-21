@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.19.0
+
+### BREAKING
+
+- **Objective 配置による自動起動を廃止**: `objectives_dir` へ `.md` を置いただけでは loop state を作成しない。起動は `state_dir/requests/*.json` の依頼消費のみ。
+- **移行順序**: 本リリース（mltgnt consumer）を先に入れ、nexus 側の request producer / Slack 配線（#2560）は **後から** 切り替えること。
+
+### Added
+
+- **`ensure_frontmatter`**: 欠落した `id` / `title` / `status` / `max_iterations` だけを決定論的に補完（`agent` は補完しない）
+- **`mltgnt.loops.requests`**: 起動依頼 JSON の検証・列挙・`consumed/` / `corrupt/` 隔離
+- **`LoopsEngine.start_loop(..., thread=)`**: 依頼スレッド（`HumanThreadRef`）を初回 state に継承。既存の `start_loop(objective)` は互換維持
+- **`store.archive_terminal_state`**: 終端 state を `state_dir/archive/` へ退避し、再依頼で新規起動可能にする
+
+### Compatibility
+
+- 非終端 state の復元、Objective 削除 / `status: cancelled` による取消、content hash 変更警告は維持。
+- 公開 Protocol（`interfaces/loops.py`）と `LoopsConfig` のフィールドは変更なし。
+
 ## v0.18.0
 
 ### Added

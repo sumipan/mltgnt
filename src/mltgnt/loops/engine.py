@@ -56,7 +56,9 @@ class LoopsEngine(BaseRunner):
     def _active_loop_ids(self) -> list[str]:
         return store.list_restorable_loops(self.config.state_dir)
 
-    def start_loop(self, objective: Objective) -> LoopState:
+    def start_loop(
+        self, objective: Objective, *, thread: HumanThreadRef | None = None
+    ) -> LoopState:
         state = LoopState(
             loop_id=objective.loop_id,
             objective_path=str(objective.path),
@@ -67,6 +69,7 @@ class LoopsEngine(BaseRunner):
             iteration=1,
             max_iterations=objective.max_iterations,
             persona=objective.agent,
+            thread=thread,
             created_at=_now_iso(),
             updated_at=_now_iso(),
         )

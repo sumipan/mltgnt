@@ -41,8 +41,10 @@ class FakeHumanChannel:
     fallbacks: list[dict] = field(default_factory=list)
     closes: list[dict] = field(default_factory=list)
     delivered: set[str] = field(default_factory=set)
+    open_thread_calls: int = 0
 
     def open_thread(self, *, loop_id, persona, title, body, event_id):
+        self.open_thread_calls += 1
         if event_id in self.delivered:
             return self.threads[-1] if self.threads else None
         ref = HumanThreadRef(channel_id="C1", thread_ts="123.456")
@@ -54,7 +56,13 @@ class FakeHumanChannel:
         if event_id in self.delivered:
             return True
         self.asks.append(
-            {"loop_id": loop_id, "question_id": question_id, "text": text, "event_id": event_id}
+            {
+                "loop_id": loop_id,
+                "question_id": question_id,
+                "text": text,
+                "event_id": event_id,
+                "thread": thread,
+            }
         )
         self.delivered.add(event_id)
         return True
@@ -62,7 +70,14 @@ class FakeHumanChannel:
     def notify(self, *, loop_id, persona, thread, text, event_id):
         if event_id in self.delivered:
             return True
-        self.notifies.append({"loop_id": loop_id, "text": text, "event_id": event_id})
+        self.notifies.append(
+            {
+                "loop_id": loop_id,
+                "text": text,
+                "event_id": event_id,
+                "thread": thread,
+            }
+        )
         self.delivered.add(event_id)
         return True
 
@@ -76,7 +91,9 @@ class FakeHumanChannel:
     def close_thread(self, *, loop_id, persona, thread, event_id):
         if event_id in self.delivered:
             return True
-        self.closes.append({"loop_id": loop_id, "event_id": event_id})
+        self.closes.append(
+            {"loop_id": loop_id, "event_id": event_id, "thread": thread}
+        )
         self.delivered.add(event_id)
         return True
 

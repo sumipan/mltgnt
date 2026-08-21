@@ -6,7 +6,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -119,6 +119,19 @@ def list_restorable_loops(state_dir: Path) -> list[str]:
         if child.is_dir() and (child / "state.json").is_file():
             result.append(child.name)
     return sorted(result)
+
+
+def archive_terminal_state(state_dir: Path, loop_id: str) -> Path | None:
+    """終端 state ディレクトリを state_dir/archive/ へ atomic rename する。"""
+    src = loop_state_dir(state_dir, loop_id)
+    if not src.is_dir():
+        return None
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    archive_root = state_dir / "archive"
+    archive_root.mkdir(parents=True, exist_ok=True)
+    dest = archive_root / f"{loop_id}.archived-{stamp}"
+    os.replace(src, dest)
+    return dest
 
 
 def mark_state_corrupt(state_dir: Path, loop_id: str, reason: str) -> None:
