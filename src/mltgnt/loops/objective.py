@@ -17,6 +17,7 @@ logger = logging.getLogger("mltgnt.loops.objective")
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _STEM_ALLOWED_RE = re.compile(r"[^A-Za-z0-9._-]+")
+_HEADING_RE = re.compile(r"^#{1,6}\s+")
 
 
 @dataclass(frozen=True)
@@ -65,8 +66,9 @@ def _title_from_body(body: str, fallback_id: str) -> str:
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.startswith("# "):
-            return stripped[2:].strip()[:80]
+        heading = _HEADING_RE.match(stripped)
+        if heading:
+            return stripped[heading.end():].strip()[:80]
         return stripped[:80]
     return fallback_id[:80]
 

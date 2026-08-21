@@ -88,6 +88,26 @@ def test_ensure_frontmatter_completes_missing_keys(tmp_path):
     assert "# Foo" in text
 
 
+def test_ensure_frontmatter_title_strips_heading_markers(tmp_path):
+    path = _write_objective(tmp_path, "h2.md", "## 試し\n\nbody\n")
+    assert ensure_frontmatter(path, default_max_iterations=5) is True
+    text = path.read_text(encoding="utf-8")
+    assert "title: 試し" in text
+    assert "'## 試し'" not in text
+    assert "\n## 試し" in text  # 本文の見出しはそのまま
+
+
+def test_ensure_frontmatter_title_deep_heading_and_no_space(tmp_path):
+    path = _write_objective(tmp_path, "h6.md", "###### Deep\n")
+    assert ensure_frontmatter(path, default_max_iterations=5) is True
+    assert "title: Deep" in path.read_text(encoding="utf-8")
+
+    # `#` 直後に空白がない行は ATX 見出しではないのでそのまま
+    path2 = _write_objective(tmp_path, "tag.md", "#hashtag line\n")
+    assert ensure_frontmatter(path2, default_max_iterations=5) is True
+    assert "title: '#hashtag line'" in path2.read_text(encoding="utf-8")
+
+
 def test_ensure_frontmatter_noop_when_complete(tmp_path):
     content = "---\nid: foo\ntitle: Foo\nstatus: active\nmax_iterations: 3\n---\n# Foo\n"
     path = _write_objective(tmp_path, "foo.md", content)
