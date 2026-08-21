@@ -2,7 +2,7 @@
 
 **L1: persona, memory, skill, routing, scheduler, and Objective-loop orchestration.** In the three-tier stack (**L0 [ghdag](https://github.com/sumipan/ghdag)** / **L1 mltgnt** / **L2 host**), mltgnt owns agent contracts and loops; LLM inference, file I/O, and DAG execution stay in ghdag.
 
-**Status:** Pre-1.0 (`v0.18.0`)
+**Status:** Pre-1.0 (`v0.19.0`)
 
 ---
 
@@ -14,7 +14,7 @@
 | Not a DAG engine | Job submission and completion markers are ghdag's. mltgnt calls `enqueue_dag` / `enqueue_and_wait` / `enqueue_step` / `poll_step`. |
 | Not a Slack (or other) host | Channel posting, thread IDs, and daemon wiring belong to the L2 host. `HumanChannel` and `SubtaskExecutor` are Protocols the host implements. |
 
-v0.18.0 keeps existing scheduler, chat, and OODA APIs backward compatible (see `CHANGELOG.md` for v0.18.0).
+v0.19.0 keeps scheduler, chat, and OODA APIs backward compatible. Objective **startup** is request-driven (see [Objective loops in v0.19.0](#objective-loops-in-v0190)); placing an Objective file alone no longer starts a loop.
 
 ---
 
@@ -36,11 +36,11 @@ ghdag is required. LLM calls and DAG/step enqueue go through it.
 
 **Prerequisites:** Python 3.10+, `mltgnt` installed (pulls in ghdag and PyYAML). No Slack host, daemon, or live LLM is required for the examples below.
 
-These snippets follow `tests/loops/test_objective.py` and `tests/chat/test_pipeline.py` (persona Markdown + `ops.engine` / `ops.model`).
+These snippets follow `tests/loops/test_objective.py`, `tests/loops/test_requests.py`, and `tests/chat/test_pipeline.py` (persona Markdown + `ops.engine` / `ops.model`).
 
 ### Parse an Objective Markdown file
 
-`parse_objective` returns `Objective` on success or `ObjectiveError` (a dataclass, not an exception) on invalid input.
+`parse_objective` returns `Objective` on success or `ObjectiveError` (a dataclass, not an exception) on invalid input. `max_iterations` must be an integer in `1..10` (booleans are rejected).
 
 ```python
 from pathlib import Path
@@ -78,6 +78,43 @@ with tempfile.TemporaryDirectory() as tmp:
         known_ids={"hp-renewal"},
     )
     assert isinstance(bad, ObjectiveError)
+```
+
+### Validate a start-request JSON
+
+Invalid request files are moved to `state_dir/requests/corrupt/` by `list_requests` (same behavior as `tests/loops/test_requests.py`).
+
+```python
+import json
+from pathlib import Path
+import tempfile
+
+from mltgnt.loops.requests import StartRequest, list_requests
+
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    state_dir = root / "state"
+    objectives_dir = root / "objectives"
+    objectives_dir.mkdir()
+    req_dir = state_dir / "requests"
+    req_dir.mkdir(parents=True)
+
+    payload = {
+        "objective_path": "hp-renewal.md",
+        "channel_id": "C0123",
+        "thread_ts": "1234567890.123456",
+        "persona": "operator",
+        "requested_at": "2026-08-21T13:00:00+09:00",
+    }
+    (req_dir / "a.json").write_text(json.dumps(payload), encoding="utf-8")
+    (req_dir / "bad.json").write_text("{not json", encoding="utf-8")
+
+    ok, errors = list_requests(state_dir, objectives_dir)
+    assert len(ok) == 1 and isinstance(ok[0], StartRequest)
+    assert ok[0].objective_path == "hp-renewal.md"
+    assert len(errors) == 1
+    assert (req_dir / "corrupt" / "bad.json").is_file()
+    print(ok[0].filename, errors[0].message)
 ```
 
 ### Load a persona
@@ -240,7 +277,7 @@ Runs `run_improvement_cycle` and prints `format_cycle_report`.
 
 ---
 
-## Public API
+## Public API / Protocols
 
 Stable import surface is `mltgnt.__all__` plus the `mltgnt.loops` package exports below. Other modules exist for hosts and internals; they are not implied stable unless listed.
 
@@ -282,8 +319,8 @@ from mltgnt.loops import LoopsComponent, parse_objective
 
 | Symbol | Kind | Import path | Inputs | Returns / meaning |
 |--------|------|-------------|----------------|-------------------|
-| `LoopsComponent` | class | `mltgnt.loops.component` | `LoopsConfig`, `HumanChannel`, `SubtaskExecutor` | `DaemonComponent`: `name == "loops"`, `start()` / `stop()`. Polls `objectives_dir` every `poll_interval_sec`. |
-| `LoopsEngine` | class (`BaseRunner`) | `mltgnt.loops.engine` | `LoopsConfig`, `HumanChannel`, `SubtaskExecutor`, optional objective callbacks | One tick = at most one state transition per loop. |
+| `LoopsComponent` | class | `mltgnt.loops.component` | `LoopsConfig`, `HumanChannel`, `SubtaskExecutor` | `DaemonComponent`: `name == "loops"`, `start()` / `stop()`. Refreshes Objective snapshots, consumes `state_dir/requests/*.json`, then calls `LoopsEngine.tick()`. |
+| `LoopsEngine` | class (`BaseRunner`) | `mltgnt.loops.engine` | `LoopsConfig`, `HumanChannel`, `SubtaskExecutor`, optional objective callbacks | One tick = at most one state transition per loop. `start_loop(objective, *, thread=None)` inherits optional `HumanThreadRef`. |
 | `GhdagSubtaskExecutor` | class | `mltgnt.loops.executor` | `jobs_dir`, `exec_done_dir`, `engine`, `model`, optional `correlation_id` | Host-facing `SubtaskExecutor`: `submit` / `poll`. |
 | `Objective` | dataclass | `mltgnt.loops.objective` | parsed fields | Valid Objective: `loop_id`, `title`, `body`, `agent`, `max_iterations`, `status`, `path`, `content_hash`. |
 | `ObjectiveError` | dataclass | `mltgnt.loops.objective` | `loop_id`, `message`, `path` | Parse/validation failure. **Not** an `Exception`. |
@@ -293,21 +330,131 @@ from mltgnt.loops import LoopsComponent, parse_objective
 | `Subtask` | dataclass | `mltgnt.loops.models` | `id`, `title`, `kind` (`auto` \| `human`), `prompt`, `status`, `result`, optional `submission` | One decomposed step. |
 | `TERMINAL_STATUSES` | `frozenset[str]` | `mltgnt.loops.models` | — | `{"done", "failed", "cancelled"}`. |
 
+### Host Protocols
+
+| Protocol | Module | Contract |
+|----------|--------|----------|
+| `PersonaProtocol` | `mltgnt.interfaces.persona` | `name`, `fm`, `format_prompt(instruction) -> str` |
+| `ChatPipelineProtocol` | `mltgnt.interfaces.chat` | `run(inp, repo_root) -> ChatOutputBase` |
+| `SlackClientProtocol` | `mltgnt.interfaces.slack` | `post_message(...) -> bool` (False on failure, no raise) |
+| `ChatInputBase` / `ChatOutputBase` / `PersonaFMBase` | `mltgnt.interfaces.types` | Structural chat/persona DTOs |
+| `HumanChannel` / `SubtaskExecutor` | `mltgnt.interfaces.loops` | Objective-loop host boundary (see Objective loops) |
+| `DaemonComponent` | `mltgnt.daemon` | `name`, `start()`, `stop()` — includes `LoopsComponent` |
+
+`mltgnt.interfaces.__all__` does not export the loops Protocols; import them from `mltgnt.interfaces.loops`.
+
 ---
 
-## Objective Loops
+## Architecture
+
+Layout of `src/mltgnt/`:
+
+| Path | Responsibility |
+|------|----------------|
+| `__init__.py` | Package root exports (`__all__`, `__version__`) |
+| `__main__.py` | `python -m mltgnt` → `cli.main.main` |
+| `py.typed` | PEP 561 marker |
+| `agent/` | Generic LLM + tool agent loop (`AgentRunner`) |
+| `bridges/` | ghdag adapters: files, LLM, audit, hooks, DAG/step enqueue |
+| `chat/` | Single round-trip `run_pipeline` |
+| `cli/` | `mltgnt run` and `mltgnt memory dream` |
+| `config/` | `MemoryConfig`, `PersonaConfig`, `SchedulerConfig`, `ChatConfig`, `LoopsConfig` |
+| `daemon/` | `DaemonRunner`, `PidLock`, `DaemonComponent`, skill watcher |
+| `exceptions.py` | `MltgntError` / `ConfigError` / `DependencyError` |
+| `execution/` | `BaseRunner` ABC (`LoopsEngine` subclasses it) |
+| `improvement/` | Failure analysis, proposals, patch/rollback, `python -m mltgnt.improvement` |
+| `interfaces/` | Protocols and DTOs (chat, persona, Slack, OODA, loops host types) |
+| `kpi/` | `compute_kpis` / `python -m mltgnt.kpi` |
+| `loops/` | Objective-driven clarify/decompose/execute/evaluate; request inbox; state archive |
+| `memory/` | JSONL memory search, compaction, dream summaries |
+| `ooda/` | OODA runner (`OODARunner`, `OODAConfig`) |
+| `persona/` | Load, validate, and prompt personas |
+| `routing/` | Channel routing and triage |
+| `scheduler/` | `PersonaScheduler` job runner |
+| `skill/` | Skill discover/match/run/lint |
+
+---
+
+## Configuration
+
+### Environment variables
+
+Every `os.environ` / `os.getenv` use in `src/mltgnt/**/*.py`:
+
+| Variable | Defined in | Purpose |
+|----------|------------|---------|
+| `SKILL_IO_TYPECHECK` | `bridges/ghdag_bridge.py` | Skill I/O typecheck is on unless this is `"0"`. |
+| `NIKKI_ROOT` | `skill/runner.py` | Diary/memory root for `$NIKKI_ROOT` substitution in skill bodies. |
+| `REPO_ROOT` | `skill/runner.py` | Repo-root fallback for `$REPO_ROOT` substitution. |
+| `MLTGNT_AS_OF_DATE` | `improvement/loop.py` | `YYYY-MM-DD` period end for `run_improvement_cycle` when `today` is omitted. |
+
+### Config dataclasses
+
+| Dataclass | Module | Fields (type, default, constraints) |
+|-----------|--------|-------------------------------------|
+| `PersonaConfig` | `mltgnt.config` | `weight_map: dict[str, str]` default `DEFAULT_WEIGHT_MAP` (`light` / `heavy` / `reference` section weights). |
+| `MemoryConfig` | `mltgnt.config` | `chat_dir: Path` (required); `chat_memory_dir: Path \| None = None`; `inject_max_bytes=10240`; `inject_max_entries=12`; `preferences_max_bytes=5120`; `lock_timeout_sec=30.0`; `lock_stale_threshold_sec=300.0`; `raw_days=7`; `mid_weeks=3`; `compact_threshold_bytes=40960`; `compact_target_bytes=25600`; `preferences_section_name="ユーザーの好み・傾向"`; `protected_layers=("caveat",)`; `timezone="Asia/Tokyo"`; `dream_model="claude-haiku-4-5-20251001"`; `use_dream_summary=False`; `dream_dir_name="memory"`; `global_dream_exclude_personas=()`. |
+| `SchedulerConfig` | `mltgnt.config` | `schedule_yaml: Path`; `state_dir: Path`; `timezone="Asia/Tokyo"`; `salt=""`. |
+| `ChatConfig` | `mltgnt.config` | `persona_dir: Path`; `memory_dir: Path \| None = None`; `matcher_model="claude-haiku-4-5-20251001"`. |
+| `LoopsConfig` | `mltgnt.config` | Required: `objectives_dir`, `state_dir`, `status_dir`, `jobs_dir`, `exec_done_dir`, `persona_dir`, `default_persona`, `fallback_channel` (all paths except the two strings). Optional: `poll_interval_sec=10.0` (`> 0`); `max_iterations=5` (`1..10`); `max_clarify_rounds=3` (`1..3`); `max_subtasks_per_iteration=5` (`1..5`); `subtask_timeout_sec=1800.0` (`> 0`); `llm_engine="claude"`; `llm_model=""`; `subtask_engine="claude"`; `subtask_model=""`; `on_status_written: Callable[[Path], None] \| None = None`. Empty `default_persona` raises `ValueError`. **Not** listed in `mltgnt.config.__all__`; import `from mltgnt.config import LoopsConfig`. |
+| `RetryConfig` | `mltgnt.agent._runner` | `max_retries=2`; `base_delay_s=1.0`; `max_delay_s=30.0`. Optional retry policy accepted by `AgentRunner(retry_config=...)`; it is not exported from `mltgnt.agent.__all__`. |
+| `OODAConfig` | `mltgnt.interfaces.ooda` / `mltgnt.ooda` | `max_recovery_attempts=3`; `escalate_after=2`; `observe_filter: str \| None = None`. |
+
+`mltgnt.config.__all__` is `DEFAULT_WEIGHT_MAP`, `MemoryConfig`, `PersonaConfig`, `SchedulerConfig`, `ChatConfig`.
+
+---
+
+## Objective loops in v0.19.0
 
 `mltgnt.loops` drives an Objective Markdown file through **clarify → decompose → execute → evaluate**. The host injects channel and executor implementations; mltgnt does not implement Slack.
 
-### Host → `LoopsComponent`
+### Breaking change: request-driven start
 
-| Dependency | Role |
-|------------|------|
-| `LoopsConfig` | Paths, persona default, poll interval, iteration/clarify/subtask limits, timeouts, LLM/subtask engine+model |
-| `HumanChannel` | Open/ask/notify/close human threads |
-| `SubtaskExecutor` | Non-blocking auto-subtask submit + poll |
+| Before (v0.18.x) | After (v0.19.0) |
+|------------------|-----------------|
+| Placing `objectives_dir/*.md` could create loop state automatically | Placing an Objective file alone does **not** start a loop |
+| — | Start only by consuming `state_dir/requests/*.json` |
 
-`LoopsComponent.start()` launches a daemon thread; `stop()` joins it. Each watch cycle refreshes Objective snapshots and calls `LoopsEngine.tick()`.
+`LoopsComponent` still polls `objectives_dir` (to refresh snapshots, run `ensure_frontmatter`, detect cancel/hash changes), then processes the request inbox, then calls `LoopsEngine.tick()`.
+
+### Migration order
+
+1. Deploy mltgnt **consumer** `v0.19.0` first and confirm request consume / corrupt isolation / terminal state archive.
+2. Switch the host **producer** (nexus #2560) to emit start-request JSON afterward.
+3. Confirm non-terminal restore and cancel compatibility, then drop any “drop an Objective file to start” operational docs.
+
+### Start-request JSON (`mltgnt.loops.requests`)
+
+Files live in `state_dir/requests/*.json` (basename only; sorted by filename). Required keys (exact set, all strings):
+
+| Key | Constraint |
+|-----|------------|
+| `objective_path` | Basename ending in `.md` (no `/`, `\`, `..`, or absolute paths) |
+| `channel_id` | Non-empty |
+| `thread_ts` | Non-empty |
+| `persona` | String (empty allowed) |
+| `requested_at` | ISO-8601 datetime **with timezone** |
+
+| Outcome | Directory |
+|---------|-----------|
+| Valid request, handled | moved to `requests/consumed/` |
+| Invalid JSON / keys / types / path / naive timestamp | isolated to `requests/corrupt/` by `list_requests` |
+
+Helpers: `list_requests(state_dir, objectives_dir)`, `consume_request(state_dir, filename, *, corrupt=False)`. These are used by `LoopsComponent` and are importable from `mltgnt.loops.requests`; they are not listed in `mltgnt.loops.__all__`.
+
+### Frontmatter completion (`ensure_frontmatter`)
+
+On Objective refresh, `LoopsComponent` calls `ensure_frontmatter(path, default_max_iterations=LoopsConfig.max_iterations)`. It fills **only missing** keys deterministically:
+
+| Key | Completed when missing | Not completed |
+|-----|------------------------|---------------|
+| `id` | from file stem (sanitized) | — |
+| `title` | from first body heading/line, else `id` | — |
+| `status` | `"active"` | — |
+| `max_iterations` | `default_max_iterations` | — |
+| `agent` | — | **never** auto-filled (parse still falls back to `LoopsConfig.default_persona` / request `persona`) |
+
+Returns `True` only when the file was rewritten.
 
 ### Objective file → `parse_objective`
 
@@ -317,11 +464,32 @@ YAML keys allowed: `id`, `title`, `agent`, `max_iterations`, `status`. Other key
 |-----|------|---------|-------------|
 | `id` | str | file stem | `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; unique among loaded files |
 | `title` | str | first non-empty body line, else `id` | Must be a string if present |
-| `agent` | str | `LoopsConfig.default_persona` | Persona stem (`{persona_dir}/{agent}.md`) |
+| `agent` | str | `LoopsConfig.default_persona` (or request `persona` at start) | Persona stem (`{persona_dir}/{agent}.md`) |
 | `max_iterations` | int | `LoopsConfig.max_iterations` | `1..10`; bool is rejected |
 | `status` | str | `active` | `active` or `cancelled` |
 
 Body must be non-empty. `cancelled` files are not started. Duplicate `id` values become `ObjectiveError` and a failed status Markdown file.
+
+### Host → `LoopsComponent`
+
+| Dependency | Role |
+|------------|------|
+| `LoopsConfig` | Paths, persona default, poll interval, iteration/clarify/subtask limits, timeouts, LLM/subtask engine+model |
+| `HumanChannel` | Open/ask/notify/close human threads |
+| `SubtaskExecutor` | Non-blocking auto-subtask submit + poll |
+
+`LoopsComponent.start()` launches a daemon thread; `stop()` joins it. Each watch cycle: refresh Objectives → process requests → `LoopsEngine.tick()`.
+
+### Thread inheritance and re-start
+
+| Behavior | Detail |
+|----------|--------|
+| `LoopsEngine.start_loop(objective, *, thread=None)` | Optional `HumanThreadRef` is stored on the initial `LoopState`. Existing `start_loop(objective)` callers remain compatible. |
+| Request start | Component passes `HumanThreadRef(channel_id, thread_ts)` from the request. |
+| Non-terminal restore | Existing `state_dir/<loop_id>/state.json` continues on tick; a new request while running is rejected (`already_running`) and consumed. |
+| Terminal re-request | Terminal state is moved via `store.archive_terminal_state` to `state_dir/archive/<loop_id>.archived-<UTC stamp>/`, then a new loop starts. |
+| Cancel compatibility | Objective removal or `status: cancelled`, plus inbox cancel messages, still cancel non-terminal loops. |
+| Content hash | Objective body/frontmatter hash changes still warn and are reflected in status Markdown. |
 
 ### State machine
 
@@ -372,80 +540,6 @@ poll_step(*, exec_done_dir, jobs_dir, uuid, result_filename) -> StepPoll
 
 ---
 
-## Architecture
-
-Layout of `src/mltgnt/` (packages and modules, including `loops/` added in v0.18.0):
-
-| Path | Responsibility |
-|------|----------------|
-| `__init__.py` | Package root exports (`__all__`, `__version__`) |
-| `__main__.py` | `python -m mltgnt` → `cli.main.main` |
-| `py.typed` | PEP 561 marker |
-| `agent/` | Generic LLM + tool agent loop (`AgentRunner`) |
-| `bridges/` | ghdag adapters: files, LLM, audit, hooks, DAG/step enqueue |
-| `chat/` | Single round-trip `run_pipeline` |
-| `cli/` | `mltgnt run` and `mltgnt memory dream` |
-| `config/` | `MemoryConfig`, `PersonaConfig`, `SchedulerConfig`, `ChatConfig`, `LoopsConfig` |
-| `daemon/` | `DaemonRunner`, `PidLock`, `DaemonComponent`, skill watcher |
-| `exceptions.py` | `MltgntError` / `ConfigError` / `DependencyError` |
-| `execution/` | `BaseRunner` ABC (`LoopsEngine` subclasses it) |
-| `improvement/` | Failure analysis, proposals, patch/rollback, `python -m mltgnt.improvement` |
-| `interfaces/` | Protocols and DTOs (chat, persona, Slack, OODA, loops host types) |
-| `kpi/` | `compute_kpis` / `python -m mltgnt.kpi` |
-| `loops/` | Objective-driven clarify/decompose/execute/evaluate |
-| `memory/` | JSONL memory search, compaction, dream summaries |
-| `ooda/` | OODA runner (`OODARunner`, `OODAConfig`) |
-| `persona/` | Load, validate, and prompt personas |
-| `routing/` | Channel routing and triage |
-| `scheduler/` | `PersonaScheduler` job runner |
-| `skill/` | Skill discover/match/run/lint |
-
----
-
-## Protocols / host extension points
-
-| Protocol | Module | Contract |
-|----------|--------|----------|
-| `PersonaProtocol` | `mltgnt.interfaces.persona` | `name`, `fm`, `format_prompt(instruction) -> str` |
-| `ChatPipelineProtocol` | `mltgnt.interfaces.chat` | `run(inp, repo_root) -> ChatOutputBase` |
-| `SlackClientProtocol` | `mltgnt.interfaces.slack` | `post_message(...) -> bool` (False on failure, no raise) |
-| `ChatInputBase` / `ChatOutputBase` / `PersonaFMBase` | `mltgnt.interfaces.types` | Structural chat/persona DTOs |
-| `HumanChannel` / `SubtaskExecutor` | `mltgnt.interfaces.loops` | Objective-loop host boundary (see above) |
-| `DaemonComponent` | `mltgnt.daemon` | `name`, `start()`, `stop()` — includes `LoopsComponent` |
-
-`mltgnt.interfaces.__all__` does not export the loops Protocols; import them from `mltgnt.interfaces.loops`.
-
----
-
-## Configuration
-
-### Environment variables
-
-Every `os.environ` / `os.getenv` use in `src/mltgnt/**/*.py`:
-
-| Variable | Defined in | Purpose |
-|----------|------------|---------|
-| `SKILL_IO_TYPECHECK` | `bridges/ghdag_bridge.py` | Skill I/O typecheck is on unless this is `"0"`. |
-| `NIKKI_ROOT` | `skill/runner.py` | Diary/memory root for `$NIKKI_ROOT` substitution in skill bodies. |
-| `REPO_ROOT` | `skill/runner.py` | Repo-root fallback for `$REPO_ROOT` substitution. |
-| `MLTGNT_AS_OF_DATE` | `improvement/loop.py` | `YYYY-MM-DD` period end for `run_improvement_cycle` when `today` is omitted. |
-
-### Config dataclasses
-
-| Dataclass | Module | Fields (type, default, constraints) |
-|-----------|--------|-------------------------------------|
-| `PersonaConfig` | `mltgnt.config` | `weight_map: dict[str, str]` default `DEFAULT_WEIGHT_MAP` (`light` / `heavy` / `reference` section weights). |
-| `MemoryConfig` | `mltgnt.config` | `chat_dir: Path` (required); `chat_memory_dir: Path \| None = None`; `inject_max_bytes=10240`; `inject_max_entries=12`; `preferences_max_bytes=5120`; `lock_timeout_sec=30.0`; `lock_stale_threshold_sec=300.0`; `raw_days=7`; `mid_weeks=3`; `compact_threshold_bytes=40960`; `compact_target_bytes=25600`; `preferences_section_name="ユーザーの好み・傾向"`; `protected_layers=("caveat",)`; `timezone="Asia/Tokyo"`; `dream_model="claude-haiku-4-5-20251001"`; `use_dream_summary=False`; `dream_dir_name="memory"`; `global_dream_exclude_personas=()`. |
-| `SchedulerConfig` | `mltgnt.config` | `schedule_yaml: Path`; `state_dir: Path`; `timezone="Asia/Tokyo"`; `salt=""`. |
-| `ChatConfig` | `mltgnt.config` | `persona_dir: Path`; `memory_dir: Path \| None = None`; `matcher_model="claude-haiku-4-5-20251001"`. |
-| `LoopsConfig` | `mltgnt.config` | Required: `objectives_dir`, `state_dir`, `status_dir`, `jobs_dir`, `exec_done_dir`, `persona_dir`, `default_persona`, `fallback_channel` (all paths except the two strings). Optional: `poll_interval_sec=10.0` (`> 0`); `max_iterations=5` (`1..10`); `max_clarify_rounds=3` (`1..3`); `max_subtasks_per_iteration=5` (`1..5`); `subtask_timeout_sec=1800.0` (`> 0`); `llm_engine="claude"`; `llm_model=""`; `subtask_engine="claude"`; `subtask_model=""`; `on_status_written: Callable[[Path], None] \| None = None`. Empty `default_persona` raises `ValueError`. **Not** listed in `mltgnt.config.__all__`; import `from mltgnt.config import LoopsConfig`. |
-| `RetryConfig` | `mltgnt.agent._runner` | `max_retries=2`; `base_delay_s=1.0`; `max_delay_s=30.0`. Optional retry policy accepted by `AgentRunner(retry_config=...)`; it is not exported from `mltgnt.agent.__all__`. |
-| `OODAConfig` | `mltgnt.interfaces.ooda` / `mltgnt.ooda` | `max_recovery_attempts=3`; `escalate_after=2`; `observe_filter: str \| None = None`. |
-
-`mltgnt.config.__all__` is `DEFAULT_WEIGHT_MAP`, `MemoryConfig`, `PersonaConfig`, `SchedulerConfig`, `ChatConfig`.
-
----
-
 ## Error Reference
 
 ### `MltgntError` hierarchy (`mltgnt.exceptions`)
@@ -469,17 +563,20 @@ MltgntError
 | `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | `TypeError` | Skill I/O type mismatch on DAG steps | not mapped |
 | `SkillLoadError` | `mltgnt.skill.models` | `Exception` | Skill load / unknown tool | not mapped |
 | `ObjectiveError` | `mltgnt.loops.objective` | *(dataclass)* | Bad Objective YAML/body/id/status | status file `failed`; **not raised** |
+| `RequestError` | `mltgnt.loops.requests` | *(dataclass)* | Bad start-request JSON | isolated to `corrupt/`; host notify; **not raised** |
 | `FileNotFoundError` | stdlib | `OSError` | Missing audit file (`kpi` / `improvement`); missing persona file | `python -m mltgnt.kpi` / `improvement` → **1** |
 | `ValueError` | stdlib | `Exception` | `LoopsConfig.__post_init__` limits; corrupt `LoopState` JSON (`schema_version`, types) | library / loop isolate+fallback |
 | argparse | stdlib | `SystemExit` | Missing CLI args, invalid `--format` | **2** |
 
-`ObjectiveError` is exported from `mltgnt.loops` and is the invalid-Objective result type. It is not a subclass of `Exception`.
+`ObjectiveError` / `RequestError` are result dataclasses. They are not subclasses of `Exception`.
 
 ---
 
-## Public API Stability
+## Public API Stability / Deprecated or removed API
 
-This package is pre-1.0 (`0.Y.Z`). Y bumps may be breaking; Z bumps are intended to be backward compatible. Treat **`mltgnt.__all__` and `mltgnt.loops.__all__`** as the documented export surface. Host Protocols in `mltgnt.interfaces.loops` are part of the v0.18.0 loops contract even though they are not on the root `__all__`.
+This package is pre-1.0 (`0.Y.Z`). Y bumps may be breaking; Z bumps are intended to be backward compatible. Treat **`mltgnt.__all__` and `mltgnt.loops.__all__`** as the documented export surface. Host Protocols in `mltgnt.interfaces.loops` remain part of the loops contract even though they are not on the root `__all__`.
+
+**v0.19.0 behavioral break (documented above):** Objective placement no longer auto-starts loops; hosts must produce `state_dir/requests/*.json`. Public Protocols and `LoopsConfig` fields are unchanged.
 
 Removed in v0.10.0 and **not** part of this API: `run_chat`, `read_memory_agentic`, persona flat keys (`chat_model`, `slack`) and `ops.chat_model`, `Persona.WEIGHT_MAP` / `ops_config` / `slack_post_kwargs` / `delegate_ack`, and `mltgnt.scheduler.ghdag_bridge` (use `mltgnt.bridges.ghdag_bridge`).
 
@@ -487,7 +584,7 @@ Removed in v0.10.0 and **not** part of this API: `run_chat`, `read_memory_agenti
 
 ## License
 
-MIT — SPDX: `MIT` (matches `license = "MIT"` in [`pyproject.toml`](https://github.com/sumipan/mltgnt/blob/v0.18.0/pyproject.toml)).
+MIT — SPDX: `MIT` (matches `license = "MIT"` in [`pyproject.toml`](https://github.com/sumipan/mltgnt/blob/v0.19.0/pyproject.toml)).
 
 | Link | Target |
 |------|--------|
