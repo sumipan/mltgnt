@@ -13,8 +13,12 @@ from mltgnt.loops.models import LoopState, PendingQuestion, Subtask
 from mltgnt.loops.objective import Objective
 from mltgnt.loops import store
 from mltgnt.loops import prompts
-from mltgnt.interfaces.loops import StepPoll, StepSubmission
+from mltgnt.interfaces.loops import HumanThreadRef, StepPoll, StepSubmission
 from tests.loops.fakes import FakeExecutor, FakeHumanChannel
+
+
+def _thread() -> HumanThreadRef:
+    return HumanThreadRef(channel_id="C1", thread_ts="123.456")
 
 
 def _config(tmp_path: Path) -> LoopsConfig:
@@ -739,3 +743,294 @@ def test_start_loop_without_thread_still_opens(tmp_path):
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.thread is None
     assert channel.open_thread_calls == 0
+
+
+def test_consecutive_errors_failed_closes_thread_once(tmp_path):
+    """consecutive_errors が上限に達して failed へ遷移したら close_thread が 1 回だけ呼ばれる。"""
+    executor = FakeExecutor()
+    executor.poll = MagicMock(side_effect=RuntimeError("poll unavailable"))
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel, executor=executor)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[
+            Subtask(
+                id="s1",
+                title="S1",
+                kind="auto",
+                prompt="do it",
+                status="running",
+                submission=StepSubmission(
+                    uuid="u1",
+                    result_filename="r1.md",
+                    submitted_at="2026-08-20T12:00:00+09:00",
+                    reused=False,
+                ),
+            )
+        ],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+
+    engine.tick()
+    engine.tick()
+    engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.status == "failed"
+    assert len(channel.closes) == 1
+    assert channel.closes[0]["loop_id"] == "loop1"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_evaluate")
+def test_terminal_paths_each_close_thread_once(mock_evaluate, mock_persona, tmp_path):
+    """done / cancelled / failed の 3 終端それぞれで close_thread がちょうど 1 回。"""
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+
+    # --- done ---
+    mock_evaluate.return_value = (
+        prompts.EvaluateResponse(
+            achieved=True,
+            score=100,
+            summary="ok",
+            next_focus="",
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    channel_done = FakeHumanChannel()
+    engine_done = _engine(tmp_path, channel=channel_done)
+    store.save_state(
+        _config(tmp_path).state_dir,
+        LoopState(
+            loop_id="done1",
+            objective_path="/tmp/x.md",
+            objective_hash="h",
+            title="T",
+            body="body",
+            status="evaluating",
+            iteration=1,
+            max_iterations=5,
+            persona="mizuho",
+            thread=_thread(),
+            subtasks=[
+                Subtask(id="s1", title="S1", kind="auto", prompt="p", status="success", result="ok")
+            ],
+            created_at="t",
+            updated_at="t",
+        ),
+    )
+    engine_done.tick()
+    assert store.load_state(_config(tmp_path).state_dir, "done1").status == "done"
+    assert len(channel_done.closes) == 1
+
+    # --- cancelled ---
+    channel_cancel = FakeHumanChannel()
+    engine_cancel = _engine(tmp_path, channel=channel_cancel)
+    store.save_state(
+        _config(tmp_path).state_dir,
+        LoopState(
+            loop_id="cancel1",
+            objective_path="/tmp/x.md",
+            objective_hash="h",
+            title="T",
+            body="body",
+            status="executing",
+            iteration=1,
+            max_iterations=5,
+            persona="mizuho",
+            thread=_thread(),
+            created_at="t",
+            updated_at="t",
+        ),
+    )
+    inbox = store._inbox_dir(_config(tmp_path).state_dir, "cancel1")
+    inbox.mkdir(parents=True)
+    (inbox / "001-c.json").write_text(
+        json.dumps(
+            {
+                "kind": "cancel",
+                "message_id": "c1",
+                "question_id": "",
+                "text": "",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine_cancel.tick()
+    assert store.load_state(_config(tmp_path).state_dir, "cancel1").status == "cancelled"
+    assert len(channel_cancel.closes) == 1
+
+    # --- failed (max iterations) ---
+    mock_evaluate.return_value = (
+        prompts.EvaluateResponse(
+            achieved=False,
+            score=10,
+            summary="not yet",
+            next_focus="retry",
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    channel_fail = FakeHumanChannel()
+    engine_fail = _engine(tmp_path, channel=channel_fail)
+    store.save_state(
+        _config(tmp_path).state_dir,
+        LoopState(
+            loop_id="fail1",
+            objective_path="/tmp/x.md",
+            objective_hash="h",
+            title="T",
+            body="body",
+            status="evaluating",
+            iteration=5,
+            max_iterations=5,
+            persona="mizuho",
+            thread=_thread(),
+            subtasks=[
+                Subtask(id="s1", title="S1", kind="auto", prompt="p", status="success", result="ok")
+            ],
+            created_at="t",
+            updated_at="t",
+        ),
+    )
+    engine_fail.tick()
+    assert store.load_state(_config(tmp_path).state_dir, "fail1").status == "failed"
+    assert len(channel_fail.closes) == 1
+
+
+def test_comment_inbox_appends_clarification_context(tmp_path):
+    """kind=comment を 1 件処理すると clarification_context に追記し comment_received を記録する。"""
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(
+        _config(tmp_path).state_dir,
+        LoopState(
+            loop_id="loop1",
+            objective_path="/tmp/x.md",
+            objective_hash="h",
+            title="T",
+            body="body",
+            status="decomposing",
+            iteration=1,
+            max_iterations=5,
+            persona="mizuho",
+            thread=_thread(),
+            created_at="t",
+            updated_at="t",
+        ),
+    )
+    inbox = store._inbox_dir(_config(tmp_path).state_dir, "loop1")
+    inbox.mkdir(parents=True)
+    (inbox / "001-comment.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": "cm1",
+                "question_id": "",
+                "text": "締切は金曜",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("mltgnt.loops.engine.load_persona") as mock_persona:
+        persona = MagicMock()
+        persona.format_prompt.side_effect = lambda x, **_: x
+        persona.fm.engine = ""
+        persona.fm.model = ""
+        mock_persona.return_value = persona
+        with patch("mltgnt.loops.engine.prompts.run_decompose") as mock_decompose:
+            mock_decompose.return_value = (
+                prompts.DecomposeResponse(
+                    subtasks=[
+                        prompts.DecomposeSubtask(id="s1", title="T", kind="auto", prompt="p")
+                    ],
+                    reasoning="",
+                    uncertain_flag=False,
+                ),
+                prompts.LlmTrace("", "", {}, "", {}, {}, False),
+            )
+            engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.clarification_context == ["補足: 締切は金曜"]
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    comments = [e for e in events if e["event"] == "comment_received"]
+    assert len(comments) == 1
+    assert comments[0]["data"]["text"] == "締切は金曜"
+    assert "cm1" in store.list_consumed_message_ids(_config(tmp_path).state_dir, "loop1")
+
+
+def test_comment_inbox_not_double_consumed(tmp_path):
+    """同一 comment を再処理しても clarification_context に重複追記しない。"""
+    engine = _engine(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="clarifying",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+    inbox = store._inbox_dir(_config(tmp_path).state_dir, "loop1")
+    inbox.mkdir(parents=True)
+    (inbox / "001-comment.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": "cm1",
+                "question_id": "",
+                "text": "補足メモ",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("mltgnt.loops.engine.load_persona") as mock_persona:
+        persona = MagicMock()
+        persona.format_prompt.side_effect = lambda x, **_: x
+        persona.fm.engine = ""
+        persona.fm.model = ""
+        mock_persona.return_value = persona
+        with patch("mltgnt.loops.engine.prompts.run_clarify") as mock_clarify:
+            mock_clarify.return_value = (
+                prompts.ClarifyResponse(
+                    clear=True, question="", reason="", reasoning="", uncertain_flag=False
+                ),
+                prompts.LlmTrace("", "", {}, "", {}, {}, False),
+            )
+            engine.tick()
+            # 再 tick（consumed 済みなので追記されない）。status は decomposing になっている
+            engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.clarification_context == ["補足: 補足メモ"]
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    assert len([e for e in events if e["event"] == "comment_received"]) == 1

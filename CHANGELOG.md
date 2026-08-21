@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.19.3
+
+### Fixed
+
+- **loops failed 終端で `close_thread` 漏れ**: 連続エラー等で `failed` に遷移したとき、done / cancelled と同じ finalize 経路で `HumanChannel.close_thread` を必ず呼び、ホスト側 pending スレッドが残らないようにした
+- **inbox `kind: "comment"` の取り込み**: 質問待ち以外のユーザー発言を `clarification_context` に `補足: <text>` として追記し、`comment_received` イベントを記録する（同一 message_id は二重消費しない）
+
 ## v0.19.0
 
 ### BREAKING

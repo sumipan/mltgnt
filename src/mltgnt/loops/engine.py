@@ -1,6 +1,7 @@
 """mltgnt.loops.engine — 1 tick 1 遷移の状態機械。"""
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -97,6 +98,8 @@ class LoopsEngine(BaseRunner):
         if state is None or state.is_terminal():
             return
 
+        comments_ingested = self._ingest_comments(state)
+
         if self._check_cancel(state):
             return
 
@@ -120,10 +123,66 @@ class LoopsEngine(BaseRunner):
         elif state.status == "evaluating":
             transitioned = self._tick_evaluating(state)
 
-        if transitioned:
+        if transitioned or comments_ingested:
             state.updated_at = _now_iso()
             store.save_state(self.config.state_dir, state)
             self._write_status(state)
+
+    def _finalize(self, state: LoopState, status: str) -> None:
+        """done / cancelled / failed の終端処理を一元化する。
+
+        status 更新 → 終端イベント記録 → close_thread の順で必ず実行する。
+        """
+        if status not in TERMINAL_STATUSES:
+            raise ValueError(f"non-terminal status for finalize: {status!r}")
+        state.status = status
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            status,
+            {},
+            iteration=state.iteration,
+        )
+        self._close_thread(state)
+
+    def _ingest_comments(self, state: LoopState) -> bool:
+        """kind=comment の inbox を clarification_context へ追記する。
+
+        store.list_inbox_messages は現状 comment をスキップするため、
+        inbox を直接読んで consume する（同一 message_id は二重消費しない）。
+        """
+        inbox = store._inbox_dir(self.config.state_dir, state.loop_id)
+        if not inbox.is_dir():
+            return False
+        consumed = store.list_consumed_message_ids(self.config.state_dir, state.loop_id)
+        changed = False
+        for path in sorted(inbox.iterdir()):
+            if not path.is_file() or path.suffix != ".json":
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if data.get("kind") != "comment":
+                continue
+            message_id = data.get("message_id")
+            text = data.get("text")
+            if not isinstance(message_id, str) or not isinstance(text, str):
+                continue
+            if message_id in consumed:
+                continue
+            store.consume_inbox_message(self.config.state_dir, state.loop_id, path.name)
+            state.clarification_context.append(f"補足: {text}")
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "comment_received",
+                {"message_id": message_id, "text": text},
+                iteration=state.iteration,
+            )
+            consumed.add(message_id)
+            changed = True
+        return changed
 
     def _check_cancel(self, state: LoopState) -> bool:
         cancelled = False
@@ -138,17 +197,9 @@ class LoopsEngine(BaseRunner):
                 store.consume_inbox_message(self.config.state_dir, state.loop_id, msg.filename)
                 cancelled = True
         if cancelled and not state.is_terminal():
-            state.status = "cancelled"
+            self._finalize(state, "cancelled")
             state.updated_at = _now_iso()
             store.save_state(self.config.state_dir, state)
-            store.append_event(
-                self.config.state_dir,
-                state.loop_id,
-                "cancelled",
-                {},
-                iteration=state.iteration,
-            )
-            self._close_thread(state)
             self._write_status(state)
             return True
         return False
@@ -178,7 +229,7 @@ class LoopsEngine(BaseRunner):
             iteration=state.iteration,
         )
         if state.consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
-            state.status = "failed"
+            self._finalize(state, "failed")
             self._notify_fallback(state, f"Loop failed after {_MAX_CONSECUTIVE_ERRORS} errors")
 
     def _clear_errors(self, state: LoopState) -> None:
@@ -245,7 +296,7 @@ class LoopsEngine(BaseRunner):
                         {"action": "notify_fallback", "error": str(notify_exc)},
                         iteration=state.iteration,
                     )
-            state.status = "failed"
+            self._finalize(state, "failed")
             return False
 
     def _open_thread_if_needed(self, state: LoopState) -> HumanThreadRef | None:
@@ -417,7 +468,7 @@ class LoopsEngine(BaseRunner):
             if state.consecutive_errors == errors_before_record:
                 state.consecutive_errors += 1
             if state.consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
-                state.status = "failed"
+                self._finalize(state, "failed")
 
     def _tick_clarifying(self, state: LoopState) -> bool:
         if not self._ensure_persona(state):
@@ -689,9 +740,8 @@ class LoopsEngine(BaseRunner):
             return True
 
         if resp.achieved:
-            state.status = "done"
             self._notify(state, f"Loop completed: {resp.summary}", "done")
-            self._close_thread(state)
+            self._finalize(state, "done")
         elif state.iteration < state.max_iterations:
             state.iteration += 1
             state.subtasks = []
@@ -699,9 +749,8 @@ class LoopsEngine(BaseRunner):
             state.next_focus = resp.next_focus
             state.status = "decomposing"
         else:
-            state.status = "failed"
             self._notify(state, f"Loop failed: {resp.summary}", "failed")
-            self._close_thread(state)
+            self._finalize(state, "failed")
         return True
 
     def _write_status(self, state: LoopState) -> None:
