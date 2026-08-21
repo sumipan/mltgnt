@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from mltgnt.config import LoopsConfig
 from mltgnt.execution.base_runner import BaseRunner
-from mltgnt.interfaces.loops import HumanChannel, HumanThreadRef, SubtaskExecutor
+from mltgnt.interfaces.loops import HumanChannel, HumanThreadRef, LoopStatus, SubtaskExecutor
 from mltgnt.loops.models import (
     LoopState,
     PendingQuestion,
@@ -128,7 +128,7 @@ class LoopsEngine(BaseRunner):
             store.save_state(self.config.state_dir, state)
             self._write_status(state)
 
-    def _finalize(self, state: LoopState, status: str) -> None:
+    def _finalize(self, state: LoopState, status: LoopStatus) -> None:
         """done / cancelled / failed の終端処理を一元化する。
 
         status 更新 → 終端イベント記録 → close_thread の順で必ず実行する。
