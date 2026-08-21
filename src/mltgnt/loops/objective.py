@@ -8,13 +8,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
 from yaml import YAMLError
 
-from mltgnt.bridges.files_adapter import md_read
+from mltgnt.bridges.files_adapter import md_read, md_write
 
 logger = logging.getLogger("mltgnt.loops.objective")
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_STEM_ALLOWED_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,66 @@ def _first_body_line(body: str) -> str:
         if stripped:
             return stripped
     return ""
+
+
+def _id_from_stem(stem: str) -> str:
+    cleaned = _STEM_ALLOWED_RE.sub("-", stem)
+    cleaned = cleaned.strip("._-")[:64].strip("._-")
+    if not cleaned:
+        digest = hashlib.sha256(stem.encode("utf-8")).hexdigest()[:12]
+        return f"objective-{digest}"
+    return cleaned
+
+
+def _title_from_body(body: str, fallback_id: str) -> str:
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# "):
+            return stripped[2:].strip()[:80]
+        return stripped[:80]
+    return fallback_id[:80]
+
+
+def ensure_frontmatter(path: Path, *, default_max_iterations: int) -> bool:
+    """欠落した必須キーを補完して保存した時だけ True を返す。"""
+    try:
+        md = md_read(path.name, repo_root=path.parent)
+    except (OSError, YAMLError):
+        return False
+
+    meta: dict[str, Any] = dict(md.frontmatter or {})
+    changed = False
+
+    if "id" not in meta:
+        meta["id"] = _id_from_stem(path.stem)
+        changed = True
+
+    loop_id = meta.get("id")
+    if not isinstance(loop_id, str) or not loop_id:
+        loop_id = _id_from_stem(path.stem)
+
+    body = md.content or ""
+    if "title" not in meta:
+        meta["title"] = _title_from_body(body, loop_id)
+        changed = True
+
+    if "status" not in meta:
+        meta["status"] = "active"
+        changed = True
+
+    if "max_iterations" not in meta:
+        meta["max_iterations"] = default_max_iterations
+        changed = True
+
+    if not changed:
+        return False
+
+    fm_text = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)
+    content = f"---\n{fm_text}---\n{body}"
+    md_write(path.name, content, repo_root=path.parent)
+    return True
 
 
 def _parse_max_iterations(raw: Any, default: int) -> int | str:

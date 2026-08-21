@@ -6,11 +6,17 @@ import threading
 from pathlib import Path
 
 from mltgnt.config import LoopsConfig
-from mltgnt.interfaces.loops import HumanChannel, SubtaskExecutor
+from mltgnt.interfaces.loops import HumanChannel, HumanThreadRef, SubtaskExecutor
 from mltgnt.loops.engine import LoopsEngine
-from mltgnt.loops.objective import Objective, ObjectiveError, list_objective_files, parse_objective
+from mltgnt.loops.objective import (
+    Objective,
+    ObjectiveError,
+    ensure_frontmatter,
+    list_objective_files,
+    parse_objective,
+)
 from mltgnt.loops import store
-from mltgnt.loops.models import TERMINAL_STATUSES
+from mltgnt.loops.requests import RequestError, StartRequest, consume_request, list_requests
 from mltgnt.loops.status import write_status
 
 logger = logging.getLogger("mltgnt.loops.component")
@@ -27,7 +33,7 @@ def _objective_snapshot(paths: list[Path]) -> dict[str, float]:
 
 
 class LoopsComponent:
-    """objectives_dir をポーリングし LoopsEngine で各 loop を 1 tick 1 遷移する。"""
+    """objectives_dir をポーリングし、request 経由で LoopsEngine を駆動する。"""
 
     def __init__(
         self,
@@ -49,6 +55,8 @@ class LoopsComponent:
         self._snapshot: dict[str, float] = {}
         self._objectives: dict[str, Objective] = {}
         self._errors: dict[str, ObjectiveError] = {}
+        self._objectives_by_path: dict[str, Objective] = {}
+        self._errors_by_path: dict[str, ObjectiveError] = {}
 
     @property
     def name(self) -> str:
@@ -79,6 +87,7 @@ class LoopsComponent:
         while not self._stop_event.wait(self._config.poll_interval_sec):
             try:
                 self._refresh_objectives(initial=False)
+                self._process_requests()
                 self._engine.tick()
             except Exception:
                 logger.exception("LoopsComponent watch loop error")
@@ -88,10 +97,24 @@ class LoopsComponent:
         current = _objective_snapshot(paths)
         if not initial and current == self._snapshot:
             return
-        self._snapshot = current
+
+        changed: set[str] = set(current)
+        if not initial:
+            changed = {p for p, m in current.items() if self._snapshot.get(p) != m}
+            changed |= {p for p in self._snapshot if p not in current}
+
+        for path in paths:
+            if initial or str(path) in changed:
+                ensure_frontmatter(
+                    path, default_max_iterations=self._config.max_iterations
+                )
+
+        self._snapshot = _objective_snapshot(paths)
 
         new_objectives: dict[str, Objective] = {}
         new_errors: dict[str, ObjectiveError] = {}
+        new_by_path: dict[str, Objective] = {}
+        new_errors_by_path: dict[str, ObjectiveError] = {}
 
         parsed: list[Objective | ObjectiveError] = [
             parse_objective(
@@ -109,6 +132,7 @@ class LoopsComponent:
         for result in parsed:
             if isinstance(result, ObjectiveError):
                 new_errors[result.loop_id] = result
+                new_errors_by_path[result.path.name] = result
                 self._write_error_status(result)
                 continue
             if id_counts[result.loop_id] > 1:
@@ -118,35 +142,135 @@ class LoopsComponent:
                     path=result.path,
                 )
                 new_errors[result.loop_id] = err
+                new_errors_by_path[result.path.name] = err
                 self._write_error_status(err)
                 continue
             new_objectives[result.loop_id] = result
-
-        for loop_id, obj in new_objectives.items():
-            if loop_id not in self._objectives:
-                self._maybe_start(obj)
+            new_by_path[result.path.name] = result
 
         removed = set(self._objectives.keys()) - set(new_objectives.keys())
+        self._objectives = new_objectives
+        self._errors = new_errors
+        self._objectives_by_path = new_by_path
+        self._errors_by_path = new_errors_by_path
+
         for loop_id in removed:
             state = store.load_state(self._config.state_dir, loop_id)
             if state and not state.is_terminal():
                 self._engine._check_cancel(state)
 
-        self._objectives = new_objectives
-        self._errors = new_errors
+    def _process_requests(self) -> None:
+        requests, errors = list_requests(
+            self._config.state_dir, self._config.objectives_dir
+        )
+        for err in errors:
+            self._notify_request_error(err)
+        for req in requests:
+            self._handle_start_request(req)
 
-    def _maybe_start(self, objective: Objective) -> None:
-        existing = store.load_state(self._config.state_dir, objective.loop_id)
-        if existing is not None:
-            if existing.is_terminal():
-                return
-            return
-        if objective.status == "cancelled":
+    def _notify_request_error(self, err: RequestError) -> None:
+        event_id = f"loops:request:{err.filename}:error"
+        text = f"Invalid start request ({err.filename}): {err.message}"
+        if err.channel_id and err.thread_ts:
+            try:
+                self._engine.human_channel.notify(
+                    loop_id=err.filename,
+                    persona=err.persona or self._config.default_persona,
+                    thread=HumanThreadRef(err.channel_id, err.thread_ts),
+                    text=text,
+                    event_id=event_id,
+                )
+            except Exception:
+                logger.exception("failed to notify request error for %s", err.filename)
             return
         try:
-            self._engine.start_loop(objective)
+            self._engine.human_channel.notify_fallback(
+                loop_id=err.filename,
+                text=text,
+                event_id=event_id,
+            )
         except Exception:
-            logger.exception("failed to start loop %s", objective.loop_id)
+            logger.exception("failed to fallback-notify request error for %s", err.filename)
+
+    def _notify_request(
+        self, req: StartRequest, *, text: str, kind: str, loop_id: str
+    ) -> None:
+        event_id = f"loops:request:{req.filename}:{kind}"
+        self._engine.human_channel.notify(
+            loop_id=loop_id,
+            persona=req.persona or self._config.default_persona,
+            thread=HumanThreadRef(req.channel_id, req.thread_ts),
+            text=text,
+            event_id=event_id,
+        )
+
+    def _handle_start_request(self, req: StartRequest) -> None:
+        try:
+            err = self._errors_by_path.get(req.objective_path)
+            obj = self._objectives_by_path.get(req.objective_path)
+            if err is not None:
+                self._notify_request(
+                    req,
+                    text=f"Cannot start objective {req.objective_path}: {err.message}",
+                    kind="error",
+                    loop_id=err.loop_id,
+                )
+                consume_request(self._config.state_dir, req.filename)
+                return
+            if obj is None:
+                self._notify_request(
+                    req,
+                    text=f"Cannot start objective {req.objective_path}: not found",
+                    kind="error",
+                    loop_id=Path(req.objective_path).stem,
+                )
+                consume_request(self._config.state_dir, req.filename)
+                return
+            if obj.status == "cancelled":
+                self._notify_request(
+                    req,
+                    text=f"Cannot start objective {req.objective_path}: status is cancelled",
+                    kind="error",
+                    loop_id=obj.loop_id,
+                )
+                consume_request(self._config.state_dir, req.filename)
+                return
+
+            existing = store.load_state(self._config.state_dir, obj.loop_id)
+            if existing is not None and not existing.is_terminal():
+                self._notify_request(
+                    req,
+                    text=f"Loop {obj.loop_id} is already running",
+                    kind="already_running",
+                    loop_id=obj.loop_id,
+                )
+                consume_request(self._config.state_dir, req.filename)
+                return
+            if existing is not None and existing.is_terminal():
+                store.archive_terminal_state(self._config.state_dir, obj.loop_id)
+
+            parsed = parse_objective(
+                obj.path,
+                default_persona=req.persona or self._config.default_persona,
+                default_max_iterations=self._config.max_iterations,
+            )
+            if isinstance(parsed, ObjectiveError):
+                self._notify_request(
+                    req,
+                    text=f"Cannot start objective {req.objective_path}: {parsed.message}",
+                    kind="error",
+                    loop_id=parsed.loop_id,
+                )
+                consume_request(self._config.state_dir, req.filename)
+                return
+
+            self._engine.start_loop(
+                parsed,
+                thread=HumanThreadRef(req.channel_id, req.thread_ts),
+            )
+            consume_request(self._config.state_dir, req.filename)
+        except Exception:
+            logger.exception("failed to process start request %s", req.filename)
 
     def _restore_states(self) -> None:
         for loop_id in store.list_restorable_loops(self._config.state_dir):
