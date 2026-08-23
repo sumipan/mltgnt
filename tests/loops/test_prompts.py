@@ -145,3 +145,34 @@ def test_ok_false_then_ok_succeeds_on_retry():
 
     assert resp.clear is True
     assert trace.metadata["retry"] is True
+
+
+def test_decompose_instruction_includes_deliverable_contract():
+    text = prompts.build_decompose_instruction("body", iteration=1, max_subtasks=3)
+    assert "deliverable.md" in text
+    assert "Do not create new draft" in text
+
+
+def test_evaluate_instruction_includes_deliverable_excerpt():
+    text = prompts.build_evaluate_instruction(
+        "body",
+        results_summary="- s1: ok",
+        iteration=2,
+        max_iterations=5,
+        deliverable_excerpt="integrated draft",
+    )
+    assert "integrated draft" in text
+    assert "- s1: ok" in text
+
+
+def test_build_auto_subtask_prompt_contract():
+    text = prompts.build_auto_subtask_prompt(
+        "do work",
+        deliverable_path="/tmp/state/loop1/deliverable.md",
+        deliverable_excerpt="current body",
+    )
+    assert "/tmp/state/loop1/deliverable.md" in text
+    assert "Edit this file directly" in text
+    assert "Do not create new deliverable" in text
+    assert "3-5 line" in text
+    assert "current body" in text

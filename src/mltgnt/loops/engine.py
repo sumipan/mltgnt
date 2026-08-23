@@ -74,6 +74,7 @@ class LoopsEngine(BaseRunner):
             created_at=_now_iso(),
             updated_at=_now_iso(),
         )
+        store.initialize_deliverable(self.config.state_dir, objective.loop_id, objective.body)
         store.save_state(self.config.state_dir, state)
         store.append_event(
             self.config.state_dir,
@@ -82,8 +83,137 @@ class LoopsEngine(BaseRunner):
             {"objective_path": str(objective.path)},
             iteration=1,
         )
+        store.append_event(
+            self.config.state_dir,
+            objective.loop_id,
+            "deliverable_updated",
+            store.deliverable_snapshot(self.config.state_dir, objective.loop_id),
+            iteration=1,
+        )
         self._write_status(state)
         return state
+
+    def _transition(self, state: LoopState, to_status: LoopStatus, reason: str) -> None:
+        if state.status == to_status:
+            return
+        from_status = state.status
+        state.status = to_status
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            "state_change",
+            {"from": from_status, "to": to_status, "reason": reason},
+            iteration=state.iteration,
+        )
+
+    def _truncate(self, text: str) -> str:
+        limit = self.config.result_summary_chars
+        return text if len(text) <= limit else text[:limit]
+
+    def _post_progress(self, state: LoopState, text: str, stable_id: str) -> None:
+        if not self.config.progress_notify:
+            return
+        thread = state.thread
+        if thread is None:
+            return
+        eid = _event_id(state.loop_id, "progress", stable_id)
+        if state.delivered_events.get(eid):
+            return
+        try:
+            state.delivered_events[eid] = False
+            store.save_state(self.config.state_dir, state)
+            ok = self.human_channel.post_progress(
+                loop_id=state.loop_id,
+                persona=state.persona,
+                thread=thread,
+                text=text,
+                event_id=eid,
+            )
+            if ok:
+                state.delivered_events[eid] = True
+            else:
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "channel_error",
+                    {"action": "post_progress", "error": "false"},
+                    iteration=state.iteration,
+                )
+        except Exception as exc:
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "channel_error",
+                {"action": "post_progress", "error": str(exc)},
+                iteration=state.iteration,
+            )
+
+    def _post_deliverable(
+        self, state: LoopState, *, summary: str, stable_id: str
+    ) -> None:
+        thread = state.thread
+        if thread is None:
+            return
+        eid = _event_id(state.loop_id, "deliverable", stable_id)
+        if state.delivered_events.get(eid):
+            return
+        path = str(store.deliverable_path(self.config.state_dir, state.loop_id))
+        try:
+            state.delivered_events[eid] = False
+            store.save_state(self.config.state_dir, state)
+            ok = self.human_channel.post_deliverable(
+                loop_id=state.loop_id,
+                persona=state.persona,
+                thread=thread,
+                deliverable_path=path,
+                summary=summary,
+                event_id=eid,
+            )
+            if ok:
+                state.delivered_events[eid] = True
+            else:
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "channel_error",
+                    {"action": "post_deliverable", "error": "false"},
+                    iteration=state.iteration,
+                )
+        except Exception as exc:
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "channel_error",
+                {"action": "post_deliverable", "error": str(exc)},
+                iteration=state.iteration,
+            )
+
+    def _record_subtask_done(self, state: LoopState, st: Subtask) -> None:
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            "subtask_done",
+            {"id": st.id, "status": st.status, "result_summary": st.result_summary},
+            iteration=state.iteration,
+        )
+        self._post_progress(
+            state,
+            f"{st.title}\n{st.result_summary}",
+            f"i{state.iteration}:subtask:{st.id}:done",
+        )
+
+    def _auto_prompt(self, state: LoopState, work_prompt: str) -> str:
+        path = store.deliverable_path(self.config.state_dir, state.loop_id)
+        excerpt = store.read_deliverable_excerpt(
+            self.config.state_dir,
+            state.loop_id,
+            self.config.deliverable_excerpt_chars,
+        )
+        return prompts.build_auto_subtask_prompt(
+            work_prompt,
+            deliverable_path=str(path),
+            deliverable_excerpt=excerpt,
+        )
 
     def _load(self, loop_id: str) -> LoopState | None:
         try:
@@ -135,7 +265,7 @@ class LoopsEngine(BaseRunner):
         """
         if status not in TERMINAL_STATUSES:
             raise ValueError(f"non-terminal status for finalize: {status!r}")
-        state.status = status
+        self._transition(state, status, f"finalize:{status}")
         store.append_event(
             self.config.state_dir,
             state.loop_id,
@@ -348,6 +478,17 @@ class LoopsEngine(BaseRunner):
             if ok:
                 state.delivered_events[eid] = True
                 self._clear_errors(state)
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "question_asked",
+                    {
+                        "question_id": question_id,
+                        "kind": kind,
+                        "text_excerpt": self._truncate(text),
+                    },
+                    iteration=state.iteration,
+                )
             return ok
         except Exception as exc:
             self._record_error(state, "channel_error", {"action": "ask", "error": str(exc)})
@@ -490,7 +631,7 @@ class LoopsEngine(BaseRunner):
                 )
             except Exception as exc:
                 logger.warning("failed to record clarify_limit event: %s", exc)
-            state.status = "decomposing"
+            self._transition(state, "decomposing", "clarify_limit")
             return True
 
         instruction = prompts.build_clarify_instruction(
@@ -514,7 +655,7 @@ class LoopsEngine(BaseRunner):
             return True
 
         if resp.clear:
-            state.status = "decomposing"
+            self._transition(state, "decomposing", "clarify_clear")
             state.clarify_round = 0
             state.pending_question = None
         else:
@@ -522,14 +663,14 @@ class LoopsEngine(BaseRunner):
             qid = f"clarify-{state.clarify_round}"
             if not self._ask(state, qid, resp.question or "", kind="clarify"):
                 return False
-            state.status = "awaiting_answer"
+            self._transition(state, "awaiting_answer", "clarify_question")
         return True
 
     def _tick_awaiting_answer(self, state: LoopState) -> bool:
         consumed = store.list_consumed_message_ids(self.config.state_dir, state.loop_id)
         pending = state.pending_question
         if pending is None:
-            state.status = "clarifying"
+            self._transition(state, "clarifying", "awaiting_without_pending")
             return True
         for msg in store.list_inbox_messages(self.config.state_dir, state.loop_id):
             if msg.message_id in consumed:
@@ -541,7 +682,7 @@ class LoopsEngine(BaseRunner):
                 f"Q: {pending.text}\nA: {msg.text}"
             )
             state.pending_question = None
-            state.status = "clarifying"
+            self._transition(state, "clarifying", "answer_received")
             store.append_event(
                 self.config.state_dir,
                 state.loop_id,
@@ -582,7 +723,13 @@ class LoopsEngine(BaseRunner):
             for s in resp.subtasks
         ]
         state.current_subtask_id = state.subtasks[0].id if state.subtasks else None
-        state.status = "executing"
+        plan_lines = [f"- [{s.kind}] {s.title}" for s in state.subtasks]
+        self._post_progress(
+            state,
+            "Plan:\n" + "\n".join(plan_lines),
+            f"i{state.iteration}:plan",
+        )
+        self._transition(state, "executing", "decompose_done")
         state.next_focus = ""
         return True
 
@@ -616,16 +763,26 @@ class LoopsEngine(BaseRunner):
         st = self._current_subtask(state)
         if st is None:
             if self._all_subtasks_done(state):
-                state.status = "evaluating"
+                self._transition(state, "evaluating", "all_subtasks_done")
             return True
 
         if st.kind == "human":
             if st.status == "pending":
                 qid = f"human-{state.iteration}-{st.id}"
+                excerpt = store.read_deliverable_excerpt(
+                    self.config.state_dir,
+                    state.loop_id,
+                    self.config.deliverable_excerpt_chars,
+                )
+                self._post_deliverable(
+                    state,
+                    summary=self._truncate(excerpt or st.prompt),
+                    stable_id=f"{st.id}:start",
+                )
                 if not self._ask(state, qid, st.prompt, kind="human_subtask"):
                     return False
                 st.status = "running"
-                state.status = "awaiting_human"
+                self._transition(state, "awaiting_human", f"human_subtask:{st.id}")
             return True
 
         if st.status == "pending":
@@ -633,13 +790,24 @@ class LoopsEngine(BaseRunner):
             try:
                 engine, model = self._resolve_subtask_engine_model(state)
                 submission = self.executor.submit(
-                    prompt=st.prompt,
+                    prompt=self._auto_prompt(state, st.prompt),
                     idempotency_key=key,
                     engine=engine,
                     model=model,
                 )
                 st.submission = submission
                 st.status = "running"
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "subtask_submitted",
+                    {
+                        "id": st.id,
+                        "uuid": submission.uuid,
+                        "result_filename": submission.result_filename,
+                    },
+                    iteration=state.iteration,
+                )
                 self._clear_errors(state)
             except Exception as exc:
                 self._record_error(state, "executor_error", {"action": "submit", "error": str(exc)})
@@ -658,19 +826,34 @@ class LoopsEngine(BaseRunner):
                 if self._subtask_timed_out(sub.submitted_at):
                     st.status = "failed"
                     st.result = f"timeout after {self.config.subtask_timeout_sec}s"
+                    st.result_summary = self._truncate(st.result)
+                    st.result_filename = sub.result_filename
+                    self._record_subtask_done(state, st)
                     self._advance_subtask(state)
                 return True
 
             if poll.status == "success":
                 st.status = "success"
                 st.result = poll.content
+                st.result_summary = self._truncate(poll.content)
+                st.result_filename = sub.result_filename
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "deliverable_updated",
+                    store.deliverable_snapshot(self.config.state_dir, state.loop_id),
+                    iteration=state.iteration,
+                )
             else:
                 st.status = "failed"
                 st.result = poll.content
+                st.result_summary = self._truncate(poll.content)
+                st.result_filename = sub.result_filename
 
+            self._record_subtask_done(state, st)
             self._advance_subtask(state)
             if self._all_subtasks_done(state):
-                state.status = "evaluating"
+                self._transition(state, "evaluating", "all_subtasks_done")
             return True
 
         return False
@@ -688,7 +871,7 @@ class LoopsEngine(BaseRunner):
     def _tick_awaiting_human(self, state: LoopState) -> bool:
         st = self._current_subtask(state)
         if st is None:
-            state.status = "executing"
+            self._transition(state, "executing", "awaiting_human_without_subtask")
             return True
         consumed = store.list_consumed_message_ids(self.config.state_dir, state.loop_id)
         pending = state.pending_question
@@ -705,11 +888,19 @@ class LoopsEngine(BaseRunner):
             store.consume_inbox_message(self.config.state_dir, state.loop_id, msg.filename)
             st.status = "success"
             st.result = msg.text
+            st.result_summary = self._truncate(msg.text)
+            st.result_filename = ""
             state.pending_question = None
+            self._post_deliverable(
+                state,
+                summary=st.result_summary,
+                stable_id=f"{st.id}:done",
+            )
+            self._record_subtask_done(state, st)
             self._advance_subtask(state)
-            state.status = "executing"
+            self._transition(state, "executing", f"human_answer:{st.id}")
             if self._all_subtasks_done(state):
-                state.status = "evaluating"
+                self._transition(state, "evaluating", "all_subtasks_done")
             return True
         return False
 
@@ -717,13 +908,20 @@ class LoopsEngine(BaseRunner):
         if not self._ensure_persona(state):
             return True
         results_summary = "\n".join(
-            f"- {st.id} ({st.status}): {st.result[:200]}" for st in state.subtasks
+            f"- {st.id} ({st.status}): {st.result_summary or st.result[:200]}"
+            for st in state.subtasks
+        )
+        deliverable_excerpt = store.read_deliverable_excerpt(
+            self.config.state_dir,
+            state.loop_id,
+            self.config.deliverable_excerpt_chars,
         )
         instruction = prompts.build_evaluate_instruction(
             state.body,
             results_summary=results_summary,
             iteration=state.iteration,
             max_iterations=state.max_iterations,
+            deliverable_excerpt=deliverable_excerpt,
         )
         try:
             prompt = self._format_with_persona(state, instruction)
@@ -747,7 +945,7 @@ class LoopsEngine(BaseRunner):
             state.subtasks = []
             state.current_subtask_id = None
             state.next_focus = resp.next_focus
-            state.status = "decomposing"
+            self._transition(state, "decomposing", "evaluate_continue")
         else:
             self._notify(state, f"Loop failed: {resp.summary}", "failed")
             self._finalize(state, "failed")

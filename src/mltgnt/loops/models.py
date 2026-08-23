@@ -38,6 +38,8 @@ class Subtask:
     prompt: str
     status: str = "pending"  # pending | running | success | failed
     result: str = ""
+    result_summary: str = ""
+    result_filename: str = ""
     submission: StepSubmission | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,6 +50,8 @@ class Subtask:
             "prompt": self.prompt,
             "status": self.status,
             "result": self.result,
+            "result_summary": self.result_summary,
+            "result_filename": self.result_filename,
         }
         if self.submission is not None:
             d["submission"] = {
@@ -76,6 +80,8 @@ class Subtask:
             prompt=str(data["prompt"]),
             status=str(data.get("status", "pending")),
             result=str(data.get("result", "")),
+            result_summary=str(data.get("result_summary", "")),
+            result_filename=str(data.get("result_filename", "")),
             submission=submission,
         )
 

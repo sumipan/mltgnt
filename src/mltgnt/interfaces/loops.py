@@ -78,6 +78,27 @@ class HumanChannel(Protocol):
         event_id: str,
     ) -> bool: ...
 
+    def post_progress(
+        self,
+        *,
+        loop_id: str,
+        persona: str,
+        thread: HumanThreadRef,
+        text: str,
+        event_id: str,
+    ) -> bool: ...
+
+    def post_deliverable(
+        self,
+        *,
+        loop_id: str,
+        persona: str,
+        thread: HumanThreadRef,
+        deliverable_path: str,
+        summary: str,
+        event_id: str,
+    ) -> bool: ...
+
     def notify_fallback(
         self,
         *,
