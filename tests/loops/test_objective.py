@@ -170,3 +170,49 @@ def test_persona_priority_default_when_agent_absent(tmp_path):
     result = parse_objective(path, default_persona="from-request", default_max_iterations=5)
     assert isinstance(result, Objective)
     assert result.agent == "from-request"
+
+
+def test_plan_approval_true_false_default_and_invalid(tmp_path):
+    path = _write_objective(
+        tmp_path,
+        "p.md",
+        "---\nid: p\ntitle: P\nstatus: active\nmax_iterations: 5\nplan_approval: true\n---\nbody\n",
+    )
+    result = parse_objective(path, default_persona="m", default_max_iterations=5)
+    assert isinstance(result, Objective)
+    assert result.plan_approval is True
+
+    path2 = _write_objective(
+        tmp_path,
+        "p2.md",
+        "---\nid: p2\ntitle: P\nstatus: active\nmax_iterations: 5\nplan_approval: false\n---\nbody\n",
+    )
+    result2 = parse_objective(path2, default_persona="m", default_max_iterations=5)
+    assert isinstance(result2, Objective)
+    assert result2.plan_approval is False
+
+    path3 = _write_objective(
+        tmp_path,
+        "p3.md",
+        "---\nid: p3\ntitle: P\nstatus: active\nmax_iterations: 5\n---\nbody\n",
+    )
+    result3 = parse_objective(
+        path3, default_persona="m", default_max_iterations=5, plan_approval_default=True
+    )
+    assert isinstance(result3, Objective)
+    assert result3.plan_approval is True
+
+    path4 = _write_objective(
+        tmp_path,
+        "p4.md",
+        "---\nid: p4\ntitle: P\nstatus: active\nmax_iterations: 5\nplan_approval: maybe\n---\nbody\n",
+    )
+    result4 = parse_objective(path4, default_persona="m", default_max_iterations=5)
+    assert isinstance(result4, ObjectiveError)
+    assert "plan_approval" in result4.message
+
+
+def test_ensure_frontmatter_does_not_add_plan_approval(tmp_path):
+    path = _write_objective(tmp_path, "foo.md", "# Foo\n\nbody\n")
+    assert ensure_frontmatter(path, default_max_iterations=5) is True
+    assert "plan_approval" not in path.read_text(encoding="utf-8")

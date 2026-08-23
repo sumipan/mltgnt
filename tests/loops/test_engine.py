@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -34,7 +35,7 @@ def _config(tmp_path: Path) -> LoopsConfig:
     )
 
 
-def _objective(loop_id: str = "loop1") -> Objective:
+def _objective(loop_id: str = "loop1", *, plan_approval: bool = False) -> Objective:
     return Objective(
         loop_id=loop_id,
         title="Title",
@@ -44,6 +45,7 @@ def _objective(loop_id: str = "loop1") -> Objective:
         status="active",
         path=Path(f"/tmp/{loop_id}.md"),
         content_hash="hash1",
+        plan_approval=plan_approval,
     )
 
 
@@ -933,6 +935,7 @@ def test_comment_inbox_appends_clarification_context(tmp_path):
             max_iterations=5,
             persona="mizuho",
             thread=_thread(),
+            plan_approval=False,
             created_at="t",
             updated_at="t",
         ),
@@ -1354,7 +1357,9 @@ def test_progress_notify_plan_and_toggle(mock_decompose, mock_persona, tmp_path)
         prompts.DecomposeResponse(
             subtasks=[
                 prompts.DecomposeSubtask(id="s1", title="One", kind="auto", prompt="p"),
-                prompts.DecomposeSubtask(id="s2", title="Two", kind="human", prompt="q"),
+                prompts.DecomposeSubtask(
+                    id="s2", title="Two", kind="human", prompt="q", depends=("s1",)
+                ),
             ],
             reasoning="",
             uncertain_flag=False,
@@ -1374,6 +1379,7 @@ def test_progress_notify_plan_and_toggle(mock_decompose, mock_persona, tmp_path)
         max_iterations=5,
         persona="mizuho",
         thread=_thread(),
+        plan_approval=False,
         created_at="t",
         updated_at="t",
     )
@@ -1414,6 +1420,7 @@ def test_progress_notify_plan_and_toggle(mock_decompose, mock_persona, tmp_path)
         max_iterations=5,
         persona="mizuho",
         thread=_thread(),
+        plan_approval=False,
         created_at="t",
         updated_at="t",
     )
@@ -1591,7 +1598,9 @@ def test_state_change_and_observability_events(
         prompts.DecomposeResponse(
             subtasks=[
                 prompts.DecomposeSubtask(id="s1", title="Auto", kind="auto", prompt="work"),
-                prompts.DecomposeSubtask(id="h1", title="Human", kind="human", prompt="review"),
+                prompts.DecomposeSubtask(
+                    id="h1", title="Human", kind="human", prompt="review", depends=("s1",)
+                ),
             ],
             reasoning="",
             uncertain_flag=False,
@@ -1697,3 +1706,606 @@ def test_state_change_and_observability_events(
         [e for e in events_after if e["event"] == "state_change" and e["data"]["to"] == "done"]
     )
     assert done_count_after == done_count_before
+
+
+@dataclass
+class FakeConditionEvaluator:
+    verdicts: list = field(default_factory=list)
+    calls: list = field(default_factory=list)
+
+    def evaluate(self, condition, *, previous_token):
+        self.calls.append({"condition": dict(condition), "previous_token": previous_token})
+        if not self.verdicts:
+            from mltgnt.interfaces.loops import WatchVerdict
+            return WatchVerdict(status="pending", detail="waiting")
+        return self.verdicts.pop(0)
+
+
+def _executing_watch_state(*, watch_kwargs=None, auto_kwargs=None) -> LoopState:
+    watch = dict(
+        id="w1",
+        title="Watch",
+        kind="watch",
+        prompt="",
+        status="pending",
+        condition={"type": "path_exists", "path": "flag"},
+        depends=[],
+        timeout_sec=100,
+        poll_interval_sec=30,
+    )
+    if watch_kwargs:
+        watch.update(watch_kwargs)
+    auto = dict(
+        id="a1",
+        title="Auto",
+        kind="auto",
+        prompt="work",
+        status="pending",
+        depends=[],
+    )
+    if auto_kwargs:
+        auto.update(auto_kwargs)
+    return LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=False,
+        subtasks=[Subtask(**watch), Subtask(**auto)],
+        created_at="t",
+        updated_at="t",
+    )
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_watch_and_auto_parallel_but_single_auto_submit(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    root = tmp_path / "watch_root"
+    root.mkdir()
+    (root / "flag").write_text("1", encoding="utf-8")
+    cfg = _config(tmp_path)
+    # rebuild config with watch_root
+    cfg = LoopsConfig(
+        objectives_dir=cfg.objectives_dir,
+        state_dir=cfg.state_dir,
+        status_dir=cfg.status_dir,
+        jobs_dir=cfg.jobs_dir,
+        exec_done_dir=cfg.exec_done_dir,
+        persona_dir=cfg.persona_dir,
+        default_persona="mizuho",
+        fallback_channel="C-fallback",
+        watch_root=root,
+    )
+    executor = FakeExecutor()
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=executor,
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    state = _executing_watch_state()
+    store.save_state(cfg.state_dir, state)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = datetime(2026, 8, 20, 12, 0, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+    engine.tick(now=now)
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.subtasks[0].status == "success"  # path exists
+    assert state.subtasks[1].status == "running"
+    assert len(executor.submit_calls) == 1
+
+    # second auto pending should not submit while first running
+    state.subtasks.append(
+        Subtask(id="a2", title="A2", kind="auto", prompt="more", status="pending", depends=[])
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick(now=now)
+    assert len(executor.submit_calls) == 1
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_watch_poll_interval_timeout_and_event_dedup(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    from mltgnt.interfaces.loops import WatchVerdict
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    fake = FakeConditionEvaluator(
+        verdicts=[
+            WatchVerdict(status="pending", detail="wait", observed_token="t1"),
+            WatchVerdict(status="pending", detail="wait", observed_token="t1"),
+        ]
+    )
+    cfg = _config(tmp_path)
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+        condition_evaluator=fake,
+    )
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=False,
+        subtasks=[
+            Subtask(
+                id="w1",
+                title="W",
+                kind="watch",
+                prompt="",
+                condition={"type": "issue_label", "number": 1},
+                depends=[],
+                timeout_sec=100,
+                poll_interval_sec=30,
+            )
+        ],
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    t0 = datetime(2026, 8, 20, 12, 0, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+    engine.tick(now=t0)
+    assert len(fake.calls) == 1
+    events = [e for e in store.read_events(cfg.state_dir, "loop1") if e["event"] == "watch_polled"]
+    assert len(events) == 1
+
+    # within poll interval: no re-call
+    engine.tick(now=t0 + timedelta(seconds=10))
+    assert len(fake.calls) == 1
+    events = [e for e in store.read_events(cfg.state_dir, "loop1") if e["event"] == "watch_polled"]
+    assert len(events) == 1
+
+    # after interval, same pending → no new event
+    engine.tick(now=t0 + timedelta(seconds=30))
+    assert len(fake.calls) == 2
+    events = [e for e in store.read_events(cfg.state_dir, "loop1") if e["event"] == "watch_polled"]
+    assert len(events) == 1
+
+    # timeout at elapsed == timeout_sec
+    state = store.load_state(cfg.state_dir, "loop1")
+    store.save_state(cfg.state_dir, state)
+    engine.tick(now=t0 + timedelta(seconds=100))
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.subtasks[0].status == "failed"
+    assert state.status == "replanning"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_host_evaluator_paths_and_failures(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    from mltgnt.interfaces.loops import WatchVerdict
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    cfg = _config(tmp_path)
+    t0 = datetime(2026, 8, 20, 12, 0, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    def _watch_state():
+        return LoopState(
+            loop_id="loop1",
+            objective_path="/tmp/x.md",
+            objective_hash="h",
+            title="T",
+            body="body",
+            status="executing",
+            iteration=1,
+            max_iterations=5,
+            persona="mizuho",
+            thread=_thread(),
+            plan_approval=False,
+            subtasks=[
+                Subtask(
+                    id="w1",
+                    title="W",
+                    kind="watch",
+                    prompt="",
+                    condition={"type": "issue_label", "number": 1},
+                    depends=[],
+                    timeout_sec=1000,
+                    poll_interval_sec=1,
+                )
+            ],
+            created_at="t",
+            updated_at="t",
+        )
+
+    # satisfied via fake
+    fake = FakeConditionEvaluator(
+        verdicts=[WatchVerdict(status="satisfied", detail="labeled")]
+    )
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+        condition_evaluator=fake,
+    )
+    store.save_state(cfg.state_dir, _watch_state())
+    engine.tick(now=t0)
+    assert store.load_state(cfg.state_dir, "loop1").subtasks[0].status == "success"
+
+    # no evaluator
+    engine2 = LoopsEngine(
+        config=_config(tmp_path / "n"),
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    store.save_state(_config(tmp_path / "n").state_dir, _watch_state())
+    engine2.tick(now=t0)
+    st = store.load_state(_config(tmp_path / "n").state_dir, "loop1")
+    assert st.subtasks[0].status == "failed"
+    assert st.status == "replanning"
+
+    # None / exception / bad status
+    class BadEval:
+        def __init__(self, mode):
+            self.mode = mode
+
+        def evaluate(self, condition, *, previous_token):
+            if self.mode == "none":
+                return None
+            if self.mode == "exc":
+                raise RuntimeError("boom")
+            return WatchVerdict(status="weird", detail="x")  # type: ignore[arg-type]
+
+    for mode, path in [("none", "none"), ("exc", "exc"), ("bad", "bad")]:
+        p = tmp_path / path
+        eng = LoopsEngine(
+            config=_config(p),
+            human_channel=FakeHumanChannel(),
+            executor=FakeExecutor(),
+            objective_exists=lambda _: True,
+            objective_cancelled=lambda _: False,
+            objective_hash_changed=lambda *_: False,
+            condition_evaluator=BadEval(mode),
+        )
+        store.save_state(_config(p).state_dir, _watch_state())
+        eng.tick(now=t0)
+        st = store.load_state(_config(p).state_dir, "loop1")
+        assert st.subtasks[0].status == "failed"
+        assert st.status == "replanning"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_replan")
+def test_watch_fail_replan_and_limit(mock_replan, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    cfg = _config(tmp_path)
+    channel = FakeHumanChannel()
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=channel,
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    t0 = datetime(2026, 8, 20, 12, 0, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="replanning",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=False,
+        replan_count=0,
+        replan_trigger_subtask_id="w1",
+        replan_feedback="watch failed",
+        subtasks=[
+            Subtask(id="s1", title="S", kind="auto", prompt="p", status="success", depends=[]),
+            Subtask(
+                id="w1",
+                title="W",
+                kind="watch",
+                prompt="",
+                status="failed",
+                depends=["s1"],
+                condition={"type": "issue_label"},
+                result_summary="watch failed",
+            ),
+        ],
+        created_at="t",
+        updated_at="t",
+    )
+    mock_replan.return_value = (
+        prompts.ReplanResponse(
+            keep=("s1",),
+            add=(
+                prompts.DecomposeSubtask(
+                    id="a2", title="Investigate", kind="auto", prompt="look", depends=()
+                ),
+            ),
+            reason="retry",
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick(now=t0)
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.status == "executing"
+    assert state.replan_count == 1
+    assert [s.id for s in state.subtasks] == ["s1", "a2"]
+    assert any(e["event"] == "replan_triggered" for e in store.read_events(cfg.state_dir, "loop1"))
+
+    # hit limit → evaluating without LLM
+    state.replan_count = 3
+    state.status = "replanning"
+    state.replan_trigger_subtask_id = "a2"
+    state.replan_feedback = "again"
+    store.save_state(cfg.state_dir, state)
+    mock_replan.reset_mock()
+    engine.tick(now=t0)
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.status == "evaluating"
+    mock_replan.assert_not_called()
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+def test_plan_approval_gate_and_phrases(mock_decompose, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    mock_decompose.return_value = (
+        prompts.DecomposeResponse(
+            subtasks=[prompts.DecomposeSubtask(id="s1", title="One", kind="auto", prompt="p")],
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    cfg = _config(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="decomposing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=True,
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.status == "awaiting_plan_approval"
+    assert len(channel.asks) == 1
+    qid = channel.asks[0]["question_id"]
+    engine.tick()
+    assert len(channel.asks) == 1  # idempotent
+
+    for phrase in (" OK ", "承認", "進めて", "go"):
+        break
+    inbox = store._inbox_dir(cfg.state_dir, "loop1")
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "001-a.json").write_text(
+        json.dumps(
+            {
+                "kind": "answer",
+                "message_id": "m1",
+                "question_id": qid,
+                "text": " OK ",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine.tick()
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.status == "executing"
+    assert any(e["event"] == "plan_approved" for e in store.read_events(cfg.state_dir, "loop1"))
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+def test_plan_approval_false_skips_ask(mock_decompose, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    mock_decompose.return_value = (
+        prompts.DecomposeResponse(
+            subtasks=[prompts.DecomposeSubtask(id="s1", title="One", kind="auto", prompt="p")],
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    cfg = _config(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="decomposing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=False,
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+    assert store.load_state(cfg.state_dir, "loop1").status == "executing"
+    assert channel.asks == []
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_replan")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+def test_plan_revision_limit_and_cancel(mock_decompose, mock_replan, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    mock_decompose.return_value = (
+        prompts.DecomposeResponse(
+            subtasks=[prompts.DecomposeSubtask(id="s1", title="One", kind="auto", prompt="p")],
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    mock_replan.return_value = (
+        prompts.ReplanResponse(
+            keep=(),
+            add=(prompts.DecomposeSubtask(id="s1", title="Rev", kind="auto", prompt="p2"),),
+            reason="revised",
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    cfg = _config(tmp_path)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="decomposing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=True,
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+    state = store.load_state(cfg.state_dir, "loop1")
+    qid = state.pending_question.question_id
+    inbox = store._inbox_dir(cfg.state_dir, "loop1")
+    inbox.mkdir(parents=True, exist_ok=True)
+
+    def _answer(text: str, mid: str, q: str):
+        (inbox / f"{mid}.json").write_text(
+            json.dumps(
+                {
+                    "kind": "answer",
+                    "message_id": mid,
+                    "question_id": q,
+                    "text": text,
+                    "received_at": "2026-08-20T12:00:00+09:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    # non-approval → replan (human revision, replan_count untouched)
+    _answer("OKですが修正", "m1", qid)
+    engine.tick()  # → replanning
+    assert store.load_state(cfg.state_dir, "loop1").status == "replanning"
+    assert store.load_state(cfg.state_dir, "loop1").replan_count == 0
+    engine.tick()  # replan LLM
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.status == "awaiting_plan_approval"
+    assert state.plan_revision == 1
+    assert state.replan_count == 0
+
+    # burn remaining revisions to hit limit (max_plan_revisions=3)
+    for i in range(2, 4):
+        q = state.pending_question.question_id
+        _answer(f"まだ修正{i}", f"m{i}", q)
+        engine.tick()
+        engine.tick()
+        state = store.load_state(cfg.state_dir, "loop1")
+        assert state.plan_revision == i
+        assert state.replan_count == 0
+
+    # further non-approval at limit → execute without LLM
+    mock_replan.reset_mock()
+    q = state.pending_question.question_id
+    _answer("まだダメ", "m-limit", q)
+    engine.tick()
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.status == "executing"
+    mock_replan.assert_not_called()
+    assert any("上限" in n["text"] for n in channel.notifies)
+
+    # cancel while awaiting_plan_approval
+    state2 = LoopState(
+        loop_id="loop2",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="awaiting_plan_approval",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=True,
+        pending_question=PendingQuestion(
+            question_id="plan-approval-1-0", text="plan", kind="plan_approval"
+        ),
+        created_at="t",
+        updated_at="t",
+    )
+    cfg2 = _config(tmp_path / "c")
+    eng2 = LoopsEngine(
+        config=cfg2,
+        human_channel=FakeHumanChannel(),
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    store.save_state(cfg2.state_dir, state2)
+    inbox2 = store._inbox_dir(cfg2.state_dir, "loop2")
+    inbox2.mkdir(parents=True)
+    (inbox2 / "c.json").write_text(
+        json.dumps(
+            {
+                "kind": "cancel",
+                "message_id": "c1",
+                "question_id": "",
+                "text": "",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    eng2.tick()
+    assert store.load_state(cfg2.state_dir, "loop2").status == "cancelled"

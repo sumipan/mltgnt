@@ -17,6 +17,9 @@ def render_status_markdown(state: LoopState) -> str:
         f"- **iteration**: {state.iteration}/{state.max_iterations}",
         f"- **persona**: {state.persona}",
         f"- **clarify_round**: {state.clarify_round}",
+        f"- **plan_approval**: {state.plan_approval}",
+        f"- **plan_revision**: {state.plan_revision}",
+        f"- **replan_count**: {state.replan_count}",
     ]
     if state.pending_question:
         lines.append(f"- **pending_question**: {state.pending_question.text!r}")
@@ -29,7 +32,8 @@ def render_status_markdown(state: LoopState) -> str:
         lines.append("")
         lines.append("## Subtasks")
         for st in state.subtasks:
-            lines.append(f"- `{st.id}` ({st.kind}): {st.status} — {st.title}")
+            dep = f" depends={st.depends}" if st.depends else ""
+            lines.append(f"- `{st.id}` ({st.kind}): {st.status} — {st.title}{dep}")
     if state.status in TERMINAL_STATUSES:
         lines.append("")
         lines.append(f"**Terminal state**: {state.status}")

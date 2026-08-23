@@ -11,12 +11,26 @@ SCHEMA_VERSION = 1
 
 TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "failed", "cancelled"})
 
+_VALID_STATUSES = frozenset({
+    "clarifying",
+    "awaiting_answer",
+    "decomposing",
+    "replanning",
+    "awaiting_plan_approval",
+    "executing",
+    "awaiting_human",
+    "evaluating",
+    "done",
+    "failed",
+    "cancelled",
+})
+
 
 @dataclass
 class PendingQuestion:
     question_id: str
     text: str
-    kind: str  # "clarify" | "human_subtask"
+    kind: str  # "clarify" | "human_subtask" | "plan_approval"
 
     def to_dict(self) -> dict[str, Any]:
         return {"question_id": self.question_id, "text": self.text, "kind": self.kind}
@@ -34,13 +48,20 @@ class PendingQuestion:
 class Subtask:
     id: str
     title: str
-    kind: str  # "auto" | "human"
+    kind: str  # "auto" | "human" | "watch"
     prompt: str
     status: str = "pending"  # pending | running | success | failed
     result: str = ""
     result_summary: str = ""
     result_filename: str = ""
     submission: StepSubmission | None = None
+    condition: dict[str, Any] | None = None
+    depends: list[str] = field(default_factory=list)
+    timeout_sec: int | None = None
+    poll_interval_sec: int | None = None
+    last_polled_at: str | None = None
+    started_at: str | None = None
+    watch_token: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -52,7 +73,20 @@ class Subtask:
             "result": self.result,
             "result_summary": self.result_summary,
             "result_filename": self.result_filename,
+            "depends": list(self.depends),
         }
+        if self.condition is not None:
+            d["condition"] = dict(self.condition)
+        if self.timeout_sec is not None:
+            d["timeout_sec"] = self.timeout_sec
+        if self.poll_interval_sec is not None:
+            d["poll_interval_sec"] = self.poll_interval_sec
+        if self.last_polled_at is not None:
+            d["last_polled_at"] = self.last_polled_at
+        if self.started_at is not None:
+            d["started_at"] = self.started_at
+        if self.watch_token is not None:
+            d["watch_token"] = self.watch_token
         if self.submission is not None:
             d["submission"] = {
                 "uuid": self.submission.uuid,
@@ -73,6 +107,12 @@ class Subtask:
                 submitted_at=str(s["submitted_at"]),
                 reused=bool(s.get("reused", False)),
             )
+        condition = data.get("condition")
+        depends_raw = data.get("depends")
+        if depends_raw is None:
+            depends: list[str] = []
+        else:
+            depends = [str(x) for x in depends_raw]
         return cls(
             id=str(data["id"]),
             title=str(data["title"]),
@@ -83,7 +123,31 @@ class Subtask:
             result_summary=str(data.get("result_summary", "")),
             result_filename=str(data.get("result_filename", "")),
             submission=submission,
+            condition=dict(condition) if isinstance(condition, dict) else None,
+            depends=depends,
+            timeout_sec=int(data["timeout_sec"]) if data.get("timeout_sec") is not None else None,
+            poll_interval_sec=(
+                int(data["poll_interval_sec"])
+                if data.get("poll_interval_sec") is not None
+                else None
+            ),
+            last_polled_at=(
+                str(data["last_polled_at"]) if data.get("last_polled_at") is not None else None
+            ),
+            started_at=str(data["started_at"]) if data.get("started_at") is not None else None,
+            watch_token=str(data["watch_token"]) if data.get("watch_token") is not None else None,
         )
+
+
+def apply_legacy_sequential_depends(subtasks: list[Subtask], *, had_depends_keys: bool) -> None:
+    """旧 state（depends キー欠落）を逐次 depends に正規化する。"""
+    if had_depends_keys or not subtasks:
+        return
+    for i, st in enumerate(subtasks):
+        if i == 0:
+            st.depends = []
+        else:
+            st.depends = [subtasks[i - 1].id]
 
 
 @dataclass
@@ -110,6 +174,11 @@ class LoopState:
     content_change_warning: str = ""
     next_focus: str = ""
     clarification_context: list[str] = field(default_factory=list)
+    plan_approval: bool = True
+    plan_revision: int = 0
+    replan_count: int = 0
+    replan_feedback: str = ""
+    replan_trigger_subtask_id: str | None = None
 
     def is_terminal(self) -> bool:
         return self.status in TERMINAL_STATUSES
@@ -148,10 +217,7 @@ class LoopState:
                 raise ValueError(f"{key} must be int, not bool")
         if data.get("schema_version", 1) != SCHEMA_VERSION:
             raise ValueError(f"unsupported schema_version: {data.get('schema_version')}")
-        if data["status"] not in {
-            "clarifying", "awaiting_answer", "decomposing", "executing",
-            "awaiting_human", "evaluating", "done", "failed", "cancelled",
-        }:
+        if data["status"] not in _VALID_STATUSES:
             raise ValueError(f"invalid status: {data['status']!r}")
         if data["iteration"] < 0 or data["max_iterations"] < 0:
             raise ValueError("iteration values must be non-negative")
@@ -165,7 +231,14 @@ class LoopState:
         if data.get("pending_question"):
             pending = PendingQuestion.from_dict(data["pending_question"])
 
-        subtasks = [Subtask.from_dict(s) for s in data.get("subtasks", [])]
+        raw_subtasks = data.get("subtasks", [])
+        had_depends = any(isinstance(s, dict) and "depends" in s for s in raw_subtasks)
+        subtasks = [Subtask.from_dict(s) for s in raw_subtasks]
+        apply_legacy_sequential_depends(subtasks, had_depends_keys=had_depends)
+
+        plan_approval = data.get("plan_approval", True)
+        if not isinstance(plan_approval, bool):
+            raise ValueError("plan_approval must be bool")
 
         return cls(
             loop_id=str(data["loop_id"]),
@@ -190,6 +263,11 @@ class LoopState:
             content_change_warning=str(data.get("content_change_warning", "")),
             next_focus=str(data.get("next_focus", "")),
             clarification_context=[str(item) for item in data.get("clarification_context", [])],
+            plan_approval=plan_approval,
+            plan_revision=int(data.get("plan_revision", 0)),
+            replan_count=int(data.get("replan_count", 0)),
+            replan_feedback=str(data.get("replan_feedback", "")),
+            replan_trigger_subtask_id=data.get("replan_trigger_subtask_id"),
         )
 
 

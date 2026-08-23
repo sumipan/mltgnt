@@ -196,3 +196,44 @@ def test_deliverable_uses_files_adapter(tmp_path, monkeypatch):
     store.read_deliverable_excerpt(state_dir, "loop1", 100)
     assert ("write", "deliverable.md") in calls
     assert ("read", "deliverable.md") in calls
+
+
+def test_v0194_state_fixture_loads_with_defaults():
+    """v0.19.4 形式（追加キーなし・schema_version: 1）をロードできる。"""
+    data = {
+        "loop_id": "legacy",
+        "objective_path": "/tmp/obj.md",
+        "objective_hash": "abc",
+        "title": "T",
+        "body": "body",
+        "status": "executing",
+        "iteration": 1,
+        "max_iterations": 5,
+        "persona": "mizuho",
+        "schema_version": 1,
+        "subtasks": [
+            {
+                "id": "s1",
+                "title": "S1",
+                "kind": "auto",
+                "prompt": "do",
+                "status": "pending",
+                "result": "",
+            }
+        ],
+    }
+    state = LoopState.from_dict(data)
+    assert state.schema_version == 1
+    assert state.plan_approval is True
+    assert state.plan_revision == 0
+    assert state.replan_count == 0
+    assert state.subtasks[0].depends == []  # legacy sequential: single task
+    # two tasks without depends keys → sequential
+    data2 = dict(data)
+    data2["subtasks"] = [
+        {"id": "s1", "title": "S1", "kind": "auto", "prompt": "a", "status": "success", "result": "ok"},
+        {"id": "s2", "title": "S2", "kind": "human", "prompt": "b", "status": "pending", "result": ""},
+    ]
+    state2 = LoopState.from_dict(data2)
+    assert state2.subtasks[0].depends == []
+    assert state2.subtasks[1].depends == ["s1"]

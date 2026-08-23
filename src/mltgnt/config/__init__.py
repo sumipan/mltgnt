@@ -106,6 +106,10 @@ class LoopsConfig:
     progress_notify: bool = True
     deliverable_excerpt_chars: int = 4000
     result_summary_chars: int = 1000
+    watch_root: Path | None = None
+    max_replans_per_iteration: int = 3
+    max_plan_revisions: int = 3
+    plan_approval_default: bool = True
 
     def __post_init__(self) -> None:
         if self.poll_interval_sec <= 0:
@@ -124,3 +128,7 @@ class LoopsConfig:
             raise ValueError("deliverable_excerpt_chars must be positive")
         if self.result_summary_chars <= 0:
             raise ValueError("result_summary_chars must be positive")
+        if not (0 <= self.max_replans_per_iteration <= 10):
+            raise ValueError("max_replans_per_iteration must be in 0..10")
+        if not (0 <= self.max_plan_revisions <= 10):
+            raise ValueError("max_plan_revisions must be in 0..10")

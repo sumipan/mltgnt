@@ -11,7 +11,15 @@ from zoneinfo import ZoneInfo
 
 from mltgnt.config import LoopsConfig
 from mltgnt.execution.base_runner import BaseRunner
-from mltgnt.interfaces.loops import HumanChannel, HumanThreadRef, LoopStatus, SubtaskExecutor
+from mltgnt.interfaces.loops import (
+    ConditionEvaluator,
+    HumanChannel,
+    HumanThreadRef,
+    LoopStatus,
+    SubtaskExecutor,
+    WatchVerdict,
+)
+from mltgnt.loops.conditions import PathConditionEvaluator
 from mltgnt.loops.models import (
     LoopState,
     PendingQuestion,
@@ -28,14 +36,39 @@ logger = logging.getLogger("mltgnt.loops.engine")
 
 _TZ = ZoneInfo("Asia/Tokyo")
 _MAX_CONSECUTIVE_ERRORS = 3
+_LOCAL_CONDITION_TYPES = frozenset({"path_exists", "path_changed"})
+_PLAN_APPROVAL_ANSWERS = frozenset({"ok", "承認", "進めて", "go"})
 
 
-def _now_iso() -> str:
-    return datetime.now(_TZ).isoformat()
+def _now_iso(now: datetime | None = None) -> str:
+    return (now or datetime.now(_TZ)).isoformat()
+
+
+def _parse_iso(value: str) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_TZ)
+    return dt
 
 
 def _event_id(loop_id: str, kind: str, stable_id: str) -> str:
     return f"loops:{loop_id}:{kind}:{stable_id}"
+
+
+def _subtask_from_decompose(s: prompts.DecomposeSubtask) -> Subtask:
+    return Subtask(
+        id=s.id,
+        title=s.title,
+        kind=s.kind,
+        prompt=s.prompt,
+        condition=dict(s.condition) if s.condition is not None else None,
+        depends=list(s.depends),
+        timeout_sec=s.timeout_sec,
+        poll_interval_sec=s.poll_interval_sec,
+    )
 
 
 @dataclass
@@ -46,11 +79,16 @@ class LoopsEngine(BaseRunner):
     objective_exists: Callable[[str], bool] | None = None
     objective_cancelled: Callable[[str], bool] | None = None
     objective_hash_changed: Callable[[str, str], bool] | None = None
+    condition_evaluator: ConditionEvaluator | None = None
 
     def tick(self, now: datetime | None = None) -> None:
+        if now is None:
+            now = datetime.now(_TZ)
+        elif now.tzinfo is None:
+            now = now.replace(tzinfo=_TZ)
         for loop_id in self._active_loop_ids():
             try:
-                self._tick_loop(loop_id)
+                self._tick_loop(loop_id, now=now)
             except Exception:
                 logger.exception("loop %s tick failed", loop_id)
 
@@ -73,6 +111,7 @@ class LoopsEngine(BaseRunner):
             thread=thread,
             created_at=_now_iso(),
             updated_at=_now_iso(),
+            plan_approval=objective.plan_approval,
         )
         store.initialize_deliverable(self.config.state_dir, objective.loop_id, objective.body)
         store.save_state(self.config.state_dir, state)
@@ -223,7 +262,7 @@ class LoopsEngine(BaseRunner):
             store.mark_state_corrupt(self.config.state_dir, loop_id, str(exc))
             return None
 
-    def _tick_loop(self, loop_id: str) -> None:
+    def _tick_loop(self, loop_id: str, *, now: datetime) -> None:
         state = self._load(loop_id)
         if state is None or state.is_terminal():
             return
@@ -246,15 +285,19 @@ class LoopsEngine(BaseRunner):
             transitioned = self._tick_awaiting_answer(state)
         elif state.status == "decomposing":
             transitioned = self._tick_decomposing(state)
+        elif state.status == "replanning":
+            transitioned = self._tick_replanning(state)
+        elif state.status == "awaiting_plan_approval":
+            transitioned = self._tick_awaiting_plan_approval(state)
         elif state.status == "executing":
-            transitioned = self._tick_executing(state)
+            transitioned = self._tick_executing(state, now=now)
         elif state.status == "awaiting_human":
-            transitioned = self._tick_awaiting_human(state)
+            transitioned = self._tick_awaiting_human(state, now=now)
         elif state.status == "evaluating":
             transitioned = self._tick_evaluating(state)
 
         if transitioned or comments_ingested:
-            state.updated_at = _now_iso()
+            state.updated_at = _now_iso(now)
             store.save_state(self.config.state_dir, state)
             self._write_status(state)
 
@@ -718,102 +761,381 @@ class LoopsEngine(BaseRunner):
             self._record_llm_error(state, "decompose", exc)
             return True
 
-        state.subtasks = [
-            Subtask(id=s.id, title=s.title, kind=s.kind, prompt=s.prompt)
-            for s in resp.subtasks
-        ]
+        state.subtasks = [_subtask_from_decompose(s) for s in resp.subtasks]
         state.current_subtask_id = state.subtasks[0].id if state.subtasks else None
-        plan_lines = [f"- [{s.kind}] {s.title}" for s in state.subtasks]
+        state.replan_count = 0
+        state.replan_feedback = ""
+        state.replan_trigger_subtask_id = None
+        state.plan_revision = 0
+        state.next_focus = ""
+        return self._after_plan_ready(state, event="plan_proposed", reason="decompose_done")
+
+    def _plan_question_id(self, state: LoopState) -> str:
+        return f"plan-approval-{state.iteration}-{state.plan_revision}"
+
+    def _format_plan_text(self, state: LoopState) -> str:
+        lines = [f"- [{s.kind}] {s.title} (`{s.id}`)" for s in state.subtasks]
+        return "Plan:\n" + "\n".join(lines)
+
+    def _after_plan_ready(
+        self, state: LoopState, *, event: str, reason: str
+    ) -> bool:
+        plan_text = self._format_plan_text(state)
         self._post_progress(
             state,
-            "Plan:\n" + "\n".join(plan_lines),
-            f"i{state.iteration}:plan",
+            plan_text,
+            f"i{state.iteration}:plan:r{state.plan_revision}",
         )
-        self._transition(state, "executing", "decompose_done")
-        state.next_focus = ""
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            event,
+            {
+                "iteration": state.iteration,
+                "plan_revision": state.plan_revision,
+                "subtasks": [
+                    {
+                        "id": s.id,
+                        "kind": s.kind,
+                        "title": s.title,
+                        "depends": list(s.depends),
+                        "status": s.status,
+                    }
+                    for s in state.subtasks
+                ],
+            },
+            iteration=state.iteration,
+        )
+        if state.plan_approval:
+            qid = self._plan_question_id(state)
+            ask_text = (
+                f"{plan_text}\n\n"
+                "承認する場合は「ok」「承認」「進めて」「go」のいずれか全文で返信してください。"
+                "それ以外は修正指示として再計画します。"
+            )
+            if not self._ask(state, qid, ask_text, kind="plan_approval"):
+                return False
+            self._transition(state, "awaiting_plan_approval", reason)
+        else:
+            self._transition(state, "executing", reason)
         return True
 
-    def _current_subtask(self, state: LoopState) -> Subtask | None:
-        if state.current_subtask_id is None:
-            return None
-        for st in state.subtasks:
-            if st.id == state.current_subtask_id:
-                return st
-        return None
+    def _is_plan_approval(self, text: str) -> bool:
+        return text.strip().casefold() in {a.casefold() for a in _PLAN_APPROVAL_ANSWERS}
 
-    def _advance_subtask(self, state: LoopState) -> None:
-        if state.current_subtask_id is None:
-            return
-        found = False
-        for i, st in enumerate(state.subtasks):
-            if st.id == state.current_subtask_id:
-                if i + 1 < len(state.subtasks):
-                    state.current_subtask_id = state.subtasks[i + 1].id
-                else:
-                    state.current_subtask_id = None
-                found = True
-                break
-        if not found:
-            state.current_subtask_id = None
-
-    def _all_subtasks_done(self, state: LoopState) -> bool:
-        return all(st.status in ("success", "failed") for st in state.subtasks)
-
-    def _tick_executing(self, state: LoopState) -> bool:
-        st = self._current_subtask(state)
-        if st is None:
-            if self._all_subtasks_done(state):
-                self._transition(state, "evaluating", "all_subtasks_done")
+    def _tick_awaiting_plan_approval(self, state: LoopState) -> bool:
+        pending = state.pending_question
+        if pending is None or pending.kind != "plan_approval":
+            self._transition(state, "executing", "awaiting_plan_without_pending")
             return True
-
-        if st.kind == "human":
-            if st.status == "pending":
-                qid = f"human-{state.iteration}-{st.id}"
-                excerpt = store.read_deliverable_excerpt(
-                    self.config.state_dir,
-                    state.loop_id,
-                    self.config.deliverable_excerpt_chars,
-                )
-                self._post_deliverable(
-                    state,
-                    summary=self._truncate(excerpt or st.prompt),
-                    stable_id=f"{st.id}:start",
-                )
-                if not self._ask(state, qid, st.prompt, kind="human_subtask"):
-                    return False
-                st.status = "running"
-                self._transition(state, "awaiting_human", f"human_subtask:{st.id}")
-            return True
-
-        if st.status == "pending":
-            key = f"loops:{state.loop_id}:i{state.iteration}:{st.id}"
-            try:
-                engine, model = self._resolve_subtask_engine_model(state)
-                submission = self.executor.submit(
-                    prompt=self._auto_prompt(state, st.prompt),
-                    idempotency_key=key,
-                    engine=engine,
-                    model=model,
-                )
-                st.submission = submission
-                st.status = "running"
+        consumed = store.list_consumed_message_ids(self.config.state_dir, state.loop_id)
+        for msg in store.list_inbox_messages(self.config.state_dir, state.loop_id):
+            if msg.message_id in consumed:
+                continue
+            if msg.kind != "answer" or msg.question_id != pending.question_id:
+                continue
+            store.consume_inbox_message(self.config.state_dir, state.loop_id, msg.filename)
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "answer_received",
+                {"question_id": msg.question_id, "text": msg.text, "kind": "plan_approval"},
+                iteration=state.iteration,
+            )
+            if self._is_plan_approval(msg.text):
+                state.pending_question = None
                 store.append_event(
                     self.config.state_dir,
                     state.loop_id,
-                    "subtask_submitted",
-                    {
-                        "id": st.id,
-                        "uuid": submission.uuid,
-                        "result_filename": submission.result_filename,
-                    },
+                    "plan_approved",
+                    {"plan_revision": state.plan_revision},
                     iteration=state.iteration,
                 )
-                self._clear_errors(state)
-            except Exception as exc:
-                self._record_error(state, "executor_error", {"action": "submit", "error": str(exc)})
+                self._transition(state, "executing", "plan_approved")
+                return True
+
+            # revision request
+            state.pending_question = None
+            state.replan_feedback = msg.text
+            state.replan_trigger_subtask_id = None
+            if state.plan_revision >= self.config.max_plan_revisions:
+                self._notify(
+                    state,
+                    "計画修正の上限に達したため、最新案で実行を開始します。",
+                    f"plan_revision_limit:{state.iteration}",
+                )
+                self._transition(state, "executing", "plan_revision_limit")
+                return True
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "plan_revised",
+                {
+                    "plan_revision": state.plan_revision,
+                    "feedback": msg.text,
+                },
+                iteration=state.iteration,
+            )
+            self._transition(state, "replanning", "plan_revision_requested")
+            return True
+        return False
+
+    def _tick_replanning(self, state: LoopState) -> bool:
+        if not self._ensure_persona(state):
             return True
 
-        if st.status == "running" and st.submission is not None:
+        human_revision = bool(state.replan_feedback) and state.replan_trigger_subtask_id is None
+        if not human_revision and state.replan_count >= self.config.max_replans_per_iteration:
+            self._transition(state, "evaluating", "replan_limit")
+            return True
+
+        existing_ids = {s.id for s in state.subtasks}
+        required_keep = {s.id for s in state.subtasks if s.status in ("running", "success")}
+        plan_summary = "\n".join(
+            f"- {s.id} kind={s.kind} depends={list(s.depends)} "
+            f"status={s.status} summary={s.result_summary}"
+            for s in state.subtasks
+        )
+        failure_detail = state.replan_feedback
+        if state.replan_trigger_subtask_id:
+            trigger = next(
+                (s for s in state.subtasks if s.id == state.replan_trigger_subtask_id),
+                None,
+            )
+            if trigger is not None:
+                failure_detail = trigger.result_summary or trigger.result or failure_detail
+
+        deliverable_excerpt = store.read_deliverable_excerpt(
+            self.config.state_dir,
+            state.loop_id,
+            self.config.deliverable_excerpt_chars,
+        )
+        instruction = prompts.build_replan_instruction(
+            state.body,
+            plan_summary=plan_summary,
+            failure_detail=failure_detail or "replan requested",
+            deliverable_excerpt=deliverable_excerpt,
+            human_feedback=state.replan_feedback if human_revision else "",
+        )
+        try:
+            prompt = self._format_with_persona(state, instruction)
+            engine, model = self._resolve_llm_engine_model(state)
+            resp, trace = prompts.run_replan(
+                prompt,
+                engine=engine,
+                model=model,
+                existing_ids=existing_ids,
+                required_keep=required_keep,
+                max_subtasks=self.config.max_subtasks_per_iteration,
+            )
+            self._log_llm(state, trace)
+            self._clear_errors(state)
+        except Exception as exc:
+            self._record_llm_error(state, "replan", exc)
+            return True
+
+        old_plan = [s.to_dict() for s in state.subtasks]
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            "replan_triggered",
+            {
+                "reason": resp.reason,
+                "trigger_subtask_id": state.replan_trigger_subtask_id,
+                "human_revision": human_revision,
+                "old_plan": old_plan,
+                "keep": list(resp.keep),
+                "add": [dict(s.__dict__) for s in resp.add],
+            },
+            iteration=state.iteration,
+        )
+
+        kept = [s for s in state.subtasks if s.id in set(resp.keep)]
+        added = [_subtask_from_decompose(s) for s in resp.add]
+        state.subtasks = kept + added
+        state.current_subtask_id = next(
+            (s.id for s in state.subtasks if s.status == "pending"),
+            state.subtasks[0].id if state.subtasks else None,
+        )
+        if human_revision:
+            state.plan_revision += 1
+        else:
+            state.replan_count += 1
+        state.replan_feedback = ""
+        state.replan_trigger_subtask_id = None
+
+        event = "plan_revised" if human_revision else "plan_proposed"
+        return self._after_plan_ready(state, event=event, reason="replan_done")
+
+    def _by_id(self, state: LoopState) -> dict[str, Subtask]:
+        return {s.id: s for s in state.subtasks}
+
+    def _deps_satisfied(self, st: Subtask, by_id: dict[str, Subtask]) -> bool:
+        return all(by_id[d].status == "success" for d in st.depends if d in by_id)
+
+    def _deps_failed(self, st: Subtask, by_id: dict[str, Subtask]) -> bool:
+        return any(by_id[d].status == "failed" for d in st.depends if d in by_id)
+
+    def _all_subtasks_done(self, state: LoopState) -> bool:
+        return bool(state.subtasks) and all(
+            st.status in ("success", "failed") for st in state.subtasks
+        )
+
+    def _evaluate_condition(
+        self, condition: dict[str, object], *, previous_token: str | None
+    ) -> WatchVerdict:
+        ctype = condition.get("type")
+        if ctype in _LOCAL_CONDITION_TYPES:
+            if self.config.watch_root is None:
+                return WatchVerdict(
+                    status="failed",
+                    detail="watch_root is not configured for local path conditions",
+                )
+            return PathConditionEvaluator(self.config.watch_root).evaluate(
+                condition, previous_token=previous_token
+            )
+        if self.condition_evaluator is None:
+            return WatchVerdict(
+                status="failed",
+                detail=f"no host ConditionEvaluator for type {ctype!r}",
+            )
+        try:
+            verdict = self.condition_evaluator.evaluate(
+                condition, previous_token=previous_token
+            )
+        except Exception as exc:
+            return WatchVerdict(
+                status="failed",
+                detail=f"evaluator raised {type(exc).__name__}: {exc}",
+            )
+        if verdict is None:
+            return WatchVerdict(status="failed", detail="evaluator returned None")
+        if verdict.status not in ("pending", "satisfied", "failed"):
+            return WatchVerdict(
+                status="failed",
+                detail=f"invalid WatchStatus: {verdict.status!r}",
+            )
+        return verdict
+
+    def _record_watch_polled(
+        self,
+        state: LoopState,
+        st: Subtask,
+        verdict: WatchVerdict,
+        *,
+        prev_status: str,
+        prev_detail: str,
+        prev_token: str | None,
+    ) -> None:
+        if (
+            verdict.status == prev_status
+            and verdict.detail == prev_detail
+            and verdict.observed_token == prev_token
+        ):
+            return
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            "watch_polled",
+            {
+                "id": st.id,
+                "status": verdict.status,
+                "detail": verdict.detail,
+                "observed_token": verdict.observed_token,
+            },
+            iteration=state.iteration,
+        )
+
+    def _poll_watches(self, state: LoopState, *, now: datetime) -> bool:
+        """watch を評価する。replanning へ遷移したら True。"""
+        by_id = self._by_id(state)
+        for st in state.subtasks:
+            if st.kind != "watch" or st.status not in ("pending", "running"):
+                continue
+            if self._deps_failed(st, by_id):
+                st.status = "failed"
+                st.result = "dependency failed"
+                st.result_summary = self._truncate(st.result)
+                self._record_subtask_done(state, st)
+                continue
+            if not self._deps_satisfied(st, by_id):
+                continue
+
+            if st.started_at is None:
+                st.started_at = _now_iso(now)
+                st.status = "running"
+
+            timeout_sec = st.timeout_sec or prompts.DEFAULT_WATCH_TIMEOUT_SEC
+            started = _parse_iso(st.started_at)
+            if started is not None:
+                elapsed = (now - started).total_seconds()
+                if elapsed >= timeout_sec:
+                    st.status = "failed"
+                    st.result = f"watch timeout after {timeout_sec}s"
+                    st.result_summary = self._truncate(st.result)
+                    self._record_subtask_done(state, st)
+                    state.replan_trigger_subtask_id = st.id
+                    state.replan_feedback = st.result_summary
+                    self._transition(state, "replanning", f"watch_timeout:{st.id}")
+                    return True
+
+            poll_interval = st.poll_interval_sec or prompts.DEFAULT_WATCH_POLL_INTERVAL_SEC
+            if st.last_polled_at is not None:
+                last = _parse_iso(st.last_polled_at)
+                if last is not None and (now - last).total_seconds() < poll_interval:
+                    continue
+
+            if st.condition is None:
+                verdict = WatchVerdict(status="failed", detail="missing condition")
+            else:
+                verdict = self._evaluate_condition(
+                    st.condition, previous_token=st.watch_token
+                )
+            prev_detail = st.result_summary
+            prev_token = st.watch_token
+            prev_status = "pending" if st.status == "running" else st.status
+            st.last_polled_at = _now_iso(now)
+            if verdict.observed_token is not None:
+                st.watch_token = verdict.observed_token
+            st.result = verdict.detail
+            st.result_summary = self._truncate(verdict.detail)
+            self._record_watch_polled(
+                state,
+                st,
+                verdict,
+                prev_status=prev_status,
+                prev_detail=prev_detail,
+                prev_token=prev_token,
+            )
+
+            if verdict.status == "satisfied":
+                st.status = "success"
+                self._record_subtask_done(state, st)
+            elif verdict.status == "failed":
+                st.status = "failed"
+                self._record_subtask_done(state, st)
+                state.replan_trigger_subtask_id = st.id
+                state.replan_feedback = st.result_summary
+                self._transition(state, "replanning", f"watch_failed:{st.id}")
+                return True
+        return False
+
+    def _fail_blocked_by_deps(self, state: LoopState) -> None:
+        by_id = self._by_id(state)
+        for st in state.subtasks:
+            if st.status != "pending":
+                continue
+            if self._deps_failed(st, by_id):
+                st.status = "failed"
+                st.result = "dependency failed"
+                st.result_summary = self._truncate(st.result)
+                self._record_subtask_done(state, st)
+
+    def _poll_running_autos(self, state: LoopState, *, now: datetime) -> bool:
+        """in-flight auto を1件だけ poll する。状態が変わったら True。"""
+        for st in state.subtasks:
+            if st.kind != "auto" or st.status != "running" or st.submission is None:
+                continue
             sub = st.submission
             try:
                 poll = self.executor.poll(uuid=sub.uuid, result_filename=sub.result_filename)
@@ -823,14 +1145,14 @@ class LoopsEngine(BaseRunner):
                 return True
 
             if poll.status == "pending":
-                if self._subtask_timed_out(sub.submitted_at):
+                if self._subtask_timed_out(sub.submitted_at, now=now):
                     st.status = "failed"
                     st.result = f"timeout after {self.config.subtask_timeout_sec}s"
                     st.result_summary = self._truncate(st.result)
                     st.result_filename = sub.result_filename
                     self._record_subtask_done(state, st)
-                    self._advance_subtask(state)
-                return True
+                    return True
+                return False
 
             if poll.status == "success":
                 st.status = "success"
@@ -849,27 +1171,117 @@ class LoopsEngine(BaseRunner):
                 st.result = poll.content
                 st.result_summary = self._truncate(poll.content)
                 st.result_filename = sub.result_filename
-
             self._record_subtask_done(state, st)
-            self._advance_subtask(state)
-            if self._all_subtasks_done(state):
-                self._transition(state, "evaluating", "all_subtasks_done")
             return True
-
         return False
 
-    def _subtask_timed_out(self, submitted_at: str) -> bool:
-        try:
-            submitted = datetime.fromisoformat(submitted_at)
-            if submitted.tzinfo is None:
-                submitted = submitted.replace(tzinfo=_TZ)
-            elapsed = (datetime.now(_TZ) - submitted).total_seconds()
-            return elapsed > self.config.subtask_timeout_sec
-        except ValueError:
-            return False
+    def _tick_executing(self, state: LoopState, *, now: datetime) -> bool:
+        if self._poll_watches(state, now=now):
+            return True
+        if state.status == "replanning":
+            return True
 
-    def _tick_awaiting_human(self, state: LoopState) -> bool:
-        st = self._current_subtask(state)
+        self._fail_blocked_by_deps(state)
+        self._poll_running_autos(state, now=now)
+        self._fail_blocked_by_deps(state)
+        by_id = self._by_id(state)
+
+        auto_running = any(
+            s.kind == "auto" and s.status == "running" for s in state.subtasks
+        )
+        if not auto_running:
+            for st in state.subtasks:
+                if st.kind != "auto" or st.status != "pending":
+                    continue
+                if not self._deps_satisfied(st, by_id):
+                    continue
+                key = f"loops:{state.loop_id}:i{state.iteration}:{st.id}"
+                try:
+                    engine, model = self._resolve_subtask_engine_model(state)
+                    submission = self.executor.submit(
+                        prompt=self._auto_prompt(state, st.prompt),
+                        idempotency_key=key,
+                        engine=engine,
+                        model=model,
+                    )
+                    st.submission = submission
+                    st.status = "running"
+                    st.started_at = _now_iso(now)
+                    state.current_subtask_id = st.id
+                    store.append_event(
+                        self.config.state_dir,
+                        state.loop_id,
+                        "subtask_submitted",
+                        {
+                            "id": st.id,
+                            "uuid": submission.uuid,
+                            "result_filename": submission.result_filename,
+                        },
+                        iteration=state.iteration,
+                    )
+                    self._clear_errors(state)
+                except Exception as exc:
+                    self._record_error(
+                        state, "executor_error", {"action": "submit", "error": str(exc)}
+                    )
+                break
+
+        # human: one at a time
+        human_running = any(
+            s.kind == "human" and s.status == "running" for s in state.subtasks
+        )
+        if not human_running:
+            for st in state.subtasks:
+                if st.kind != "human" or st.status != "pending":
+                    continue
+                if not self._deps_satisfied(st, by_id):
+                    continue
+                qid = f"human-{state.iteration}-{st.id}"
+                excerpt = store.read_deliverable_excerpt(
+                    self.config.state_dir,
+                    state.loop_id,
+                    self.config.deliverable_excerpt_chars,
+                )
+                self._post_deliverable(
+                    state,
+                    summary=self._truncate(excerpt or st.prompt),
+                    stable_id=f"{st.id}:start",
+                )
+                if not self._ask(state, qid, st.prompt, kind="human_subtask"):
+                    return False
+                st.status = "running"
+                st.started_at = _now_iso(now)
+                state.current_subtask_id = st.id
+                self._transition(state, "awaiting_human", f"human_subtask:{st.id}")
+                return True
+
+        if self._all_subtasks_done(state):
+            self._transition(state, "evaluating", "all_subtasks_done")
+        return True
+
+    def _subtask_timed_out(self, submitted_at: str, now: datetime | None = None) -> bool:
+        submitted = _parse_iso(submitted_at)
+        if submitted is None:
+            return False
+        current = now or datetime.now(_TZ)
+        elapsed = (current - submitted).total_seconds()
+        return elapsed > self.config.subtask_timeout_sec
+
+    def _tick_awaiting_human(self, state: LoopState, *, now: datetime) -> bool:
+        if self._poll_watches(state, now=now):
+            return True
+        if state.status == "replanning":
+            return True
+        self._poll_running_autos(state, now=now)
+
+        st = None
+        if state.current_subtask_id is not None:
+            st = next((s for s in state.subtasks if s.id == state.current_subtask_id), None)
+        if st is None or st.kind != "human":
+            st = next(
+                (s for s in state.subtasks if s.kind == "human" and s.status == "running"),
+                None,
+            )
         if st is None:
             self._transition(state, "executing", "awaiting_human_without_subtask")
             return True
@@ -897,12 +1309,11 @@ class LoopsEngine(BaseRunner):
                 stable_id=f"{st.id}:done",
             )
             self._record_subtask_done(state, st)
-            self._advance_subtask(state)
             self._transition(state, "executing", f"human_answer:{st.id}")
             if self._all_subtasks_done(state):
                 self._transition(state, "evaluating", "all_subtasks_done")
             return True
-        return False
+        return True
 
     def _tick_evaluating(self, state: LoopState) -> bool:
         if not self._ensure_persona(state):
@@ -945,6 +1356,10 @@ class LoopsEngine(BaseRunner):
             state.subtasks = []
             state.current_subtask_id = None
             state.next_focus = resp.next_focus
+            state.replan_count = 0
+            state.plan_revision = 0
+            state.replan_feedback = ""
+            state.replan_trigger_subtask_id = None
             self._transition(state, "decomposing", "evaluate_continue")
         else:
             self._notify(state, f"Loop failed: {resp.summary}", "failed")

@@ -58,6 +58,7 @@ def _limit_state(*, clarification_context: list[str] | None = None) -> LoopState
         clarify_round=3,
         clarification_context=list(ctx),
         consecutive_errors=0,
+        plan_approval=False,
         created_at="t",
         updated_at="t",
     )
@@ -98,7 +99,9 @@ def test_clarify_limit_notify_and_event_are_idempotent(mock_decompose, mock_pers
     mock_persona.return_value = persona
     mock_decompose.return_value = (
         prompts.DecomposeResponse(
-            subtasks=[],
+            subtasks=[
+                prompts.DecomposeSubtask(id="s1", title="T", kind="auto", prompt="p"),
+            ],
             reasoning="",
             uncertain_flag=False,
         ),

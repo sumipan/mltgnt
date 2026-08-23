@@ -176,3 +176,149 @@ def test_build_auto_subtask_prompt_contract():
     assert "Do not create new deliverable" in text
     assert "3-5 line" in text
     assert "current body" in text
+
+
+def test_validate_decompose_accepts_watch_and_defaults():
+    resp = prompts.validate_decompose_payload(
+        {
+            "subtasks": [
+                {
+                    "id": "w1",
+                    "title": "Wait",
+                    "kind": "watch",
+                    "condition": {"type": "path_exists", "path": "a"},
+                },
+                {"id": "a1", "title": "Do", "kind": "auto", "prompt": "work"},
+            ],
+            "reasoning": "",
+            "uncertain_flag": False,
+        },
+        max_subtasks=5,
+    )
+    assert resp.subtasks[0].kind == "watch"
+    assert resp.subtasks[0].timeout_sec == 14400
+    assert resp.subtasks[0].poll_interval_sec == 60
+    assert resp.subtasks[0].depends == ()
+    assert resp.subtasks[1].depends == ("w1",)
+
+
+def test_validate_decompose_rejects_watch_without_condition_and_bounds():
+    with pytest.raises(ValueError, match="condition"):
+        prompts.validate_decompose_payload(
+            {"subtasks": [{"id": "w1", "kind": "watch", "title": "w"}], "reasoning": "", "uncertain_flag": False},
+            max_subtasks=5,
+        )
+    for timeout in (59, 86401):
+        with pytest.raises(ValueError, match="timeout_sec"):
+            prompts.validate_decompose_payload(
+                {
+                    "subtasks": [{
+                        "id": "w1", "kind": "watch", "title": "w",
+                        "condition": {"type": "path_exists", "path": "a"},
+                        "timeout_sec": timeout,
+                    }],
+                    "reasoning": "",
+                    "uncertain_flag": False,
+                },
+                max_subtasks=5,
+            )
+    for poll in (4, 3601):
+        with pytest.raises(ValueError, match="poll_interval_sec"):
+            prompts.validate_decompose_payload(
+                {
+                    "subtasks": [{
+                        "id": "w1", "kind": "watch", "title": "w",
+                        "condition": {"type": "path_exists", "path": "a"},
+                        "poll_interval_sec": poll,
+                    }],
+                    "reasoning": "",
+                    "uncertain_flag": False,
+                },
+                max_subtasks=5,
+            )
+
+
+def test_validate_decompose_rejects_depends_errors_and_six():
+    with pytest.raises(ValueError, match="unknown depends"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {"id": "a1", "kind": "auto", "title": "a", "prompt": "p", "depends": ["missing"]},
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+        )
+    with pytest.raises(ValueError, match="self-dependency"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {"id": "a1", "kind": "auto", "title": "a", "prompt": "p", "depends": ["a1"]},
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+        )
+    with pytest.raises(ValueError, match="circular"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {"id": "a1", "kind": "auto", "title": "a", "prompt": "p", "depends": ["a2"]},
+                    {"id": "a2", "kind": "auto", "title": "b", "prompt": "p", "depends": ["a1"]},
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+        )
+    with pytest.raises(ValueError, match="too many"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {"id": f"a{i}", "kind": "auto", "title": "t", "prompt": "p"}
+                    for i in range(6)
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+        )
+
+
+def test_validate_replan_requires_keep_running_success_and_rejects_dupes():
+    with pytest.raises(ValueError, match="must be kept"):
+        prompts.validate_replan_payload(
+            {"keep": [], "add": [{"id": "n1", "kind": "auto", "title": "n", "prompt": "p"}], "reason": "r", "reasoning": "", "uncertain_flag": False},
+            existing_ids={"s1", "s2"},
+            required_keep={"s1"},
+            max_subtasks=5,
+        )
+    with pytest.raises(ValueError, match="duplicate"):
+        prompts.validate_replan_payload(
+            {
+                "keep": ["s1"],
+                "add": [{"id": "s1", "kind": "auto", "title": "n", "prompt": "p"}],
+                "reason": "r",
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            existing_ids={"s1"},
+            required_keep={"s1"},
+            max_subtasks=5,
+        )
+    ok = prompts.validate_replan_payload(
+        {
+            "keep": ["s1"],
+            "add": [{"id": "a2", "kind": "auto", "title": "n", "prompt": "p", "depends": []}],
+            "reason": "fix",
+            "reasoning": "",
+            "uncertain_flag": False,
+        },
+        existing_ids={"s1", "w1"},
+        required_keep={"s1"},
+        max_subtasks=5,
+    )
+    assert ok.keep == ("s1",)
+    assert ok.add[0].id == "a2"
