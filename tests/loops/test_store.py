@@ -237,3 +237,70 @@ def test_v0194_state_fixture_loads_with_defaults():
     state2 = LoopState.from_dict(data2)
     assert state2.subtasks[0].depends == []
     assert state2.subtasks[1].depends == ["s1"]
+
+
+def test_list_inbox_messages_includes_comment(tmp_path):
+    state_dir = tmp_path / "state"
+    inbox = store._inbox_dir(state_dir, "test")
+    inbox.mkdir(parents=True)
+    (inbox / "001-c.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": "c1",
+                "question_id": "",
+                "text": "hi",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (inbox / "002-a.json").write_text(
+        json.dumps(
+            {
+                "kind": "answer",
+                "message_id": "a1",
+                "question_id": "q1",
+                "text": "yes",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    msgs = store.list_inbox_messages(state_dir, "test")
+    kinds = {m.kind for m in msgs}
+    assert kinds == {"comment", "answer"}
+
+
+def test_list_inbox_messages_skips_corrupt_and_non_string(tmp_path):
+    state_dir = tmp_path / "state"
+    inbox = store._inbox_dir(state_dir, "test")
+    inbox.mkdir(parents=True)
+    (inbox / "001.json").write_text("{nope", encoding="utf-8")
+    (inbox / "002.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": 1,
+                "question_id": "",
+                "text": "x",
+                "received_at": "t",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (inbox / "003.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": "ok",
+                "question_id": "",
+                "text": "y",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    msgs = store.list_inbox_messages(state_dir, "test")
+    assert len(msgs) == 1
+    assert msgs[0].message_id == "ok"

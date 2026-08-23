@@ -66,6 +66,24 @@ class EvaluateResponse:
     uncertain_flag: bool
 
 
+COMMENT_INTENTS = frozenset({"status", "instruction", "question", "chitchat"})
+
+
+@dataclass(frozen=True)
+class CommentClassifyResponse:
+    intent: str
+    reason: str
+    reasoning: str
+    uncertain_flag: bool
+
+
+@dataclass(frozen=True)
+class CommentReplyResponse:
+    reply: str
+    reasoning: str
+    uncertain_flag: bool
+
+
 @dataclass(frozen=True)
 class LlmTrace:
     input: str
@@ -382,6 +400,31 @@ def _validate_evaluate(data: dict[str, Any]) -> EvaluateResponse:
     )
 
 
+def _validate_comment_classify(data: dict[str, Any]) -> CommentClassifyResponse:
+    intent = data.get("intent")
+    if not isinstance(intent, str) or intent not in COMMENT_INTENTS:
+        raise ValueError(
+            f"intent must be one of {sorted(COMMENT_INTENTS)}, got {intent!r}"
+        )
+    return CommentClassifyResponse(
+        intent=intent,
+        reason=str(data.get("reason", "")),
+        reasoning=str(data.get("reasoning", "")),
+        uncertain_flag=bool(data.get("uncertain_flag", False)),
+    )
+
+
+def _validate_comment_reply(data: dict[str, Any]) -> CommentReplyResponse:
+    reply = data.get("reply")
+    if not isinstance(reply, str) or not reply.strip():
+        raise ValueError("reply must be a non-empty string")
+    return CommentReplyResponse(
+        reply=reply.strip(),
+        reasoning=str(data.get("reasoning", "")),
+        uncertain_flag=bool(data.get("uncertain_flag", False)),
+    )
+
+
 def _unwrap_llm_result(result: Any) -> tuple[str, str | None]:
     """call_llm の戻り値から (stdout テキスト, 失敗時エラー要約) を取り出す。
 
@@ -545,6 +588,28 @@ def run_evaluate(
     return _call_with_retry(instruction, engine=engine, model=model, validator=_validate_evaluate)
 
 
+def run_classify_comment(
+    instruction: str,
+    *,
+    engine: str,
+    model: str,
+) -> tuple[CommentClassifyResponse, LlmTrace]:
+    return _call_with_retry(
+        instruction, engine=engine, model=model, validator=_validate_comment_classify
+    )
+
+
+def run_reply_comment(
+    instruction: str,
+    *,
+    engine: str,
+    model: str,
+) -> tuple[CommentReplyResponse, LlmTrace]:
+    return _call_with_retry(
+        instruction, engine=engine, model=model, validator=_validate_comment_reply
+    )
+
+
 def build_clarify_instruction(
     body: str,
     *,
@@ -663,6 +728,43 @@ def build_auto_subtask_prompt(
     )
 
 
+def build_comment_classify_instruction(comment_text: str) -> str:
+    return (
+        "Classify the following user comment on an in-progress work loop.\n"
+        f"Comment:\n{comment_text}\n\n"
+        "Choose exactly one intent:\n"
+        "- status: asking for progress / whether work is running\n"
+        "- instruction: requesting a plan change or correction\n"
+        "- question: asking a substantive question about the work\n"
+        "- chitchat: acknowledgment or unrelated small talk\n\n"
+        "Respond with JSON: "
+        '{"intent": "status"|"instruction"|"question"|"chitchat", '
+        '"reason": str, "reasoning": str, "uncertain_flag": bool}'
+    )
+
+
+def build_comment_reply_instruction(
+    *,
+    objective: str,
+    deliverable_excerpt: str,
+    plan_summary: str,
+    recent_results: str,
+    comment_text: str,
+    max_chars: int,
+) -> str:
+    return (
+        "Answer the user's question about an in-progress work loop.\n"
+        f"Objective:\n{objective}\n\n"
+        f"Deliverable excerpt:\n{deliverable_excerpt}\n\n"
+        f"Current plan:\n{plan_summary}\n\n"
+        f"Recent subtask results:\n{recent_results}\n\n"
+        f"User question:\n{comment_text}\n\n"
+        f"Keep the reply within {max_chars} characters.\n"
+        "Respond with JSON: "
+        '{"reply": str, "reasoning": str, "uncertain_flag": bool}'
+    )
+
+
 def validate_decompose_payload(
     data: dict[str, Any], *, max_subtasks: int
 ) -> DecomposeResponse:
@@ -684,3 +786,11 @@ def validate_replan_payload(
         required_keep=required_keep,
         max_subtasks=max_subtasks,
     )
+
+
+def validate_comment_classify_payload(data: dict[str, Any]) -> CommentClassifyResponse:
+    return _validate_comment_classify(data)
+
+
+def validate_comment_reply_payload(data: dict[str, Any]) -> CommentReplyResponse:
+    return _validate_comment_reply(data)

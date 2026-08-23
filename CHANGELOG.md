@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.20.0
+
+### Added
+
+- **loops Phase 2（対話）**: inbox `kind=comment` を決定論的 status 判定・LLM 分類（`status` / `instruction` / `question` / `chitchat`）で処理。進捗照会は `post_progress` で即答、修正指示は既存 `replanning` へ、質問はペルソナ回答、雑談は `clarification_context` に補足
+- **設定**: `comment_model` / `max_comments_per_tick`（既定 10）/ `comment_reply_budget_per_hour`（既定 10）/ `comment_reply_max_chars`（既定 800）
+- **イベント**: `comment_classified`（`source`: deterministic / llm / budget_fallback）/ `comment_replied` / `comment_warning`
+- **`render_progress_summary`**: LLM なしの人間向け進捗サマリ
+
+### Compatibility
+
+- `HumanChannel` / Phase 1 の watch・replan・承認ゲートは非破壊。`schema_version: 1` 維持
+- 旧 `comment_received` 一括補足経路は対話処理に置換（chitchat / LLM 失敗時のみ補足追記）
+
 ## v0.19.5
 
 ### Added

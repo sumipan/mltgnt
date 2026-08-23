@@ -220,7 +220,7 @@ def list_inbox_messages(state_dir: Path, loop_id: str) -> list[InboxMessage]:
                 logger.warning("skipping inbox missing %s: %s", field, path)
                 break
         else:
-            if data["kind"] not in ("answer", "cancel"):
+            if data["kind"] not in ("answer", "cancel", "comment"):
                 logger.warning("skipping inbox invalid kind: %s", path)
                 continue
             if not all(isinstance(data[field], str) for field in (

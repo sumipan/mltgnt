@@ -919,7 +919,7 @@ def test_terminal_paths_each_close_thread_once(mock_evaluate, mock_persona, tmp_
 
 
 def test_comment_inbox_appends_clarification_context(tmp_path):
-    """kind=comment を 1 件処理すると clarification_context に追記し comment_received を記録する。"""
+    """chitchat コメントは clarification_context に追記し comment_classified を記録する。"""
     channel = FakeHumanChannel()
     engine = _engine(tmp_path, channel=channel)
     store.save_state(
@@ -961,26 +961,40 @@ def test_comment_inbox_appends_clarification_context(tmp_path):
         persona.fm.engine = ""
         persona.fm.model = ""
         mock_persona.return_value = persona
-        with patch("mltgnt.loops.engine.prompts.run_decompose") as mock_decompose:
-            mock_decompose.return_value = (
-                prompts.DecomposeResponse(
-                    subtasks=[
-                        prompts.DecomposeSubtask(id="s1", title="T", kind="auto", prompt="p")
-                    ],
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.return_value = (
+                prompts.CommentClassifyResponse(
+                    intent="chitchat",
+                    reason="note",
                     reasoning="",
                     uncertain_flag=False,
                 ),
                 prompts.LlmTrace("", "", {}, "", {}, {}, False),
             )
-            engine.tick()
+            with patch("mltgnt.loops.engine.prompts.run_decompose") as mock_decompose:
+                mock_decompose.return_value = (
+                    prompts.DecomposeResponse(
+                        subtasks=[
+                            prompts.DecomposeSubtask(
+                                id="s1", title="T", kind="auto", prompt="p"
+                            )
+                        ],
+                        reasoning="",
+                        uncertain_flag=False,
+                    ),
+                    prompts.LlmTrace("", "", {}, "", {}, {}, False),
+                )
+                engine.tick()
 
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.clarification_context == ["補足: 締切は金曜"]
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
-    comments = [e for e in events if e["event"] == "comment_received"]
+    comments = [e for e in events if e["event"] == "comment_classified"]
     assert len(comments) == 1
-    assert comments[0]["data"]["text"] == "締切は金曜"
+    assert comments[0]["data"]["intent"] == "chitchat"
+    assert comments[0]["data"]["message_id"] == "cm1"
     assert "cm1" in store.list_consumed_message_ids(_config(tmp_path).state_dir, "loop1")
+    assert not any(e["event"] == "comment_replied" for e in events)
 
 
 def test_comment_inbox_not_double_consumed(tmp_path):
@@ -1022,21 +1036,34 @@ def test_comment_inbox_not_double_consumed(tmp_path):
         persona.fm.engine = ""
         persona.fm.model = ""
         mock_persona.return_value = persona
-        with patch("mltgnt.loops.engine.prompts.run_clarify") as mock_clarify:
-            mock_clarify.return_value = (
-                prompts.ClarifyResponse(
-                    clear=True, question="", reason="", reasoning="", uncertain_flag=False
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.return_value = (
+                prompts.CommentClassifyResponse(
+                    intent="chitchat",
+                    reason="note",
+                    reasoning="",
+                    uncertain_flag=False,
                 ),
                 prompts.LlmTrace("", "", {}, "", {}, {}, False),
             )
-            engine.tick()
-            # 再 tick（consumed 済みなので追記されない）。status は decomposing になっている
-            engine.tick()
+            with patch("mltgnt.loops.engine.prompts.run_clarify") as mock_clarify:
+                mock_clarify.return_value = (
+                    prompts.ClarifyResponse(
+                        clear=True,
+                        question="",
+                        reason="",
+                        reasoning="",
+                        uncertain_flag=False,
+                    ),
+                    prompts.LlmTrace("", "", {}, "", {}, {}, False),
+                )
+                engine.tick()
+                engine.tick()
 
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.clarification_context == ["補足: 補足メモ"]
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
-    assert len([e for e in events if e["event"] == "comment_received"]) == 1
+    assert len([e for e in events if e["event"] == "comment_classified"]) == 1
 
 
 def test_start_loop_initializes_deliverable_without_touching_objective(tmp_path):
@@ -2309,3 +2336,531 @@ def test_plan_revision_limit_and_cancel(mock_decompose, mock_replan, mock_person
     )
     eng2.tick()
     assert store.load_state(cfg2.state_dir, "loop2").status == "cancelled"
+
+
+# --- Phase 2: comment dialogue ---
+
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from mltgnt.loops.engine import is_status_inquiry
+from mltgnt.loops.status import render_progress_summary
+
+_TZ = ZoneInfo("Asia/Tokyo")
+
+
+def _write_comment(state_dir: Path, loop_id: str, filename: str, message_id: str, text: str) -> None:
+    inbox = store._inbox_dir(state_dir, loop_id)
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / filename).write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": message_id,
+                "question_id": "",
+                "text": text,
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _executing_state(**overrides) -> LoopState:
+    base = dict(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="Do the thing",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=False,
+        subtasks=[
+            Subtask(id="s1", title="Step1", kind="auto", prompt="p", status="running"),
+            Subtask(id="s2", title="Step2", kind="human", prompt="q", status="pending"),
+        ],
+        created_at="2026-08-20T12:00:00+09:00",
+        updated_at="2026-08-20T12:00:00+09:00",
+    )
+    base.update(overrides)
+    return LoopState(**base)
+
+
+def _persona_mock():
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    persona.fm.engine = ""
+    persona.fm.model = ""
+    return persona
+
+
+def test_is_status_inquiry_keywords():
+    assert is_status_inquiry("動いてる？")
+    assert is_status_inquiry("進捗")
+    assert is_status_inquiry("status")
+    assert is_status_inquiry("今の進捗を教えて")
+    assert not is_status_inquiry("ここをどう変えて")
+
+
+def test_deterministic_status_comment_posts_without_llm(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(_config(tmp_path).state_dir, _executing_state())
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-st", "動いてる？")
+    now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
+
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            engine.tick(now=now)
+            assert mock_classify.call_count == 0
+
+    assert len(channel.progress_posts) == 1
+    text = channel.progress_posts[0]["text"]
+    assert "`executing`" in text
+    assert "1/5" in text
+    assert "`s1`" in text and "running" in text
+    assert "分" in text or "秒" in text
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    classified = [e for e in events if e["event"] == "comment_classified"]
+    assert len(classified) == 1
+    assert classified[0]["data"]["source"] == "deterministic"
+    replied = [e for e in events if e["event"] == "comment_replied"]
+    assert len(replied) == 1
+
+
+def test_instruction_phrase_not_deterministic_status(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(_config(tmp_path).state_dir, _executing_state())
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-i", "ここをどう変えて")
+
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.return_value = (
+                prompts.CommentClassifyResponse(
+                    intent="chitchat", reason="x", reasoning="", uncertain_flag=False
+                ),
+                prompts.LlmTrace("", "", {}, "", {}, {}, False),
+            )
+            engine.tick()
+            assert mock_classify.call_count == 1
+
+
+def test_llm_instruction_triggers_replanning(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(
+        _config(tmp_path).state_dir,
+        _executing_state(
+            subtasks=[
+                Subtask(id="s1", title="Step1", kind="auto", prompt="p", status="pending"),
+            ]
+        ),
+    )
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-ins", "タイトルを短縮して")
+
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.return_value = (
+                prompts.CommentClassifyResponse(
+                    intent="instruction", reason="change", reasoning="", uncertain_flag=False
+                ),
+                prompts.LlmTrace("", "", {}, "", {}, {}, False),
+            )
+            with patch("mltgnt.loops.engine.prompts.run_replan") as mock_replan:
+                mock_replan.return_value = (
+                    prompts.ReplanResponse(
+                        keep=("s1",),
+                        add=(),
+                        reason="ok",
+                        reasoning="",
+                        uncertain_flag=False,
+                    ),
+                    prompts.LlmTrace("", "", {}, "", {}, {}, False),
+                )
+                engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.status == "executing"  # replan done same tick without approval
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    assert any(e["event"] == "replan_triggered" for e in events)
+    assert any(
+        e["event"] == "state_change" and e["data"].get("to") == "replanning" for e in events
+    )
+
+
+def test_llm_instruction_with_plan_approval_reasks(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(
+        _config(tmp_path).state_dir,
+        _executing_state(
+            plan_approval=True,
+            subtasks=[
+                Subtask(id="s1", title="Step1", kind="auto", prompt="p", status="pending"),
+            ],
+        ),
+    )
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-ins2", "順序を変えて")
+
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.return_value = (
+                prompts.CommentClassifyResponse(
+                    intent="instruction", reason="change", reasoning="", uncertain_flag=False
+                ),
+                prompts.LlmTrace("", "", {}, "", {}, {}, False),
+            )
+            with patch("mltgnt.loops.engine.prompts.run_replan") as mock_replan:
+                mock_replan.return_value = (
+                    prompts.ReplanResponse(
+                        keep=("s1",),
+                        add=(
+                            prompts.DecomposeSubtask(
+                                id="s2", title="New", kind="auto", prompt="n", depends=()
+                            ),
+                        ),
+                        reason="ok",
+                        reasoning="",
+                        uncertain_flag=False,
+                    ),
+                    prompts.LlmTrace("", "", {}, "", {}, {}, False),
+                )
+                engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.status == "awaiting_plan_approval"
+    assert len(channel.asks) == 1
+    assert "Plan:" in channel.asks[0]["text"]
+
+
+def test_llm_question_posts_persona_reply(tmp_path):
+    channel = FakeHumanChannel()
+    cfg = LoopsConfig(
+        objectives_dir=tmp_path / "objectives",
+        state_dir=tmp_path / "state",
+        status_dir=tmp_path / "status",
+        jobs_dir=tmp_path / "jobs",
+        exec_done_dir=tmp_path / "jobs" / "done",
+        persona_dir=tmp_path / "personas",
+        default_persona="mizuho",
+        fallback_channel="C-fallback",
+        comment_reply_max_chars=50,
+    )
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=channel,
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    store.initialize_deliverable(cfg.state_dir, "loop1", "deliverable body here")
+    store.save_state(cfg.state_dir, _executing_state())
+    _write_comment(cfg.state_dir, "loop1", "001.json", "cm-q", "成果物の方針は？")
+
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.return_value = (
+                prompts.CommentClassifyResponse(
+                    intent="question", reason="q", reasoning="", uncertain_flag=False
+                ),
+                prompts.LlmTrace("", "", {}, "", {}, {}, False),
+            )
+            with patch("mltgnt.loops.engine.prompts.run_reply_comment") as mock_reply:
+                long_reply = "A" * 80
+                mock_reply.return_value = (
+                    prompts.CommentReplyResponse(
+                        reply=long_reply, reasoning="", uncertain_flag=False
+                    ),
+                    prompts.LlmTrace("", "", {}, "", {}, {}, False),
+                )
+                engine.tick()
+                assert mock_reply.call_count == 1
+                instr = mock_reply.call_args.args[0]
+                assert "Do the thing" in instr
+                assert "deliverable" in instr.lower() or "Deliverable" in instr
+
+    assert len(channel.progress_posts) == 1
+    assert len(channel.progress_posts[0]["text"]) <= 50
+    events = store.read_events(cfg.state_dir, "loop1")
+    assert any(e["event"] == "comment_replied" for e in events)
+
+
+def test_comment_replied_idempotent_on_message_id_replay(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(_config(tmp_path).state_dir, _executing_state())
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-id", "進捗")
+    now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
+    engine.tick(now=now)
+    assert len(channel.progress_posts) == 1
+    replied1 = [
+        e
+        for e in store.read_events(_config(tmp_path).state_dir, "loop1")
+        if e["event"] == "comment_replied"
+    ]
+    assert len(replied1) == 1
+    # re-drop same message_id
+    _write_comment(_config(tmp_path).state_dir, "loop1", "002.json", "cm-id", "進捗")
+    engine.tick(now=now)
+    assert len(channel.progress_posts) == 1
+    replied2 = [
+        e
+        for e in store.read_events(_config(tmp_path).state_dir, "loop1")
+        if e["event"] == "comment_replied"
+    ]
+    assert len(replied2) == 1
+
+
+def test_max_comments_per_tick_leaves_remainder(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(_config(tmp_path).state_dir, _executing_state())
+    for i in range(11):
+        _write_comment(
+            _config(tmp_path).state_dir,
+            "loop1",
+            f"{i:03d}.json",
+            f"cm{i}",
+            "進捗",
+        )
+    now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
+    engine.tick(now=now)
+    consumed = store.list_consumed_message_ids(_config(tmp_path).state_dir, "loop1")
+    assert len(consumed) == 10
+    inbox = list(store._inbox_dir(_config(tmp_path).state_dir, "loop1").glob("*.json"))
+    assert len(inbox) == 1
+    engine.tick(now=now)
+    assert len(store.list_consumed_message_ids(_config(tmp_path).state_dir, "loop1")) == 11
+
+
+def test_budget_fallback_when_recent_classified_full(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(_config(tmp_path).state_dir, _executing_state())
+    now = datetime(2026, 8, 20, 12, 0, tzinfo=_TZ)
+    for i in range(10):
+        store.append_event(
+            _config(tmp_path).state_dir,
+            "loop1",
+            "comment_classified",
+            {"message_id": f"old{i}", "intent": "chitchat", "source": "llm", "reason": ""},
+            iteration=1,
+        )
+    # rewrite timestamps to now
+    events_path = store.loop_state_dir(_config(tmp_path).state_dir, "loop1") / "events.jsonl"
+    lines = []
+    for line in events_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        ev = json.loads(line)
+        if ev["event"] == "comment_classified":
+            ev["ts"] = now.isoformat()
+        lines.append(json.dumps(ev, ensure_ascii=False))
+    events_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    _write_comment(_config(tmp_path).state_dir, "loop1", "n.json", "cm-new", "ここをどう変えて")
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            engine.tick(now=now)
+            assert mock_classify.call_count == 0
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    latest = [e for e in events if e["data"].get("message_id") == "cm-new"]
+    assert latest[0]["data"]["source"] == "budget_fallback"
+    assert len(channel.progress_posts) == 1
+
+    # old events only → classify runs
+    channel2 = FakeHumanChannel()
+    engine2 = _engine(tmp_path / "b", channel=channel2)
+    store.save_state(_config(tmp_path / "b").state_dir, _executing_state())
+    old = now - timedelta(minutes=61)
+    store.append_event(
+        _config(tmp_path / "b").state_dir,
+        "loop1",
+        "comment_classified",
+        {"message_id": "ancient", "intent": "chitchat", "source": "llm", "reason": ""},
+        iteration=1,
+    )
+    ep = store.loop_state_dir(_config(tmp_path / "b").state_dir, "loop1") / "events.jsonl"
+    rows = []
+    for line in ep.read_text(encoding="utf-8").splitlines():
+        ev = json.loads(line)
+        if ev["event"] == "comment_classified":
+            ev["ts"] = old.isoformat()
+        rows.append(json.dumps(ev, ensure_ascii=False))
+    ep.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    _write_comment(_config(tmp_path / "b").state_dir, "loop1", "n.json", "cm2", "ここをどう変えて")
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.return_value = (
+                prompts.CommentClassifyResponse(
+                    intent="chitchat", reason="", reasoning="", uncertain_flag=False
+                ),
+                prompts.LlmTrace("", "", {}, "", {}, {}, False),
+            )
+            engine2.tick(now=now)
+            assert mock_classify.call_count == 1
+
+
+def test_budget_zero_disables_llm_classify(tmp_path):
+    channel = FakeHumanChannel()
+    cfg = LoopsConfig(
+        objectives_dir=tmp_path / "objectives",
+        state_dir=tmp_path / "state",
+        status_dir=tmp_path / "status",
+        jobs_dir=tmp_path / "jobs",
+        exec_done_dir=tmp_path / "jobs" / "done",
+        persona_dir=tmp_path / "personas",
+        default_persona="mizuho",
+        fallback_channel="C-fallback",
+        comment_reply_budget_per_hour=0,
+    )
+    engine = LoopsEngine(
+        config=cfg,
+        human_channel=channel,
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    store.save_state(cfg.state_dir, _executing_state())
+    _write_comment(cfg.state_dir, "loop1", "001.json", "cm0", "ここをどう変えて")
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            engine.tick(now=datetime(2026, 8, 20, 12, 0, tzinfo=_TZ))
+            assert mock_classify.call_count == 0
+    assert len(channel.progress_posts) == 1
+
+
+def test_llm_invalid_intent_saves_as_note_without_failing(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(
+        _config(tmp_path).state_dir,
+        _executing_state(
+            status="awaiting_plan_approval",
+            plan_approval=True,
+            pending_question=PendingQuestion(
+                question_id="plan-approval-1-0", text="plan", kind="plan_approval"
+            ),
+            subtasks=[
+                Subtask(id="s1", title="Step1", kind="auto", prompt="p", status="pending"),
+            ],
+        ),
+    )
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-bad", "??")
+
+    with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
+        with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
+            mock_classify.side_effect = prompts.LlmCallError(
+                "bad intent",
+                prompts.LlmTrace("", "nope", None, "", {}, {}, False, error="bad"),
+            )
+            engine.tick()
+
+    state = store.load_state(_config(tmp_path).state_dir, "loop1")
+    assert state.status == "awaiting_plan_approval"
+    assert not state.is_terminal()
+    assert state.clarification_context == ["補足: ??"]
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    assert any(e["event"] == "llm_call" and e["data"].get("error") for e in events)
+
+
+def test_empty_and_corrupt_comments_do_not_block_valid(tmp_path):
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(_config(tmp_path).state_dir, _executing_state())
+    inbox = store._inbox_dir(_config(tmp_path).state_dir, "loop1")
+    inbox.mkdir(parents=True)
+    (inbox / "001-bad.json").write_text("{broken", encoding="utf-8")
+    (inbox / "002-empty.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": "empty1",
+                "question_id": "",
+                "text": "   ",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (inbox / "003-badid.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": 123,
+                "question_id": "",
+                "text": "x",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_comment(_config(tmp_path).state_dir, "loop1", "004-ok.json", "ok1", "進捗")
+    now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
+    engine.tick(now=now)
+    assert "ok1" in store.list_consumed_message_ids(_config(tmp_path).state_dir, "loop1")
+    assert "empty1" in store.list_consumed_message_ids(_config(tmp_path).state_dir, "loop1")
+    assert len(channel.progress_posts) == 1
+
+
+def test_post_progress_failure_skips_comment_replied(tmp_path):
+    channel = FakeHumanChannel(post_progress_result=False)
+    engine = _engine(tmp_path, channel=channel)
+    store.save_state(_config(tmp_path).state_dir, _executing_state())
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-f", "進捗")
+    engine.tick(now=datetime(2026, 8, 20, 12, 5, tzinfo=_TZ))
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    assert any(e["event"] == "channel_error" for e in events)
+    assert not any(e["event"] == "comment_replied" for e in events)
+
+    channel_exc = FakeHumanChannel(post_progress_exc=RuntimeError("down"))
+    eng2 = _engine(tmp_path / "e", channel=channel_exc)
+    store.save_state(_config(tmp_path / "e").state_dir, _executing_state())
+    _write_comment(_config(tmp_path / "e").state_dir, "loop1", "001.json", "cm-e", "進捗")
+    eng2.tick(now=datetime(2026, 8, 20, 12, 5, tzinfo=_TZ))
+    events2 = store.read_events(_config(tmp_path / "e").state_dir, "loop1")
+    assert any(e["event"] == "channel_error" for e in events2)
+    assert not any(e["event"] == "comment_replied" for e in events2)
+
+
+def test_loops_config_comment_limits(tmp_path):
+    base = dict(
+        objectives_dir=tmp_path / "o",
+        state_dir=tmp_path / "s",
+        status_dir=tmp_path / "st",
+        jobs_dir=tmp_path / "j",
+        exec_done_dir=tmp_path / "j" / "done",
+        persona_dir=tmp_path / "p",
+        default_persona="mizuho",
+        fallback_channel="C",
+    )
+    with pytest.raises(ValueError, match="max_comments_per_tick"):
+        LoopsConfig(**base, max_comments_per_tick=0)
+    with pytest.raises(ValueError, match="max_comments_per_tick"):
+        LoopsConfig(**base, max_comments_per_tick=101)
+    with pytest.raises(ValueError, match="comment_reply_budget_per_hour"):
+        LoopsConfig(**base, comment_reply_budget_per_hour=-1)
+    with pytest.raises(ValueError, match="comment_reply_budget_per_hour"):
+        LoopsConfig(**base, comment_reply_budget_per_hour=101)
+    with pytest.raises(ValueError, match="comment_reply_max_chars"):
+        LoopsConfig(**base, comment_reply_max_chars=0)
+    with pytest.raises(ValueError, match="comment_reply_max_chars"):
+        LoopsConfig(**base, comment_reply_max_chars=4001)
+    LoopsConfig(**base, max_comments_per_tick=1, comment_reply_budget_per_hour=0, comment_reply_max_chars=1)
+    LoopsConfig(**base, max_comments_per_tick=100, comment_reply_budget_per_hour=100, comment_reply_max_chars=4000)
+
+
+def test_render_progress_summary_includes_fields():
+    state = _executing_state()
+    now = datetime(2026, 8, 20, 12, 10, tzinfo=_TZ)
+    text = render_progress_summary(state, now)
+    assert "`executing`" in text
+    assert "1/5" in text
+    assert "`s1`" in text
