@@ -371,3 +371,143 @@ def test_run_reply_comment_parses_llm_result():
     ):
         resp, _trace = prompts.run_reply_comment("p", engine="claude", model="m")
     assert "進んで" in resp.reply
+
+
+_ACTION_SCHEMAS = {
+    "create_issue": {
+        "type": "object",
+        "properties": {"title": {"type": "string"}, "body": {"type": "string"}},
+        "required": ["title"],
+        "additionalProperties": False,
+    }
+}
+
+
+def test_validate_action_subtask_ok():
+    resp = prompts.validate_decompose_payload(
+        {
+            "subtasks": [
+                {
+                    "id": "a1",
+                    "title": "Create",
+                    "kind": "action",
+                    "action": {"name": "create_issue", "args": {"title": "x"}},
+                    "depends": [],
+                }
+            ],
+            "reasoning": "",
+            "uncertain_flag": False,
+        },
+        max_subtasks=5,
+        action_schemas=_ACTION_SCHEMAS,
+    )
+    assert resp.subtasks[0].kind == "action"
+    assert resp.subtasks[0].action == {"name": "create_issue", "args": {"title": "x"}}
+    assert resp.subtasks[0].prompt == ""
+
+
+def test_validate_action_rejects_prompt_and_condition():
+    with pytest.raises(ValueError, match="prompt"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {
+                        "id": "a1",
+                        "title": "t",
+                        "kind": "action",
+                        "prompt": "nope",
+                        "action": {"name": "create_issue", "args": {"title": "x"}},
+                    }
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+            action_schemas=_ACTION_SCHEMAS,
+        )
+    with pytest.raises(ValueError, match="condition"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {
+                        "id": "a1",
+                        "title": "t",
+                        "kind": "action",
+                        "condition": {"type": "path_exists", "path": "x"},
+                        "action": {"name": "create_issue", "args": {"title": "x"}},
+                    }
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+            action_schemas=_ACTION_SCHEMAS,
+        )
+
+
+def test_validate_action_unpublished_and_bad_args():
+    with pytest.raises(ValueError, match="unpublished"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {
+                        "id": "a1",
+                        "title": "t",
+                        "kind": "action",
+                        "action": {"name": "unknown", "args": {}},
+                    }
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+            action_schemas=_ACTION_SCHEMAS,
+        )
+    with pytest.raises(ValueError, match="missing required"):
+        prompts.validate_decompose_payload(
+            {
+                "subtasks": [
+                    {
+                        "id": "a1",
+                        "title": "t",
+                        "kind": "action",
+                        "action": {"name": "create_issue", "args": {}},
+                    }
+                ],
+                "reasoning": "",
+                "uncertain_flag": False,
+            },
+            max_subtasks=5,
+            action_schemas=_ACTION_SCHEMAS,
+        )
+
+
+def test_build_decompose_includes_action_schemas():
+    text = prompts.build_decompose_instruction(
+        "body",
+        iteration=1,
+        max_subtasks=5,
+        action_schemas=_ACTION_SCHEMAS,
+    )
+    assert "create_issue" in text
+    assert "kind=action" in text
+    assert '"action"' in text or "action.name" in text
+
+
+def test_before_attempt_called_per_physical_try():
+    calls: list[int] = []
+
+    def before() -> None:
+        calls.append(1)
+
+    with patch(
+        "mltgnt.loops.prompts.call_llm",
+        side_effect=[
+            make_llm_result(stdout="not json"),
+            make_llm_result(stdout=_CLARIFY_OK),
+        ],
+    ):
+        prompts.run_clarify(
+            "prompt", engine="claude", model="m", before_attempt=before
+        )
+    assert len(calls) == 2

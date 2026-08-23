@@ -35,6 +35,7 @@ class DecomposeSubtask:
     kind: str
     prompt: str
     condition: dict[str, object] | None = None
+    action: dict[str, object] | None = None
     depends: tuple[str, ...] = ()
     timeout_sec: int | None = None
     poll_interval_sec: int | None = None
@@ -211,6 +212,81 @@ def _parse_depends(
     return tuple(depends)
 
 
+
+_JSON_TYPES: dict[str, type | tuple[type, ...]] = {
+    "object": dict,
+    "string": str,
+    "integer": int,
+    "number": (int, float),
+    "boolean": bool,
+    "array": list,
+    "null": type(None),
+}
+
+
+def validate_action_args(args: object, schema: Mapping[str, object]) -> None:
+    """JSON Schema 相当の最小検証（type / properties / required / additionalProperties）。"""
+    if not isinstance(schema, Mapping):
+        raise ValueError("action schema must be a mapping")
+    expected = schema.get("type", "object")
+    if expected == "object":
+        if not isinstance(args, dict):
+            raise ValueError("action args must be an object")
+        required = schema.get("required", [])
+        if isinstance(required, list):
+            for key in required:
+                if key not in args:
+                    raise ValueError(f"missing required action arg: {key!r}")
+        props = schema.get("properties")
+        if isinstance(props, Mapping):
+            for key, value in args.items():
+                if key not in props:
+                    if schema.get("additionalProperties", True) is False:
+                        raise ValueError(f"unexpected action arg: {key!r}")
+                    continue
+                prop_schema = props[key]
+                if isinstance(prop_schema, Mapping) and "type" in prop_schema:
+                    ptype = str(prop_schema["type"])
+                    if ptype in ("integer", "number") and isinstance(value, bool):
+                        raise ValueError(f"action arg {key!r} must be {ptype}")
+                    py = _JSON_TYPES.get(ptype)
+                    if py is not None and not isinstance(value, py):
+                        raise ValueError(f"action arg {key!r} has invalid type")
+        return
+    py = _JSON_TYPES.get(str(expected))
+    if py is not None and not isinstance(args, py):
+        raise ValueError(f"action args must be {expected}")
+
+
+def _parse_action(
+    item: Mapping[str, Any],
+    *,
+    kind: str,
+    action_schemas: Mapping[str, Mapping[str, object]] | None,
+) -> dict[str, object] | None:
+    if kind != "action":
+        if "action" in item and item["action"] is not None:
+            raise ValueError(f"{kind} must not include action")
+        return None
+    raw = item.get("action")
+    if not isinstance(raw, dict):
+        raise ValueError("action requires action object with name and args")
+    name = raw.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("action.name must be a non-empty string")
+    if "args" not in raw:
+        raise ValueError("action.args is required")
+    args = raw["args"]
+    if not isinstance(args, dict):
+        raise ValueError("action.args must be an object")
+    schemas = action_schemas or {}
+    if name not in schemas:
+        raise ValueError(f"unpublished action name: {name!r}")
+    validate_action_args(args, schemas[name])
+    # forbid prompt/condition already handled elsewhere; strip extras from stored action
+    return {"name": name, "args": dict(args)}
+
+
 def _detect_cycle(ids: list[str], depends_map: dict[str, tuple[str, ...]]) -> None:
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -238,6 +314,7 @@ def _validate_subtask_items(
     max_subtasks: int,
     known_ids: set[str] | None = None,
     allow_empty: bool = False,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
 ) -> list[DecomposeSubtask]:
     if len(raw_tasks) == 0:
         if allow_empty:
@@ -258,19 +335,34 @@ def _validate_subtask_items(
             raise ValueError(f"duplicate subtask id with keep: {sid!r}")
         seen.add(sid)
         kind = str(item.get("kind", ""))
-        if kind not in ("auto", "human", "watch"):
+        if kind not in ("auto", "human", "watch", "action"):
             raise ValueError(f"invalid kind: {kind!r}")
 
-        prompt_raw = item.get("prompt", "" if kind == "watch" else None)
-        if kind == "watch":
-            prompt = "" if prompt_raw is None else str(prompt_raw)
+        if kind == "action":
+            if "prompt" in item and item["prompt"] not in (None, ""):
+                raise ValueError("action must not include prompt")
+            if "condition" in item and item["condition"] is not None:
+                raise ValueError("action must not include condition")
+            prompt = ""
+            condition = None
+            action = _parse_action(item, kind=kind, action_schemas=action_schemas)
+            timeout_sec, poll_interval_sec = None, None
+            if "timeout_sec" in item and item["timeout_sec"] is not None:
+                raise ValueError("timeout_sec is only valid for watch")
+            if "poll_interval_sec" in item and item["poll_interval_sec"] is not None:
+                raise ValueError("poll_interval_sec is only valid for watch")
         else:
-            if prompt_raw is None or not str(prompt_raw).strip():
-                raise ValueError(f"{kind} requires non-empty prompt")
-            prompt = str(prompt_raw)
+            prompt_raw = item.get("prompt", "" if kind == "watch" else None)
+            if kind == "watch":
+                prompt = "" if prompt_raw is None else str(prompt_raw)
+            else:
+                if prompt_raw is None or not str(prompt_raw).strip():
+                    raise ValueError(f"{kind} requires non-empty prompt")
+                prompt = str(prompt_raw)
+            condition = _parse_condition(item, kind=kind)
+            action = _parse_action(item, kind=kind, action_schemas=action_schemas)
+            timeout_sec, poll_interval_sec = _parse_timeout_poll(item, kind=kind)
 
-        condition = _parse_condition(item, kind=kind)
-        timeout_sec, poll_interval_sec = _parse_timeout_poll(item, kind=kind)
         previous_id = subtasks[-1].id if subtasks else None
         depends = _parse_depends(item, previous_id=previous_id)
         if sid in depends:
@@ -283,6 +375,7 @@ def _validate_subtask_items(
                 kind=kind,
                 prompt=prompt,
                 condition=condition,
+                action=action,
                 depends=depends,
                 timeout_sec=timeout_sec,
                 poll_interval_sec=poll_interval_sec,
@@ -301,11 +394,18 @@ def _validate_subtask_items(
     return subtasks
 
 
-def _validate_decompose(data: dict[str, Any], *, max_subtasks: int) -> DecomposeResponse:
+def _validate_decompose(
+    data: dict[str, Any],
+    *,
+    max_subtasks: int,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
+) -> DecomposeResponse:
     raw_tasks = data.get("subtasks")
     if not isinstance(raw_tasks, list):
         raise ValueError("subtasks must be a list")
-    subtasks = _validate_subtask_items(raw_tasks, max_subtasks=max_subtasks)
+    subtasks = _validate_subtask_items(
+        raw_tasks, max_subtasks=max_subtasks, action_schemas=action_schemas
+    )
     return DecomposeResponse(
         subtasks=subtasks,
         reasoning=str(data.get("reasoning", "")),
@@ -319,6 +419,7 @@ def _validate_replan(
     existing_ids: set[str],
     required_keep: set[str],
     max_subtasks: int,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
 ) -> ReplanResponse:
     keep_raw = data.get("keep")
     add_raw = data.get("add")
@@ -350,6 +451,7 @@ def _validate_replan(
         max_subtasks=max_subtasks,
         known_ids=seen_keep,
         allow_empty=True,
+        action_schemas=action_schemas,
     )
     # empty add is allowed when keep alone is enough — but at least one of keep/add
     if not keep and not add:
@@ -454,6 +556,7 @@ def _call_with_retry(
     model: str,
     validator: Callable[[dict[str, Any]], Any],
     retry_suffix: str = "\n\nReturn a JSON object only.",
+    before_attempt: Callable[[], None] | None = None,
 ) -> tuple[Any, LlmTrace]:
     version = prompt_version()
     start = time.monotonic()
@@ -482,6 +585,8 @@ def _call_with_retry(
         )
 
     def _attempt(p: str) -> tuple[str, dict[str, Any] | None, str, str | None]:
+        if before_attempt is not None:
+            before_attempt()
         try:
             result = call_llm(p, engine=engine, model=model)
         except Exception as exc:
@@ -538,8 +643,15 @@ def run_clarify(
     *,
     engine: str,
     model: str,
+    before_attempt: Callable[[], None] | None = None,
 ) -> tuple[ClarifyResponse, LlmTrace]:
-    return _call_with_retry(instruction, engine=engine, model=model, validator=_validate_clarify)
+    return _call_with_retry(
+        instruction,
+        engine=engine,
+        model=model,
+        validator=_validate_clarify,
+        before_attempt=before_attempt,
+    )
 
 
 def run_decompose(
@@ -548,12 +660,17 @@ def run_decompose(
     engine: str,
     model: str,
     max_subtasks: int,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
+    before_attempt: Callable[[], None] | None = None,
 ) -> tuple[DecomposeResponse, LlmTrace]:
     return _call_with_retry(
         instruction,
         engine=engine,
         model=model,
-        validator=lambda d: _validate_decompose(d, max_subtasks=max_subtasks),
+        validator=lambda d: _validate_decompose(
+            d, max_subtasks=max_subtasks, action_schemas=action_schemas
+        ),
+        before_attempt=before_attempt,
     )
 
 
@@ -565,6 +682,8 @@ def run_replan(
     existing_ids: set[str],
     required_keep: set[str],
     max_subtasks: int,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
+    before_attempt: Callable[[], None] | None = None,
 ) -> tuple[ReplanResponse, LlmTrace]:
     return _call_with_retry(
         instruction,
@@ -575,7 +694,9 @@ def run_replan(
             existing_ids=existing_ids,
             required_keep=required_keep,
             max_subtasks=max_subtasks,
+            action_schemas=action_schemas,
         ),
+        before_attempt=before_attempt,
     )
 
 
@@ -584,8 +705,15 @@ def run_evaluate(
     *,
     engine: str,
     model: str,
+    before_attempt: Callable[[], None] | None = None,
 ) -> tuple[EvaluateResponse, LlmTrace]:
-    return _call_with_retry(instruction, engine=engine, model=model, validator=_validate_evaluate)
+    return _call_with_retry(
+        instruction,
+        engine=engine,
+        model=model,
+        validator=_validate_evaluate,
+        before_attempt=before_attempt,
+    )
 
 
 def run_classify_comment(
@@ -593,9 +721,14 @@ def run_classify_comment(
     *,
     engine: str,
     model: str,
+    before_attempt: Callable[[], None] | None = None,
 ) -> tuple[CommentClassifyResponse, LlmTrace]:
     return _call_with_retry(
-        instruction, engine=engine, model=model, validator=_validate_comment_classify
+        instruction,
+        engine=engine,
+        model=model,
+        validator=_validate_comment_classify,
+        before_attempt=before_attempt,
     )
 
 
@@ -604,9 +737,14 @@ def run_reply_comment(
     *,
     engine: str,
     model: str,
+    before_attempt: Callable[[], None] | None = None,
 ) -> tuple[CommentReplyResponse, LlmTrace]:
     return _call_with_retry(
-        instruction, engine=engine, model=model, validator=_validate_comment_reply
+        instruction,
+        engine=engine,
+        model=model,
+        validator=_validate_comment_reply,
+        before_attempt=before_attempt,
     )
 
 
@@ -635,9 +773,19 @@ _DELIVERABLE_CONTRACT = (
 )
 
 _SUBTASK_SCHEMA = (
-    '{"id": str, "title": str, "kind": "auto"|"human"|"watch", "prompt": str, '
-    '"condition"?: object, "depends"?: [str], "timeout_sec"?: int, "poll_interval_sec"?: int}'
+    '{"id": str, "title": str, "kind": "auto"|"human"|"watch"|"action", "prompt"?: str, '
+    '"condition"?: object, "action"?: {"name": str, "args": object}, '
+    '"depends"?: [str], "timeout_sec"?: int, "poll_interval_sec"?: int}'
 )
+
+
+def _format_action_schemas(action_schemas: Mapping[str, Mapping[str, object]] | None) -> str:
+    if not action_schemas:
+        return "No published actions."
+    lines = ["Published actions (kind=action must use one of these):"]
+    for name, schema in action_schemas.items():
+        lines.append(f"- {name}: {json.dumps(schema, ensure_ascii=False)}")
+    return "\n".join(lines)
 
 
 def build_decompose_instruction(
@@ -647,16 +795,20 @@ def build_decompose_instruction(
     max_subtasks: int,
     next_focus: str = "",
     clarification_context: list[str] | None = None,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
 ) -> str:
     extra = f"\nFocus for this iteration: {next_focus}\n" if next_focus else ""
     if clarification_context:
         extra += "\nClarification history:\n" + "\n".join(clarification_context) + "\n"
+    actions = _format_action_schemas(action_schemas)
     return (
         f"Decompose the objective into subtasks (iteration {iteration}). "
         f"Maximum {max_subtasks} subtasks.\n"
         f"{_DELIVERABLE_CONTRACT}\n"
-        "kind=watch requires condition; auto/human require non-empty prompt.\n"
+        "kind=watch requires condition; auto/human require non-empty prompt; "
+        "kind=action requires action.name/args and must not include prompt/condition.\n"
         "Omit depends for sequential order; use depends: [] for parallel-ready watch.\n"
+        f"{actions}\n"
         f"Objective:\n{body}{extra}\n\n"
         "Respond with JSON: "
         f'{{"subtasks": [{_SUBTASK_SCHEMA}], '
@@ -671,17 +823,21 @@ def build_replan_instruction(
     failure_detail: str,
     deliverable_excerpt: str = "",
     human_feedback: str = "",
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
 ) -> str:
     feedback = f"\nHuman revision feedback:\n{human_feedback}\n" if human_feedback else ""
     deliverable_block = ""
     if deliverable_excerpt:
         deliverable_block = f"\n\nCurrent deliverable excerpt:\n{deliverable_excerpt}\n"
+    actions = _format_action_schemas(action_schemas)
     return (
         "Replan after a watch failure or human plan revision.\n"
         f"Objective:\n{body}\n\n"
         f"Current plan:\n{plan_summary}\n\n"
         f"Failure / trigger detail:\n{failure_detail}\n"
         f"{feedback}{deliverable_block}\n"
+        f"{actions}\n"
+        "kind=action requires action.name/args and must not include prompt/condition.\n"
         "Respond with JSON: "
         '{"keep": [str], "add": ['
         f"{_SUBTASK_SCHEMA}"
@@ -766,10 +922,15 @@ def build_comment_reply_instruction(
 
 
 def validate_decompose_payload(
-    data: dict[str, Any], *, max_subtasks: int
+    data: dict[str, Any],
+    *,
+    max_subtasks: int,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
 ) -> DecomposeResponse:
     """テスト／呼び出し元向けの公開検証入口。"""
-    return _validate_decompose(data, max_subtasks=max_subtasks)
+    return _validate_decompose(
+        data, max_subtasks=max_subtasks, action_schemas=action_schemas
+    )
 
 
 def validate_replan_payload(
@@ -778,6 +939,7 @@ def validate_replan_payload(
     existing_ids: set[str],
     required_keep: set[str],
     max_subtasks: int,
+    action_schemas: Mapping[str, Mapping[str, object]] | None = None,
 ) -> ReplanResponse:
     """テスト／呼び出し元向けの公開検証入口。"""
     return _validate_replan(
@@ -785,6 +947,7 @@ def validate_replan_payload(
         existing_ids=existing_ids,
         required_keep=required_keep,
         max_subtasks=max_subtasks,
+        action_schemas=action_schemas,
     )
 
 
@@ -794,3 +957,60 @@ def validate_comment_classify_payload(data: dict[str, Any]) -> CommentClassifyRe
 
 def validate_comment_reply_payload(data: dict[str, Any]) -> CommentReplyResponse:
     return _validate_comment_reply(data)
+
+
+@dataclass(frozen=True)
+class MemorySummaryResponse:
+    summary: str
+    reasoning: str
+    uncertain_flag: bool
+
+
+def _validate_memory_summary(
+    data: dict[str, Any], *, max_chars: int
+) -> MemorySummaryResponse:
+    summary = data.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("summary must be a non-empty string")
+    text = summary.strip()
+    if len(text) > max_chars:
+        text = text[:max_chars]
+    return MemorySummaryResponse(
+        summary=text,
+        reasoning=str(data.get("reasoning", "")),
+        uncertain_flag=bool(data.get("uncertain_flag", False)),
+    )
+
+
+def build_memory_summary_instruction(
+    *,
+    objective: str,
+    milestone: str,
+    context: str,
+    max_chars: int,
+) -> str:
+    return (
+        f"Summarize this loop milestone for persona memory (max {max_chars} chars).\n"
+        f"Milestone: {milestone}\n"
+        f"Objective:\n{objective}\n\n"
+        f"Context:\n{context}\n\n"
+        "Respond with JSON: "
+        '{"summary": str, "reasoning": str, "uncertain_flag": bool}'
+    )
+
+
+def run_memory_summary(
+    instruction: str,
+    *,
+    engine: str,
+    model: str,
+    max_chars: int,
+    before_attempt: Callable[[], None] | None = None,
+) -> tuple[MemorySummaryResponse, LlmTrace]:
+    return _call_with_retry(
+        instruction,
+        engine=engine,
+        model=model,
+        validator=lambda d: _validate_memory_summary(d, max_chars=max_chars),
+        before_attempt=before_attempt,
+    )

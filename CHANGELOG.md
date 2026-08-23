@@ -4,6 +4,20 @@
 
 ### Added
 
+- **loops Phase 3（実行力）**: `kind: action` サブタスクとホスト向け `ActionRequest` / `ActionResult` / `ActionExecutor`。公開 `action_schemas` に適合する決定論的 action を冪等キー付きで同期実行
+- **ペルソナメモリ**: 任意 `MemoryAppender` による計画承認・iteration 完了・done/failed の短文要約追記（dedupe key で二重防止）
+- **LLM / watch / replan 予算**: `llm_call_budget_per_loop`（既定 200）/ `llm_call_budget_per_day`（既定 1000, JST 共有）/ `max_watch_subtasks_per_loop`（既定 50）/ `max_replans_per_loop`（既定 20）。超過時は `paused`、完全一致の「再開」で `budget_override`
+- **イベント**: `action_executed` / `memory_appended` / `memory_append_failed` / `budget_resumed`
+
+### Compatibility
+
+- `schema_version: 1` 維持。旧 state は新フィールドを既定値で復元可能。`ActionExecutor` / `MemoryAppender` は省略可能で既存ホスト構築を壊さない
+- 既存 `auto` / `human` / `watch`、承認、コメント対話、deliverable 経路は非破壊
+
+## v0.19.6
+
+### Added
+
 - **loops Phase 2（対話）**: inbox `kind=comment` を決定論的 status 判定・LLM 分類（`status` / `instruction` / `question` / `chitchat`）で処理。進捗照会は `post_progress` で即答、修正指示は既存 `replanning` へ、質問はペルソナ回答、雑談は `clarification_context` に補足
 - **設定**: `comment_model` / `max_comments_per_tick`（既定 10）/ `comment_reply_budget_per_hour`（既定 10）/ `comment_reply_max_chars`（既定 800）
 - **イベント**: `comment_classified`（`source`: deterministic / llm / budget_fallback）/ `comment_replied` / `comment_warning`

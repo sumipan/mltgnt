@@ -20,6 +20,7 @@ _VALID_STATUSES = frozenset({
     "executing",
     "awaiting_human",
     "evaluating",
+    "paused",
     "done",
     "failed",
     "cancelled",
@@ -48,7 +49,7 @@ class PendingQuestion:
 class Subtask:
     id: str
     title: str
-    kind: str  # "auto" | "human" | "watch"
+    kind: str  # "auto" | "human" | "watch" | "action"
     prompt: str
     status: str = "pending"  # pending | running | success | failed
     result: str = ""
@@ -56,6 +57,7 @@ class Subtask:
     result_filename: str = ""
     submission: StepSubmission | None = None
     condition: dict[str, Any] | None = None
+    action: dict[str, Any] | None = None
     depends: list[str] = field(default_factory=list)
     timeout_sec: int | None = None
     poll_interval_sec: int | None = None
@@ -77,6 +79,8 @@ class Subtask:
         }
         if self.condition is not None:
             d["condition"] = dict(self.condition)
+        if self.action is not None:
+            d["action"] = dict(self.action)
         if self.timeout_sec is not None:
             d["timeout_sec"] = self.timeout_sec
         if self.poll_interval_sec is not None:
@@ -108,6 +112,7 @@ class Subtask:
                 reused=bool(s.get("reused", False)),
             )
         condition = data.get("condition")
+        action = data.get("action")
         depends_raw = data.get("depends")
         if depends_raw is None:
             depends: list[str] = []
@@ -117,13 +122,14 @@ class Subtask:
             id=str(data["id"]),
             title=str(data["title"]),
             kind=str(data["kind"]),
-            prompt=str(data["prompt"]),
+            prompt=str(data.get("prompt", "")),
             status=str(data.get("status", "pending")),
             result=str(data.get("result", "")),
             result_summary=str(data.get("result_summary", "")),
             result_filename=str(data.get("result_filename", "")),
             submission=submission,
             condition=dict(condition) if isinstance(condition, dict) else None,
+            action=dict(action) if isinstance(action, dict) else None,
             depends=depends,
             timeout_sec=int(data["timeout_sec"]) if data.get("timeout_sec") is not None else None,
             poll_interval_sec=(
@@ -179,6 +185,12 @@ class LoopState:
     replan_count: int = 0
     replan_feedback: str = ""
     replan_trigger_subtask_id: str | None = None
+    paused_from_status: str | None = None
+    budget_override: bool = False
+    llm_call_count: int = 0
+    watch_subtask_count: int = 0
+    total_replan_count: int = 0
+    memory_dedupe_keys: list[str] = field(default_factory=list)
 
     def is_terminal(self) -> bool:
         return self.status in TERMINAL_STATUSES
@@ -240,6 +252,24 @@ class LoopState:
         if not isinstance(plan_approval, bool):
             raise ValueError("plan_approval must be bool")
 
+        budget_override = data.get("budget_override", False)
+        if not isinstance(budget_override, bool):
+            raise ValueError("budget_override must be bool")
+
+        paused_from = data.get("paused_from_status")
+        if paused_from is not None:
+            paused_from = str(paused_from)
+
+        memory_keys_raw = data.get("memory_dedupe_keys", [])
+        if not isinstance(memory_keys_raw, list):
+            memory_keys_raw = []
+
+        def _nonneg_int(key: str, default: int = 0) -> int:
+            raw = data.get(key, default)
+            if isinstance(raw, bool) or not isinstance(raw, int):
+                return default
+            return raw  # may exceed limits (legacy over-limit state)
+
         return cls(
             loop_id=str(data["loop_id"]),
             objective_path=str(data["objective_path"]),
@@ -268,6 +298,12 @@ class LoopState:
             replan_count=int(data.get("replan_count", 0)),
             replan_feedback=str(data.get("replan_feedback", "")),
             replan_trigger_subtask_id=data.get("replan_trigger_subtask_id"),
+            paused_from_status=paused_from,
+            budget_override=budget_override,
+            llm_call_count=_nonneg_int("llm_call_count"),
+            watch_subtask_count=_nonneg_int("watch_subtask_count"),
+            total_replan_count=_nonneg_int("total_replan_count"),
+            memory_dedupe_keys=[str(k) for k in memory_keys_raw],
         )
 
 

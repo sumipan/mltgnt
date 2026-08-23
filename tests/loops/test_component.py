@@ -325,3 +325,19 @@ def test_restore_nonterminal_and_cancel_on_delete(tmp_path):
     comp._refresh_objectives(initial=False)
     state = store.load_state(cfg.state_dir, "foo")
     assert state.status == "cancelled"
+
+
+def test_component_action_executor_optional_and_injectable(tmp_path):
+    cfg = _config(tmp_path)
+    comp = LoopsComponent(cfg, FakeHumanChannel(), FakeExecutor())
+    assert comp.engine.action_executor is None
+
+    class FakeAction:
+        def execute(self, *, request, idempotency_key):
+            from mltgnt.interfaces.loops import ActionResult
+
+            return ActionResult(success=True, summary="ok")
+
+    fake = FakeAction()
+    comp2 = LoopsComponent(cfg, FakeHumanChannel(), FakeExecutor(), action_executor=fake)
+    assert comp2.engine.action_executor is fake
