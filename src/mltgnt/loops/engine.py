@@ -38,6 +38,15 @@ _MAX_CONSECUTIVE_ERRORS = 3
 _LOCAL_CONDITION_TYPES = frozenset({"path_exists", "path_changed"})
 _PLAN_APPROVAL_ANSWERS = frozenset({"ok", "承認", "進めて", "go"})
 _STATUS_EXACT = frozenset({"動いてる", "止まってる", "どう", "状況", "進捗", "status"})
+_STATUS_INQUIRY_MARKERS = (
+    "教えて",
+    "どう",
+    "知りたい",
+    "見せて",
+    "報告して",
+    "共有して",
+    "確認したい",
+)
 
 
 def _now_iso(now: datetime | None = None) -> str:
@@ -66,7 +75,11 @@ def is_status_inquiry(text: str) -> bool:
     normalized = trimmed.rstrip("?？").strip()
     if normalized in _STATUS_EXACT:
         return True
-    return "状況" in trimmed or "進捗" in trimmed
+    if "状況" not in trimmed and "進捗" not in trimmed:
+        return False
+    return trimmed.endswith(("?", "？")) or any(
+        marker in normalized for marker in _STATUS_INQUIRY_MARKERS
+    )
 
 
 def _subtask_from_decompose(s: prompts.DecomposeSubtask) -> Subtask:

@@ -2401,6 +2401,7 @@ def test_is_status_inquiry_keywords():
     assert is_status_inquiry("status")
     assert is_status_inquiry("今の進捗を教えて")
     assert not is_status_inquiry("ここをどう変えて")
+    assert not is_status_inquiry("進捗通知を止めて")
 
 
 def test_deterministic_status_comment_posts_without_llm(tmp_path):
