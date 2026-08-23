@@ -6,12 +6,18 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, cast
+from typing import Any, Callable, Mapping, cast
 
 from mltgnt.bridges.llm_adapter import call_llm
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
+DEFAULT_WATCH_TIMEOUT_SEC = 14400
+DEFAULT_WATCH_POLL_INTERVAL_SEC = 60
+_WATCH_TIMEOUT_MIN = 60
+_WATCH_TIMEOUT_MAX = 86400
+_WATCH_POLL_MIN = 5
+_WATCH_POLL_MAX = 3600
 
 @dataclass(frozen=True)
 class ClarifyResponse:
@@ -28,11 +34,24 @@ class DecomposeSubtask:
     title: str
     kind: str
     prompt: str
+    condition: dict[str, object] | None = None
+    depends: tuple[str, ...] = ()
+    timeout_sec: int | None = None
+    poll_interval_sec: int | None = None
 
 
 @dataclass(frozen=True)
 class DecomposeResponse:
     subtasks: list[DecomposeSubtask]
+    reasoning: str
+    uncertain_flag: bool
+
+
+@dataclass(frozen=True)
+class ReplanResponse:
+    keep: tuple[str, ...]
+    add: tuple[DecomposeSubtask, ...]
+    reason: str
     reasoning: str
     uncertain_flag: bool
 
@@ -116,14 +135,99 @@ def _validate_clarify(data: dict[str, Any]) -> ClarifyResponse:
     )
 
 
-def _validate_decompose(data: dict[str, Any], *, max_subtasks: int) -> DecomposeResponse:
-    raw_tasks = data.get("subtasks")
-    if not isinstance(raw_tasks, list):
-        raise ValueError("subtasks must be a list")
+def _parse_condition(item: Mapping[str, Any], *, kind: str) -> dict[str, object] | None:
+    if kind == "watch":
+        raw = item.get("condition")
+        if not isinstance(raw, dict) or not raw:
+            raise ValueError("watch requires non-empty condition object")
+        if "type" not in raw:
+            raise ValueError("condition.type is required")
+        return {str(k): v for k, v in raw.items()}
+    if "condition" in item and item["condition"] is not None:
+        raise ValueError(f"{kind} must not include condition")
+    return None
+
+
+def _parse_timeout_poll(
+    item: Mapping[str, Any], *, kind: str
+) -> tuple[int | None, int | None]:
+    if kind != "watch":
+        if "timeout_sec" in item and item["timeout_sec"] is not None:
+            raise ValueError("timeout_sec is only valid for watch")
+        if "poll_interval_sec" in item and item["poll_interval_sec"] is not None:
+            raise ValueError("poll_interval_sec is only valid for watch")
+        return None, None
+
+    timeout = item.get("timeout_sec", DEFAULT_WATCH_TIMEOUT_SEC)
+    poll = item.get("poll_interval_sec", DEFAULT_WATCH_POLL_INTERVAL_SEC)
+    if isinstance(timeout, bool) or not isinstance(timeout, int):
+        raise ValueError("timeout_sec must be int")
+    if isinstance(poll, bool) or not isinstance(poll, int):
+        raise ValueError("poll_interval_sec must be int")
+    if not (_WATCH_TIMEOUT_MIN <= timeout <= _WATCH_TIMEOUT_MAX):
+        raise ValueError(f"timeout_sec out of range: {timeout}")
+    if not (_WATCH_POLL_MIN <= poll <= _WATCH_POLL_MAX):
+        raise ValueError(f"poll_interval_sec out of range: {poll}")
+    return timeout, poll
+
+
+def _parse_depends(
+    item: Mapping[str, Any],
+    *,
+    previous_id: str | None,
+) -> tuple[str, ...]:
+    if "depends" not in item:
+        return () if previous_id is None else (previous_id,)
+    raw = item["depends"]
+    if not isinstance(raw, list):
+        raise ValueError("depends must be a list")
+    depends: list[str] = []
+    seen: set[str] = set()
+    for dep in raw:
+        if not isinstance(dep, str) or not dep:
+            raise ValueError("depends entries must be non-empty strings")
+        if dep in seen:
+            raise ValueError(f"duplicate depends entry: {dep!r}")
+        seen.add(dep)
+        depends.append(dep)
+    return tuple(depends)
+
+
+def _detect_cycle(ids: list[str], depends_map: dict[str, tuple[str, ...]]) -> None:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def dfs(node: str) -> None:
+        if node in visited:
+            return
+        if node in visiting:
+            raise ValueError(f"circular depends involving {node!r}")
+        visiting.add(node)
+        for dep in depends_map.get(node, ()):
+            if dep not in depends_map and dep not in ids:
+                continue
+            dfs(dep)
+        visiting.remove(node)
+        visited.add(node)
+
+    for sid in ids:
+        dfs(sid)
+
+
+def _validate_subtask_items(
+    raw_tasks: list[Any],
+    *,
+    max_subtasks: int,
+    known_ids: set[str] | None = None,
+    allow_empty: bool = False,
+) -> list[DecomposeSubtask]:
     if len(raw_tasks) == 0:
+        if allow_empty:
+            return []
         raise ValueError("subtasks must not be empty")
     if len(raw_tasks) > max_subtasks:
         raise ValueError(f"too many subtasks: {len(raw_tasks)} > {max_subtasks}")
+
     seen: set[str] = set()
     subtasks: list[DecomposeSubtask] = []
     for item in raw_tasks:
@@ -132,20 +236,126 @@ def _validate_decompose(data: dict[str, Any], *, max_subtasks: int) -> Decompose
         sid = str(item.get("id", ""))
         if not sid or sid in seen:
             raise ValueError(f"duplicate or empty subtask id: {sid!r}")
+        if known_ids is not None and sid in known_ids:
+            raise ValueError(f"duplicate subtask id with keep: {sid!r}")
         seen.add(sid)
         kind = str(item.get("kind", ""))
-        if kind not in ("auto", "human"):
+        if kind not in ("auto", "human", "watch"):
             raise ValueError(f"invalid kind: {kind!r}")
+
+        prompt_raw = item.get("prompt", "" if kind == "watch" else None)
+        if kind == "watch":
+            prompt = "" if prompt_raw is None else str(prompt_raw)
+        else:
+            if prompt_raw is None or not str(prompt_raw).strip():
+                raise ValueError(f"{kind} requires non-empty prompt")
+            prompt = str(prompt_raw)
+
+        condition = _parse_condition(item, kind=kind)
+        timeout_sec, poll_interval_sec = _parse_timeout_poll(item, kind=kind)
+        previous_id = subtasks[-1].id if subtasks else None
+        depends = _parse_depends(item, previous_id=previous_id)
+        if sid in depends:
+            raise ValueError(f"self-dependency not allowed: {sid!r}")
+
         subtasks.append(
             DecomposeSubtask(
                 id=sid,
                 title=str(item.get("title", sid)),
                 kind=kind,
-                prompt=str(item.get("prompt", "")),
+                prompt=prompt,
+                condition=condition,
+                depends=depends,
+                timeout_sec=timeout_sec,
+                poll_interval_sec=poll_interval_sec,
             )
         )
+
+    id_set = {s.id for s in subtasks}
+    if known_ids is not None:
+        id_set |= known_ids
+    depends_map = {s.id: s.depends for s in subtasks}
+    for st in subtasks:
+        for dep in st.depends:
+            if dep not in id_set:
+                raise ValueError(f"unknown depends id: {dep!r}")
+    _detect_cycle([s.id for s in subtasks], depends_map)
+    return subtasks
+
+
+def _validate_decompose(data: dict[str, Any], *, max_subtasks: int) -> DecomposeResponse:
+    raw_tasks = data.get("subtasks")
+    if not isinstance(raw_tasks, list):
+        raise ValueError("subtasks must be a list")
+    subtasks = _validate_subtask_items(raw_tasks, max_subtasks=max_subtasks)
     return DecomposeResponse(
         subtasks=subtasks,
+        reasoning=str(data.get("reasoning", "")),
+        uncertain_flag=bool(data.get("uncertain_flag", False)),
+    )
+
+
+def _validate_replan(
+    data: dict[str, Any],
+    *,
+    existing_ids: set[str],
+    required_keep: set[str],
+    max_subtasks: int,
+) -> ReplanResponse:
+    keep_raw = data.get("keep")
+    add_raw = data.get("add")
+    if not isinstance(keep_raw, list):
+        raise ValueError("keep must be a list")
+    if not isinstance(add_raw, list):
+        raise ValueError("add must be a list")
+
+    keep: list[str] = []
+    seen_keep: set[str] = set()
+    for kid in keep_raw:
+        if not isinstance(kid, str) or not kid:
+            raise ValueError("keep entries must be non-empty strings")
+        if kid not in existing_ids:
+            raise ValueError(f"keep unknown id: {kid!r}")
+        if kid in seen_keep:
+            raise ValueError(f"duplicate keep id: {kid!r}")
+        seen_keep.add(kid)
+        keep.append(kid)
+
+    missing_required = required_keep - seen_keep
+    if missing_required:
+        raise ValueError(
+            f"running/success tasks must be kept: {sorted(missing_required)}"
+        )
+
+    add = _validate_subtask_items(
+        add_raw,
+        max_subtasks=max_subtasks,
+        known_ids=seen_keep,
+        allow_empty=True,
+    )
+    # empty add is allowed when keep alone is enough — but at least one of keep/add
+    if not keep and not add:
+        raise ValueError("replan keep+add must not both be empty")
+    if len(keep) + len(add) > max_subtasks:
+        raise ValueError(
+            f"too many subtasks after replan: {len(keep) + len(add)} > {max_subtasks}"
+        )
+
+    # depends for add may only reference keep+add
+    id_set = set(keep) | {s.id for s in add}
+    depends_map = {s.id: s.depends for s in add}
+    for kid in keep:
+        depends_map.setdefault(kid, ())
+    for st in add:
+        for dep in st.depends:
+            if dep not in id_set:
+                raise ValueError(f"unknown depends id: {dep!r}")
+    _detect_cycle(list(id_set), depends_map)
+
+    return ReplanResponse(
+        keep=tuple(keep),
+        add=tuple(add),
+        reason=str(data.get("reason", "")),
         reasoning=str(data.get("reasoning", "")),
         uncertain_flag=bool(data.get("uncertain_flag", False)),
     )
@@ -304,6 +514,28 @@ def run_decompose(
     )
 
 
+def run_replan(
+    instruction: str,
+    *,
+    engine: str,
+    model: str,
+    existing_ids: set[str],
+    required_keep: set[str],
+    max_subtasks: int,
+) -> tuple[ReplanResponse, LlmTrace]:
+    return _call_with_retry(
+        instruction,
+        engine=engine,
+        model=model,
+        validator=lambda d: _validate_replan(
+            d,
+            existing_ids=existing_ids,
+            required_keep=required_keep,
+            max_subtasks=max_subtasks,
+        ),
+    )
+
+
 def run_evaluate(
     instruction: str,
     *,
@@ -337,6 +569,11 @@ _DELIVERABLE_CONTRACT = (
     "Do not create new draft or deliverable files."
 )
 
+_SUBTASK_SCHEMA = (
+    '{"id": str, "title": str, "kind": "auto"|"human"|"watch", "prompt": str, '
+    '"condition"?: object, "depends"?: [str], "timeout_sec"?: int, "poll_interval_sec"?: int}'
+)
+
 
 def build_decompose_instruction(
     body: str,
@@ -353,10 +590,38 @@ def build_decompose_instruction(
         f"Decompose the objective into subtasks (iteration {iteration}). "
         f"Maximum {max_subtasks} subtasks.\n"
         f"{_DELIVERABLE_CONTRACT}\n"
+        "kind=watch requires condition; auto/human require non-empty prompt.\n"
+        "Omit depends for sequential order; use depends: [] for parallel-ready watch.\n"
         f"Objective:\n{body}{extra}\n\n"
         "Respond with JSON: "
-        '{"subtasks": [{"id": str, "title": str, "kind": "auto"|"human", "prompt": str}], '
+        f'{{"subtasks": [{_SUBTASK_SCHEMA}], '
         '"reasoning": str, "uncertain_flag": bool}'
+    )
+
+
+def build_replan_instruction(
+    body: str,
+    *,
+    plan_summary: str,
+    failure_detail: str,
+    deliverable_excerpt: str = "",
+    human_feedback: str = "",
+) -> str:
+    feedback = f"\nHuman revision feedback:\n{human_feedback}\n" if human_feedback else ""
+    deliverable_block = ""
+    if deliverable_excerpt:
+        deliverable_block = f"\n\nCurrent deliverable excerpt:\n{deliverable_excerpt}\n"
+    return (
+        "Replan after a watch failure or human plan revision.\n"
+        f"Objective:\n{body}\n\n"
+        f"Current plan:\n{plan_summary}\n\n"
+        f"Failure / trigger detail:\n{failure_detail}\n"
+        f"{feedback}{deliverable_block}\n"
+        "Respond with JSON: "
+        '{"keep": [str], "add": ['
+        f"{_SUBTASK_SCHEMA}"
+        '], "reason": str, "reasoning": str, "uncertain_flag": bool}. '
+        "Always keep running and success task ids."
     )
 
 
@@ -395,4 +660,27 @@ def build_auto_subtask_prompt(
         "Edit this file directly. Do not create new deliverable or draft files.\n"
         "Stdout must be a 3-5 line summary of changes only.\n\n"
         f"Current deliverable excerpt:\n{deliverable_excerpt}\n"
+    )
+
+
+def validate_decompose_payload(
+    data: dict[str, Any], *, max_subtasks: int
+) -> DecomposeResponse:
+    """テスト／呼び出し元向けの公開検証入口。"""
+    return _validate_decompose(data, max_subtasks=max_subtasks)
+
+
+def validate_replan_payload(
+    data: dict[str, Any],
+    *,
+    existing_ids: set[str],
+    required_keep: set[str],
+    max_subtasks: int,
+) -> ReplanResponse:
+    """テスト／呼び出し元向けの公開検証入口。"""
+    return _validate_replan(
+        data,
+        existing_ids=existing_ids,
+        required_keep=required_keep,
+        max_subtasks=max_subtasks,
     )

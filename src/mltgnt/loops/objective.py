@@ -30,6 +30,7 @@ class Objective:
     status: str  # active | cancelled
     path: Path
     content_hash: str
+    plan_approval: bool = True
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,7 @@ def parse_objective(
     default_persona: str,
     default_max_iterations: int,
     known_ids: set[str] | None = None,
+    plan_approval_default: bool = True,
 ) -> Objective | ObjectiveError:
     """Objective Markdown を解析する。失敗時は ObjectiveError を返す。"""
     stem = path.stem
@@ -142,7 +144,9 @@ def parse_objective(
         return ObjectiveError(loop_id=stem, message=f"read failed: {exc}", path=path)
 
     meta = md.frontmatter or {}
-    unknown_keys = set(meta.keys()) - {"id", "title", "agent", "max_iterations", "status"}
+    unknown_keys = set(meta.keys()) - {
+        "id", "title", "agent", "max_iterations", "status", "plan_approval",
+    }
     for key in sorted(unknown_keys):
         logger.warning("unknown YAML key in objective %s: %s", path, key)
 
@@ -187,6 +191,18 @@ def parse_objective(
     if status not in ("active", "cancelled"):
         return ObjectiveError(loop_id=loop_id, message=f"invalid status: {status!r}", path=path)
 
+    if "plan_approval" not in meta:
+        plan_approval = plan_approval_default
+    else:
+        plan_raw = meta["plan_approval"]
+        if not isinstance(plan_raw, bool):
+            return ObjectiveError(
+                loop_id=loop_id,
+                message=f"plan_approval must be bool: {plan_raw!r}",
+                path=path,
+            )
+        plan_approval = plan_raw
+
     content_hash = _content_hash(body, meta)
 
     return Objective(
@@ -198,6 +214,7 @@ def parse_objective(
         status=status,
         path=path,
         content_hash=content_hash,
+        plan_approval=plan_approval,
     )
 
 

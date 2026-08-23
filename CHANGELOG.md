@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.19.5
+
+### Added
+
+- **loops Phase 1（反応性）**: `kind: watch` サブタスク、`depends` DAG、ローカル `path_exists` / `path_changed` 評価（`PathConditionEvaluator`）、ホスト向け `ConditionEvaluator` / `WatchVerdict`
+- **watch 失敗時の即時 replan**: `replanning` 状態と `max_replans_per_iteration`（既定 3）。running / success は keep 必須
+- **計画承認ゲート**: Objective `plan_approval`（未指定時は `LoopsConfig.plan_approval_default`、既定 true）と `awaiting_plan_approval`。承認語は `ok` / `承認` / `進めて` / `go` の全文一致。人間修正は `max_plan_revisions`（既定 3）まで、`replan_count` は消費しない
+- **設定**: `watch_root` / `max_replans_per_iteration` / `max_plan_revisions` / `plan_approval_default`
+- **イベント**: `watch_polled` / `replan_triggered` / `plan_proposed` / `plan_approved` / `plan_revised`
+
+### Compatibility
+
+- `schema_version: 1` を維持。v0.19.4 state（追加キーなし）は既定値でロード可能。depends キー欠落時は逐次依存へ正規化
+- 既存 `auto` / `human` の submit→poll→evaluate 経路は非破壊。GitHub Issue/PR/label 評価はホスト（#2585）側
+
 ## v0.19.4
 
 ### Added

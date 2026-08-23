@@ -121,6 +121,7 @@ class LoopsComponent:
                 path,
                 default_persona=self._config.default_persona,
                 default_max_iterations=self._config.max_iterations,
+                plan_approval_default=self._config.plan_approval_default,
             )
             for path in paths
         ]
@@ -253,6 +254,7 @@ class LoopsComponent:
                 obj.path,
                 default_persona=req.persona or self._config.default_persona,
                 default_max_iterations=self._config.max_iterations,
+                plan_approval_default=self._config.plan_approval_default,
             )
             if isinstance(parsed, ObjectiveError):
                 self._notify_request(
