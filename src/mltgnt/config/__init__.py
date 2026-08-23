@@ -103,6 +103,9 @@ class LoopsConfig:
     subtask_engine: str = "claude"
     subtask_model: str = ""
     on_status_written: Callable[[Path], None] | None = None
+    progress_notify: bool = True
+    deliverable_excerpt_chars: int = 4000
+    result_summary_chars: int = 1000
 
     def __post_init__(self) -> None:
         if self.poll_interval_sec <= 0:
@@ -117,3 +120,7 @@ class LoopsConfig:
             raise ValueError("max_subtasks_per_iteration must be in 1..5")
         if not self.default_persona.strip():
             raise ValueError("default_persona must not be empty")
+        if self.deliverable_excerpt_chars <= 0:
+            raise ValueError("deliverable_excerpt_chars must be positive")
+        if self.result_summary_chars <= 0:
+            raise ValueError("result_summary_chars must be positive")

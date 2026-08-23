@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.19.4
+
+### Added
+
+- **loops 単一 deliverable 契約**: `state_dir/<loop_id>/deliverable.md` を正規成果物とし、`start_loop` で Objective 本文から初期化。auto サブタスクは同ファイルを段階編集し、evaluate は `result_summary` と deliverable 抜粋を入力に使う
+- **`HumanChannel.post_progress` / `post_deliverable`**: 計画・進捗・成果物案内のホスト通知契約（`progress_notify` で進捗のみ抑止可）
+- **観測イベント**: `state_change` / `question_asked` / `subtask_submitted` / `subtask_done` / `deliverable_updated`
+- **`Subtask.result_summary` / `result_filename`**: 評価・通知用の後方互換フィールド（旧 state は空文字で復元）
+
+### Compatibility
+
+- 既存 `result` / `submission` / HumanChannel メソッド・状態名・ schema_version=1 は維持。nexus 側 Slack/diary 実装は #2582
+
 ## v0.19.3
 
 ### Fixed

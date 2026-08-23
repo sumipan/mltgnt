@@ -332,6 +332,12 @@ def build_clarify_instruction(
     )
 
 
+_DELIVERABLE_CONTRACT = (
+    "Each auto subtask must edit the single shared deliverable.md in place. "
+    "Do not create new draft or deliverable files."
+)
+
+
 def build_decompose_instruction(
     body: str,
     *,
@@ -346,6 +352,7 @@ def build_decompose_instruction(
     return (
         f"Decompose the objective into subtasks (iteration {iteration}). "
         f"Maximum {max_subtasks} subtasks.\n"
+        f"{_DELIVERABLE_CONTRACT}\n"
         f"Objective:\n{body}{extra}\n\n"
         "Respond with JSON: "
         '{"subtasks": [{"id": str, "title": str, "kind": "auto"|"human", "prompt": str}], '
@@ -353,11 +360,39 @@ def build_decompose_instruction(
     )
 
 
-def build_evaluate_instruction(body: str, *, results_summary: str, iteration: int, max_iterations: int) -> str:
+def build_evaluate_instruction(
+    body: str,
+    *,
+    results_summary: str,
+    iteration: int,
+    max_iterations: int,
+    deliverable_excerpt: str = "",
+) -> str:
+    deliverable_block = ""
+    if deliverable_excerpt:
+        deliverable_block = f"\n\nCurrent deliverable excerpt:\n{deliverable_excerpt}\n"
     return (
         f"Evaluate progress (iteration {iteration}/{max_iterations}).\n"
-        f"Objective:\n{body}\n\nResults:\n{results_summary}\n\n"
+        f"Objective:\n{body}\n\nResults:\n{results_summary}"
+        f"{deliverable_block}\n"
         "Respond with JSON: "
         '{"achieved": bool, "score": int(0-100), "summary": str, "next_focus": str, '
         '"reasoning": str, "uncertain_flag": bool}'
+    )
+
+
+def build_auto_subtask_prompt(
+    work_prompt: str,
+    *,
+    deliverable_path: str,
+    deliverable_excerpt: str,
+) -> str:
+    """decompose 作業指示に deliverable 編集契約ブロックを付加する。"""
+    return (
+        f"{work_prompt}\n\n"
+        "---\n"
+        f"Deliverable path: {deliverable_path}\n"
+        "Edit this file directly. Do not create new deliverable or draft files.\n"
+        "Stdout must be a 3-5 line summary of changes only.\n\n"
+        f"Current deliverable excerpt:\n{deliverable_excerpt}\n"
     )

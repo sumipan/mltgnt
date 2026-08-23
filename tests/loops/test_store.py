@@ -131,3 +131,68 @@ def test_append_event_accepts_non_json_native_objects(tmp_path):
     assert events[0]["event"] == "llm_error"
     assert isinstance(events[0]["data"]["result"], str)
     assert isinstance(events[0]["data"]["payload"], str)
+
+
+def test_initialize_deliverable_writes_body_with_trailing_newline(tmp_path):
+    state_dir = tmp_path / "state"
+    body = "alpha\nβ"
+    path = store.initialize_deliverable(state_dir, "loop1", body)
+    assert path == store.deliverable_path(state_dir, "loop1")
+    assert path.read_text(encoding="utf-8") == "alpha\nβ\n"
+
+
+def test_read_deliverable_excerpt_full_and_head_tail(tmp_path):
+    state_dir = tmp_path / "state"
+    store.initialize_deliverable(state_dir, "loop1", "abcdefghij")
+    assert store.read_deliverable_excerpt(state_dir, "loop1", 100) == "abcdefghij\n"
+
+    long_body = "A" * 50 + "B" * 50
+    store.initialize_deliverable(state_dir, "loop1", long_body)
+    excerpt = store.read_deliverable_excerpt(state_dir, "loop1", 40)
+    assert len(excerpt) <= 40
+    assert excerpt.startswith("A")
+    assert "…" in excerpt
+    assert excerpt.endswith("B") or excerpt.endswith("B\n")
+
+
+def test_read_deliverable_excerpt_rejects_non_positive(tmp_path):
+    state_dir = tmp_path / "state"
+    store.initialize_deliverable(state_dir, "loop1", "x")
+    with pytest.raises(ValueError, match="max_chars"):
+        store.read_deliverable_excerpt(state_dir, "loop1", 0)
+
+
+def test_deliverable_snapshot_utf8_sizes(tmp_path):
+    state_dir = tmp_path / "state"
+    store.initialize_deliverable(state_dir, "loop1", "α")
+    snap = store.deliverable_snapshot(state_dir, "loop1")
+    assert snap["path"] == str(store.deliverable_path(state_dir, "loop1"))
+    # "α\n" → 2 chars; UTF-8 bytes = 2 (α) + 1 (\n) = 3
+    assert snap["chars"] == 2
+    assert snap["bytes"] == 3
+
+
+def test_deliverable_uses_files_adapter(tmp_path, monkeypatch):
+    calls: list[tuple[str, str]] = []
+
+    def fake_write(path, content, *, repo_root=None):
+        calls.append(("write", path))
+        target = (repo_root or Path(".")) / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+    def fake_read(path, *, repo_root=None):
+        calls.append(("read", path))
+        from types import SimpleNamespace
+
+        text = ((repo_root or Path(".")) / path).read_text(encoding="utf-8")
+        return SimpleNamespace(content=text)
+
+    monkeypatch.setattr(store, "md_write", fake_write)
+    monkeypatch.setattr(store, "md_read", fake_read)
+
+    state_dir = tmp_path / "state"
+    store.initialize_deliverable(state_dir, "loop1", "hello")
+    store.read_deliverable_excerpt(state_dir, "loop1", 100)
+    assert ("write", "deliverable.md") in calls
+    assert ("read", "deliverable.md") in calls

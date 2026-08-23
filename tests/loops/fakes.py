@@ -38,10 +38,16 @@ class FakeHumanChannel:
     threads: list[HumanThreadRef] = field(default_factory=list)
     asks: list[dict] = field(default_factory=list)
     notifies: list[dict] = field(default_factory=list)
+    progress_posts: list[dict] = field(default_factory=list)
+    deliverable_posts: list[dict] = field(default_factory=list)
     fallbacks: list[dict] = field(default_factory=list)
     closes: list[dict] = field(default_factory=list)
     delivered: set[str] = field(default_factory=set)
     open_thread_calls: int = 0
+    post_progress_result: bool = True
+    post_deliverable_result: bool = True
+    post_progress_exc: Exception | None = None
+    post_deliverable_exc: Exception | None = None
 
     def open_thread(self, *, loop_id, persona, title, body, event_id):
         self.open_thread_calls += 1
@@ -81,6 +87,45 @@ class FakeHumanChannel:
         self.delivered.add(event_id)
         return True
 
+    def post_progress(self, *, loop_id, persona, thread, text, event_id):
+        if event_id in self.delivered:
+            return True
+        if self.post_progress_exc is not None:
+            raise self.post_progress_exc
+        self.progress_posts.append(
+            {
+                "loop_id": loop_id,
+                "persona": persona,
+                "thread": thread,
+                "text": text,
+                "event_id": event_id,
+            }
+        )
+        if self.post_progress_result:
+            self.delivered.add(event_id)
+        return self.post_progress_result
+
+    def post_deliverable(
+        self, *, loop_id, persona, thread, deliverable_path, summary, event_id
+    ):
+        if event_id in self.delivered:
+            return True
+        if self.post_deliverable_exc is not None:
+            raise self.post_deliverable_exc
+        self.deliverable_posts.append(
+            {
+                "loop_id": loop_id,
+                "persona": persona,
+                "thread": thread,
+                "deliverable_path": deliverable_path,
+                "summary": summary,
+                "event_id": event_id,
+            }
+        )
+        if self.post_deliverable_result:
+            self.delivered.add(event_id)
+        return self.post_deliverable_result
+
     def notify_fallback(self, *, loop_id, text, event_id):
         if event_id in self.delivered:
             return True
@@ -96,7 +141,6 @@ class FakeHumanChannel:
         )
         self.delivered.add(event_id)
         return True
-
 
 @dataclass
 class FakeExecutor:

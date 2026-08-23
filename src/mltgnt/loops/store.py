@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from mltgnt.bridges.files_adapter import md_read, md_write
 from mltgnt.loops.models import LoopState, SCHEMA_VERSION, state_from_json, state_to_json
 
 logger = logging.getLogger("mltgnt.loops.store")
 
 _TZ = ZoneInfo("Asia/Tokyo")
+_OMISSION_MARKER = "\n\n…\n\n"
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,58 @@ def _now_iso() -> str:
 
 def loop_state_dir(state_dir: Path, loop_id: str) -> Path:
     return state_dir / loop_id
+
+
+def deliverable_path(state_dir: Path, loop_id: str) -> Path:
+    """正規成果物 `deliverable.md` の絶対パスを返す。"""
+    return (loop_state_dir(state_dir, loop_id) / "deliverable.md").resolve()
+
+
+def _read_deliverable_text(state_dir: Path, loop_id: str) -> str:
+    path = deliverable_path(state_dir, loop_id)
+    if not path.is_file():
+        return ""
+    md = md_read(path.name, repo_root=path.parent)
+    content = getattr(md, "content", md)
+    return content if isinstance(content, str) else str(content)
+
+
+def initialize_deliverable(state_dir: Path, loop_id: str, body: str) -> Path:
+    """Objective 本文で deliverable.md を初期化し、保存先絶対パスを返す。"""
+    path = deliverable_path(state_dir, loop_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = body if body.endswith("\n") else body + "\n"
+    md_write(path.name, content, repo_root=path.parent)
+    return path
+
+
+def read_deliverable_excerpt(state_dir: Path, loop_id: str, max_chars: int) -> str:
+    """deliverable 全文が上限以下なら全文、超過時は先頭・省略マーカー・末尾。"""
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    text = _read_deliverable_text(state_dir, loop_id)
+    if len(text) <= max_chars:
+        return text
+    marker = _OMISSION_MARKER
+    if len(marker) >= max_chars:
+        return text[:max_chars]
+    remaining = max_chars - len(marker)
+    head_len = remaining // 2
+    tail_len = remaining - head_len
+    if tail_len <= 0:
+        return text[:max_chars]
+    return text[:head_len] + marker + text[-tail_len:]
+
+
+def deliverable_snapshot(state_dir: Path, loop_id: str) -> dict[str, Any]:
+    """成果物スナップショット（path / chars / bytes）を返す。"""
+    path = deliverable_path(state_dir, loop_id)
+    text = _read_deliverable_text(state_dir, loop_id)
+    return {
+        "path": str(path),
+        "chars": len(text),
+        "bytes": len(text.encode("utf-8")),
+    }
 
 
 def atomic_write_json(path: Path, data: str) -> None:

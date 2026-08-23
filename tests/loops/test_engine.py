@@ -1034,3 +1034,666 @@ def test_comment_inbox_not_double_consumed(tmp_path):
     assert state.clarification_context == ["補足: 補足メモ"]
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
     assert len([e for e in events if e["event"] == "comment_received"]) == 1
+
+
+def test_start_loop_initializes_deliverable_without_touching_objective(tmp_path):
+    obj_path = tmp_path / "obj.md"
+    obj_path.write_text("alpha\nβ", encoding="utf-8")
+    original = obj_path.read_text(encoding="utf-8")
+    engine = _engine(tmp_path)
+    obj = Objective(
+        loop_id="loop1",
+        title="Title",
+        body="alpha\nβ",
+        agent="mizuho",
+        max_iterations=5,
+        status="active",
+        path=obj_path,
+        content_hash="hash1",
+    )
+    engine.start_loop(obj)
+    deliverable = store.deliverable_path(_config(tmp_path).state_dir, "loop1")
+    assert deliverable.read_text(encoding="utf-8") == "alpha\nβ\n"
+    assert obj_path.read_text(encoding="utf-8") == original
+    events = store.read_events(_config(tmp_path).state_dir, "loop1")
+    assert any(e["event"] == "deliverable_updated" for e in events)
+
+
+def test_config_rejects_non_positive_summary_limits(tmp_path):
+    with pytest.raises(ValueError, match="deliverable_excerpt_chars"):
+        LoopsConfig(
+            objectives_dir=tmp_path / "o",
+            state_dir=tmp_path / "s",
+            status_dir=tmp_path / "st",
+            jobs_dir=tmp_path / "j",
+            exec_done_dir=tmp_path / "j" / "done",
+            persona_dir=tmp_path / "p",
+            default_persona="mizuho",
+            fallback_channel="C",
+            deliverable_excerpt_chars=0,
+        )
+    with pytest.raises(ValueError, match="result_summary_chars"):
+        LoopsConfig(
+            objectives_dir=tmp_path / "o",
+            state_dir=tmp_path / "s",
+            status_dir=tmp_path / "st",
+            jobs_dir=tmp_path / "j",
+            exec_done_dir=tmp_path / "j" / "done",
+            persona_dir=tmp_path / "p",
+            default_persona="mizuho",
+            fallback_channel="C",
+            result_summary_chars=0,
+        )
+
+
+def test_subtask_from_dict_fills_missing_summary_fields():
+    data = {
+        "id": "s1",
+        "title": "T",
+        "kind": "auto",
+        "prompt": "p",
+        "status": "success",
+        "result": "full stdout",
+        "submission": {
+            "uuid": "u1",
+            "result_filename": "r1.md",
+            "submitted_at": "2026-08-20T12:00:00+09:00",
+            "reused": False,
+        },
+    }
+    st = Subtask.from_dict(data)
+    assert st.result_summary == ""
+    assert st.result_filename == ""
+    assert st.result == "full stdout"
+    assert st.submission is not None
+    assert st.submission.result_filename == "r1.md"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_auto_submit_prompt_includes_deliverable_contract(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    executor = FakeExecutor()
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel, executor=executor)
+    cfg = _config(tmp_path)
+    store.initialize_deliverable(cfg.state_dir, "loop1", "seed body")
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[Subtask(id="s1", title="S1", kind="auto", prompt="do it", status="pending")],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+
+    prompt = executor.submit_kwargs[0]["prompt"]
+    path = str(store.deliverable_path(cfg.state_dir, "loop1"))
+    assert path in prompt
+    assert "Edit this file directly" in prompt
+    assert "Do not create new deliverable" in prompt
+    assert "3-5 line" in prompt
+    assert "seed body" in prompt
+    events = store.read_events(cfg.state_dir, "loop1")
+    submitted = [e for e in events if e["event"] == "subtask_submitted"]
+    assert len(submitted) == 1
+    assert submitted[0]["data"]["result_filename"] == "result-1.md"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_poll_success_persists_summary_and_events(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    cfg = _config(tmp_path)
+    long_out = "X" * 1500
+    executor = FakeExecutor()
+    executor.poll_results["u1"] = StepPoll(status="success", content=long_out)
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel, executor=executor)
+    store.initialize_deliverable(cfg.state_dir, "loop1", "seed")
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[
+            Subtask(
+                id="s1",
+                title="S1",
+                kind="auto",
+                prompt="do it",
+                status="running",
+                submission=StepSubmission(
+                    uuid="u1",
+                    result_filename="r1.md",
+                    submitted_at="2026-08-20T12:00:00+09:00",
+                    reused=False,
+                ),
+            )
+        ],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state is not None
+    st = state.subtasks[0]
+    assert st.result == long_out
+    assert st.result_summary == long_out[:1000]
+    assert st.result_filename == "r1.md"
+    events = store.read_events(cfg.state_dir, "loop1")
+    assert any(e["event"] == "subtask_done" for e in events)
+    assert any(e["event"] == "deliverable_updated" for e in events)
+    assert len(channel.progress_posts) == 1
+    assert state.status == "evaluating"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_poll_failed_and_timeout_record_summary(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    cfg = _config(tmp_path)
+    executor = FakeExecutor()
+    executor.poll_results["u-fail"] = StepPoll(status="failed_exit", content="boom")
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel, executor=executor)
+    store.initialize_deliverable(cfg.state_dir, "loop1", "seed")
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[
+            Subtask(
+                id="s1",
+                title="S1",
+                kind="auto",
+                prompt="do it",
+                status="running",
+                submission=StepSubmission(
+                    uuid="u-fail",
+                    result_filename="r-fail.md",
+                    submitted_at="2026-08-20T12:00:00+09:00",
+                    reused=False,
+                ),
+            )
+        ],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.subtasks[0].status == "failed"
+    assert state.subtasks[0].result_summary == "boom"
+    assert any(e["event"] == "subtask_done" for e in store.read_events(cfg.state_dir, "loop1"))
+
+    # timeout path
+    executor2 = FakeExecutor()
+    engine2 = _engine(tmp_path / "t2", channel=FakeHumanChannel(), executor=executor2)
+    cfg2 = _config(tmp_path / "t2")
+    store.initialize_deliverable(cfg2.state_dir, "loop2", "seed")
+    state2 = LoopState(
+        loop_id="loop2",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[
+            Subtask(
+                id="s1",
+                title="S1",
+                kind="auto",
+                prompt="do it",
+                status="running",
+                submission=StepSubmission(
+                    uuid="u-to",
+                    result_filename="r-to.md",
+                    submitted_at="2000-01-01T00:00:00+09:00",
+                    reused=False,
+                ),
+            )
+        ],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg2.state_dir, state2)
+    engine2.tick()
+    state2 = store.load_state(cfg2.state_dir, "loop2")
+    assert state2.subtasks[0].status == "failed"
+    assert "timeout" in state2.subtasks[0].result_summary
+    assert any(e["event"] == "subtask_done" for e in store.read_events(cfg2.state_dir, "loop2"))
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_evaluate")
+def test_evaluate_uses_result_summary_and_deliverable(mock_evaluate, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    mock_evaluate.return_value = (
+        prompts.EvaluateResponse(
+            achieved=True,
+            score=100,
+            summary="done",
+            next_focus="",
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    cfg = _config(tmp_path)
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    store.initialize_deliverable(cfg.state_dir, "loop1", "iteration1 body content")
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="objective body",
+        status="evaluating",
+        iteration=2,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[
+            Subtask(
+                id="s1",
+                title="S1",
+                kind="auto",
+                prompt="p",
+                status="success",
+                result="raw long",
+                result_summary="short summary",
+            )
+        ],
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+
+    instruction = mock_evaluate.call_args.args[0]
+    assert "short summary" in instruction
+    assert "iteration1 body content" in instruction
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+def test_progress_notify_plan_and_toggle(mock_decompose, mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    mock_decompose.return_value = (
+        prompts.DecomposeResponse(
+            subtasks=[
+                prompts.DecomposeSubtask(id="s1", title="One", kind="auto", prompt="p"),
+                prompts.DecomposeSubtask(id="s2", title="Two", kind="human", prompt="q"),
+            ],
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="decomposing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(_config(tmp_path).state_dir, state)
+    engine.tick()
+    assert len(channel.progress_posts) == 1
+    assert "One" in channel.progress_posts[0]["text"]
+
+    channel2 = FakeHumanChannel()
+    cfg2 = _config(tmp_path / "off")
+    cfg_off = LoopsConfig(
+        objectives_dir=cfg2.objectives_dir,
+        state_dir=cfg2.state_dir,
+        status_dir=cfg2.status_dir,
+        jobs_dir=cfg2.jobs_dir,
+        exec_done_dir=cfg2.exec_done_dir,
+        persona_dir=cfg2.persona_dir,
+        default_persona="mizuho",
+        fallback_channel="C-fallback",
+        progress_notify=False,
+    )
+    engine_off = LoopsEngine(
+        config=cfg_off,
+        human_channel=channel2,
+        executor=FakeExecutor(),
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+    state2 = LoopState(
+        loop_id="loop2",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="decomposing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg_off.state_dir, state2)
+    engine_off.tick()
+    assert channel2.progress_posts == []
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_human_deliverable_posts_and_idempotent_retick(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel)
+    cfg = _config(tmp_path)
+    store.initialize_deliverable(cfg.state_dir, "loop1", "seed")
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[Subtask(id="h1", title="Review", kind="human", prompt="check please", status="pending")],
+        current_subtask_id="h1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+    assert len(channel.deliverable_posts) == 1
+    assert channel.deliverable_posts[0]["deliverable_path"] == str(
+        store.deliverable_path(cfg.state_dir, "loop1")
+    )
+    start_eid = channel.deliverable_posts[0]["event_id"]
+    engine.tick()
+    assert len(channel.deliverable_posts) == 1
+
+    inbox = store._inbox_dir(cfg.state_dir, "loop1")
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "001-a.json").write_text(
+        json.dumps(
+            {
+                "kind": "answer",
+                "message_id": "m1",
+                "question_id": "human-1-h1",
+                "text": "LGTM",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine.tick()
+    assert len(channel.deliverable_posts) == 2
+    assert channel.deliverable_posts[1]["summary"] == "LGTM"
+    done_eid = channel.deliverable_posts[1]["event_id"]
+    assert start_eid != done_eid
+    engine.tick()
+    assert len(channel.deliverable_posts) == 2
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.subtasks[0].result_summary == "LGTM"
+    assert state.subtasks[0].result_filename == ""
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_channel_false_or_exception_keeps_subtask_success(mock_persona, tmp_path):
+    mock_persona.return_value = _persona_with_ops()
+    cfg = _config(tmp_path)
+    executor = FakeExecutor()
+    executor.poll_results["u1"] = StepPoll(status="success", content="ok")
+    channel = FakeHumanChannel(post_progress_result=False)
+    engine = _engine(tmp_path, channel=channel, executor=executor)
+    store.initialize_deliverable(cfg.state_dir, "loop1", "seed")
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[
+            Subtask(
+                id="s1",
+                title="S1",
+                kind="auto",
+                prompt="do it",
+                status="running",
+                submission=StepSubmission(
+                    uuid="u1",
+                    result_filename="r1.md",
+                    submitted_at="2026-08-20T12:00:00+09:00",
+                    reused=False,
+                ),
+            )
+        ],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg.state_dir, state)
+    engine.tick()
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.subtasks[0].status == "success"
+    assert state.status == "evaluating"
+    assert any(
+        e["event"] == "channel_error" and e["data"]["action"] == "post_progress"
+        for e in store.read_events(cfg.state_dir, "loop1")
+    )
+
+    channel_exc = FakeHumanChannel(post_progress_exc=RuntimeError("slack down"))
+    executor2 = FakeExecutor()
+    executor2.poll_results["u2"] = StepPoll(status="success", content="ok2")
+    engine2 = _engine(tmp_path / "exc", channel=channel_exc, executor=executor2)
+    cfg2 = _config(tmp_path / "exc")
+    store.initialize_deliverable(cfg2.state_dir, "loop2", "seed")
+    state2 = LoopState(
+        loop_id="loop2",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        subtasks=[
+            Subtask(
+                id="s1",
+                title="S1",
+                kind="auto",
+                prompt="do it",
+                status="running",
+                submission=StepSubmission(
+                    uuid="u2",
+                    result_filename="r2.md",
+                    submitted_at="2026-08-20T12:00:00+09:00",
+                    reused=False,
+                ),
+            )
+        ],
+        current_subtask_id="s1",
+        created_at="t",
+        updated_at="t",
+    )
+    store.save_state(cfg2.state_dir, state2)
+    engine2.tick()
+    state2 = store.load_state(cfg2.state_dir, "loop2")
+    assert state2.subtasks[0].status == "success"
+    assert state2.status == "evaluating"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_clarify")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+@patch("mltgnt.loops.engine.prompts.run_evaluate")
+def test_state_change_and_observability_events(
+    mock_evaluate, mock_decompose, mock_clarify, mock_persona, tmp_path
+):
+    mock_persona.return_value = _persona_with_ops()
+    mock_clarify.return_value = (
+        prompts.ClarifyResponse(
+            clear=False, question="いつ？", reason="", reasoning="", uncertain_flag=False
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    mock_decompose.return_value = (
+        prompts.DecomposeResponse(
+            subtasks=[
+                prompts.DecomposeSubtask(id="s1", title="Auto", kind="auto", prompt="work"),
+                prompts.DecomposeSubtask(id="h1", title="Human", kind="human", prompt="review"),
+            ],
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    mock_evaluate.return_value = (
+        prompts.EvaluateResponse(
+            achieved=True,
+            score=100,
+            summary="done",
+            next_focus="",
+            reasoning="",
+            uncertain_flag=False,
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    executor = FakeExecutor()
+    channel = FakeHumanChannel()
+    engine = _engine(tmp_path, channel=channel, executor=executor)
+    cfg = _config(tmp_path)
+    engine.start_loop(_objective())
+
+    # clarifying -> awaiting_answer
+    engine.tick()
+    state = store.load_state(cfg.state_dir, "loop1")
+    assert state.status == "awaiting_answer"
+    qid = channel.asks[0]["question_id"]
+
+    inbox = store._inbox_dir(cfg.state_dir, "loop1")
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "001-a.json").write_text(
+        json.dumps(
+            {
+                "kind": "answer",
+                "message_id": "m1",
+                "question_id": qid,
+                "text": "来月",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    # awaiting_answer -> clarifying
+    engine.tick()
+    mock_clarify.return_value = (
+        prompts.ClarifyResponse(
+            clear=True, question="", reason="", reasoning="", uncertain_flag=False
+        ),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    # clarifying -> decomposing
+    engine.tick()
+    # decomposing -> executing
+    engine.tick()
+    # submit auto
+    engine.tick()
+    executor.poll_results["uuid-1"] = StepPoll(status="success", content="auto done")
+    # poll success -> next human
+    engine.tick()
+    # human ask -> awaiting_human
+    engine.tick()
+    (inbox / "002-h.json").write_text(
+        json.dumps(
+            {
+                "kind": "answer",
+                "message_id": "m2",
+                "question_id": "human-1-h1",
+                "text": "approved",
+                "received_at": "2026-08-20T12:05:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    # human done -> evaluating
+    engine.tick()
+    # evaluating -> done
+    engine.tick()
+
+    events = store.read_events(cfg.state_dir, "loop1")
+    changes = [e for e in events if e["event"] == "state_change"]
+    pairs = [(e["data"]["from"], e["data"]["to"]) for e in changes]
+    assert ("clarifying", "awaiting_answer") in pairs
+    assert ("awaiting_answer", "clarifying") in pairs
+    assert ("clarifying", "decomposing") in pairs
+    assert ("decomposing", "executing") in pairs
+    assert ("executing", "awaiting_human") in pairs
+    assert ("awaiting_human", "executing") in pairs or ("awaiting_human", "evaluating") in pairs
+    assert any(e["data"]["to"] == "evaluating" for e in changes)
+    assert any(e["data"]["to"] == "done" for e in changes)
+    assert all("reason" in e["data"] for e in changes)
+
+    assert any(e["event"] == "question_asked" for e in events)
+    assert any(e["event"] == "subtask_submitted" for e in events)
+    assert any(e["event"] == "subtask_done" for e in events)
+    assert any(e["event"] == "deliverable_updated" for e in events)
+
+    # re-tick terminal: no duplicate state_change to done
+    done_count_before = len([e for e in events if e["event"] == "state_change" and e["data"]["to"] == "done"])
+    engine.tick()
+    events_after = store.read_events(cfg.state_dir, "loop1")
+    done_count_after = len(
+        [e for e in events_after if e["event"] == "state_change" and e["data"]["to"] == "done"]
+    )
+    assert done_count_after == done_count_before
