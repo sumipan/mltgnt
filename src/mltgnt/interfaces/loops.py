@@ -13,6 +13,7 @@ LoopStatus = Literal[
     "executing",
     "awaiting_human",
     "evaluating",
+    "paused",
     "done",
     "failed",
     "cancelled",
@@ -148,3 +149,33 @@ class ConditionEvaluator(Protocol):
         *,
         previous_token: str | None,
     ) -> WatchVerdict | None: ...
+
+
+@dataclass(frozen=True)
+class ActionRequest:
+    name: str
+    args: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class ActionResult:
+    success: bool
+    summary: str
+    output: Mapping[str, object] | None = None
+
+
+class ActionExecutor(Protocol):
+    def execute(
+        self, *, request: ActionRequest, idempotency_key: str
+    ) -> ActionResult: ...
+
+
+class MemoryAppender(Protocol):
+    def __call__(
+        self,
+        *,
+        persona: str,
+        content: str,
+        timestamp: str,
+        dedupe_key: str,
+    ) -> bool: ...

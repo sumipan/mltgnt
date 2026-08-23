@@ -304,3 +304,72 @@ def test_list_inbox_messages_skips_corrupt_and_non_string(tmp_path):
     msgs = store.list_inbox_messages(state_dir, "test")
     assert len(msgs) == 1
     assert msgs[0].message_id == "ok"
+
+
+def test_phase3_fields_roundtrip_and_legacy_defaults():
+    data = {
+        "loop_id": "legacy",
+        "objective_path": "/tmp/obj.md",
+        "objective_hash": "abc",
+        "title": "T",
+        "body": "body",
+        "status": "executing",
+        "iteration": 1,
+        "max_iterations": 5,
+        "persona": "mizuho",
+        "schema_version": 1,
+        "subtasks": [
+            {
+                "id": "a1",
+                "title": "Act",
+                "kind": "action",
+                "prompt": "",
+                "status": "pending",
+                "result": "",
+                "action": {"name": "create_issue", "args": {"title": "x"}},
+                "depends": [],
+            }
+        ],
+    }
+    state = LoopState.from_dict(data)
+    assert state.llm_call_count == 0
+    assert state.watch_subtask_count == 0
+    assert state.total_replan_count == 0
+    assert state.budget_override is False
+    assert state.paused_from_status is None
+    assert state.memory_dedupe_keys == []
+    assert state.subtasks[0].action == {"name": "create_issue", "args": {"title": "x"}}
+
+    state.llm_call_count = 3
+    state.status = "paused"
+    state.paused_from_status = "executing"
+    state.budget_override = True
+    state.memory_dedupe_keys = ["k1"]
+    restored = LoopState.from_dict(state.to_dict())
+    assert restored.llm_call_count == 3
+    assert restored.status == "paused"
+    assert restored.paused_from_status == "executing"
+    assert restored.budget_override is True
+    assert restored.memory_dedupe_keys == ["k1"]
+
+
+def test_over_limit_legacy_counts_loadable():
+    data = {
+        "loop_id": "over",
+        "objective_path": "/tmp/obj.md",
+        "objective_hash": "abc",
+        "title": "T",
+        "body": "body",
+        "status": "paused",
+        "iteration": 1,
+        "max_iterations": 5,
+        "persona": "mizuho",
+        "schema_version": 1,
+        "llm_call_count": 999,
+        "watch_subtask_count": 80,
+        "total_replan_count": 40,
+    }
+    state = LoopState.from_dict(data)
+    assert state.llm_call_count == 999
+    assert state.watch_subtask_count == 80
+    assert state.total_replan_count == 40

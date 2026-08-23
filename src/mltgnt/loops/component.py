@@ -6,7 +6,12 @@ import threading
 from pathlib import Path
 
 from mltgnt.config import LoopsConfig
-from mltgnt.interfaces.loops import HumanChannel, HumanThreadRef, SubtaskExecutor
+from mltgnt.interfaces.loops import (
+    ActionExecutor,
+    HumanChannel,
+    HumanThreadRef,
+    SubtaskExecutor,
+)
 from mltgnt.loops.engine import LoopsEngine
 from mltgnt.loops.objective import (
     Objective,
@@ -40,6 +45,7 @@ class LoopsComponent:
         config: LoopsConfig,
         human_channel: HumanChannel,
         executor: SubtaskExecutor,
+        action_executor: ActionExecutor | None = None,
     ) -> None:
         self._config = config
         self._engine = LoopsEngine(
@@ -49,6 +55,7 @@ class LoopsComponent:
             objective_exists=self._objective_exists,
             objective_cancelled=self._objective_cancelled,
             objective_hash_changed=self._objective_hash_changed,
+            action_executor=action_executor,
         )
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None

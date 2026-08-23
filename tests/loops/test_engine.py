@@ -17,7 +17,13 @@ from mltgnt.loops.objective import Objective
 from mltgnt.loops import store
 from mltgnt.loops import prompts
 from mltgnt.loops.status import render_progress_summary
-from mltgnt.interfaces.loops import HumanThreadRef, StepPoll, StepSubmission
+from mltgnt.interfaces.loops import (
+    ActionRequest,
+    ActionResult,
+    HumanThreadRef,
+    StepPoll,
+    StepSubmission,
+)
 from tests.loops.fakes import FakeExecutor, FakeHumanChannel
 
 
@@ -2862,3 +2868,532 @@ def test_render_progress_summary_includes_fields():
     assert "`executing`" in text
     assert "1/5" in text
     assert "`s1`" in text
+
+
+# --- Phase 3: action / memory / budget ---
+
+
+@dataclass
+class FakeActionExecutor:
+    calls: list[dict] = field(default_factory=list)
+    result: ActionResult = field(
+        default_factory=lambda: ActionResult(success=True, summary="created", output={"id": 1})
+    )
+    exc: Exception | None = None
+
+    def execute(self, *, request: ActionRequest, idempotency_key: str) -> ActionResult:
+        self.calls.append({"request": request, "idempotency_key": idempotency_key})
+        if self.exc is not None:
+            raise self.exc
+        return self.result
+
+
+@dataclass
+class FakeMemoryAppender:
+    calls: list[dict] = field(default_factory=list)
+    return_value: bool = True
+    exc: Exception | None = None
+
+    def __call__(self, *, persona, content, timestamp, dedupe_key) -> bool:
+        if self.exc is not None:
+            raise self.exc
+        self.calls.append(
+            {
+                "persona": persona,
+                "content": content,
+                "timestamp": timestamp,
+                "dedupe_key": dedupe_key,
+            }
+        )
+        return self.return_value
+
+
+def _action_config(tmp_path: Path, **overrides) -> LoopsConfig:
+    kwargs = dict(
+        objectives_dir=tmp_path / "objectives",
+        state_dir=tmp_path / "state",
+        status_dir=tmp_path / "status",
+        jobs_dir=tmp_path / "jobs",
+        exec_done_dir=tmp_path / "jobs" / "done",
+        persona_dir=tmp_path / "personas",
+        default_persona="mizuho",
+        fallback_channel="C-fallback",
+        action_schemas={
+            "create_issue": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            }
+        },
+        llm_call_budget_per_loop=200,
+        llm_call_budget_per_day=1000,
+        max_watch_subtasks_per_loop=50,
+        max_replans_per_loop=20,
+        plan_approval_default=False,
+    )
+    kwargs.update(overrides)
+    return LoopsConfig(**kwargs)
+
+
+def _action_engine(tmp_path, *, channel=None, executor=None, action_executor=None, **cfg_kw):
+    cfg = _action_config(tmp_path, **cfg_kw)
+    return LoopsEngine(
+        config=cfg,
+        human_channel=channel or FakeHumanChannel(),
+        executor=executor or FakeExecutor(),
+        action_executor=action_executor,
+        objective_exists=lambda _: True,
+        objective_cancelled=lambda _: False,
+        objective_hash_changed=lambda *_: False,
+    )
+
+
+def _action_state(**overrides) -> LoopState:
+    base = dict(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="executing",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=False,
+        created_at="t",
+        updated_at="t",
+        subtasks=[
+            Subtask(
+                id="a1",
+                title="Create issue",
+                kind="action",
+                prompt="",
+                action={"name": "create_issue", "args": {"title": "hello"}},
+                depends=[],
+            )
+        ],
+    )
+    base.update(overrides)
+    return LoopState(**base)
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_action_success_calls_executor_once(mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    actions = FakeActionExecutor()
+    eng = _action_engine(tmp_path, action_executor=actions)
+    store.save_state(eng.config.state_dir, _action_state())
+    eng.tick()
+    state = store.load_state(eng.config.state_dir, "loop1")
+    assert len(actions.calls) == 1
+    assert actions.calls[0]["idempotency_key"] == "loops:loop1:i1:a1"
+    assert state.subtasks[0].status == "success"
+    assert state.subtasks[0].result_summary == "created"
+    events = store.read_events(eng.config.state_dir, "loop1")
+    assert any(e["event"] == "action_executed" for e in events)
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_action_idempotency_key_stable_across_ticks(mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    actions = FakeActionExecutor()
+    eng = _action_engine(tmp_path, action_executor=actions)
+    store.save_state(eng.config.state_dir, _action_state())
+    eng.tick()
+    # reload pending again shouldn't happen after success; force pending with same id
+    state = store.load_state(eng.config.state_dir, "loop1")
+    state.subtasks[0].status = "pending"
+    store.save_state(eng.config.state_dir, state)
+    eng.tick()
+    assert actions.calls[0]["idempotency_key"] == actions.calls[1]["idempotency_key"]
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        "unpublished",
+        "bad_args",
+        "no_executor",
+        "executor_exc",
+        "success_false",
+    ],
+)
+@patch("mltgnt.loops.engine.load_persona")
+def test_action_failures_go_to_replanning(mock_persona, tmp_path, setup):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    actions = FakeActionExecutor()
+    state = _action_state()
+    if setup == "unpublished":
+        state.subtasks[0].action = {"name": "nope", "args": {}}
+        eng = _action_engine(tmp_path, action_executor=actions)
+    elif setup == "bad_args":
+        state.subtasks[0].action = {"name": "create_issue", "args": {}}
+        eng = _action_engine(tmp_path, action_executor=actions)
+    elif setup == "no_executor":
+        eng = _action_engine(tmp_path, action_executor=None)
+    elif setup == "executor_exc":
+        actions.exc = RuntimeError("boom")
+        eng = _action_engine(tmp_path, action_executor=actions)
+    else:
+        actions.result = ActionResult(success=False, summary="failed create")
+        eng = _action_engine(tmp_path, action_executor=actions)
+
+    store.save_state(eng.config.state_dir, state)
+    eng.tick()
+    loaded = store.load_state(eng.config.state_dir, "loop1")
+    assert loaded.subtasks[0].status == "failed"
+    assert loaded.status == "replanning"
+    if setup in ("unpublished", "bad_args", "no_executor"):
+        assert len(actions.calls) == 0
+    elif setup == "success_false":
+        assert len(actions.calls) == 1
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_memory_summary")
+def test_memory_milestones_dedupe(mock_mem, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    mock_mem.return_value = (
+        prompts.MemorySummaryResponse(summary="memo", reasoning="", uncertain_flag=False),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    appender = FakeMemoryAppender()
+    eng = _action_engine(tmp_path, memory_append=appender, plan_approval_default=True)
+    # bypass budget for memory LLM
+    eng.config  # noqa
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="awaiting_plan_approval",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        plan_approval=True,
+        plan_revision=0,
+        pending_question=PendingQuestion(
+            question_id="plan-approval-1-0", text="ok?", kind="plan_approval"
+        ),
+        subtasks=[Subtask(id="s1", title="S", kind="auto", prompt="p", depends=[])],
+        created_at="t",
+        updated_at="t",
+    )
+    # inject memory_append via new config
+    eng = _action_engine(tmp_path, memory_append=appender)
+    store.save_state(eng.config.state_dir, state)
+    inbox = store._inbox_dir(eng.config.state_dir, "loop1")
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "001.json").write_text(
+        json.dumps(
+            {
+                "kind": "answer",
+                "message_id": "m1",
+                "question_id": "plan-approval-1-0",
+                "text": "ok",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    eng.tick()
+    assert len(appender.calls) == 1
+    assert appender.calls[0]["dedupe_key"] == "loops:loop1:plan_approved:i1:r0"
+    assert mock_mem.call_count == 1
+    # same key already recorded — second tick should not re-call
+    eng.tick()
+    assert mock_mem.call_count == 1
+    assert len(appender.calls) == 1
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_memory_summary")
+def test_memory_none_skips_llm(mock_mem, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    eng = _action_engine(tmp_path, memory_append=None)
+    state = _action_state(status="evaluating", subtasks=[
+        Subtask(id="s1", title="S", kind="auto", prompt="p", status="success", result_summary="ok")
+    ])
+    store.save_state(eng.config.state_dir, state)
+    with patch(
+        "mltgnt.loops.engine.prompts.run_evaluate",
+        return_value=(
+            prompts.EvaluateResponse(
+                achieved=True, score=100, summary="done", next_focus="", reasoning="", uncertain_flag=False
+            ),
+            prompts.LlmTrace("", "", {}, "", {}, {}, False),
+        ),
+    ):
+        eng.tick()
+    assert mock_mem.call_count == 0
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_memory_summary")
+def test_memory_callback_false_and_exception(mock_mem, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    mock_mem.return_value = (
+        prompts.MemorySummaryResponse(summary="memo", reasoning="", uncertain_flag=False),
+        prompts.LlmTrace("", "", {}, "", {}, {}, False),
+    )
+    appender = FakeMemoryAppender(return_value=False)
+    eng = _action_engine(tmp_path, memory_append=appender)
+    state = _action_state()
+    eng._append_memory_milestone(
+        state, dedupe_key="loops:loop1:done", milestone="done", context="x"
+    )
+    events = store.read_events(eng.config.state_dir, "loop1") if False else []
+    store.save_state(eng.config.state_dir, state)
+    # use engine path that records events
+    state2 = store.load_state(eng.config.state_dir, "loop1")
+    assert "loops:loop1:done" not in state2.memory_dedupe_keys
+    events = [
+        e
+        for e in store.read_events(eng.config.state_dir, "loop1")
+        if e["event"] == "memory_append_failed"
+    ]
+    # events may be empty because we didn't save via tick — call again with saved state
+    store.save_state(eng.config.state_dir, _action_state())
+    st = store.load_state(eng.config.state_dir, "loop1")
+    eng._append_memory_milestone(
+        st, dedupe_key="loops:loop1:done", milestone="done", context="x"
+    )
+    store.save_state(eng.config.state_dir, st)
+    events = store.read_events(eng.config.state_dir, "loop1")
+    assert any(e["event"] == "memory_append_failed" for e in events)
+    assert st.status == "executing"  # loop outcome unchanged
+
+    appender2 = FakeMemoryAppender(exc=RuntimeError("nope"))
+    eng2 = _action_engine(tmp_path / "b", memory_append=appender2)
+    store.save_state(eng2.config.state_dir, _action_state())
+    st2 = store.load_state(eng2.config.state_dir, "loop1")
+    eng2._append_memory_milestone(
+        st2, dedupe_key="loops:loop1:failed", milestone="failed", context="x"
+    )
+    events2 = store.read_events(eng2.config.state_dir, "loop1")
+    assert any(e["event"] == "memory_append_failed" for e in events2)
+    assert st2.status == "executing"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_clarify")
+def test_budget_pause_and_resume(mock_clarify, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+
+    call_count = {"n": 0}
+
+    def clarify_side_effect(*args, **kwargs):
+        before = kwargs.get("before_attempt")
+        if before:
+            before()
+        call_count["n"] += 1
+        return (
+            prompts.ClarifyResponse(
+                clear=True, question=None, reason="", reasoning="", uncertain_flag=False
+            ),
+            prompts.LlmTrace("", "", {}, "", {}, {}, False),
+        )
+
+    mock_clarify.side_effect = clarify_side_effect
+    channel = FakeHumanChannel()
+    eng = _action_engine(
+        tmp_path, channel=channel, llm_call_budget_per_loop=2, llm_call_budget_per_day=100
+    )
+    # start clarifying; each tick calls clarify once
+    state = LoopState(
+        loop_id="loop1",
+        objective_path="/tmp/x.md",
+        objective_hash="h",
+        title="T",
+        body="body",
+        status="clarifying",
+        iteration=1,
+        max_iterations=5,
+        persona="mizuho",
+        thread=_thread(),
+        created_at="t",
+        updated_at="t",
+        llm_call_count=0,
+    )
+    # Force clear=False so status stays clarifying until budget
+    def clarify_keep(*args, **kwargs):
+        before = kwargs.get("before_attempt")
+        if before:
+            before()
+        return (
+            prompts.ClarifyResponse(
+                clear=False, question="Q?", reason="", reasoning="", uncertain_flag=False
+            ),
+            prompts.LlmTrace("", "", {}, "", {}, {}, False),
+        )
+
+    mock_clarify.side_effect = clarify_keep
+    store.save_state(eng.config.state_dir, state)
+    eng.tick()  # 1
+    eng.tick()  # 2 — but awaiting_answer after first; reset
+    # reload and set clarifying with count=2
+    st = store.load_state(eng.config.state_dir, "loop1")
+    st.status = "clarifying"
+    st.pending_question = None
+    st.llm_call_count = 2
+    store.save_state(eng.config.state_dir, st)
+    eng.tick()
+    st = store.load_state(eng.config.state_dir, "loop1")
+    assert st.status == "paused"
+    assert st.paused_from_status == "clarifying"
+    assert any("budget" in n["text"].lower() or "Budget" in n["text"] for n in channel.notifies)
+
+    # normal comment keeps paused
+    inbox = store._inbox_dir(eng.config.state_dir, "loop1")
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "c1.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": "c1",
+                "question_id": "",
+                "text": "どうなってる",
+                "received_at": "2026-08-20T12:00:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    eng.tick()
+    st = store.load_state(eng.config.state_dir, "loop1")
+    assert st.status == "paused"
+
+    (inbox / "c2.json").write_text(
+        json.dumps(
+            {
+                "kind": "comment",
+                "message_id": "c2",
+                "question_id": "",
+                "text": "再開",
+                "received_at": "2026-08-20T12:01:00+09:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    eng.tick()
+    st = store.load_state(eng.config.state_dir, "loop1")
+    assert st.status != "paused"
+    assert st.budget_override is True
+    assert st.paused_from_status is None
+
+
+@patch("mltgnt.loops.engine.load_persona")
+def test_replan_loop_limit_goes_evaluating_without_llm(mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    eng = _action_engine(tmp_path, max_replans_per_loop=2)
+    state = _action_state(
+        status="replanning",
+        total_replan_count=2,
+        replan_count=0,
+        replan_trigger_subtask_id="a1",
+        replan_feedback="fail",
+        subtasks=[
+            Subtask(
+                id="a1",
+                title="A",
+                kind="action",
+                prompt="",
+                status="failed",
+                result_summary="x",
+                action={"name": "create_issue", "args": {"title": "t"}},
+            )
+        ],
+    )
+    store.save_state(eng.config.state_dir, state)
+    with patch("mltgnt.loops.engine.prompts.run_replan") as mock_replan:
+        eng.tick()
+        mock_replan.assert_not_called()
+    st = store.load_state(eng.config.state_dir, "loop1")
+    assert st.status == "evaluating"
+
+
+@patch("mltgnt.loops.engine.load_persona")
+@patch("mltgnt.loops.engine.prompts.run_decompose")
+def test_watch_keep_does_not_recount(mock_decompose, mock_persona, tmp_path):
+    persona = MagicMock()
+    persona.format_prompt.side_effect = lambda x, **_: x
+    mock_persona.return_value = persona
+    eng = _action_engine(tmp_path, max_watch_subtasks_per_loop=50)
+    # start via replan keep watch
+    state = _action_state(
+        status="replanning",
+        watch_subtask_count=1,
+        replan_trigger_subtask_id="w1",
+        replan_feedback="timeout",
+        subtasks=[
+            Subtask(
+                id="w1",
+                title="W",
+                kind="watch",
+                prompt="",
+                status="failed",
+                condition={"type": "path_exists", "path": "x"},
+                depends=[],
+            )
+        ],
+    )
+    store.save_state(eng.config.state_dir, state)
+    with patch(
+        "mltgnt.loops.engine.prompts.run_replan",
+        return_value=(
+            prompts.ReplanResponse(
+                keep=("w1",),
+                add=(
+                    prompts.DecomposeSubtask(
+                        id="a2", title="A", kind="auto", prompt="p", depends=()
+                    ),
+                ),
+                reason="r",
+                reasoning="",
+                uncertain_flag=False,
+            ),
+            prompts.LlmTrace("", "", {}, "", {}, {}, False),
+        ),
+    ):
+        # mark w1 as success so required keep works — actually failed trigger; keep can be empty of running
+        # required_keep is running/success only; failed need not be kept
+        eng.tick()
+    st = store.load_state(eng.config.state_dir, "loop1")
+    # keep did not add new watches
+    assert st.watch_subtask_count == 1
+
+
+def test_loops_config_phase3_limits(tmp_path):
+    base = dict(
+        objectives_dir=tmp_path / "o",
+        state_dir=tmp_path / "s",
+        status_dir=tmp_path / "st",
+        jobs_dir=tmp_path / "j",
+        exec_done_dir=tmp_path / "j" / "done",
+        persona_dir=tmp_path / "p",
+        default_persona="mizuho",
+        fallback_channel="C",
+    )
+    with pytest.raises(ValueError, match="llm_call_budget_per_loop"):
+        LoopsConfig(**base, llm_call_budget_per_loop=-1)
+    with pytest.raises(ValueError, match="max_replans_per_loop"):
+        LoopsConfig(**base, max_replans_per_loop=-1)
+    LoopsConfig(**base, llm_call_budget_per_loop=0, llm_call_budget_per_day=0)

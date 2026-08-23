@@ -11,6 +11,9 @@ from zoneinfo import ZoneInfo
 from mltgnt.config import LoopsConfig
 from mltgnt.execution.base_runner import BaseRunner
 from mltgnt.interfaces.loops import (
+    ActionExecutor,
+    ActionRequest,
+    ActionResult,
     ConditionEvaluator,
     HumanChannel,
     HumanThreadRef,
@@ -18,6 +21,7 @@ from mltgnt.interfaces.loops import (
     SubtaskExecutor,
     WatchVerdict,
 )
+from mltgnt.loops import budget as llm_budget
 from mltgnt.loops.conditions import PathConditionEvaluator
 from mltgnt.loops.models import (
     LoopState,
@@ -47,6 +51,15 @@ _STATUS_INQUIRY_MARKERS = (
     "共有して",
     "確認したい",
 )
+_BUDGET_RESUME_TEXT = "再開"
+
+
+class BudgetExceeded(Exception):
+    """LLM 予算予約に失敗したときの制御例外。"""
+
+    def __init__(self, result: llm_budget.BudgetReserveResult) -> None:
+        super().__init__(result.reason)
+        self.result = result
 
 
 def _now_iso(now: datetime | None = None) -> str:
@@ -89,6 +102,7 @@ def _subtask_from_decompose(s: prompts.DecomposeSubtask) -> Subtask:
         kind=s.kind,
         prompt=s.prompt,
         condition=dict(s.condition) if s.condition is not None else None,
+        action=dict(s.action) if s.action is not None else None,
         depends=list(s.depends),
         timeout_sec=s.timeout_sec,
         poll_interval_sec=s.poll_interval_sec,
@@ -104,12 +118,14 @@ class LoopsEngine(BaseRunner):
     objective_cancelled: Callable[[str], bool] | None = None
     objective_hash_changed: Callable[[str, str], bool] | None = None
     condition_evaluator: ConditionEvaluator | None = None
+    action_executor: ActionExecutor | None = None
 
     def tick(self, now: datetime | None = None) -> None:
         if now is None:
             now = datetime.now(_TZ)
         elif now.tzinfo is None:
             now = now.replace(tzinfo=_TZ)
+        self._tick_now = now
         for loop_id in self._active_loop_ids():
             try:
                 self._tick_loop(loop_id, now=now)
@@ -288,6 +304,265 @@ class LoopsEngine(BaseRunner):
             store.mark_state_corrupt(self.config.state_dir, loop_id, str(exc))
             return None
 
+
+    def _llm_before_attempt(self, state: LoopState) -> None:
+        result = llm_budget.reserve_llm_call(
+            self.config.state_dir,
+            loop_id=state.loop_id,
+            loop_count=state.llm_call_count,
+            loop_limit=self.config.llm_call_budget_per_loop,
+            day_limit=self.config.llm_call_budget_per_day,
+            budget_override=state.budget_override,
+            now=getattr(self, "_tick_now", None),
+        )
+        if not result.allowed:
+            raise BudgetExceeded(result)
+        state.llm_call_count = result.loop_count
+
+    def _pause_for_budget(self, state: LoopState, result: llm_budget.BudgetReserveResult) -> None:
+        if state.status == "paused":
+            return
+        from_status = state.status
+        state.paused_from_status = from_status
+        self._transition(state, "paused", result.reason or "budget_exceeded")
+        text = (
+            f"LLM budget exceeded ({result.reason}). "
+            f"loop={result.loop_count}/{result.loop_limit}, "
+            f"day={result.day_count}/{result.day_limit}. "
+            f"Reply exactly 「{_BUDGET_RESUME_TEXT}」 to continue."
+        )
+        self._notify(state, text, f"budget_pause:{result.reason}")
+
+    def _try_budget_resume(self, state: LoopState, text: str) -> bool:
+        if state.status != "paused":
+            return False
+        if text.strip() != _BUDGET_RESUME_TEXT:
+            return False
+        restore = state.paused_from_status or "executing"
+        if restore not in (
+            "clarifying",
+            "awaiting_answer",
+            "decomposing",
+            "replanning",
+            "awaiting_plan_approval",
+            "executing",
+            "awaiting_human",
+            "evaluating",
+        ):
+            restore = "executing"
+        state.budget_override = True
+        state.paused_from_status = None
+        self._transition(state, restore, "budget_resume")  # type: ignore[arg-type]
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            "budget_resumed",
+            {"to": restore, "budget_override": True},
+            iteration=state.iteration,
+        )
+        return True
+
+    def _count_new_watches(self, subtasks: list[Subtask]) -> int:
+        return sum(1 for s in subtasks if s.kind == "watch")
+
+    def _apply_watch_budget(self, state: LoopState, added: list[Subtask]) -> None:
+        new_watches = self._count_new_watches(added)
+        if new_watches <= 0:
+            return
+        next_count = state.watch_subtask_count + new_watches
+        if next_count > self.config.max_watch_subtasks_per_loop:
+            raise ValueError(
+                f"watch subtask limit exceeded: {next_count} > "
+                f"{self.config.max_watch_subtasks_per_loop}"
+            )
+        state.watch_subtask_count = next_count
+
+    def _memory_already(self, state: LoopState, key: str) -> bool:
+        return key in state.memory_dedupe_keys
+
+    def _append_memory_milestone(
+        self,
+        state: LoopState,
+        *,
+        dedupe_key: str,
+        milestone: str,
+        context: str,
+    ) -> None:
+        appender = self.config.memory_append
+        if appender is None:
+            return
+        if self._memory_already(state, dedupe_key):
+            return
+        try:
+            if not self._ensure_persona(state):
+                return
+            instruction = prompts.build_memory_summary_instruction(
+                objective=state.body,
+                milestone=milestone,
+                context=context,
+                max_chars=self.config.memory_summary_max_chars,
+            )
+            prompt = self._format_with_persona(state, instruction)
+            engine, model = self._resolve_llm_engine_model(state)
+            resp, trace = prompts.run_memory_summary(
+                prompt,
+                engine=engine,
+                model=model,
+                max_chars=self.config.memory_summary_max_chars,
+                before_attempt=lambda: self._llm_before_attempt(state),
+            )
+            self._log_llm(state, trace)
+            ts = _now_iso(getattr(self, "_tick_now", None))
+            ok = appender(
+                persona=state.persona,
+                content=resp.summary,
+                timestamp=ts,
+                dedupe_key=dedupe_key,
+            )
+            if ok:
+                state.memory_dedupe_keys.append(dedupe_key)
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "memory_appended",
+                    {"dedupe_key": dedupe_key, "chars": len(resp.summary)},
+                    iteration=state.iteration,
+                )
+            else:
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "memory_append_failed",
+                    {"dedupe_key": dedupe_key, "reason": "callback_false"},
+                    iteration=state.iteration,
+                )
+        except BudgetExceeded as exc:
+            if state.is_terminal():
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "memory_append_failed",
+                    {"dedupe_key": dedupe_key, "reason": exc.result.reason},
+                    iteration=state.iteration,
+                )
+            else:
+                self._pause_for_budget(state, exc.result)
+        except Exception as exc:
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "memory_append_failed",
+                {"dedupe_key": dedupe_key, "reason": str(exc)},
+                iteration=state.iteration,
+            )
+
+    def _execute_one_action(self, state: LoopState, *, now: datetime) -> bool:
+        """依存充足の pending action を1件同期実行。状態変化で True。"""
+        by_id = self._by_id(state)
+        for st in state.subtasks:
+            if st.kind != "action" or st.status != "pending":
+                continue
+            if self._deps_failed(st, by_id):
+                st.status = "failed"
+                st.result = "dependency failed"
+                st.result_summary = self._truncate(st.result)
+                self._record_subtask_done(state, st)
+                continue
+            if not self._deps_satisfied(st, by_id):
+                continue
+
+            key = f"loops:{state.loop_id}:i{state.iteration}:{st.id}"
+            state.current_subtask_id = st.id
+            st.started_at = _now_iso(now)
+
+            if self.action_executor is None:
+                st.status = "failed"
+                st.result = "action executor not configured"
+                st.result_summary = self._truncate(st.result)
+                self._record_subtask_done(state, st)
+                state.replan_trigger_subtask_id = st.id
+                state.replan_feedback = st.result_summary
+                self._transition(state, "replanning", f"action_failed:{st.id}")
+                return True
+
+            action = st.action or {}
+            name = str(action.get("name", ""))
+            args_raw = action.get("args", {})
+            args = dict(args_raw) if isinstance(args_raw, dict) else {}
+            schemas = self.config.action_schemas
+            fail_reason: str | None = None
+            if name not in schemas:
+                fail_reason = f"unpublished action name: {name!r}"
+            else:
+                try:
+                    prompts.validate_action_args(args, schemas[name])
+                except ValueError as exc:
+                    fail_reason = str(exc)
+
+            if fail_reason is not None:
+                st.status = "failed"
+                st.result = fail_reason
+                st.result_summary = self._truncate(fail_reason)
+                self._record_subtask_done(state, st)
+                state.replan_trigger_subtask_id = st.id
+                state.replan_feedback = st.result_summary
+                self._transition(state, "replanning", f"action_failed:{st.id}")
+                return True
+
+            request = ActionRequest(name=name, args=args)
+            try:
+                result = self.action_executor.execute(
+                    request=request, idempotency_key=key
+                )
+            except Exception as exc:
+                st.status = "failed"
+                st.result = f"action executor raised: {exc}"
+                st.result_summary = self._truncate(st.result)
+                self._record_subtask_done(state, st)
+                state.replan_trigger_subtask_id = st.id
+                state.replan_feedback = st.result_summary
+                self._transition(state, "replanning", f"action_failed:{st.id}")
+                return True
+
+            if not isinstance(result, ActionResult):
+                st.status = "failed"
+                st.result = "action executor returned invalid result"
+                st.result_summary = self._truncate(st.result)
+                self._record_subtask_done(state, st)
+                state.replan_trigger_subtask_id = st.id
+                state.replan_feedback = st.result_summary
+                self._transition(state, "replanning", f"action_failed:{st.id}")
+                return True
+
+            if not result.success:
+                st.status = "failed"
+                st.result = result.summary
+                st.result_summary = self._truncate(result.summary)
+                self._record_subtask_done(state, st)
+                state.replan_trigger_subtask_id = st.id
+                state.replan_feedback = st.result_summary
+                self._transition(state, "replanning", f"action_failed:{st.id}")
+                return True
+
+            st.status = "success"
+            st.result = result.summary
+            st.result_summary = self._truncate(result.summary)
+            self._record_subtask_done(state, st)
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "action_executed",
+                {
+                    "name": name,
+                    "idempotency_key": key,
+                    "summary": result.summary,
+                    "output": dict(result.output) if result.output else None,
+                },
+                iteration=state.iteration,
+            )
+            return True
+        return False
+
     def _tick_loop(self, loop_id: str, *, now: datetime) -> None:
         state = self._load(loop_id)
         if state is None or state.is_terminal():
@@ -305,7 +580,9 @@ class LoopsEngine(BaseRunner):
             return
 
         transitioned = False
-        if state.status == "clarifying":
+        if state.status == "paused":
+            transitioned = False
+        elif state.status == "clarifying":
             transitioned = self._tick_clarifying(state)
         elif state.status == "awaiting_answer":
             transitioned = self._tick_awaiting_answer(state)
@@ -342,6 +619,13 @@ class LoopsEngine(BaseRunner):
             {},
             iteration=state.iteration,
         )
+        if status in ("done", "failed"):
+            self._append_memory_milestone(
+                state,
+                dedupe_key=f"loops:{state.loop_id}:{status}",
+                milestone=status,
+                context=f"status={status}",
+            )
         self._close_thread(state)
 
     def _resolve_comment_engine_model(self, state: LoopState) -> tuple[str, str]:
@@ -471,7 +755,10 @@ class LoopsEngine(BaseRunner):
             prompt = self._format_with_persona(state, instruction)
             engine, model = self._resolve_comment_engine_model(state)
             resp, trace = prompts.run_reply_comment(
-                prompt, engine=engine, model=model
+                prompt,
+                engine=engine,
+                model=model,
+                before_attempt=lambda: self._llm_before_attempt(state),
             )
             self._log_llm(state, trace)
             reply = resp.reply
@@ -480,6 +767,8 @@ class LoopsEngine(BaseRunner):
             self._reply_comment(
                 state, message_id=message_id, intent="question", text=reply
             )
+        except BudgetExceeded as exc:
+            self._pause_for_budget(state, exc.result)
         except Exception as exc:
             if isinstance(exc, prompts.LlmCallError):
                 self._log_llm(state, exc.trace)
@@ -543,6 +832,14 @@ class LoopsEngine(BaseRunner):
                 )
                 continue
 
+            if self._try_budget_resume(state, text):
+                continue
+
+            if state.status == "paused":
+                # paused 中は再開以外のコメントで作業を進めない
+                state.clarification_context.append(f"補足: {text}")
+                continue
+
             if is_status_inquiry(text):
                 self._handle_status_comment(
                     state,
@@ -573,7 +870,10 @@ class LoopsEngine(BaseRunner):
                 prompt = self._format_with_persona(state, instruction)
                 engine, model = self._resolve_comment_engine_model(state)
                 resp, trace = prompts.run_classify_comment(
-                    prompt, engine=engine, model=model
+                    prompt,
+                    engine=engine,
+                    model=model,
+                    before_attempt=lambda: self._llm_before_attempt(state),
                 )
                 self._log_llm(state, trace)
                 self._record_comment_classified(
@@ -599,6 +899,9 @@ class LoopsEngine(BaseRunner):
                     )
                 else:
                     state.clarification_context.append(f"補足: {text}")
+            except BudgetExceeded as exc:
+                self._pause_for_budget(state, exc.result)
+                break
             except Exception as exc:
                 if isinstance(exc, prompts.LlmCallError):
                     self._log_llm(state, exc.trace)
@@ -955,9 +1258,13 @@ class LoopsEngine(BaseRunner):
                 prompt,
                 engine=engine,
                 model=model,
+                before_attempt=lambda: self._llm_before_attempt(state),
             )
             self._log_llm(state, trace)
             self._clear_errors(state)
+        except BudgetExceeded as exc:
+            self._pause_for_budget(state, exc.result)
+            return True
         except Exception as exc:
             self._record_llm_error(state, "clarify", exc)
             return True
@@ -1010,6 +1317,7 @@ class LoopsEngine(BaseRunner):
             max_subtasks=self.config.max_subtasks_per_iteration,
             next_focus=state.next_focus,
             clarification_context=state.clarification_context,
+            action_schemas=self.config.action_schemas,
         )
         try:
             prompt = self._format_with_persona(state, instruction)
@@ -1019,14 +1327,21 @@ class LoopsEngine(BaseRunner):
                 engine=engine,
                 model=model,
                 max_subtasks=self.config.max_subtasks_per_iteration,
+                action_schemas=self.config.action_schemas,
+                before_attempt=lambda: self._llm_before_attempt(state),
             )
             self._log_llm(state, trace)
             self._clear_errors(state)
+            new_subtasks = [_subtask_from_decompose(s) for s in resp.subtasks]
+            self._apply_watch_budget(state, new_subtasks)
+        except BudgetExceeded as exc:
+            self._pause_for_budget(state, exc.result)
+            return True
         except Exception as exc:
             self._record_llm_error(state, "decompose", exc)
             return True
 
-        state.subtasks = [_subtask_from_decompose(s) for s in resp.subtasks]
+        state.subtasks = new_subtasks
         state.current_subtask_id = state.subtasks[0].id if state.subtasks else None
         state.replan_count = 0
         state.replan_feedback = ""
@@ -1116,6 +1431,17 @@ class LoopsEngine(BaseRunner):
                     {"plan_revision": state.plan_revision},
                     iteration=state.iteration,
                 )
+                self._append_memory_milestone(
+                    state,
+                    dedupe_key=(
+                        f"loops:{state.loop_id}:plan_approved:"
+                        f"i{state.iteration}:r{state.plan_revision}"
+                    ),
+                    milestone="plan_approved",
+                    context=self._format_plan_text(state),
+                )
+                if state.status == "paused":
+                    return True
                 self._transition(state, "executing", "plan_approved")
                 return True
 
@@ -1150,6 +1476,9 @@ class LoopsEngine(BaseRunner):
             return True
 
         human_revision = bool(state.replan_feedback) and state.replan_trigger_subtask_id is None
+        if not human_revision and state.total_replan_count >= self.config.max_replans_per_loop:
+            self._transition(state, "evaluating", "replan_loop_limit")
+            return True
         if not human_revision and state.replan_count >= self.config.max_replans_per_iteration:
             self._transition(state, "evaluating", "replan_limit")
             return True
@@ -1181,8 +1510,12 @@ class LoopsEngine(BaseRunner):
             failure_detail=failure_detail or "replan requested",
             deliverable_excerpt=deliverable_excerpt,
             human_feedback=state.replan_feedback if human_revision else "",
+            action_schemas=self.config.action_schemas,
         )
         try:
+            if not human_revision:
+                # replan LLM 開始時に loop 累計を加算（予約とは別）
+                state.total_replan_count += 1
             prompt = self._format_with_persona(state, instruction)
             engine, model = self._resolve_llm_engine_model(state)
             resp, trace = prompts.run_replan(
@@ -1192,9 +1525,16 @@ class LoopsEngine(BaseRunner):
                 existing_ids=existing_ids,
                 required_keep=required_keep,
                 max_subtasks=self.config.max_subtasks_per_iteration,
+                action_schemas=self.config.action_schemas,
+                before_attempt=lambda: self._llm_before_attempt(state),
             )
             self._log_llm(state, trace)
             self._clear_errors(state)
+            added = [_subtask_from_decompose(s) for s in resp.add]
+            self._apply_watch_budget(state, added)
+        except BudgetExceeded as exc:
+            self._pause_for_budget(state, exc.result)
+            return True
         except Exception as exc:
             self._record_llm_error(state, "replan", exc)
             return True
@@ -1216,7 +1556,6 @@ class LoopsEngine(BaseRunner):
         )
 
         kept = [s for s in state.subtasks if s.id in set(resp.keep)]
-        added = [_subtask_from_decompose(s) for s in resp.add]
         state.subtasks = kept + added
         state.current_subtask_id = next(
             (s.id for s in state.subtasks if s.status == "pending"),
@@ -1447,6 +1786,10 @@ class LoopsEngine(BaseRunner):
             return True
 
         self._fail_blocked_by_deps(state)
+        if self._execute_one_action(state, now=now):
+            return True
+        if state.status == "replanning":
+            return True
         self._poll_running_autos(state, now=now)
         self._fail_blocked_by_deps(state)
         by_id = self._by_id(state)
@@ -1606,11 +1949,29 @@ class LoopsEngine(BaseRunner):
                 prompt,
                 engine=engine,
                 model=model,
+                before_attempt=lambda: self._llm_before_attempt(state),
             )
             self._log_llm(state, trace)
             self._clear_errors(state)
+        except BudgetExceeded as exc:
+            self._pause_for_budget(state, exc.result)
+            return True
         except Exception as exc:
             self._record_llm_error(state, "evaluate", exc)
+            return True
+
+        excerpt = store.read_deliverable_excerpt(
+            self.config.state_dir,
+            state.loop_id,
+            self.config.deliverable_excerpt_chars,
+        )
+        self._append_memory_milestone(
+            state,
+            dedupe_key=f"loops:{state.loop_id}:iteration_complete:i{state.iteration}",
+            milestone="iteration_complete",
+            context=f"summary={resp.summary}\nresults:\n{results_summary}\nexcerpt:\n{excerpt}",
+        )
+        if state.status == "paused":
             return True
 
         if resp.achieved:

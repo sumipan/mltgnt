@@ -7,7 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable, Mapping
+
+if TYPE_CHECKING:
+    from mltgnt.interfaces.loops import MemoryAppender
 
 __all__ = [
     "DEFAULT_WEIGHT_MAP",
@@ -114,6 +117,13 @@ class LoopsConfig:
     max_comments_per_tick: int = 10
     comment_reply_budget_per_hour: int = 10
     comment_reply_max_chars: int = 800
+    action_schemas: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
+    memory_append: "MemoryAppender | None" = None
+    memory_summary_max_chars: int = 500
+    llm_call_budget_per_loop: int = 200
+    llm_call_budget_per_day: int = 1000
+    max_watch_subtasks_per_loop: int = 50
+    max_replans_per_loop: int = 20
 
     def __post_init__(self) -> None:
         if self.poll_interval_sec <= 0:
@@ -142,3 +152,20 @@ class LoopsConfig:
             raise ValueError("comment_reply_budget_per_hour must be in 0..100")
         if not (1 <= self.comment_reply_max_chars <= 4000):
             raise ValueError("comment_reply_max_chars must be in 1..4000")
+        if self.memory_summary_max_chars <= 0:
+            raise ValueError("memory_summary_max_chars must be positive")
+        if self.llm_call_budget_per_loop < 0:
+            raise ValueError("llm_call_budget_per_loop must be non-negative")
+        if self.llm_call_budget_per_day < 0:
+            raise ValueError("llm_call_budget_per_day must be non-negative")
+        if self.max_watch_subtasks_per_loop < 0:
+            raise ValueError("max_watch_subtasks_per_loop must be non-negative")
+        if self.max_replans_per_loop < 0:
+            raise ValueError("max_replans_per_loop must be non-negative")
+        if not isinstance(self.action_schemas, Mapping):
+            raise ValueError("action_schemas must be a mapping")
+        for name, schema in self.action_schemas.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError("action_schemas keys must be non-empty strings")
+            if not isinstance(schema, Mapping):
+                raise ValueError(f"action_schemas[{name!r}] must be a mapping")
