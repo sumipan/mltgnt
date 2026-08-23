@@ -66,9 +66,7 @@ def is_status_inquiry(text: str) -> bool:
     normalized = trimmed.rstrip("?？").strip()
     if normalized in _STATUS_EXACT:
         return True
-    if "状況" in trimmed or "進捗" in trimmed:
-        return True
-    return False
+    return "状況" in trimmed or "進捗" in trimmed
 
 
 def _subtask_from_decompose(s: prompts.DecomposeSubtask) -> Subtask:

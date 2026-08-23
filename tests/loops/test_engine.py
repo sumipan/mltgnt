@@ -3,17 +3,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from mltgnt.config import LoopsConfig
-from mltgnt.loops.engine import LoopsEngine
+from mltgnt.loops.engine import LoopsEngine, is_status_inquiry
 from mltgnt.loops.models import LoopState, PendingQuestion, Subtask
 from mltgnt.loops.objective import Objective
 from mltgnt.loops import store
 from mltgnt.loops import prompts
+from mltgnt.loops.status import render_progress_summary
 from mltgnt.interfaces.loops import HumanThreadRef, StepPoll, StepSubmission
 from tests.loops.fakes import FakeExecutor, FakeHumanChannel
 
@@ -2339,12 +2342,6 @@ def test_plan_revision_limit_and_cancel(mock_decompose, mock_replan, mock_person
 
 
 # --- Phase 2: comment dialogue ---
-
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
-from mltgnt.loops.engine import is_status_inquiry
-from mltgnt.loops.status import render_progress_summary
 
 _TZ = ZoneInfo("Asia/Tokyo")
 
