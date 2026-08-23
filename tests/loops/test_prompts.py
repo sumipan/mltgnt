@@ -322,3 +322,52 @@ def test_validate_replan_requires_keep_running_success_and_rejects_dupes():
     )
     assert ok.keep == ("s1",)
     assert ok.add[0].id == "a2"
+
+
+_COMMENT_CLASSIFY_OK = (
+    '{"intent": "question", "reason": "ask", "reasoning": "r", "uncertain_flag": false}'
+)
+_COMMENT_REPLY_OK = (
+    '{"reply": "はい、進んでいます", "reasoning": "r", "uncertain_flag": false}'
+)
+
+
+def test_validate_comment_classify_accepts_known_intents():
+    for intent in ("status", "instruction", "question", "chitchat"):
+        resp = prompts.validate_comment_classify_payload(
+            {"intent": intent, "reason": "", "reasoning": "", "uncertain_flag": False}
+        )
+        assert resp.intent == intent
+
+
+def test_validate_comment_classify_rejects_unknown_intent():
+    with pytest.raises(ValueError, match="intent"):
+        prompts.validate_comment_classify_payload(
+            {"intent": "other", "reason": "", "reasoning": "", "uncertain_flag": False}
+        )
+
+
+def test_validate_comment_reply_rejects_empty():
+    with pytest.raises(ValueError, match="reply"):
+        prompts.validate_comment_reply_payload(
+            {"reply": "  ", "reasoning": "", "uncertain_flag": False}
+        )
+
+
+def test_run_classify_comment_parses_llm_result():
+    with patch(
+        "mltgnt.loops.prompts.call_llm",
+        return_value=make_llm_result(stdout=_COMMENT_CLASSIFY_OK),
+    ):
+        resp, trace = prompts.run_classify_comment("p", engine="claude", model="m")
+    assert resp.intent == "question"
+    assert trace.error is None
+
+
+def test_run_reply_comment_parses_llm_result():
+    with patch(
+        "mltgnt.loops.prompts.call_llm",
+        return_value=make_llm_result(stdout=_COMMENT_REPLY_OK),
+    ):
+        resp, _trace = prompts.run_reply_comment("p", engine="claude", model="m")
+    assert "進んで" in resp.reply

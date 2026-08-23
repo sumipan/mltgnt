@@ -110,6 +110,10 @@ class LoopsConfig:
     max_replans_per_iteration: int = 3
     max_plan_revisions: int = 3
     plan_approval_default: bool = True
+    comment_model: str = ""
+    max_comments_per_tick: int = 10
+    comment_reply_budget_per_hour: int = 10
+    comment_reply_max_chars: int = 800
 
     def __post_init__(self) -> None:
         if self.poll_interval_sec <= 0:
@@ -132,3 +136,9 @@ class LoopsConfig:
             raise ValueError("max_replans_per_iteration must be in 0..10")
         if not (0 <= self.max_plan_revisions <= 10):
             raise ValueError("max_plan_revisions must be in 0..10")
+        if not (1 <= self.max_comments_per_tick <= 100):
+            raise ValueError("max_comments_per_tick must be in 1..100")
+        if not (0 <= self.comment_reply_budget_per_hour <= 100):
+            raise ValueError("comment_reply_budget_per_hour must be in 0..100")
+        if not (1 <= self.comment_reply_max_chars <= 4000):
+            raise ValueError("comment_reply_max_chars must be in 1..4000")

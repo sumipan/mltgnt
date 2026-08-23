@@ -1,10 +1,9 @@
 """mltgnt.loops.engine — 1 tick 1 遷移の状態機械。"""
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
@@ -29,7 +28,7 @@ from mltgnt.loops.models import (
 from mltgnt.loops.objective import Objective
 from mltgnt.loops import prompts
 from mltgnt.loops import store
-from mltgnt.loops.status import write_status
+from mltgnt.loops.status import render_progress_summary, write_status
 from mltgnt.persona.loader import load as load_persona
 
 logger = logging.getLogger("mltgnt.loops.engine")
@@ -38,6 +37,16 @@ _TZ = ZoneInfo("Asia/Tokyo")
 _MAX_CONSECUTIVE_ERRORS = 3
 _LOCAL_CONDITION_TYPES = frozenset({"path_exists", "path_changed"})
 _PLAN_APPROVAL_ANSWERS = frozenset({"ok", "承認", "進めて", "go"})
+_STATUS_EXACT = frozenset({"動いてる", "止まってる", "どう", "状況", "進捗", "status"})
+_STATUS_INQUIRY_MARKERS = (
+    "教えて",
+    "どう",
+    "知りたい",
+    "見せて",
+    "報告して",
+    "共有して",
+    "確認したい",
+)
 
 
 def _now_iso(now: datetime | None = None) -> str:
@@ -56,6 +65,21 @@ def _parse_iso(value: str) -> datetime | None:
 
 def _event_id(loop_id: str, kind: str, stable_id: str) -> str:
     return f"loops:{loop_id}:{kind}:{stable_id}"
+
+
+def is_status_inquiry(text: str) -> bool:
+    """決定論的な状態問合せ判定。他語を伴う指示は status にしない。"""
+    trimmed = text.strip()
+    if not trimmed:
+        return False
+    normalized = trimmed.rstrip("?？").strip()
+    if normalized in _STATUS_EXACT:
+        return True
+    if "状況" not in trimmed and "進捗" not in trimmed:
+        return False
+    return trimmed.endswith(("?", "？")) or any(
+        marker in normalized for marker in _STATUS_INQUIRY_MARKERS
+    )
 
 
 def _subtask_from_decompose(s: prompts.DecomposeSubtask) -> Subtask:
@@ -149,15 +173,15 @@ class LoopsEngine(BaseRunner):
         limit = self.config.result_summary_chars
         return text if len(text) <= limit else text[:limit]
 
-    def _post_progress(self, state: LoopState, text: str, stable_id: str) -> None:
+    def _post_progress(self, state: LoopState, text: str, stable_id: str) -> bool:
         if not self.config.progress_notify:
-            return
+            return False
         thread = state.thread
         if thread is None:
-            return
+            return False
         eid = _event_id(state.loop_id, "progress", stable_id)
         if state.delivered_events.get(eid):
-            return
+            return True
         try:
             state.delivered_events[eid] = False
             store.save_state(self.config.state_dir, state)
@@ -170,14 +194,15 @@ class LoopsEngine(BaseRunner):
             )
             if ok:
                 state.delivered_events[eid] = True
-            else:
-                store.append_event(
-                    self.config.state_dir,
-                    state.loop_id,
-                    "channel_error",
-                    {"action": "post_progress", "error": "false"},
-                    iteration=state.iteration,
-                )
+                return True
+            store.append_event(
+                self.config.state_dir,
+                state.loop_id,
+                "channel_error",
+                {"action": "post_progress", "error": "false"},
+                iteration=state.iteration,
+            )
+            return False
         except Exception as exc:
             store.append_event(
                 self.config.state_dir,
@@ -186,6 +211,7 @@ class LoopsEngine(BaseRunner):
                 {"action": "post_progress", "error": str(exc)},
                 iteration=state.iteration,
             )
+            return False
 
     def _post_deliverable(
         self, state: LoopState, *, summary: str, stable_id: str
@@ -267,7 +293,7 @@ class LoopsEngine(BaseRunner):
         if state is None or state.is_terminal():
             return
 
-        comments_ingested = self._ingest_comments(state)
+        comments_ingested = self._process_comments(state, now=now)
 
         if self._check_cancel(state):
             return
@@ -318,43 +344,282 @@ class LoopsEngine(BaseRunner):
         )
         self._close_thread(state)
 
-    def _ingest_comments(self, state: LoopState) -> bool:
-        """kind=comment の inbox を clarification_context へ追記する。
+    def _resolve_comment_engine_model(self, state: LoopState) -> tuple[str, str]:
+        engine, model = self._resolve_llm_engine_model(state)
+        override = self.config.comment_model.strip()
+        if override:
+            model = override
+        return engine, model
 
-        store.list_inbox_messages は現状 comment をスキップするため、
-        inbox を直接読んで consume する（同一 message_id は二重消費しない）。
-        """
-        inbox = store._inbox_dir(self.config.state_dir, state.loop_id)
-        if not inbox.is_dir():
-            return False
-        consumed = store.list_consumed_message_ids(self.config.state_dir, state.loop_id)
-        changed = False
-        for path in sorted(inbox.iterdir()):
-            if not path.is_file() or path.suffix != ".json":
+    def _count_recent_comment_classified(self, state: LoopState, now: datetime) -> int:
+        cutoff = now - timedelta(minutes=60)
+        count = 0
+        for event in store.read_events(self.config.state_dir, state.loop_id):
+            if event.get("event") != "comment_classified":
                 continue
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
+            ts = _parse_iso(str(event.get("ts", "")))
+            if ts is None:
+                logger.warning(
+                    "ignoring comment_classified with bad timestamp for %s",
+                    state.loop_id,
+                )
                 continue
-            if data.get("kind") != "comment":
-                continue
-            message_id = data.get("message_id")
-            text = data.get("text")
-            if not isinstance(message_id, str) or not isinstance(text, str):
-                continue
-            if message_id in consumed:
-                continue
-            store.consume_inbox_message(self.config.state_dir, state.loop_id, path.name)
-            state.clarification_context.append(f"補足: {text}")
+            if cutoff <= ts <= now:
+                count += 1
+        return count
+
+    def _record_comment_classified(
+        self,
+        state: LoopState,
+        *,
+        message_id: str,
+        intent: str,
+        source: str,
+        reason: str,
+    ) -> None:
+        store.append_event(
+            self.config.state_dir,
+            state.loop_id,
+            "comment_classified",
+            {
+                "message_id": message_id,
+                "intent": intent,
+                "source": source,
+                "reason": reason,
+            },
+            iteration=state.iteration,
+        )
+
+    def _reply_comment(
+        self,
+        state: LoopState,
+        *,
+        message_id: str,
+        intent: str,
+        text: str,
+    ) -> bool:
+        ok = self._post_progress(state, text, f"comment:{message_id}:reply")
+        if ok:
             store.append_event(
                 self.config.state_dir,
                 state.loop_id,
-                "comment_received",
-                {"message_id": message_id, "text": text},
+                "comment_replied",
+                {
+                    "message_id": message_id,
+                    "intent": intent,
+                    "chars": len(text),
+                },
                 iteration=state.iteration,
             )
-            consumed.add(message_id)
+        return ok
+
+    def _handle_status_comment(
+        self,
+        state: LoopState,
+        *,
+        message_id: str,
+        now: datetime,
+        source: str,
+        reason: str,
+    ) -> None:
+        self._record_comment_classified(
+            state,
+            message_id=message_id,
+            intent="status",
+            source=source,
+            reason=reason,
+        )
+        summary = render_progress_summary(state, now)
+        self._reply_comment(
+            state, message_id=message_id, intent="status", text=summary
+        )
+
+    def _handle_instruction_comment(self, state: LoopState, text: str) -> None:
+        if state.subtasks:
+            state.replan_feedback = text
+            state.replan_trigger_subtask_id = None
+            self._transition(state, "replanning", "comment_instruction")
+        else:
+            state.clarification_context.append(f"補足: {text}")
+
+    def _handle_question_comment(
+        self, state: LoopState, *, message_id: str, text: str
+    ) -> None:
+        if not self._ensure_persona(state):
+            state.clarification_context.append(f"補足: {text}")
+            return
+        deliverable_excerpt = store.read_deliverable_excerpt(
+            self.config.state_dir,
+            state.loop_id,
+            self.config.deliverable_excerpt_chars,
+        )
+        plan_summary = self._format_plan_text(state) if state.subtasks else "（計画なし）"
+        recent_results = "\n".join(
+            f"- {st.id} ({st.status}): {st.result_summary or st.result[:200]}"
+            for st in state.subtasks
+            if st.status in ("success", "failed")
+        ) or "（なし）"
+        instruction = prompts.build_comment_reply_instruction(
+            objective=state.body,
+            deliverable_excerpt=deliverable_excerpt,
+            plan_summary=plan_summary,
+            recent_results=recent_results,
+            comment_text=text,
+            max_chars=self.config.comment_reply_max_chars,
+        )
+        try:
+            prompt = self._format_with_persona(state, instruction)
+            engine, model = self._resolve_comment_engine_model(state)
+            resp, trace = prompts.run_reply_comment(
+                prompt, engine=engine, model=model
+            )
+            self._log_llm(state, trace)
+            reply = resp.reply
+            if len(reply) > self.config.comment_reply_max_chars:
+                reply = reply[: self.config.comment_reply_max_chars]
+            self._reply_comment(
+                state, message_id=message_id, intent="question", text=reply
+            )
+        except Exception as exc:
+            if isinstance(exc, prompts.LlmCallError):
+                self._log_llm(state, exc.trace)
+            else:
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "llm_call",
+                    {
+                        "input": "",
+                        "output": {"raw": "", "parsed": None},
+                        "reasoning": "",
+                        "config": {},
+                        "metadata": {},
+                        "uncertain_flag": False,
+                        "error": str(exc),
+                    },
+                    iteration=state.iteration,
+                )
+            state.clarification_context.append(f"補足: {text}")
+
+    def _process_comments(self, state: LoopState, *, now: datetime) -> bool:
+        """active loop の kind=comment を分類・応答・再計画に振り分ける。"""
+        messages = [
+            m
+            for m in store.list_inbox_messages(self.config.state_dir, state.loop_id)
+            if m.kind == "comment"
+        ]
+        if not messages:
+            return False
+
+        consumed_ids = store.list_consumed_message_ids(
+            self.config.state_dir, state.loop_id
+        )
+        changed = False
+        handled = 0
+        for msg in messages:
+            if handled >= self.config.max_comments_per_tick:
+                break
+            if msg.message_id in consumed_ids:
+                store.consume_inbox_message(
+                    self.config.state_dir, state.loop_id, msg.filename
+                )
+                continue
+
+            text = msg.text.strip()
+            store.consume_inbox_message(
+                self.config.state_dir, state.loop_id, msg.filename
+            )
+            consumed_ids.add(msg.message_id)
+            handled += 1
             changed = True
+
+            if not text:
+                store.append_event(
+                    self.config.state_dir,
+                    state.loop_id,
+                    "comment_warning",
+                    {"message_id": msg.message_id, "reason": "empty_text"},
+                    iteration=state.iteration,
+                )
+                continue
+
+            if is_status_inquiry(text):
+                self._handle_status_comment(
+                    state,
+                    message_id=msg.message_id,
+                    now=now,
+                    source="deterministic",
+                    reason="status_keyword",
+                )
+                continue
+
+            budget = self.config.comment_reply_budget_per_hour
+            recent = self._count_recent_comment_classified(state, now)
+            if budget <= 0 or recent >= budget:
+                self._handle_status_comment(
+                    state,
+                    message_id=msg.message_id,
+                    now=now,
+                    source="budget_fallback",
+                    reason="budget_exhausted" if budget > 0 else "budget_disabled",
+                )
+                continue
+
+            try:
+                if not self._ensure_persona(state):
+                    state.clarification_context.append(f"補足: {text}")
+                    continue
+                instruction = prompts.build_comment_classify_instruction(text)
+                prompt = self._format_with_persona(state, instruction)
+                engine, model = self._resolve_comment_engine_model(state)
+                resp, trace = prompts.run_classify_comment(
+                    prompt, engine=engine, model=model
+                )
+                self._log_llm(state, trace)
+                self._record_comment_classified(
+                    state,
+                    message_id=msg.message_id,
+                    intent=resp.intent,
+                    source="llm",
+                    reason=resp.reason,
+                )
+                if resp.intent == "status":
+                    summary = render_progress_summary(state, now)
+                    self._reply_comment(
+                        state,
+                        message_id=msg.message_id,
+                        intent="status",
+                        text=summary,
+                    )
+                elif resp.intent == "instruction":
+                    self._handle_instruction_comment(state, text)
+                elif resp.intent == "question":
+                    self._handle_question_comment(
+                        state, message_id=msg.message_id, text=text
+                    )
+                else:
+                    state.clarification_context.append(f"補足: {text}")
+            except Exception as exc:
+                if isinstance(exc, prompts.LlmCallError):
+                    self._log_llm(state, exc.trace)
+                else:
+                    store.append_event(
+                        self.config.state_dir,
+                        state.loop_id,
+                        "llm_call",
+                        {
+                            "input": "",
+                            "output": {"raw": "", "parsed": None},
+                            "reasoning": "",
+                            "config": {},
+                            "metadata": {},
+                            "uncertain_flag": False,
+                            "error": str(exc),
+                        },
+                        iteration=state.iteration,
+                    )
+                state.clarification_context.append(f"補足: {text}")
+
         return changed
 
     def _check_cancel(self, state: LoopState) -> bool:
