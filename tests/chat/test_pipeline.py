@@ -62,8 +62,8 @@ def _load_persona(persona_dir: Path, persona_name: str):
 
 def _make_llm_result(ok: bool = True, stdout: str = "応答", stderr: str = "") -> MagicMock:
     r = MagicMock()
-    r.ok = ok
-    r.stdout = stdout
+    r.success = ok
+    r.body = stdout
     r.stderr = stderr
     return r
 
@@ -216,3 +216,53 @@ def test_run_chat_not_importable_via_init() -> None:
     import pytest
     with pytest.raises(ImportError):
         from mltgnt.chat import run_chat  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# codex JSONL リーク回帰テスト
+# ---------------------------------------------------------------------------
+
+_CODEX_JSONL = (
+    '{"type":"thread.started","thread_id":"01a04d63-3798-7280-8248-cfe66b80d1c4"}\n'
+    '{"type":"turn.started"}\n'
+    '{"type":"item.completed","item":{"id":"item_0","type":"agent_message",'
+    '"text":"やっほー。新しい靴、いいねー。"}}\n'
+    '{"type":"turn.completed","usage":{"input_tokens":36377,"output_tokens":95}}'
+)
+
+
+def test_run_pipeline_does_not_leak_codex_jsonl(persona_dir: Path) -> None:
+    """codex は EngineSpec が常に --json を付けるため raw stdout は JSONL になる。
+
+    llm_adapter が call_text 経由（engine output adapter 適用）であることを担保し、
+    JSONL が ChatOutput.content にそのまま出ないことを固定する。
+    """
+    from ghdag.llm.engines import LLMResult, TextResult
+    from ghdag.llm.adapters import get_output_adapter
+    from mltgnt.chat import run_pipeline
+
+    persona, _engine, model = _load_persona(persona_dir, "タチコマ")
+
+    raw = LLMResult(stdout=_CODEX_JSONL, stderr="", returncode=0)
+    body = get_output_adapter("codex").extract_result_text(
+        raw.stdout.encode("utf-8"), b""
+    ).decode("utf-8")
+    text_result = TextResult(body=body, success=True, raw=raw)
+
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=text_result):
+        out = run_pipeline("こんにちは", persona, engine="codex", model=model)
+
+    assert out.content == "やっほー。新しい靴、いいねー。"
+    assert "thread.started" not in out.content
+    assert "turn.completed" not in out.content
+
+
+def test_llm_adapter_delegates_to_call_text() -> None:
+    """llm_adapter.call_llm が ghdag.llm.call ではなく call_text を呼ぶこと。"""
+    from mltgnt.bridges import llm_adapter
+
+    with patch("ghdag.llm.call_text") as mock_call_text:
+        mock_call_text.return_value = "sentinel"
+        assert llm_adapter.call_llm("p", engine="codex", model="m", timeout=5) == "sentinel"
+
+    mock_call_text.assert_called_once_with("p", engine="codex", model="m", timeout=5)

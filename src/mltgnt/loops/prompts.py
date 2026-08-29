@@ -528,18 +528,19 @@ def _validate_comment_reply(data: dict[str, Any]) -> CommentReplyResponse:
 
 
 def _unwrap_llm_result(result: Any) -> tuple[str, str | None]:
-    """call_llm の戻り値から (stdout テキスト, 失敗時エラー要約) を取り出す。
+    """call_llm の戻り値から (本文テキスト, 失敗時エラー要約) を取り出す。
 
-    ghdag.llm.LLMResult（stdout / stderr / returncode / ok）を想定する。
-    ok=False は retryable failure としてエラー要約を返す。
+    ghdag.llm.TextResult（body / stderr / returncode / success）を想定する。
+    body は engine output adapter 抽出済みであり、codex の raw JSONL は含まない。
+    success=False は retryable failure としてエラー要約を返す。
     """
-    stdout = getattr(result, "stdout", None)
-    ok = getattr(result, "ok", None)
-    if stdout is None or ok is None:
+    body = getattr(result, "body", None)
+    ok = getattr(result, "success", None)
+    if body is None or ok is None:
         raise TypeError(
-            f"call_llm must return LLMResult-like object, got {type(result).__name__}"
+            f"call_llm must return TextResult-like object, got {type(result).__name__}"
         )
-    text = stdout if isinstance(stdout, str) else str(stdout)
+    text = body if isinstance(body, str) else str(body)
     if ok:
         return text, None
     stderr = getattr(result, "stderr", "") or ""

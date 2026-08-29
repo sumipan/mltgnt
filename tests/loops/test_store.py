@@ -121,7 +121,7 @@ def test_append_event_accepts_non_json_native_objects(tmp_path):
         "llm_error",
         {
             "phase": "clarify",
-            "result": FakeLLMResult(stdout="x", stderr="e", returncode=1),
+            "result": FakeLLMResult(body="x", stderr="e", returncode=1),
             "payload": _Sample(name="n"),
         },
         iteration=1,

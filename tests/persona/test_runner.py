@@ -49,8 +49,8 @@ def persona_dir(tmp_path: Path) -> Path:
 
 def _make_llm_result(ok: bool = True, stdout: str = "応答", stderr: str = "") -> MagicMock:
     r = MagicMock()
-    r.ok = ok
-    r.stdout = stdout
+    r.success = ok
+    r.body = stdout
     r.stderr = stderr
     return r
 

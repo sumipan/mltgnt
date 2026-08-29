@@ -46,17 +46,17 @@ def run_pipeline(
     content: str
     try:
         result = call_llm(formatted, engine=engine, model=model, timeout=timeout)
-        ok = result.ok
+        ok = result.success
     except Exception as e:
         logger.warning("[pipeline] persona=%r exception: %s", persona_name, e)
         content = f"（実行失敗: {e}）"
     else:
-        if not result.ok:
+        if not result.success:
             stderr = (result.stderr or "").strip()
             logger.warning("[pipeline] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
             content = f"（エラー: {stderr[:200]}）" if stderr else "（エラー）"
         else:
-            content = (result.stdout or "").strip()
+            content = (result.body or "").strip()
 
     if orchestration_ctx is not None and audit_path is not None:
         try:

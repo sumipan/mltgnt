@@ -143,10 +143,10 @@ async def _match_by_llm(
 
     try:
         result = llm_call(prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30)
-        if not result.ok:
+        if not result.success:
             _log.warning("LLM 意図分類エラー: %s", result.stderr)
             return None
-        response = result.stdout.strip().lower()
+        response = result.body.strip().lower()
     except Exception as e:
         _log.warning("LLM 意図分類エラー: %s", e)
         return None
@@ -248,9 +248,9 @@ async def match(
         result = llm_call(
             prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30
         )
-        if not result.ok:
+        if not result.success:
             raise RuntimeError(result.stderr)
-        return str(result.stdout or "").strip()
+        return str(result.body or "").strip()
 
     try:
         discoverer = AgenticSkillDiscoverer(llm_call=_llm_for_discover, max_iterations=3)
