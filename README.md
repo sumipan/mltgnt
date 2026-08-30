@@ -2,7 +2,7 @@
 
 **L1 agent runtime:** persona, memory, skill, routing, scheduler, and Objective-loop orchestration. In the three-tier stack (**L0 [ghdag](https://github.com/sumipan/ghdag)** / **L1 mltgnt** / **L2 host**), mltgnt owns agent contracts and loops; LLM inference, file I/O, and DAG execution stay in ghdag. Hosts (Slack daemons, diary wiring) live at L2.
 
-**Status:** Pre-1.0 (`v0.20.0`)
+**Status:** Pre-1.0 (`v0.21.0`)
 
 ---
 
@@ -14,7 +14,7 @@
 | Not a DAG engine | Job submission and completion markers are ghdag's. mltgnt uses `enqueue_dag` / `enqueue_and_wait` / `enqueue_step` / `poll_step`. |
 | Not a Slack (or other) host | Channel posting, thread IDs, and daemon wiring belong to the L2 host. `HumanChannel`, `SubtaskExecutor`, `ConditionEvaluator`, `ActionExecutor`, and `MemoryAppender` are Protocols the host implements. |
 
-Objective **startup** is request-driven (see [Objective loops in v0.20.0](#objective-loops-in-v0200)). Placing an Objective file alone does not start a loop.
+Objective **startup** is request-driven. Placing an Objective file alone does not start a loop; hosts must write `state_dir/requests/*.json`.
 
 ---
 
@@ -24,7 +24,7 @@ Objective **startup** is request-driven (see [Objective loops in v0.20.0](#objec
 |------|-------|
 | Install | `pip install mltgnt` |
 | Python | `>=3.10` |
-| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, [ghdag](https://github.com/sumipan/ghdag) `v0.30.12` (pinned in [`pyproject.toml`](https://github.com/sumipan/mltgnt/blob/v0.20.0/pyproject.toml)) |
+| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, [ghdag](https://github.com/sumipan/ghdag) `v0.30.13` (pinned in [`pyproject.toml`](https://github.com/sumipan/mltgnt/blob/v0.21.0/pyproject.toml)) |
 | Console script | `mltgnt` → `mltgnt.cli.main:main` |
 | License | MIT (`license = "MIT"` in `pyproject.toml`) |
 
@@ -277,9 +277,9 @@ Runs `run_improvement_cycle` and prints `format_cycle_report`.
 
 ---
 
-## Public API / Protocols
+## Public API
 
-Stable import surface is `mltgnt.__all__` plus package `__all__` lists below and `mltgnt.loops.__all__`. Other modules exist for hosts and internals; they are not implied stable unless listed.
+Stable import surface is `mltgnt.__all__` plus package `__all__` lists below. Other modules exist for hosts and internals; they are not implied stable unless listed.
 
 ```python
 from mltgnt import run_pipeline, Persona, load_persona
@@ -331,26 +331,32 @@ from mltgnt.interfaces.loops import HumanChannel, ActionExecutor, MemoryAppender
 | `Subtask` | dataclass | `mltgnt.loops.models` | `id`, `title`, `kind` (`auto` \| `human` \| `watch` \| `action`), `prompt`, `status`, `result`, optional `condition` / `action` / `depends` / `submission` | One decomposed step. |
 | `TERMINAL_STATUSES` | `frozenset[str]` | `mltgnt.loops.models` | — | `{"done", "failed", "cancelled"}`. |
 
-### Other package `__all__` (symbol sets)
+### Subpackage `__all__` tables
 
-| Package | Symbols (sorted; match `tests/test_all_snapshot.py`) |
-|---------|------------------------------------------------------|
+| Package | Symbols (from package `__all__`) |
+|---------|----------------------------------|
 | `mltgnt.agent` | `AgentResult`, `AgentRunner` |
 | `mltgnt.bridges` | `DagStep`, `MltgntHooks`, `call_llm`, `create_audit_writer`, `enqueue_and_wait`, `enqueue_dag`, `files_adapter`, `ghdag_bridge`, `hooks_adapter`, `llm_adapter`, `md_read`, `md_write` |
 | `mltgnt.chat` | `ChatInput`, `ChatOutput`, `Message`, `run_pipeline` |
 | `mltgnt.config` | `ChatConfig`, `DEFAULT_WEIGHT_MAP`, `MemoryConfig`, `PersonaConfig`, `SchedulerConfig` |
 | `mltgnt.daemon` | `DaemonComponent`, `DaemonRunner`, `PidLock`, `SkillWatcherComponent` |
 | `mltgnt.exceptions` | `ConfigError`, `DependencyError`, `MltgntError` |
-| `mltgnt.interfaces` | `ChatInput`, `ChatInputBase`, `ChatOutput`, `ChatOutputBase`, `ChatPipelineProtocol`, `Message`, `PersonaFMBase`, `PersonaProtocol`, `SlackClientProtocol` |
-| `mltgnt.memory` | `CompactionResult`, `LlmCall`, `LlmCallError`, `MEMORY_CORRUPT_THRESHOLD_BYTES`, `MEMORY_DEDUPE_SCAN_BYTES`, `MEMORY_DEDUPE_SCAN_LINES`, `MemoryEntry`, `_ensure_jsonl`, `_resolve_memory_dir`, `_scan_tail_for_dedupe_key`, `_search_and_score`, `_tail_utf8_bytes`, `append_memory_entry`, `assemble_entries_text`, `get_collection`, `memory_file_path`, `parse_jsonl`, `persona_memory_lock`, `query_similar`, `read_memory_by_relevance`, `read_memory_iterative`, `read_memory_preferences`, `read_memory_tail_text`, `read_memory_with_sufficiency_check`, `serialize_entry`, `tail_utf8_bytes`, `upsert_entry` |
-| `mltgnt.persona` | `Persona`, `PersonaValidationError`, `compress_heavy_to_light`, `list_personas`, `load_persona`, `regenerate_light_block`, `run_persona_prompt`, `validate_persona` |
+| `mltgnt.execution` | `BaseRunner` |
+| `mltgnt.improvement` | `FailurePattern`, `analyze_failures`, `ImprovementHub`, `ImprovementSource`, `MltgntSource`, `ImprovementProposal`, `generate_proposals`, `PatchResult`, `RollbackDecision`, `evaluate_cycle_outcome`, `evaluate_rollback`, `execute_rollback`, `CycleResult`, `run_improvement_cycle` |
+| `mltgnt.interfaces` | `SlackClientProtocol`, `PersonaProtocol`, `ChatPipelineProtocol`, `PersonaFMBase`, `Message`, `ChatInput`, `ChatOutput`, `ChatInputBase`, `ChatOutputBase` |
+| `mltgnt.memory` | `persona_memory_lock`, `append_memory_entry`, `read_memory_preferences`, `read_memory_tail_text`, `read_memory_by_relevance`, `read_memory_with_sufficiency_check`, `read_memory_iterative`, `memory_file_path`, `LlmCallError`, `CompactionResult`, `MemoryEntry`, `parse_jsonl`, `serialize_entry`, `assemble_entries_text`, `get_collection`, `query_similar`, `upsert_entry`, `tail_utf8_bytes`, `LlmCall`, `MEMORY_CORRUPT_THRESHOLD_BYTES`, `MEMORY_DEDUPE_SCAN_BYTES`, `MEMORY_DEDUPE_SCAN_LINES`, `_ensure_jsonl`, `_resolve_memory_dir`, `_scan_tail_for_dedupe_key`, `_tail_utf8_bytes`, `_search_and_score` |
+| `mltgnt.memory.dream` | `DreamSection`, `DreamSummary`, `read_dream`, `write_dream`, `read_global`, `write_global`, `read_global_summary`, `DreamSelector`, `Synthesizer` |
+| `mltgnt.ooda` | `OODARunner`, `OODAConfig`, `OODATickResult` |
+| `mltgnt.persona` | `Persona`, `PersonaValidationError`, `load_persona`, `list_personas`, `validate_persona`, `run_persona_prompt`, `compress_heavy_to_light`, `regenerate_light_block` |
 | `mltgnt.routing` | `ChannelPersonaEntry`, `RoutingRule`, `TRIAGE_PROFILE_MAX_CHARS`, `detect_nickname`, `evaluate`, `extract_json_object`, `extract_triage_section`, `find_observers`, `load_channel_persona_map`, `prepare_profile_for_triage`, `resolve_responding_persona` |
-| `mltgnt.scheduler` | `PersonaScheduler`, `ScheduleJob`, `SchedulePaths`, `_hash_offset`, `atomic_write_text`, `load_schedule_jobs` |
-| `mltgnt.skill` | `ArtifactSpec`, `ConsumesSpec`, `ProducesSpec`, `SkillFile`, `SkillMatchResult`, `SkillMeta`, `SkillRegistry`, `SkillRunResult`, `discover`, `discover_bodies`, `lint_skill_meta`, `load`, `match`, `resolve_skill`, `run` |
+| `mltgnt.scheduler` | `ScheduleJob`, `PersonaScheduler`, `SchedulePaths`, `load_schedule_jobs`, `atomic_write_text`, `_hash_offset` |
+| `mltgnt.skill` | `discover`, `discover_bodies`, `load`, `match`, `resolve_skill`, `run`, `SkillMeta`, `SkillFile`, `SkillRegistry`, `ArtifactSpec`, `ProducesSpec`, `ConsumesSpec`, `SkillRunResult`, `SkillMatchResult`, `lint_skill_meta` |
+
+`mltgnt.kpi` has no `__all__`. Primary entry points: `compute_kpis`, `KPIReport` (used by `python -m mltgnt.kpi`).
 
 `LoopsConfig` is defined in `mltgnt.config` but is **not** in `mltgnt.config.__all__`; import `from mltgnt.config import LoopsConfig`.
 
-### Host Protocols (L2)
+### Protocols / Extension Points
 
 | Protocol / type | Module | Contract |
 |-----------------|--------|----------|
@@ -370,11 +376,11 @@ from mltgnt.interfaces.loops import HumanChannel, ActionExecutor, MemoryAppender
 
 ---
 
-## Objective loops in v0.20.0
+## Objective loops
 
 `mltgnt.loops` drives an Objective Markdown file through clarify → decompose → execute → evaluate, with watch/replan, plan approval, comment dialogue, deterministic actions, optional persona memory append, and LLM/watch/replan budgets. The host injects channel and executor implementations; mltgnt does not implement Slack.
 
-### Request-driven start (since v0.19.0)
+### Request-driven start
 
 | Behavior | Detail |
 |----------|--------|
@@ -484,7 +490,7 @@ Status inquiries can use `render_progress_summary` (no LLM) and `HumanChannel.po
 | `max_watch_subtasks_per_loop` | `50` | `>= 0` | Watch subtasks per loop |
 | `max_replans_per_loop` | `20` | `>= 0` | Replans per loop |
 
-Budget `0` is allowed and immediately blocks the corresponding resource. On exceed, status becomes `paused` (previous status stored in `paused_from_status`). An inbox message whose text is exactly `再開` sets `budget_override` and resumes. Events: `budget_resumed`.
+Budget `0` is allowed and immediately blocks the corresponding resource. On exceed, status becomes `paused` (previous status stored in `paused_from_status`). An inbox message whose text is exactly `再開` sets `budget_override` and resumes. Events: `budget_resumed`. `BudgetExceeded` is raised internally when LLM budget reservation fails.
 
 ### Schema compatibility
 
@@ -592,10 +598,10 @@ Every `os.environ` / `os.getenv` use in `src/mltgnt/**/*.py`:
 
 | Variable | Defined in | Purpose |
 |----------|------------|---------|
-| `SKILL_IO_TYPECHECK` | [`bridges/ghdag_bridge.py`](https://github.com/sumipan/mltgnt/blob/v0.20.0/src/mltgnt/bridges/ghdag_bridge.py) | Skill I/O typecheck is on unless this is `"0"`. |
-| `NIKKI_ROOT` | [`skill/runner.py`](https://github.com/sumipan/mltgnt/blob/v0.20.0/src/mltgnt/skill/runner.py) | Diary/memory root for `$NIKKI_ROOT` substitution in skill bodies. |
-| `REPO_ROOT` | [`skill/runner.py`](https://github.com/sumipan/mltgnt/blob/v0.20.0/src/mltgnt/skill/runner.py) | Repo-root fallback for `$REPO_ROOT` substitution. |
-| `MLTGNT_AS_OF_DATE` | [`improvement/loop.py`](https://github.com/sumipan/mltgnt/blob/v0.20.0/src/mltgnt/improvement/loop.py) | `YYYY-MM-DD` period end for `run_improvement_cycle` when `today` is omitted. |
+| `SKILL_IO_TYPECHECK` | [`bridges/ghdag_bridge.py`](https://github.com/sumipan/mltgnt/blob/v0.21.0/src/mltgnt/bridges/ghdag_bridge.py) | Skill I/O typecheck is on unless this is `"0"`. |
+| `NIKKI_ROOT` | [`skill/runner.py`](https://github.com/sumipan/mltgnt/blob/v0.21.0/src/mltgnt/skill/runner.py) | Diary/memory root for `$NIKKI_ROOT` substitution in skill bodies. |
+| `REPO_ROOT` | [`skill/runner.py`](https://github.com/sumipan/mltgnt/blob/v0.21.0/src/mltgnt/skill/runner.py) | Repo-root fallback for `$REPO_ROOT` substitution. |
+| `MLTGNT_AS_OF_DATE` | [`improvement/loop.py`](https://github.com/sumipan/mltgnt/blob/v0.21.0/src/mltgnt/improvement/loop.py) | `YYYY-MM-DD` period end for `run_improvement_cycle` when `today` is omitted. |
 
 ### Config dataclasses
 
@@ -635,6 +641,7 @@ MltgntError
 | `LlmCallError` | `mltgnt.loops.prompts` | `ValueError` | Clarify/decompose/evaluate LLM/JSON contract failure (carries `LlmTrace`) | loop → `failed` after 3 consecutive errors |
 | `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | `TypeError` | Skill I/O type mismatch on DAG steps | not mapped |
 | `SkillLoadError` | `mltgnt.skill.models` | `Exception` | Skill load / unknown tool | not mapped |
+| `BudgetExceeded` | `mltgnt.loops.engine` | `Exception` | LLM budget reservation failed | loop pauses; inbox `再開` resumes |
 | `ObjectiveError` | `mltgnt.loops.objective` | *(dataclass)* | Bad Objective YAML/body/id/status/`max_iterations` | status file `failed`; **not raised** |
 | `RequestError` | `mltgnt.loops.requests` | *(dataclass)* | Bad start-request JSON | isolated to `corrupt/`; **not raised** |
 | `FileNotFoundError` | stdlib | `OSError` | Missing audit file (`kpi` / `improvement`); missing persona file | `python -m mltgnt.kpi` / `improvement` → **1** |
@@ -645,7 +652,7 @@ MltgntError
 
 ---
 
-## Public API Stability / removed API
+## Public API Stability
 
 This package is pre-1.0 (`0.Y.Z`). Y bumps may be breaking; Z bumps are intended to be backward compatible. Treat **`mltgnt.__all__` and `mltgnt.loops.__all__`** as the documented export surface. Host Protocols in `mltgnt.interfaces.loops` remain part of the loops contract even though they are not on the root `__all__`.
 
@@ -666,7 +673,7 @@ Behavioral break since **v0.19.0:** Objective placement no longer auto-starts lo
 
 ## License
 
-MIT — SPDX: `MIT` (matches `license = "MIT"` in [`pyproject.toml`](https://github.com/sumipan/mltgnt/blob/v0.20.0/pyproject.toml)).
+MIT — SPDX: `MIT` (matches `license = "MIT"` in [`pyproject.toml`](https://github.com/sumipan/mltgnt/blob/v0.21.0/pyproject.toml)).
 
 | Link | Target |
 |------|--------|
@@ -675,4 +682,4 @@ MIT — SPDX: `MIT` (matches `license = "MIT"` in [`pyproject.toml`](https://git
 | ghdag (L0) | https://github.com/sumipan/ghdag |
 | Changelog | [CHANGELOG.md](./CHANGELOG.md) |
 | License file | [LICENSE](./LICENSE) |
-| Tag `v0.20.0` | https://github.com/sumipan/mltgnt/tree/v0.20.0 |
+| Tag `v0.21.0` | https://github.com/sumipan/mltgnt/tree/v0.21.0 |
