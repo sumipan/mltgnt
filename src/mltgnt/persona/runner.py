@@ -61,11 +61,11 @@ def run_persona_prompt(
         logger.warning("[persona.runner] persona=%r exception: %s", persona_name, e)
         content = f"（実行失敗: {e}）"
     else:
-        if not result.ok:
+        if not result.success:
             stderr = (result.stderr or "").strip()
             logger.warning("[persona.runner] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
             content = f"（エラー: {stderr[:200]}）" if stderr else "（エラー）"
         else:
-            content = (result.stdout or "").strip()
+            content = (result.body or "").strip()
 
     return content

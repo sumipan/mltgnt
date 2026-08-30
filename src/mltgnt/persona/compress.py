@@ -121,11 +121,11 @@ def compress_heavy_to_light(
     except Exception as e:
         raise RuntimeError(f"LLM 呼び出しが失敗しました: {e}") from e
 
-    if not result.ok:
+    if not result.success:
         stderr = (result.stderr or "").strip()
         raise RuntimeError(f"LLM が ok=False を返しました: {stderr}")
 
-    return (result.stdout or "").strip()
+    return (result.body or "").strip()
 
 
 def regenerate_light_block(

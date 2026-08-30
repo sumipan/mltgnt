@@ -541,7 +541,7 @@ def _llm_call_error(message: str = "llm failed") -> prompts.LlmCallError:
     # raw_output に非 JSON ネイティブを混ぜても記録経路が落ちないこと
     trace = prompts.LlmTrace(
         input="prompt",
-        raw_output=FakeLLMResult(stdout="bad", stderr="boom", returncode=1),  # type: ignore[arg-type]
+        raw_output=FakeLLMResult(body="bad", stderr="boom", returncode=1),  # type: ignore[arg-type]
         parsed=None,
         reasoning="",
         config={"engine": "claude", "model": "m"},

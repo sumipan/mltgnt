@@ -95,7 +95,7 @@ def test_run_pipeline_injects_dream_summary(chat_dir: Path) -> None:
     engine = persona.fm.engine or SYSTEM_DEFAULT_ENGINE
     model = persona.fm.model or SYSTEM_DEFAULT_MODEL
 
-    mock_result = type("R", (), {"ok": True, "stdout": "応答", "stderr": ""})()
+    mock_result = type("R", (), {"success": True, "body": "応答", "stderr": ""})()
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=mock_result) as mock_call:
         run_pipeline("テスト", persona, engine=engine, model=model, memory=dream_text)
 

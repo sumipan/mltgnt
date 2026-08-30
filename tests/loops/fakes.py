@@ -8,15 +8,15 @@ from mltgnt.interfaces.loops import HumanThreadRef, StepPoll, StepSubmission
 
 @dataclass
 class FakeLLMResult:
-    """ghdag.llm.LLMResult 相当（stdout / stderr / returncode / ok）。"""
+    """ghdag.llm.TextResult 相当（body / stderr / returncode / success）。"""
 
-    stdout: str = ""
+    body: str = ""
     stderr: str = ""
     returncode: int = 0
     latency_ms: float = 0.0
 
     @property
-    def ok(self) -> bool:
+    def success(self) -> bool:
         return self.returncode == 0
 
 
@@ -27,10 +27,13 @@ def make_llm_result(
     stderr: str = "",
     returncode: int | None = None,
 ) -> FakeLLMResult:
-    """テスト用に LLMResult 相当を返すヘルパ。"""
+    """テスト用に TextResult 相当を返すヘルパ。
+
+    stdout 引数名は既存テストとの互換のため維持する（値は body に入る）。
+    """
     if returncode is None:
         returncode = 0 if ok else 1
-    return FakeLLMResult(stdout=stdout, stderr=stderr, returncode=returncode)
+    return FakeLLMResult(body=stdout, stderr=stderr, returncode=returncode)
 
 
 @dataclass

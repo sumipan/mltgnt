@@ -16,8 +16,8 @@ import pytest
 
 def _make_llm_result(ok: bool = True, stdout: str = "圧縮テキスト", stderr: str = "") -> MagicMock:
     r = MagicMock()
-    r.ok = ok
-    r.stdout = stdout
+    r.success = ok
+    r.body = stdout
     r.stderr = stderr
     return r
 

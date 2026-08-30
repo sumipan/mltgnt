@@ -42,13 +42,18 @@ def _setup_persona_with_jsonl(agents_dir: Path, persona: str) -> Path:
     return persona_dir
 
 
+def _text_result(body: str):
+    """ghdag.llm.TextResult 相当（body のみ参照される）。"""
+    return type("R", (), {"body": body, "success": True, "stderr": "", "returncode": 0})()
+
+
 def test_run_dream_action_success(tmp_path: Path) -> None:
     agents_dir = tmp_path / "agents"
     persona_dir = _setup_persona_with_jsonl(agents_dir, "alice")
     config = _memory_config(tmp_path)
     job = _dream_job()
 
-    llm_response = "## 行動パターン\n朝型\n\n## 好み・傾向\n簡潔"
+    llm_response = _text_result("## 行動パターン\n朝型\n\n## 好み・傾向\n簡潔")
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=llm_response):
         ok, msg = run_dream_action(job, persona_dir=persona_dir, memory_config=config)
@@ -99,7 +104,7 @@ def test_memory_dream_registered_and_fires(tmp_path: Path) -> None:
         memory_config=config,
     )
     job = _dream_job()
-    llm_response = "## 行動パターン\npattern\n\n## 好み・傾向\npref"
+    llm_response = _text_result("## 行動パターン\npattern\n\n## 好み・傾向\npref")
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=llm_response):
         ok, msg = sch.execute_action(job)
