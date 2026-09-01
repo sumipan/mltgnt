@@ -1,4 +1,4 @@
-"""tests/test_ghdag_version.py — ghdag v0.28.3 互換性テスト。
+"""tests/test_ghdag_version.py — ghdag 互換性テスト。
 
 Issue #1697: mltgnt が ghdag v0.28.3 の API に追従していることを検証する。
 """
@@ -50,15 +50,15 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_pins_ghdag_v0_32_1():
-    """Issue #2687: ghdag 依存が v0.32.1 に固定されていること。"""
+def test_pyproject_pins_ghdag_v0_33_0():
+    """Issue #2702: ghdag 依存が v0.33.0 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.32.1" in project["dependencies"]
+    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.33.0" in project["dependencies"]
 
 
-def test_issue_2687_required_imports_are_available():
-    """Issue #2687: v0.32.1 追従で必要な import が維持されていること。"""
+def test_issue_2702_required_imports_are_available():
+    """Issue #2702: v0.33.0 追従で必要な import が維持されていること。"""
     from ghdag.dag._util import check_pipeline_status, default_check_rejected
     from ghdag.pipeline.status import interpret_done, read_done_content
 
@@ -66,3 +66,13 @@ def test_issue_2687_required_imports_are_available():
     assert callable(read_done_content)
     assert callable(check_pipeline_status)
     assert callable(default_check_rejected)
+
+
+def test_step_config_has_resume_from_field():
+    """Issue #2702: StepConfig に resume_from 属性が存在すること。"""
+    from ghdag.workflow.schema import StepConfig
+
+    field_names: set[str] = set(getattr(StepConfig, "__annotations__", {}).keys())
+    field_names.update(getattr(StepConfig, "model_fields", {}).keys())
+    field_names.update(getattr(StepConfig, "__fields__", {}).keys())
+    assert "resume_from" in field_names
