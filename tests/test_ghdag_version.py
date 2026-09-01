@@ -7,7 +7,10 @@ from __future__ import annotations
 import importlib.metadata
 import inspect
 from pathlib import Path
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python <3.11
+    import tomli as tomllib
 
 
 def test_ghdag_version_is_at_least_0_28_3():
