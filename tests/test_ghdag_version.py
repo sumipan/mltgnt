@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import importlib.metadata
 import inspect
+from pathlib import Path
+import tomllib
 
 
 def test_ghdag_version_is_at_least_0_28_3():
@@ -43,3 +45,21 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     assert hasattr(DagHooks, "check_promote_target"), (
         "DagHooks に check_promote_target が存在しない。ghdag v0.21.0 以上が必要です。"
     )
+
+
+def test_pyproject_pins_ghdag_v0_32_1():
+    """Issue #2687: ghdag 依存が v0.32.1 に固定されていること。"""
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.32.1" in project["dependencies"]
+
+
+def test_issue_2687_required_imports_are_available():
+    """Issue #2687: v0.32.1 追従で必要な import が維持されていること。"""
+    from ghdag.dag._util import check_pipeline_status, default_check_rejected
+    from ghdag.pipeline.status import interpret_done, read_done_content
+
+    assert callable(interpret_done)
+    assert callable(read_done_content)
+    assert callable(check_pipeline_status)
+    assert callable(default_check_rejected)
