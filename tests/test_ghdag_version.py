@@ -55,7 +55,8 @@ def test_pyproject_pins_ghdag_v0_34_3():
     """Issue #2740: ghdag 依存が v0.34.3 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.3" in project["dependencies"]
+    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.3"
+    assert project["dependencies"].count(dependency) == 1
 
 
 def test_issue_2740_project_version_is_0_22_5():
