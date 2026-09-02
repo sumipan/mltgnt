@@ -58,6 +58,13 @@ def test_pyproject_pins_ghdag_v0_34_2():
     assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.2" in project["dependencies"]
 
 
+def test_issue_2729_project_version_is_0_22_4():
+    """Issue #2729: mltgnt のリリース版が 0.22.4 であること。"""
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    assert project["version"] == "0.22.4"
+
+
 def test_issue_2702_required_imports_are_available():
     """Issue #2702: v0.33.0 追従で必要な import が維持されていること。"""
     from ghdag.dag._util import check_pipeline_status, default_check_rejected
