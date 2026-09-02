@@ -2,7 +2,7 @@
 
 **L1 agent runtime for host-integrated operations.** In the three-layer stack (**L0 ghdag / L1 mltgnt / L2 host**), mltgnt defines agent contracts, loop state transitions, and orchestration boundaries, while model execution and DAG transport stay in ghdag.
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.22.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.23.0)-orange)
 
 ## Not (what this is not)
 
@@ -20,11 +20,11 @@ Objective execution is request-driven: writing only an objective file does not s
 |------|-------|
 | Package | `pip install mltgnt` |
 | Python | `>=3.10` |
-| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ v0.33.0` |
+| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ v0.34.5` |
 | Entry point | `mltgnt = mltgnt.cli.main:main` |
 | License | MIT |
 
-Dependency pin source: `pyproject.toml` (`ghdag @ git+https://github.com/sumipan/ghdag.git@v0.33.0`).
+Dependency pin source: `pyproject.toml` (`ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.5`).
 
 ## Quick Start
 
@@ -136,6 +136,7 @@ The package exposes `mltgnt` and module entry points for KPI and improvement wor
 | Command | Description | Required arguments |
 |---------|-------------|--------------------|
 | `mltgnt run` | Start daemon runner with user-provided component factory | `--components MODULE:FUNCTION` |
+| `mltgnt memory compact` | Run memory compaction for one persona | `persona`, `--chat-dir`, `--llm` |
 | `mltgnt memory dream show` | Show dream summary sections for one persona | `persona`, `--chat-dir` |
 | `mltgnt memory dream forget` | Remove one dream summary category | `persona`, `--category`, `--chat-dir` |
 | `python -m mltgnt.kpi` | Compute KPI report from `audit.jsonl` | `audit_path` |
@@ -159,13 +160,15 @@ The package exposes `mltgnt` and module entry points for KPI and improvement wor
 | `mltgnt.execution` | `BaseRunner` |
 | `mltgnt.improvement` | `FailurePattern`, `analyze_failures`, `ImprovementHub`, `ImprovementSource`, `MltgntSource`, `ImprovementProposal`, `generate_proposals`, `PatchResult`, `RollbackDecision`, `evaluate_cycle_outcome`, `evaluate_rollback`, `execute_rollback`, `CycleResult`, `run_improvement_cycle` |
 | `mltgnt.interfaces` | `SlackClientProtocol`, `PersonaProtocol`, `ChatPipelineProtocol`, `PersonaFMBase`, `Message`, `ChatInput`, `ChatOutput`, `ChatInputBase`, `ChatOutputBase` |
-| `mltgnt.memory` | `persona_memory_lock`, `append_memory_entry`, `read_memory_preferences`, `read_memory_tail_text`, `read_memory_by_relevance`, `read_memory_with_sufficiency_check`, `read_memory_iterative`, `memory_file_path`, `LlmCallError`, `CompactionResult`, `MemoryEntry`, `parse_jsonl`, `serialize_entry`, `assemble_entries_text`, `get_collection`, `query_similar`, `upsert_entry`, `tail_utf8_bytes`, `LlmCall`, `MEMORY_CORRUPT_THRESHOLD_BYTES`, `MEMORY_DEDUPE_SCAN_BYTES`, `MEMORY_DEDUPE_SCAN_LINES`, `_ensure_jsonl`, `_resolve_memory_dir`, `_scan_tail_for_dedupe_key`, `_tail_utf8_bytes`, `_search_and_score` |
+| `mltgnt.memory` | `persona_memory_lock`, `append_memory_entry`, `read_memory_preferences`, `read_memory_tail_text`, `read_memory_by_relevance`, `read_memory_with_sufficiency_check`, `read_memory_iterative`, `memory_file_path`, `LlmCallError`, `CompactionResult`, `compact`, `needs_compaction`, `MemoryEntry`, `parse_jsonl`, `serialize_entry`, `assemble_entries_text`, `get_collection`, `query_similar`, `upsert_entry`, `tail_utf8_bytes`, `LlmCall`, `MEMORY_CORRUPT_THRESHOLD_BYTES`, `MEMORY_DEDUPE_SCAN_BYTES`, `MEMORY_DEDUPE_SCAN_LINES`, `_ensure_jsonl`, `_resolve_memory_dir`, `_scan_tail_for_dedupe_key`, `_tail_utf8_bytes`, `_search_and_score` |
 | `mltgnt.memory.dream` | `DreamSection`, `DreamSummary`, `read_dream`, `write_dream`, `read_global`, `write_global`, `read_global_summary`, `DreamSelector`, `Synthesizer` |
 | `mltgnt.ooda` | `OODARunner`, `OODAConfig`, `OODATickResult` |
 | `mltgnt.persona` | `Persona`, `PersonaValidationError`, `load_persona`, `list_personas`, `validate_persona`, `run_persona_prompt`, `compress_heavy_to_light`, `regenerate_light_block` |
 | `mltgnt.routing` | `ChannelPersonaEntry`, `RoutingRule`, `TRIAGE_PROFILE_MAX_CHARS`, `detect_nickname`, `evaluate`, `extract_json_object`, `extract_triage_section`, `find_observers`, `load_channel_persona_map`, `prepare_profile_for_triage`, `resolve_responding_persona` |
 | `mltgnt.scheduler` | `ScheduleJob`, `PersonaScheduler`, `SchedulePaths`, `load_schedule_jobs`, `atomic_write_text`, `_hash_offset` |
 | `mltgnt.skill` | `discover`, `discover_bodies`, `load`, `match`, `resolve_skill`, `run`, `SkillMeta`, `SkillFile`, `SkillRegistry`, `ArtifactSpec`, `ProducesSpec`, `ConsumesSpec`, `SkillRunResult`, `SkillMatchResult`, `lint_skill_meta` |
+
+`mltgnt.memory.LlmCall` is defined in `mltgnt.memory.compaction` and re-exported via `mltgnt.memory.__init__`.
 
 ### Protocols and extension points
 
@@ -254,6 +257,9 @@ MltgntError
 | `ConfigError` | `mltgnt.exceptions` | Invalid configuration / component wiring |
 | `DependencyError` | `mltgnt.exceptions` | Missing/blocked external dependency (for example PID lock) |
 | `PersonaValidationError` | `mltgnt.persona` | Persona frontmatter validation failure |
+| `SkillLoadError` | `mltgnt.skill.models` | Skill metadata/schema loading failure |
+| `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | Skill I/O contract mismatch when type-checking is enabled |
+| `BudgetExceeded` | `mltgnt.loops.engine` | Budget guard raised during loop execution |
 | `LlmCallError` | `mltgnt.memory.compaction` | Memory compaction LLM call failure |
 | `LlmCallError` | `mltgnt.loops.prompts` | Loop prompt/JSON contract failure |
 | `ObjectiveError` | `mltgnt.loops.objective` | Dataclass result for invalid objective files (not raised) |
