@@ -7,6 +7,7 @@ from __future__ import annotations
 import importlib.metadata
 import inspect
 from pathlib import Path
+from typing import get_args
 try:
     import tomllib
 except ModuleNotFoundError:  # Python <3.11
@@ -50,22 +51,24 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_pins_ghdag_v0_34_0():
-    """Issue #2712: ghdag 依存が v0.34.0 に固定されていること。"""
+def test_pyproject_pins_ghdag_v0_34_1():
+    """Issue #2721: ghdag 依存が v0.34.1 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.0" in project["dependencies"]
+    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.1" in project["dependencies"]
 
 
 def test_issue_2702_required_imports_are_available():
     """Issue #2702: v0.33.0 追従で必要な import が維持されていること。"""
     from ghdag.dag._util import check_pipeline_status, default_check_rejected
+    from ghdag.llm.engines import EngineError
     from ghdag.pipeline.status import interpret_done, read_done_content
 
     assert callable(interpret_done)
     assert callable(read_done_content)
     assert callable(check_pipeline_status)
     assert callable(default_check_rejected)
+    assert EngineError is not None
 
 
 def test_step_config_has_resume_from_field():
@@ -76,3 +79,17 @@ def test_step_config_has_resume_from_field():
     field_names.update(getattr(StepConfig, "model_fields", {}).keys())
     field_names.update(getattr(StepConfig, "__fields__", {}).keys())
     assert "resume_from" in field_names
+
+
+def test_step_status_literal_includes_engine_error():
+    """Issue #2721: StepStatus Literal に engine_error が含まれること。"""
+    from mltgnt.interfaces.loops import StepStatus
+
+    assert "engine_error" in get_args(StepStatus)
+
+
+def test_interpret_done_engine_error_maps_to_engine_error():
+    """Issue #2721: interpret_done が ENGINE_ERROR を engine_error に解釈すること。"""
+    from ghdag.pipeline.status import interpret_done
+
+    assert interpret_done("ENGINE_ERROR") == "engine_error"

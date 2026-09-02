@@ -575,7 +575,7 @@ def poll_step(
         return StepPoll(status="success", content=content)
 
     first_line = raw.strip().splitlines()[0] if raw.strip() else ""
-    if status in ("failed_exit", "rejected", "empty_result", "other"):
+    if status in ("failed_exit", "engine_error", "rejected", "empty_result", "other"):
         return StepPoll(status=cast(StepStatus, status), content=first_line)
     return StepPoll(status="other", content=first_line)
 
