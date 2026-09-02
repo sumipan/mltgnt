@@ -23,6 +23,7 @@ StepStatus = Literal[
     "pending",
     "success",
     "failed_exit",
+    "engine_error",
     "rejected",
     "empty_result",
     "other",
