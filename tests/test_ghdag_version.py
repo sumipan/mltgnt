@@ -51,27 +51,29 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_pins_ghdag_v0_34_4():
-    """Issue #2743: ghdag 依存が v0.34.4 に固定されていること。"""
+def test_pyproject_pins_ghdag_v0_34_5():
+    """Issue #2756: ghdag 依存が v0.34.5 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.4"
+    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.5"
     assert project["dependencies"].count(dependency) == 1
 
 
-def test_issue_2743_project_version_is_0_22_6():
-    """Issue #2743: mltgnt のリリース版が 0.22.6 であること。"""
+def test_issue_2756_project_version_is_0_22_7():
+    """Issue #2756: mltgnt のリリース版が 0.22.7 であること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] == "0.22.6"
+    assert project["version"] == "0.22.7"
 
 
 def test_issue_2702_required_imports_are_available():
     """Issue #2702: v0.33.0 追従で必要な import が維持されていること。"""
     from ghdag.dag._util import check_pipeline_status, default_check_rejected
     from ghdag.llm.engines import EngineError
+    from ghdag.pipeline.audit import write_task_exit_audit
     from ghdag.pipeline.status import interpret_done, read_done_content
 
+    assert callable(write_task_exit_audit)
     assert callable(interpret_done)
     assert callable(read_done_content)
     assert callable(check_pipeline_status)
