@@ -36,13 +36,14 @@ import tempfile
 
 from mltgnt.loops.objective import Objective, ObjectiveError, parse_objective
 
-text = """```yaml
+text = """\
+---
 id: release-note-refresh
 title: Refresh the release objective
 agent: operator
 max_iterations: 3
 status: active
-```
+---
 
 Rewrite README sections and submit a PR.
 """
@@ -108,13 +109,14 @@ import tempfile
 
 from mltgnt import load_persona
 
-persona_text = """```yaml
+persona_text = """\
+---
 persona:
   name: Tachikoma
 ops:
   engine: claude
   model: claude-sonnet-4-6
-```
+---
 
 ## Background
 A curious multi-legged AI tank.
