@@ -800,6 +800,15 @@ def compact(
     """メモリファイルをコンパクションする（per-section cap 方式）。
 
     llm_call はプロンプト文字列を受け取り、コンパクション後のテキストを返す callable。
+    ホスト側で日時やトレース情報を注入したい場合は、llm_call をラップして前処理を適用できる。
+
+    例:
+        def wrapped_llm_call(prompt: str) -> str:
+            enriched = f"[date-context]\\n{prompt}"
+            return base_llm_call(enriched)
+
+        compact(config, persona_stem, llm_call=wrapped_llm_call)
+
     dry_run=True のときはファイル書き込みを行わない。
 
     **per-section cap 方式**:

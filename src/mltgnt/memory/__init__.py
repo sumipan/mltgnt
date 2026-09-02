@@ -7,7 +7,6 @@ from mltgnt.memory._format import (
 )
 from mltgnt.memory._chroma import get_collection, query_similar, upsert_entry
 from mltgnt.memory.api import (
-    LlmCall,
     MEMORY_CORRUPT_THRESHOLD_BYTES,
     MEMORY_DEDUPE_SCAN_BYTES,
     MEMORY_DEDUPE_SCAN_LINES,
@@ -30,7 +29,10 @@ from mltgnt.memory.search import (
 )
 from mltgnt.memory.compaction import (
     CompactionResult,
+    LlmCall,
     LlmCallError,
+    compact,
+    needs_compaction,
 )
 
 __all__ = [
@@ -44,6 +46,8 @@ __all__ = [
     "memory_file_path",
     "LlmCallError",
     "CompactionResult",
+    "compact",
+    "needs_compaction",
     "MemoryEntry",
     "parse_jsonl",
     "serialize_entry",

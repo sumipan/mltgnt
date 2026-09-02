@@ -439,11 +439,21 @@ class TestNoDeprecationWarnings:
         assert not any(w.category is DeprecationWarning for w in caught)
 
     def test_memory_import_compact_and_needs_compaction(self):
-        import pytest
-        with pytest.raises(ImportError):
-            from mltgnt.memory import compact  # noqa: F401
-        with pytest.raises(ImportError):
-            from mltgnt.memory import needs_compaction  # noqa: F401
+        from mltgnt.memory import compact  # noqa: F401
+        from mltgnt.memory import needs_compaction  # noqa: F401
+        assert callable(compact)
+        assert callable(needs_compaction)
+
+
+class TestCompactionPublicApi:
+    def test_memory_import_llm_call(self):
+        from mltgnt.memory import LlmCall
+        assert LlmCall is not None
+
+    def test_compact_docstring_includes_wrapper_example(self):
+        doc = compact.__doc__ or ""
+        assert "llm_call" in doc
+        assert "ラップ" in doc or "wrapper" in doc.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -610,3 +620,52 @@ class TestCompactPerSectionCap:
         )]
         result = mod._redistribute_entries(entries, now, cfg)
         assert len(result) == 1
+
+    def test_wrapped_llm_call_applies_preprocessing(self, tmp_path: Path):
+        """ラッパー callable が全 LLM 呼び出しに前処理を適用する。"""
+        cfg = _make_config(tmp_path, target_bytes=25_600)
+        path = tmp_path / "test_persona.jsonl"
+        long_content = "L" * 7000  # long_term_cap(6400B) を超過させる
+        entries = [
+            self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
+        ]
+        _write_jsonl(path, entries)
+
+        date_prefix = "[DATE_CONTEXT: 2026-09-02]\n"
+        captured_prompts: list[str] = []
+
+        def _base_llm(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            # long_term max_ratio=0.90 を満たす長さで返す
+            return "L" * 6500
+
+        def _wrapped_llm(prompt: str) -> str:
+            enriched = f"{date_prefix}{prompt}"
+            return _base_llm(enriched)
+
+        compact(cfg, "test_persona", llm_call=_wrapped_llm)
+
+        assert captured_prompts, "LLM should be called at least once"
+        assert all(p.startswith(date_prefix) for p in captured_prompts)
+
+    def test_compact_handles_over_256kb_prompt_without_truncation(self, tmp_path: Path):
+        """256KB超プロンプトでも llm_call に全文が渡る。"""
+        cfg = _make_config(tmp_path, target_bytes=1_024_000)
+        path = tmp_path / "test_persona.jsonl"
+        long_content = "X" * 300_000
+        entries = [
+            self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
+        ]
+        _write_jsonl(path, entries)
+
+        prompt_sizes: list[int] = []
+
+        def _llm(prompt: str) -> str:
+            prompt_sizes.append(len(prompt.encode("utf-8")))
+            return "X" * 280_000
+
+        result = compact(cfg, "test_persona", llm_call=_llm)
+
+        assert isinstance(result, CompactionResult)
+        assert prompt_sizes, "LLM should be called for oversized long_term section"
+        assert max(prompt_sizes) > 256 * 1024
