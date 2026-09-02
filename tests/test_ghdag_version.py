@@ -51,11 +51,11 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_pins_ghdag_v0_34_1():
-    """Issue #2721: ghdag 依存が v0.34.1 に固定されていること。"""
+def test_pyproject_pins_ghdag_v0_34_2():
+    """Issue #2729: ghdag 依存が v0.34.2 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.1" in project["dependencies"]
+    assert "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.2" in project["dependencies"]
 
 
 def test_issue_2702_required_imports_are_available():
