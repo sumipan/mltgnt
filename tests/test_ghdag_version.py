@@ -51,19 +51,22 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_pins_ghdag_v0_34_5():
-    """Issue #2756: ghdag 依存が v0.34.5 に固定されていること。"""
+def test_pyproject_pins_ghdag_v0_34_6():
+    """Issue #2779: ghdag 依存が v0.34.6 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.5"
+    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.6"
     assert project["dependencies"].count(dependency) == 1
+    assert project["dependencies"].count(
+        "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.34.5"
+    ) == 0
 
 
-def test_issue_2743_project_version_is_0_24_0():
-    """Issue #2743: mltgnt のリリース版が 0.24.0 であること。"""
+def test_issue_2779_project_version_is_0_24_1():
+    """Issue #2779: mltgnt のリリース版が 0.24.1 であること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] == "0.24.0"
+    assert project["version"] == "0.24.1"
 
 
 def test_issue_2702_required_imports_are_available():
