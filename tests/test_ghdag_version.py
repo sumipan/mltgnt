@@ -70,7 +70,7 @@ def test_issue_2795_project_version_is_0_24_2():
     """
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] in ("0.24.1", "0.24.2")
+    assert project["version"] == "0.24.2"
 
 
 def test_issue_2702_required_imports_are_available():
