@@ -51,26 +51,22 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_pins_ghdag_v0_36_0():
-    """Issue #2843: ghdag 依存が v0.36.0 に固定されていること。"""
+def test_pyproject_pins_ghdag_v0_39_0():
+    """Issue #2903: ghdag 依存が v0.39.0 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.36.0"
+    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.39.0"
     assert project["dependencies"].count(dependency) == 1
     assert project["dependencies"].count(
-        "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.35.0"
+        "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.36.0"
     ) == 0
 
 
-def test_issue_2843_project_version_remains_0_24_2_until_publish():
-    """Issue #2843: impl 時点では version を書き換えない。
-
-    version = の書き換えは issuesmith-publish（#2766）が決定論的に行う。
-    impl 時点は 0.24.2、publish の Z-bump 後は 0.24.3。
-    """
+def test_issue_2903_project_version_is_0_24_3():
+    """Issue #2903: ghdag v0.39.0 追従に伴い version を 0.24.3 へバンプ。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] == "0.24.2"
+    assert project["version"] == "0.24.3"
 
 
 def test_issue_2702_required_imports_are_available():
