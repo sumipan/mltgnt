@@ -62,11 +62,11 @@ def test_pyproject_pins_ghdag_v0_39_1():
     ) == 0
 
 
-def test_issue_2903_project_version_is_0_24_3():
-    """Issue #2903: ghdag v0.39.0 追従に伴い version を 0.24.3 へバンプ。"""
+def test_issue_2920_project_version_is_0_25_0():
+    """Issue #2920: ghdag v0.39.1 追従に伴い version を 0.25.0 へバンプ。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] == "0.24.3"
+    assert project["version"] == "0.25.0"
 
 
 def test_issue_2702_required_imports_are_available():
