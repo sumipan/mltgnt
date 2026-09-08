@@ -56,16 +56,3 @@ def slack_post_kwargs_from_meta(meta: dict[str, Any]) -> dict[str, str]:
             out[key] = s
     return out
 
-
-def delegate_ack_from_meta(meta: dict[str, Any]) -> str | None:
-    """`slack.delegate_ack` があれば delegate 時の一次応答に使う。"""
-    slack = meta.get("slack")
-    if not isinstance(slack, dict):
-        return None
-    val = slack.get("delegate_ack")
-    if val is None:
-        return None
-    s = str(val).strip()
-    return s or None
-
-
