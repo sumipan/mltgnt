@@ -15,7 +15,6 @@ FM 構造:
         username: str
         icon_emoji: str
         icon_url: str
-        delegate_ack: str
       engine: str
       model: str
       skills: list[str]
@@ -35,7 +34,7 @@ _KNOWN_PERSONA_KEYS: frozenset[str] = frozenset({"name", "aliases", "description
 _KNOWN_OPS_KEYS: frozenset[str] = frozenset({"slack", "engine", "model", "skills"})
 
 _KNOWN_OPS_SLACK_KEYS: frozenset[str] = frozenset(
-    {"username", "icon_emoji", "icon_url", "delegate_ack", "channel",
+    {"username", "icon_emoji", "icon_url", "channel",
      "secondary_channels", "nickname"}
 )
 
@@ -70,7 +69,6 @@ class PersonaFM:
     slack_username: str | None = None
     slack_icon_emoji: str | None = None
     slack_icon_url: str | None = None
-    slack_delegate_ack: str | None = None
     slack_channel: str | None = None
     slack_secondary_channels: list[str] = field(default_factory=list)
     slack_nickname: str | None = None
@@ -115,7 +113,6 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
     slack_username: str | None = None
     slack_icon_emoji: str | None = None
     slack_icon_url: str | None = None
-    slack_delegate_ack: str | None = None
     slack_channel: str | None = None
     slack_secondary_channels: list[str] = []
     slack_nickname: str | None = None
@@ -130,7 +127,6 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
             slack_username = _str_or_none(slack_ops.get("username"))
             slack_icon_emoji = _str_or_none(slack_ops.get("icon_emoji"))
             slack_icon_url = _str_or_none(slack_ops.get("icon_url"))
-            slack_delegate_ack = _str_or_none(slack_ops.get("delegate_ack"))
             slack_channel = _str_or_none(slack_ops.get("channel"))
             _sec_ch = slack_ops.get("secondary_channels")
             slack_secondary_channels = list(_sec_ch) if isinstance(_sec_ch, list) else []
@@ -161,7 +157,6 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
         slack_username=slack_username,
         slack_icon_emoji=slack_icon_emoji,
         slack_icon_url=slack_icon_url,
-        slack_delegate_ack=slack_delegate_ack,
         slack_channel=slack_channel,
         slack_secondary_channels=slack_secondary_channels,
         slack_nickname=slack_nickname,
