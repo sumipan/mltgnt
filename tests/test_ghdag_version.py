@@ -4,6 +4,7 @@ Issue #1697: mltgnt が ghdag v0.28.3 の API に追従していることを検�
 """
 from __future__ import annotations
 
+import ast
 import importlib.metadata
 import inspect
 from pathlib import Path
@@ -51,22 +52,56 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_pins_ghdag_v0_39_1():
-    """Issue #2920: ghdag 依存が v0.39.1 に固定されていること。"""
+def test_pyproject_pins_ghdag_v0_43_0():
+    """Issue #2991: ghdag 依存が v0.43.0 に固定されていること。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.39.1"
+    dependency = "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.43.0"
     assert project["dependencies"].count(dependency) == 1
     assert project["dependencies"].count(
-        "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.39.0"
+        "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.39.1"
     ) == 0
 
 
-def test_issue_2920_project_version_is_0_25_0():
-    """Issue #2920: ghdag v0.39.1 追従に伴い version を 0.25.0 へバンプ。"""
+def test_issue_2991_project_version_is_0_25_1():
+    """Issue #2991: ghdag v0.43.0 追従に伴い version を 0.25.1 へバンプ。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] == "0.25.0"
+    assert project["version"] == "0.25.1"
+
+
+def test_issue_2991_mltgnt_does_not_import_renamed_adapters():
+    """Issue #2991: ghdag v0.43.0 のアダプタリネームは mltgnt に影響しない。
+
+    mltgnt は cursor/codex アダプタを直接 import せず、公開 API のみを使う。
+    """
+    src_root = Path(__file__).resolve().parents[1] / "src"
+    forbidden_modules = {
+        "ghdag.llm.adapters.cursor",
+        "ghdag.llm.adapters.codex",
+    }
+    forbidden_names = {
+        "CursorAdapter",
+        "CodexAdapter",
+    }
+    offenders: list[str] = []
+    for path in src_root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in forbidden_modules:
+                        offenders.append(f"{path.relative_to(src_root)}:{alias.name}")
+            elif isinstance(node, ast.ImportFrom):
+                if node.module in forbidden_modules:
+                    offenders.append(f"{path.relative_to(src_root)}:{node.module}")
+                elif node.module == "ghdag.llm.adapters":
+                    for alias in node.names:
+                        if alias.name in forbidden_names:
+                            offenders.append(
+                                f"{path.relative_to(src_root)}:{alias.name}"
+                            )
+    assert offenders == [], f"renamed adapter imports found: {offenders}"
 
 
 def test_issue_2702_required_imports_are_available():
