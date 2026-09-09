@@ -4,6 +4,7 @@ Issue #1697: mltgnt が ghdag v0.28.3 の API に追従していることを検�
 """
 from __future__ import annotations
 
+import ast
 import importlib.metadata
 import inspect
 from pathlib import Path
@@ -62,11 +63,11 @@ def test_pyproject_pins_ghdag_v0_43_0():
     ) == 0
 
 
-def test_issue_2920_project_version_is_0_25_0():
-    """project version は issuesmith version-bump が決定論的に更新する（実装 LLM は触らない）。"""
+def test_issue_2991_project_version_is_0_25_1():
+    """Issue #2991: ghdag v0.43.0 追従に伴い version を 0.25.1 へバンプ。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] == "0.25.0"
+    assert project["version"] == "0.25.1"
 
 
 def test_issue_2991_mltgnt_does_not_import_renamed_adapters():
@@ -75,23 +76,31 @@ def test_issue_2991_mltgnt_does_not_import_renamed_adapters():
     mltgnt は cursor/codex アダプタを直接 import せず、公開 API のみを使う。
     """
     src_root = Path(__file__).resolve().parents[1] / "src"
-    forbidden = (
+    forbidden_modules = {
         "ghdag.llm.adapters.cursor",
         "ghdag.llm.adapters.codex",
+    }
+    forbidden_names = {
         "CursorAdapter",
         "CodexAdapter",
-    )
+    }
     offenders: list[str] = []
     for path in src_root.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        for token in forbidden:
-            if token in text:
-                # cursor_stream / codex_jsonl は新名・許容。旧モジュール名の部分一致を除外。
-                if token == "ghdag.llm.adapters.cursor" and "cursor_stream" in text:
-                    continue
-                if token == "ghdag.llm.adapters.codex" and "codex_jsonl" in text:
-                    continue
-                offenders.append(f"{path.relative_to(src_root)}:{token}")
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in forbidden_modules:
+                        offenders.append(f"{path.relative_to(src_root)}:{alias.name}")
+            elif isinstance(node, ast.ImportFrom):
+                if node.module in forbidden_modules:
+                    offenders.append(f"{path.relative_to(src_root)}:{node.module}")
+                elif node.module == "ghdag.llm.adapters":
+                    for alias in node.names:
+                        if alias.name in forbidden_names:
+                            offenders.append(
+                                f"{path.relative_to(src_root)}:{alias.name}"
+                            )
     assert offenders == [], f"renamed adapter imports found: {offenders}"
 
 
