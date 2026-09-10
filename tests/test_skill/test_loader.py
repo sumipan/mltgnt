@@ -5,6 +5,7 @@ tests/test_skill/test_loader.py — loader.discover / loader.load のユニッ�
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -200,10 +201,17 @@ consumes:
 """
 
 
+def _write_v1_skill(tmp_path: Path) -> Path:
+    """V1_SKILL_MD を書き、V7 実在チェック用に output.txt も置く（#3041）。"""
+    skill = _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+    (skill.parent / "output.txt").write_text("artifact\n", encoding="utf-8")
+    return skill
+
+
 class TestSkillIoParse:
     def test_skill_io_v1(self, tmp_path: Path) -> None:
         """AC1: skill_io: v1 がパースされる"""
-        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        _write_v1_skill(tmp_path)
         skills = discover([tmp_path])
         meta = skills["v1-skill"]
         assert meta.skill_io == "v1"
@@ -216,7 +224,7 @@ class TestSkillIoParse:
 
     def test_produces_parsed(self, tmp_path: Path) -> None:
         """AC1: produces dict → ProducesSpec"""
-        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        _write_v1_skill(tmp_path)
         meta = discover([tmp_path])["v1-skill"]
         assert meta.produces is not None
         assert meta.produces.content_type == "text/plain"
@@ -232,7 +240,7 @@ class TestSkillIoParse:
 
     def test_consumes_parsed(self, tmp_path: Path) -> None:
         """AC1: consumes list → list[ConsumesSpec]"""
-        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        _write_v1_skill(tmp_path)
         meta = discover([tmp_path])["v1-skill"]
         assert len(meta.consumes) == 1
         assert meta.consumes[0].producer == "upstream-skill"
@@ -240,7 +248,7 @@ class TestSkillIoParse:
 
     def test_input_schema_parsed(self, tmp_path: Path) -> None:
         """AC1: input_schema dict がそのまま設定される"""
-        _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
+        _write_v1_skill(tmp_path)
         meta = discover([tmp_path])["v1-skill"]
         assert meta.input_schema["type"] == "object"
         assert "target" in meta.input_schema["properties"]
@@ -431,3 +439,63 @@ class TestDiscoverKnowledgePaths:
         skills = discover([tmp_path])
         assert skills["review"].knowledge_paths == [single, extra]
 
+
+
+# --- Issue #3041: AC-1 discover → _unresolved/ JSON ---
+
+INVALID_SKILL_IO_MD_FOR_UNRESOLVED = """\
+---
+name: bad-io
+description: bad skill_io
+skill_io: v2
+---
+
+本文
+"""
+
+VALID_LEGACY_AFTER_FIX = """\
+---
+name: bad-io
+description: fixed skill
+---
+
+本文
+"""
+
+
+class TestUnresolved:
+    def test_lint_fail_writes_unresolved_json(self, tmp_path: Path) -> None:
+        """AC-1: lint 失敗時に _unresolved/{name}.json が書き出される"""
+        _write_skill(tmp_path, "bad-io/SKILL.md", INVALID_SKILL_IO_MD_FOR_UNRESOLVED)
+        skills = discover([tmp_path])
+        assert skills == {}
+        diag = tmp_path / "_unresolved" / "bad-io.json"
+        assert diag.is_file()
+        data = json.loads(diag.read_text(encoding="utf-8"))
+        assert data["skill_name"] == "bad-io"
+        assert data["path"] == "bad-io/SKILL.md"
+        assert any(e["id"] == "V4" for e in data["errors"])
+        assert any("V4:" in e["message"] for e in data["errors"])
+
+    def test_lint_pass_deletes_unresolved_json(self, tmp_path: Path) -> None:
+        """AC-1: lint 通過後に _unresolved/{name}.json が削除される"""
+        unresolved = tmp_path / "_unresolved"
+        unresolved.mkdir()
+        stale = unresolved / "bad-io.json"
+        stale.write_text('{"skill_name":"bad-io"}', encoding="utf-8")
+        _write_skill(tmp_path, "bad-io/SKILL.md", VALID_LEGACY_AFTER_FIX)
+        skills = discover([tmp_path])
+        assert "bad-io" in skills
+        assert not stale.exists()
+
+    def test_unresolved_dir_skipped_by_discover(self, tmp_path: Path) -> None:
+        """AC-1: _unresolved/ 配下の SKILL.md は discover スキャンでスキップされる"""
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        _write_skill(
+            tmp_path,
+            "_unresolved/fake-skill/SKILL.md",
+            FULL_SKILL_MD.replace("name: review", "name: fake-skill"),
+        )
+        skills = discover([tmp_path])
+        assert "review" in skills
+        assert "fake-skill" not in skills

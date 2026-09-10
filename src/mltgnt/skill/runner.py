@@ -8,12 +8,37 @@ from __future__ import annotations
 import os
 import re
 from copy import deepcopy
+from pathlib import Path
+
+import yaml
 
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.interfaces.types import ChatInput, Message
 from mltgnt.skill.models import SkillFile, SkillRunResult
 
 _VAR_PATTERN = re.compile(r"\$(\d+|\w+)")
+
+
+def write_result_frontmatter(result_path: Path, run_result: SkillRunResult) -> None:
+    """skill_io: v1 の result ファイル先頭に produces / skill_io frontmatter を書き込む。
+
+    skill_io != "v1" または produces が None の場合は noop。
+    """
+    if run_result.skill_io != "v1" or run_result.produces is None:
+        return
+    if not result_path.is_file():
+        return
+
+    original = result_path.read_text(encoding="utf-8")
+    fm = {
+        "skill_io": "v1",
+        "produces": {
+            "content_type": run_result.produces.content_type,
+            "status_markers": list(run_result.produces.status_markers),
+        },
+    }
+    fm_text = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    result_path.write_text(f"---\n{fm_text}---\n{original}", encoding="utf-8")
 
 
 def _substitute(body: str, arguments: str, persona_name: str, skill_dir: str) -> str:
@@ -86,4 +111,5 @@ def run(
         chat_input=new_input,
         expected_markers=expected_markers,
         skill_io=skill.meta.skill_io,
+        produces=skill.meta.produces,
     )

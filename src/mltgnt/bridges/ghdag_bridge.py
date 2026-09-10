@@ -20,7 +20,8 @@ from ghdag.files import md_read
 from ghdag.pipeline.order import OrderBuilder
 
 from mltgnt.interfaces.loops import StepPoll, StepStatus, StepSubmission
-from mltgnt.skill.models import SkillMatchResult, SkillMeta
+from mltgnt.skill.models import SkillMatchResult, SkillMeta, SkillRunResult
+from mltgnt.skill.runner import write_result_frontmatter
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _PIPELINE_STATUS_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$", re.MULTILINE)
@@ -435,6 +436,7 @@ def enqueue_and_wait(
     request_id: str | None = None,
     permission: str | None = None,
     order_builder: OrderBuilder | None = None,
+    run_result: SkillRunResult | None = None,
 ) -> tuple[bool, str]:
     """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
 
@@ -446,6 +448,7 @@ def enqueue_and_wait(
         idempotency_key: exec.jsonl に記録する冪等性キー
         jobs_dir: order/result/exec.jsonl の置き場（jobs/）
         exec_done_dir: 完了マーカー（jobs/done/<uuid>）の置き場
+        run_result: skill runner の結果。skill_io=v1 時に result frontmatter を書き込む
 
     Returns:
         (True, result_content) — 成功時
@@ -502,6 +505,8 @@ def enqueue_and_wait(
             content = md_read(result_filename, repo_root=jobs_dir).content.strip()
         except OSError:
             content = ""
+        if run_result is not None and result_filename:
+            write_result_frontmatter(jobs_dir / result_filename, run_result)
         return True, content
 
     return False, f"{status}: {first_line}"

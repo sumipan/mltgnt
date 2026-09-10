@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -23,6 +24,39 @@ from mltgnt.skill.models import (
 )
 
 _log = logging.getLogger(__name__)
+
+_VIOLATION_ID_RE = re.compile(r"^(V\d+)")
+
+
+def _write_unresolved_diagnosis(
+    base: Path,
+    skill_name: str,
+    skill_path: Path,
+    unresolved_errors: list[str],
+) -> None:
+    """lint 失敗スキルの診断 JSON を `{base}/_unresolved/{skill_name}.json` に書き出す。"""
+    unresolved_dir = base / "_unresolved"
+    unresolved_dir.mkdir(exist_ok=True)
+    errors = []
+    for msg in unresolved_errors:
+        m = _VIOLATION_ID_RE.match(msg)
+        errors.append({"id": m.group(1) if m else "", "message": msg})
+    payload = {
+        "skill_name": skill_name,
+        "path": str(skill_path.relative_to(base)),
+        "errors": errors,
+    }
+    (unresolved_dir / f"{skill_name}.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _clear_unresolved_diagnosis(base: Path, skill_name: str) -> None:
+    """解消済みスキルの診断 JSON を削除する。"""
+    diag = base / "_unresolved" / f"{skill_name}.json"
+    if diag.is_file():
+        diag.unlink()
 
 
 def build_meta(fm: dict, path: Path) -> SkillMeta:
@@ -151,7 +185,12 @@ def discover(
             if unresolved_errors:
                 for err in unresolved_errors:
                     _log.warning("skill lint failed: %s: %s", skill_file, err)
+                _write_unresolved_diagnosis(
+                    base, meta.name, skill_file, unresolved_errors
+                )
                 continue
+
+            _clear_unresolved_diagnosis(base, meta.name)
 
             for err in errors:
                 _log.warning("skill lint warning: %s: %s", skill_file, err)
