@@ -25,8 +25,8 @@ from mltgnt.skill.models import (
 _log = logging.getLogger(__name__)
 
 
-def _build_meta(fm: dict, path: Path) -> SkillMeta:
-    """フロントマター dict から SkillMeta を構築する。"""
+def build_meta(fm: dict, path: Path) -> SkillMeta:
+    """フロントマター dict から SkillMeta を構築する（公開 API）。"""
     name: str = fm.get("name") or path.parent.name
     description: str | None = fm.get("description")
     if not description:
@@ -108,6 +108,9 @@ def _build_meta(fm: dict, path: Path) -> SkillMeta:
     )
 
 
+_build_meta = build_meta  # 後方互換 alias
+
+
 def discover(
     paths: list[Path],
     entry_file: str = "SKILL.md",
@@ -132,7 +135,7 @@ def discover(
                 continue
             try:
                 md = md_read(str(skill_file.relative_to(base)), repo_root=base)
-                meta = _build_meta(md.frontmatter, skill_file)
+                meta = build_meta(md.frontmatter, skill_file)
             except Exception as e:
                 _log.warning("パースエラー（スキップ）: %s: %s", skill_file, e)
                 continue
@@ -241,5 +244,5 @@ def load(meta: SkillMeta) -> SkillFile:
         raise FileNotFoundError(f"SKILL.md が見つかりません: {path}")
 
     md = md_read(path.name, repo_root=path.parent)
-    loaded_meta = _build_meta(md.frontmatter, path)
+    loaded_meta = build_meta(md.frontmatter, path)
     return SkillFile(meta=loaded_meta, body=md.content)

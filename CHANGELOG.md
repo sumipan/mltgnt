@@ -4,7 +4,13 @@
 
 ### Added
 
+- **DagHooks `on_task_cancelled` / `on_task_progress`**（#3023）: `MltgntHooks` が ghdag v0.40.0 以降の Protocol 12 メソッドに準拠。cancel / stream-json 進捗を `jobs/audit.jsonl` に記録する
+- **`mltgnt.skill.loader.build_meta` 公開**（#3023）: フロントマター→`SkillMeta` 構築を公開 API 化。`_build_meta` は後方互換 alias
 - **スケジューラ skill アクションのコンテキスト注入**（#3021）: `skill/runner.run(extra_context=...)` を追加。`run_skill_action` がスキルの `knowledge.md`（末尾 N パラグラフ）と `chat/memory/<persona>.jsonl`（末尾バイト）を読みプロンプトへ注入し、`jobs/audit.jsonl` に `context_injection` を記録する
+
+### Changed
+
+- **`mltgnt.memory` から `_tail_utf8_bytes` を非公開化**（#3023）: package export は `tail_utf8_bytes` のみ。実装本体は `memory.api` に残す
 
 ## v0.20.0
 

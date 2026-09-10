@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class MltgntHooks:
-    """mltgnt 用 DagHooks 実装。DagHooks Protocol の全 10 メソッドを実装する。"""
+    """mltgnt 用 DagHooks 実装。DagHooks Protocol の全 12 メソッドを実装する。"""
 
     def __init__(self, audit_path: Path, *, source: str = "mltgnt-scheduler") -> None:
         self._audit_path = audit_path
@@ -28,6 +28,27 @@ class MltgntHooks:
             status="running",
             engine=self._source,
             model=task.model,
+        )
+
+    def on_task_cancelled(self, uuid: str, task: "Task") -> None:
+        write_task_exit_audit(
+            self._audit_path,
+            event_type="task_cancelled",
+            uuid=uuid,
+            status="cancelled",
+            engine=self._source,
+            model=task.model,
+        )
+
+    def on_task_progress(self, uuid: str, event: dict) -> None:
+        write_task_exit_audit(
+            self._audit_path,
+            event_type="task_progress",
+            uuid=uuid,
+            status="progress",
+            engine=self._source,
+            model=None,
+            correlation_id=event.get("type"),
         )
 
     def on_task_success(self, uuid: str, task: "Task", metrics: "TaskMetrics") -> None:

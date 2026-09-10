@@ -13,7 +13,6 @@ from mltgnt.memory.api import (
     _ensure_jsonl,
     _resolve_memory_dir,
     _scan_tail_for_dedupe_key,
-    _tail_utf8_bytes,
     append_memory_entry,
     memory_file_path,
     persona_memory_lock,
@@ -63,6 +62,5 @@ __all__ = [
     "_ensure_jsonl",
     "_resolve_memory_dir",
     "_scan_tail_for_dedupe_key",
-    "_tail_utf8_bytes",
     "_search_and_score",
 ]

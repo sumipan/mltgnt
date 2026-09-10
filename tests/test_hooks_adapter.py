@@ -179,17 +179,75 @@ def _make_metrics(uuid: str = "t1", status: str = "success") -> TaskMetrics:
     )
 
 
+# AC-4: ghdag on_task_progress に渡る event の実測サンプル（CLAUDE.md §10/§11）
+# claude: jobs/events/9c3d8e05-...jsonl 先頭行（model=claude-sonnet-4-6）
+# cursor: ghdag tests/fixtures/cursor_stream_success.jsonl 先頭行
+# codex: ghdag tests/fixtures/codex_jsonl_success.jsonl 先頭行
+_PROGRESS_EVENT_CLAUDE = {
+    "type": "system",
+    "subtype": "init",
+    "apiKeySource": "none",
+    "cwd": "/Users/ngys/Github/nexus",
+    "session_id": "886636eb-72de-4272-835f-9f762a49a3d4",
+    "model": "claude-sonnet-4-6",
+    "claude_code_version": "2.1.260",
+    "permissionMode": "bypassPermissions",
+}
+_PROGRESS_EVENT_CURSOR = {
+    "type": "system",
+    "subtype": "init",
+    "session_id": "5e7ca003-6637-4c42-b168-e2a4c05f1c8c",
+    "model": "Auto",
+    "cwd": "/tmp/fixture",
+}
+_PROGRESS_EVENT_CODEX = {
+    "type": "thread.started",
+    "thread_id": "01a085df-dac8-7060-8452-030f649c1b94",
+}
+
+
 class TestMltgntHooks:
     def test_protocol_compliance(self, tmp_path):
-        """AC-1: DagHooks Protocol の全 10 メソッドが実装されている（structural typing チェック）。"""
+        """AC-1: DagHooks Protocol の全 12 メソッドが実装されている（structural typing チェック）。"""
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         required = [
             "on_task_start", "on_task_success", "on_task_failure",
             "on_task_rejected", "on_task_dep_failed", "on_task_empty_result",
+            "on_task_cancelled", "on_task_progress",
             "on_shutdown", "check_rejected", "check_pipeline_status", "check_promote_target",
         ]
+        assert len(required) == 12
         for method in required:
             assert callable(getattr(hooks, method, None)), f"{method} が実装されていない"
+
+    def test_on_task_cancelled_writes_cancelled(self, tmp_path):
+        """AC-1: on_task_cancelled → event_type=task_cancelled + status=cancelled。"""
+        audit_path = tmp_path / "audit.jsonl"
+        hooks = MltgntHooks(audit_path, source="mltgnt-scheduler")
+        task = Task(uuid="t1", command="echo hello", model="claude-sonnet-4-6")
+        hooks.on_task_cancelled("t1", task)
+        record = json.loads(audit_path.read_text().splitlines()[0])
+        assert record["event_type"] == "task_cancelled"
+        assert record["status"] == "cancelled"
+        assert record["engine"] == "mltgnt-scheduler"
+        assert record["model"] == "claude-sonnet-4-6"
+
+    @pytest.mark.parametrize(
+        "event",
+        [_PROGRESS_EVENT_CLAUDE, _PROGRESS_EVENT_CURSOR, _PROGRESS_EVENT_CODEX],
+        ids=["claude", "cursor", "codex"],
+    )
+    def test_on_task_progress_writes_progress(self, tmp_path, event):
+        """AC-4: 3 エンジン実データ event を on_task_progress に渡し audit が書ける。"""
+        audit_path = tmp_path / "audit.jsonl"
+        hooks = MltgntHooks(audit_path, source="mltgnt-scheduler")
+        hooks.on_task_progress("t1", event)
+        record = json.loads(audit_path.read_text().splitlines()[0])
+        assert record["event_type"] == "task_progress"
+        assert record["status"] == "progress"
+        assert record["engine"] == "mltgnt-scheduler"
+        assert record.get("model") is None
+        assert record["correlation_id"] == event["type"]
 
     def test_on_task_start_writes_task_started(self, tmp_path):
         """AC-1: on_task_start → audit_path に event_type=task_started のレコードが 1 行追記される。"""
@@ -326,3 +384,18 @@ class TestLayerBoundaryReExports:
     def test_bridges_create_audit_writer_importable(self) -> None:
         assert callable(create_audit_writer)
         assert callable(create_audit_writer_from_bridges)
+
+
+class TestBuildMetaPublicApi:
+    """AC-2: build_meta 公開と _build_meta 後方互換 alias。"""
+
+    def test_build_meta_importable_and_alias(self, tmp_path) -> None:
+        from mltgnt.skill.loader import _build_meta, build_meta
+
+        assert callable(build_meta)
+        assert _build_meta is build_meta
+        path = tmp_path / "demo" / "SKILL.md"
+        path.parent.mkdir()
+        meta = build_meta({"description": "demo skill"}, path)
+        assert meta.name == "demo"
+        assert meta.description == "demo skill"

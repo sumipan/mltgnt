@@ -44,7 +44,6 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "_resolve_memory_dir",
         "_scan_tail_for_dedupe_key",
         "_search_and_score",
-        "_tail_utf8_bytes",
         "append_memory_entry",
         "assemble_entries_text",
         "compact",

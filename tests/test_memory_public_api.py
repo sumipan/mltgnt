@@ -50,10 +50,21 @@ def test_all_symbols_in_dunder_all() -> None:
 # ---------------------------------------------------------------------------
 
 def test_tail_utf8_bytes_equivalent_to_private() -> None:
-    """`tail_utf8_bytes("あいうえお", 6)` が `_tail_utf8_bytes("あいうえお", 6)` と同じ結果を返す。"""
+    """`tail_utf8_bytes` は api 内の `_tail_utf8_bytes` と同じ結果を返す（#3023: package からは非公開）。"""
     from mltgnt.memory import tail_utf8_bytes
-    from mltgnt.memory import _tail_utf8_bytes
+    from mltgnt.memory.api import _tail_utf8_bytes
     assert tail_utf8_bytes("あいうえお", 6) == _tail_utf8_bytes("あいうえお", 6)
+
+
+def test_private_tail_utf8_bytes_not_exported_from_package() -> None:
+    """AC-3: `_tail_utf8_bytes` は mltgnt.memory の export から除去されている。"""
+    import pytest
+
+    import mltgnt.memory as m
+
+    assert "_tail_utf8_bytes" not in m.__all__
+    with pytest.raises(ImportError):
+        from mltgnt.memory import _tail_utf8_bytes  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
