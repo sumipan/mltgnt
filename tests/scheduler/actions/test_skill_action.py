@@ -8,8 +8,6 @@ from unittest.mock import patch
 from mltgnt.scheduler.actions.skill import (
     _compute_write_diff,
     _determine_exit_code,
-    _read_knowledge,
-    _read_memory,
     _snapshot_writes,
     run_skill_action,
 )
@@ -429,7 +427,9 @@ class TestSideEffectAuditIntegration:
 
 
 def _write_knowledge(skill_meta: SkillMeta, text: str) -> None:
-    (skill_meta.path.parent / "knowledge.md").write_text(text, encoding="utf-8")
+    path = skill_meta.path.parent / "knowledge.md"
+    path.write_text(text, encoding="utf-8")
+    skill_meta.knowledge_paths = [path]
 
 
 def _write_memory(repo_root: Path, persona_name: str, text: str) -> None:
@@ -446,34 +446,6 @@ def _context_injection_records(audit_path: Path) -> list[dict]:
         for line in audit_path.read_text().splitlines()
         if line.strip() and json.loads(line).get("event_type") == "context_injection"
     ]
-
-
-class TestReadKnowledge:
-    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
-        skill_file = tmp_path / "skills" / "x" / "SKILL.md"
-        skill_file.parent.mkdir(parents=True)
-        skill_file.write_text("body")
-        assert _read_knowledge(skill_file, 5) == ""
-
-    def test_returns_trailing_paragraphs(self, tmp_path: Path) -> None:
-        skill_file = tmp_path / "skills" / "x" / "SKILL.md"
-        skill_file.parent.mkdir(parents=True)
-        skill_file.write_text("body")
-        (skill_file.parent / "knowledge.md").write_text(
-            "p1\n\np2\n\np3\n\np4\n\np5\n\np6",
-            encoding="utf-8",
-        )
-        assert _read_knowledge(skill_file, 3) == "p4\n\np5\n\np6"
-
-
-class TestReadMemory:
-    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
-        assert _read_memory(tmp_path, "タチコマ", 4096) == ""
-
-    def test_returns_trailing_bytes(self, tmp_path: Path) -> None:
-        _write_memory(tmp_path, "タチコマ", "abcdefghij")
-        result = _read_memory(tmp_path, "タチコマ", 4)
-        assert result == "ghij"
 
 
 class TestContextInjection:

@@ -63,11 +63,11 @@ def test_pyproject_pins_ghdag_v0_43_0():
     ) == 0
 
 
-def test_issue_3023_project_version_is_0_26_0():
-    """Issue #3023: DagHooks cancel/progress 公開に伴い version を 0.26.0 へバンプ。"""
+def test_issue_3030_project_version_is_0_27_0():
+    """Issue #3030: knowledge index / build_extra_context 公開に伴い version を 0.27.0 へバンプ。"""
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    assert project["version"] == "0.26.0"
+    assert project["version"] == "0.27.0"
 
 
 def test_issue_2991_mltgnt_does_not_import_renamed_adapters():

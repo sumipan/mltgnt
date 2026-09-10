@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from mltgnt.skill._registry import SkillRegistry
+from mltgnt.skill.context import build_extra_context
 from mltgnt.skill.lint import lint_skill_meta
 from mltgnt.skill.loader import discover, load
 from mltgnt.skill.matcher import match
@@ -31,6 +32,7 @@ __all__ = [
     "match",
     "resolve_skill",
     "run",
+    "build_extra_context",
     "SkillMeta",
     "SkillFile",
     "SkillRegistry",

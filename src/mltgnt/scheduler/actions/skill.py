@@ -77,36 +77,24 @@ def _write_side_effect_audit(
         print(f"side_effect_audit: write failed: {e}", file=sys.stderr)
 
 
-def _read_knowledge(skill_path: Path, knowledge_count: int) -> str:
-    """スキルディレクトリの knowledge.md から末尾 N パラグラフを読む。"""
-    knowledge_file = skill_path.parent / "knowledge.md"
-    if not knowledge_file.is_file():
-        return ""
-    text = knowledge_file.read_text(encoding="utf-8")
-    paragraphs = [p for p in text.split("\n\n") if p.strip()]
-    if knowledge_count <= 0:
-        return ""
-    return "\n\n".join(paragraphs[-knowledge_count:])
-
-
-def _read_memory(repo_root: Path, persona_name: str, max_bytes: int) -> str:
-    """ペルソナ記憶ファイルの末尾 max_bytes を読む。"""
-    memory_file = repo_root / "chat" / "memory" / f"{persona_name}.jsonl"
-    if not memory_file.is_file():
-        return ""
-    if max_bytes <= 0:
-        return ""
-    file_size = memory_file.stat().st_size
-    start = max(0, file_size - max_bytes)
-    with memory_file.open("rb") as f:
-        f.seek(start)
-        data = f.read(max_bytes)
-    text = data.decode("utf-8", errors="replace")
-    if start > 0:
-        nl = text.find("\n")
-        if nl != -1:
-            text = text[nl + 1 :]
-    return text.lstrip("\n")
+def _audit_stats_from_extra_context(extra_context: str | None) -> tuple[int, int]:
+    """extra_context から audit 用の knowledge パラグラフ数と memory バイト数を算出する。"""
+    if not extra_context:
+        return 0, 0
+    knowledge_count = 0
+    memory_bytes = 0
+    remainder = extra_context
+    mem_header = "### 記憶（末尾）\n\n"
+    if mem_header in remainder:
+        before, memory_text = remainder.split(mem_header, 1)
+        memory_bytes = len(memory_text.encode("utf-8"))
+        remainder = before.rstrip("\n")
+    if remainder.startswith("### knowledge"):
+        parts = remainder.split("\n\n", 1)
+        if len(parts) == 2:
+            knowledge_text = parts[1]
+            knowledge_count = len([p for p in knowledge_text.split("\n\n") if p.strip()])
+    return knowledge_count, memory_bytes
 
 
 def _write_context_injection_audit(
@@ -177,6 +165,7 @@ def run_skill_action(
         return False, f"スキルが見つかりません: {skill_name}"
 
     from mltgnt.skill import load
+    from mltgnt.skill.context import build_extra_context
 
     skill_file = load(meta)
 
@@ -185,15 +174,16 @@ def run_skill_action(
 
     knowledge_count_cfg = aa.get("knowledge_count", 5)
     memory_max_bytes_cfg = aa.get("memory_max_bytes", 4096)
-    knowledge_text = _read_knowledge(skill_file.meta.path, knowledge_count_cfg)
-    memory_text = _read_memory(repo_root, persona_name, memory_max_bytes_cfg)
-
-    parts: list[str] = []
-    if knowledge_text:
-        parts.append(f"### knowledge（直近 {knowledge_count_cfg} 件）\n\n{knowledge_text}")
-    if memory_text:
-        parts.append(f"### 記憶（末尾）\n\n{memory_text}")
-    extra_context: str | None = "\n\n".join(parts) if parts else None
+    extra_context = build_extra_context(
+        meta,
+        repo_root,
+        persona_name,
+        knowledge_count=knowledge_count_cfg,
+        memory_max_bytes=memory_max_bytes_cfg,
+    )
+    knowledge_count_audit, memory_bytes_audit = _audit_stats_from_extra_context(
+        extra_context
+    )
 
     from mltgnt.interfaces.types import ChatInput, Message
     from mltgnt.skill import runner as skill_runner
@@ -250,12 +240,8 @@ def run_skill_action(
         repo_root / "jobs" / "audit.jsonl",
         skill_name=skill_name,
         job_id=job.id,
-        knowledge_count=(
-            len([p for p in knowledge_text.split("\n\n") if p.strip()])
-            if knowledge_text
-            else 0
-        ),
-        memory_bytes=len(memory_text.encode("utf-8")) if memory_text else 0,
+        knowledge_count=knowledge_count_audit,
+        memory_bytes=memory_bytes_audit,
     )
 
     if ok and aa.get("enable_fanout", False):
