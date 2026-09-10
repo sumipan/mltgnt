@@ -393,3 +393,41 @@ class TestDiscoverLintIntegration:
         assert "review" in skills
         assert skills["review"].skill_io == "legacy"
 
+
+# --- Issue #3030: discover 時 knowledge index ---
+
+class TestDiscoverKnowledgePaths:
+    def test_discover_knowledge_md(self, tmp_path: Path) -> None:
+        skill = _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        knowledge = skill.parent / "knowledge.md"
+        knowledge.write_text("k1\n\nk2", encoding="utf-8")
+        skills = discover([tmp_path])
+        assert skills["review"].knowledge_paths == [knowledge]
+
+    def test_discover_knowledge_subdir(self, tmp_path: Path) -> None:
+        skill = _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        sub = skill.parent / "knowledge"
+        sub.mkdir()
+        a = sub / "a.md"
+        b = sub / "b.md"
+        a.write_text("a", encoding="utf-8")
+        b.write_text("b", encoding="utf-8")
+        skills = discover([tmp_path])
+        assert skills["review"].knowledge_paths == [a, b]
+
+    def test_discover_no_knowledge(self, tmp_path: Path) -> None:
+        _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        skills = discover([tmp_path])
+        assert skills["review"].knowledge_paths == []
+
+    def test_discover_both_patterns(self, tmp_path: Path) -> None:
+        skill = _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
+        single = skill.parent / "knowledge.md"
+        single.write_text("root", encoding="utf-8")
+        sub = skill.parent / "knowledge"
+        sub.mkdir()
+        extra = sub / "extra.md"
+        extra.write_text("extra", encoding="utf-8")
+        skills = discover([tmp_path])
+        assert skills["review"].knowledge_paths == [single, extra]
+

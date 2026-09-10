@@ -165,6 +165,16 @@ def discover(
                 )
                 continue
 
+            skill_dir = skill_file.parent
+            knowledge_paths: list[Path] = []
+            single = skill_dir / "knowledge.md"
+            if single.is_file():
+                knowledge_paths.append(single)
+            subdir = skill_dir / "knowledge"
+            if subdir.is_dir():
+                knowledge_paths.extend(sorted(subdir.glob("*.md")))
+            meta.knowledge_paths = knowledge_paths
+
             result[meta.name] = meta
 
     return result

@@ -99,6 +99,7 @@ class SkillMeta:
     produces: ProducesSpec | None = None
     consumes: list[ConsumesSpec] = field(default_factory=list)
     side_effects: SideEffectsSpec | None = None
+    knowledge_paths: list[Path] = field(default_factory=list)
 
 
 @dataclass
