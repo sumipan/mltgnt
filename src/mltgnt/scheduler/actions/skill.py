@@ -202,6 +202,25 @@ def run_skill_action(
     prompt = next(m["content"] for m in run_output.chat_input.messages if m["role"] == "system")
     resolved_model = run_output.chat_input.model
 
+    # enable_pipeline 優先（fanout との同時指定時も pipeline を取る）
+    if aa.get("enable_pipeline", False):
+        return _run_pipeline_action(
+            job,
+            argv_str=argv_str,
+            engine=engine,
+            resolved_model=resolved_model,
+            persona=persona,
+            skill_registry=skill_registry,
+            repo_root=repo_root,
+            default_tz=default_tz,
+            knowledge_count_cfg=knowledge_count_cfg,
+            memory_max_bytes_cfg=memory_max_bytes_cfg,
+            knowledge_count_audit=knowledge_count_audit,
+            memory_bytes_audit=memory_bytes_audit,
+            skill_name=skill_name,
+            permission=aa.get("permission"),
+        )
+
     if aa.get("enable_fanout", False):
         prompt = prompt + _FANOUT_PROMPT_SUFFIX
 
@@ -274,3 +293,99 @@ def run_skill_action(
     if run_output.exit_code == ExitStatus.INVALID_STATE:
         return False, "invalid_state"
     return False, msg
+
+
+def _run_pipeline_action(
+    job: ScheduleJob,
+    *,
+    argv_str: str,
+    engine: str,
+    resolved_model: str | None,
+    persona: Any,
+    skill_registry: dict[str, Any],
+    repo_root: Path,
+    default_tz: str,
+    knowledge_count_cfg: int,
+    memory_max_bytes_cfg: int,
+    knowledge_count_audit: int,
+    memory_bytes_audit: int,
+    skill_name: str,
+    permission: str | None,
+) -> tuple[bool, str]:
+    """enable_pipeline: match_pipeline → compose → typecheck → enqueue_dag。"""
+    import asyncio
+
+    from mltgnt.bridges.ghdag_bridge import compose_pipeline, enqueue_dag, typecheck_dag
+    from mltgnt.interfaces.types import ChatInput, Message
+    from mltgnt.skill import load
+    from mltgnt.skill import runner as skill_runner
+    from mltgnt.skill.context import build_extra_context
+    from mltgnt.skill.matcher import match_pipeline
+
+    skills = skill_registry
+    persona_skills = persona.fm.skills or None
+    match_results = asyncio.run(
+        match_pipeline(
+            argv_str,
+            skills,
+            persona_skills=persona_skills,
+        )
+    )
+    steps = compose_pipeline(
+        match_results, engine=engine, model=resolved_model
+    )
+
+    # 各段のプロンプトをスキル本文 + ペルソナで合成
+    for step, mr in zip(steps, match_results):
+        assert mr.decisive is not None
+        skill_file = load(mr.decisive)
+        extra_context = build_extra_context(
+            mr.decisive,
+            repo_root,
+            persona.name,
+            knowledge_count=knowledge_count_cfg,
+            memory_max_bytes=memory_max_bytes_cfg,
+        )
+        chat_input = ChatInput(
+            source="scheduler",
+            session_key=job.id,
+            messages=[Message(role="user", content=mr.arguments or "")],
+            persona_name=persona.name,
+            model=resolved_model,
+        )
+        run_out = skill_runner.run(
+            skill_file, persona, mr.arguments, chat_input, extra_context=extra_context
+        )
+        step.prompt = next(
+            m["content"] for m in run_out.chat_input.messages if m["role"] == "system"
+        )
+        if run_out.chat_input.model is not None:
+            step.model = run_out.chat_input.model
+
+    typecheck_dag(steps, skills)
+
+    fired_at = datetime.now(ZoneInfo(default_tz))
+    request_id = str(uuid.uuid4())
+    dag_results = enqueue_dag(
+        steps,
+        timeout=job.timeout_seconds or 120,
+        idempotency_key=f"scheduler:{job.id}:{fired_at.isoformat()}:pipeline",
+        jobs_dir=repo_root / "jobs",
+        exec_done_dir=repo_root / "jobs" / "done",
+        request_id=request_id,
+        skills=skills,
+        permission=permission,
+    )
+
+    _write_context_injection_audit(
+        repo_root / "jobs" / "audit.jsonl",
+        skill_name=skill_name,
+        job_id=job.id,
+        knowledge_count=knowledge_count_audit,
+        memory_bytes=memory_bytes_audit,
+    )
+
+    for i, (step_ok, step_msg) in enumerate(dag_results):
+        if not step_ok:
+            return False, f"pipeline: step '{steps[i].id}' failed: {step_msg}"
+    return True, dag_results[-1][1] if dag_results else ""

@@ -4,6 +4,7 @@
 
 ### Added
 
+- **スキルパイプライン合成器 `compose_pipeline`**（#3031）: `list[SkillMatchResult]` → 直線 `DagStep` 列。`scheduler` の `enable_pipeline: true` で `match_pipeline → compose_pipeline → typecheck_dag → enqueue_dag` を配線。`consumes.producer` 不一致は compose 時点で `SkillIOTypeError`（legacy はスキップ）。`enqueue_dag` は upstream result から `PIPELINE_STATUS:` を抽出し `{step_id}_pipeline_status` を下流へ注入、`INVALID_STATE` 時は downstream を投入しない
 - **DagHooks `on_task_cancelled` / `on_task_progress`**（#3023）: `MltgntHooks` が ghdag v0.40.0 以降の Protocol 12 メソッドに準拠。cancel / stream-json 進捗を `jobs/audit.jsonl` に記録する
 - **`mltgnt.skill.loader.build_meta` 公開**（#3023）: フロントマター→`SkillMeta` 構築を公開 API 化。`_build_meta` は後方互換 alias
 - **スケジューラ skill アクションのコンテキスト注入**（#3021）: `skill/runner.run(extra_context=...)` を追加。`run_skill_action` がスキルの `knowledge.md`（末尾 N パラグラフ）と `chat/memory/<persona>.jsonl`（末尾バイト）を読みプロンプトへ注入し、`jobs/audit.jsonl` に `context_injection` を記録する
