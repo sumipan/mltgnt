@@ -23,13 +23,14 @@ from mltgnt.bridges.ghdag_bridge import (
     _loops_audit_context,
     _order_to_result_filename,
     _scheduler_audit_context,
+    compose_pipeline,
     enqueue_and_wait,
     enqueue_dag,
     enqueue_step,
     poll_step,
     typecheck_dag,
 )
-from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMeta
+from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMatchResult, SkillMeta
 
 # ---------------------------------------------------------------------------
 # bridges/__init__ — パッケージ re-export（AC1, AC2, AC7）
@@ -1598,6 +1599,201 @@ class TestFanoutPermissionInheritance:
 
         assert len(results) == 1
         assert results[0][0] is True
+
+
+# ---------------------------------------------------------------------------
+# compose_pipeline / PIPELINE_STATUS 伝搬（Issue #3031）
+# ---------------------------------------------------------------------------
+
+
+def _match_result(
+    meta: SkillMeta | None,
+    *,
+    arguments: str = "",
+    rationale: str = "slash:x",
+) -> SkillMatchResult:
+    return SkillMatchResult(
+        decisive=meta,
+        candidates=[meta] if meta is not None else [],
+        rationale=rationale if meta is not None else "none",
+        arguments=arguments,
+    )
+
+
+class TestComposePipeline:
+    """AC-1 / AC-3: match_results → DagStep 列の合成。"""
+
+    def test_linear_pipe_depends_and_step_ids(self):
+        upstream = _skill_meta(
+            "research",
+            produces=ProducesSpec(content_type="text/markdown"),
+        )
+        downstream = _skill_meta(
+            "summarize",
+            consumes=[ConsumesSpec(producer="research", content_type="text/markdown")],
+        )
+        steps = compose_pipeline(
+            [
+                _match_result(upstream, arguments="topic"),
+                _match_result(downstream, arguments=""),
+            ],
+            engine="cursor",
+            model="gpt-5",
+        )
+        assert len(steps) == 2
+        assert steps[0].id == "pipe_0_research"
+        assert steps[0].skill_name == "research"
+        assert steps[0].depends == []
+        assert steps[0].prompt == "topic"
+        assert steps[0].engine == "cursor"
+        assert steps[0].model == "gpt-5"
+        assert steps[1].id == "pipe_1_summarize"
+        assert steps[1].skill_name == "summarize"
+        assert steps[1].depends == ["pipe_0_research"]
+        assert steps[1].engine == "cursor"
+
+    @pytest.mark.parametrize("engine", ["claude", "cursor", "codex"])
+    def test_engine_propagated_to_all_steps(self, engine: str):
+        a = _skill_meta("a", produces=ProducesSpec())
+        b = _skill_meta(
+            "b",
+            consumes=[ConsumesSpec(producer="a")],
+        )
+        steps = compose_pipeline(
+            [_match_result(a), _match_result(b)],
+            engine=engine,
+        )
+        assert all(s.engine == engine for s in steps)
+
+    def test_decisive_none_raises_value_error(self):
+        with pytest.raises(ValueError, match="decisive"):
+            compose_pipeline(
+                [_match_result(None)],
+                engine="claude",
+            )
+
+    def test_producer_mismatch_raises_skill_io_type_error(self):
+        upstream = _skill_meta(
+            "research",
+            produces=ProducesSpec(content_type="text/markdown"),
+        )
+        downstream = _skill_meta(
+            "summarize",
+            consumes=[
+                ConsumesSpec(producer="other-skill", content_type="text/markdown")
+            ],
+        )
+        with pytest.raises(SkillIOTypeError, match="producer"):
+            compose_pipeline(
+                [_match_result(upstream), _match_result(downstream)],
+                engine="claude",
+            )
+
+    def test_legacy_downstream_skips_producer_check(self):
+        upstream = _skill_meta(
+            "research",
+            produces=ProducesSpec(content_type="text/markdown"),
+        )
+        downstream = _skill_meta(
+            "legacy-sum",
+            skill_io="legacy",
+            consumes=[
+                ConsumesSpec(producer="other-skill", content_type="text/markdown")
+            ],
+        )
+        steps = compose_pipeline(
+            [_match_result(upstream), _match_result(downstream)],
+            engine="claude",
+        )
+        assert steps[1].depends == ["pipe_0_research"]
+
+
+class TestEnqueueDagPipelineStatus:
+    """AC-2: PIPELINE_STATUS 抽出・注入・INVALID_STATE で downstream 抑止。"""
+
+    def test_pipeline_status_injected_into_downstream_context(self, tmp_path):
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        captured_contexts: list[dict] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, step_list, base_context=None, **kwargs):
+            captured_contexts.append(dict(base_context or {}))
+            return original_submit(self_api, step_list, base_context=base_context, **kwargs)
+
+        mock_md_a = MagicMock()
+        mock_md_a.content = "分析結果\nPIPELINE_STATUS: OK\n"
+        mock_md_b = MagicMock()
+        mock_md_b.content = "要約"
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, side_effect=[mock_md_a, mock_md_b]),
+        ):
+            results = enqueue_dag(
+                steps=[
+                    DagStep(id="step_a", prompt="P_a", engine="cursor"),
+                    DagStep(
+                        id="step_b",
+                        prompt="P_b",
+                        engine="cursor",
+                        depends=["step_a"],
+                    ),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:status:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        assert results[0][0] is True
+        assert results[1][0] is True
+        assert captured_contexts[1]["step_a_pipeline_status"] == "OK"
+        assert "step_a_result" in captured_contexts[1]
+
+    def test_invalid_state_blocks_downstream(self, tmp_path):
+        from ghdag.pipeline import LLMPipelineAPI
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        submitted_ids: list[str] = []
+        original_submit = LLMPipelineAPI.submit
+
+        def capture_submit(self_api, step_list, **kwargs):
+            for s in step_list:
+                submitted_ids.append(s.id)
+            return original_submit(self_api, step_list, **kwargs)
+
+        mock_md = MagicMock()
+        mock_md.content = "blocked\nPIPELINE_STATUS: INVALID_STATE\n"
+
+        with (
+            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=mock_md),
+        ):
+            results = enqueue_dag(
+                steps=[
+                    DagStep(id="step_a", prompt="P_a", engine="cursor"),
+                    DagStep(
+                        id="step_b",
+                        prompt="P_b",
+                        engine="cursor",
+                        depends=["step_a"],
+                    ),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:invalid:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        assert "step_a" in submitted_ids
+        assert "step_b" not in submitted_ids
+        assert results[0][0] is False
+        assert "INVALID_STATE" in results[0][1]
+        assert results[1] == (False, "dependency failed")
 
 
 # ---------------------------------------------------------------------------

@@ -20,9 +20,10 @@ from ghdag.files import md_read
 from ghdag.pipeline.order import OrderBuilder
 
 from mltgnt.interfaces.loops import StepPoll, StepStatus, StepSubmission
-from mltgnt.skill.models import SkillMeta
+from mltgnt.skill.models import SkillMatchResult, SkillMeta
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_PIPELINE_STATUS_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$", re.MULTILINE)
 
 
 @dataclass
@@ -40,6 +41,66 @@ class DagStep:
 
 class SkillIOTypeError(TypeError):
     """compose-time typecheck で検出されたパイプ型不整合。"""
+
+
+def _extract_pipeline_status(content: str) -> str | None:
+    """result content から PIPELINE_STATUS: <value> を抽出する（最後の一致）。"""
+    matches = _PIPELINE_STATUS_RE.findall(content)
+    return matches[-1] if matches else None
+
+
+def compose_pipeline(
+    match_results: list[SkillMatchResult],
+    *,
+    engine: str,
+    model: str | None = None,
+) -> list[DagStep]:
+    """SkillMatchResult 列を直線パイプの DagStep 列に変換する。
+
+    - decisive が None の要素があれば ValueError
+    - step_id は ``pipe_{i}_{skill_name}``、depends は前段 step_id
+    - skill_io: v1 の下流で consumes.producer が前段スキル名と不一致なら
+      SkillIOTypeError（exec.jsonl 書込前の fail fast）。legacy はスキップ
+    """
+    if not match_results:
+        raise ValueError("match_results must not be empty")
+
+    steps: list[DagStep] = []
+    for i, result in enumerate(match_results):
+        if result.decisive is None:
+            raise ValueError(
+                f"compose_pipeline: match_results[{i}].decisive is None "
+                f"(rationale={result.rationale!r})"
+            )
+        meta = result.decisive
+        skill_name = meta.name
+
+        if i > 0 and meta.skill_io == "v1" and meta.consumes:
+            prev = match_results[i - 1].decisive
+            assert prev is not None  # validated on prior iteration
+            prev_name = prev.name
+            if not any(req.producer == prev_name for req in meta.consumes):
+                expected = ", ".join(req.producer for req in meta.consumes)
+                raise SkillIOTypeError(
+                    "SkillIOTypeError: pipe type mismatch in compose_pipeline "
+                    f"step pipe_{i}_{skill_name} (skill: {skill_name})\n"
+                    f"  field: producer\n"
+                    f"  expected producer: {expected}\n"
+                    f"  actual upstream skill: {prev_name}"
+                )
+
+        depends = [steps[i - 1].id] if i > 0 else []
+        steps.append(
+            DagStep(
+                id=f"pipe_{i}_{skill_name}",
+                prompt=result.arguments,
+                engine=engine,
+                model=model,
+                depends=depends,
+                skill_name=skill_name,
+            )
+        )
+    return steps
 
 
 def _loops_audit_context(
@@ -273,6 +334,7 @@ def enqueue_dag(
         typecheck_dag(sorted_steps, skills)
 
     completed_results: dict[str, str] = {}
+    pipeline_statuses: dict[str, str] = {}
     failed_steps: set[str] = set()
     results_by_id: dict[str, tuple[bool, str]] = {}
     start = time.monotonic()
@@ -289,6 +351,8 @@ def enqueue_dag(
         for dep_id in step.depends:
             if dep_id in completed_results:
                 base_context[f"{dep_id}_result"] = completed_results[dep_id]
+            if dep_id in pipeline_statuses:
+                base_context[f"{dep_id}_pipeline_status"] = pipeline_statuses[dep_id]
         base_context.update(step.context)
 
         step_config = StepConfig(
@@ -339,7 +403,15 @@ def enqueue_dag(
                 content = md_read(result_filename, repo_root=jobs_dir).content.strip()
             except OSError:
                 content = ""
+            pipeline_status = _extract_pipeline_status(content)
+            # ghdag exit 成功でも INVALID_STATE なら fail（downstream 投入抑止）
+            if pipeline_status == "INVALID_STATE":
+                results_by_id[step.id] = (False, "PIPELINE_STATUS: INVALID_STATE")
+                failed_steps.add(step.id)
+                continue
             completed_results[step.id] = content
+            if pipeline_status is not None:
+                pipeline_statuses[step.id] = pipeline_status
             results_by_id[step.id] = (True, content)
         else:
             results_by_id[step.id] = (False, f"{status}: {first_line}")

@@ -233,6 +233,125 @@ class TestRunSkillActionExitCodeBranch:
         assert "2" in msg and "steps" in msg
 
 
+class TestEnablePipeline:
+    """Issue #3031: enable_pipeline 経路。"""
+
+    def test_enable_pipeline_calls_compose_and_enqueue_dag(self, tmp_path: Path) -> None:
+        from unittest.mock import AsyncMock
+
+        from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMatchResult
+
+        persona_dir = _make_persona(tmp_path)
+        meta_a = _make_skill_meta("skill-a", tmp_path)
+        meta_a.skill_io = "v1"
+        meta_a.produces = ProducesSpec(content_type="text/markdown")
+        meta_b = _make_skill_meta("skill-b", tmp_path)
+        meta_b.skill_io = "v1"
+        meta_b.produces = ProducesSpec(content_type="text/markdown")
+        meta_b.consumes = [
+            ConsumesSpec(producer="skill-a", content_type="text/markdown")
+        ]
+        job = _skill_job(
+            action_args={
+                "skill": "skill-a",
+                "persona": "タチコマ",
+                "argv": ["/skill-a", "foo", "|", "/skill-b"],
+                "enable_pipeline": True,
+            }
+        )
+        match_results = [
+            SkillMatchResult(
+                decisive=meta_a,
+                candidates=[meta_a],
+                rationale="slash:skill-a",
+                arguments="foo",
+            ),
+            SkillMatchResult(
+                decisive=meta_b,
+                candidates=[meta_b],
+                rationale="slash:skill-b",
+                arguments="",
+            ),
+        ]
+        captured: dict = {}
+
+        def capture_dag(steps, **kwargs):
+            captured["steps"] = list(steps)
+            return [(True, "out-a"), (True, "out-b")]
+
+        with (
+            patch(
+                "mltgnt.skill.matcher.match_pipeline",
+                new_callable=AsyncMock,
+                return_value=match_results,
+            ),
+            patch(_ENQUEUE_DAG, side_effect=capture_dag),
+            patch(_ENQUEUE) as mock_single,
+        ):
+            ok, msg = run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"skill-a": meta_a, "skill-b": meta_b},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert ok is True
+        assert msg == "out-b"
+        assert len(captured["steps"]) == 2
+        assert captured["steps"][0].id == "pipe_0_skill-a"
+        assert captured["steps"][1].id == "pipe_1_skill-b"
+        assert captured["steps"][1].depends == ["pipe_0_skill-a"]
+        mock_single.assert_not_called()
+
+    def test_enable_pipeline_prefers_over_fanout(self, tmp_path: Path) -> None:
+        from unittest.mock import AsyncMock
+
+        from mltgnt.skill.models import SkillMatchResult
+
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path)
+        job = _skill_job(
+            action_args={
+                "skill": "test-skill",
+                "persona": "タチコマ",
+                "argv": ["/test-skill", "x"],
+                "enable_pipeline": True,
+                "enable_fanout": True,
+            }
+        )
+        match_results = [
+            SkillMatchResult(
+                decisive=meta,
+                candidates=[meta],
+                rationale="slash:test-skill",
+                arguments="x",
+            )
+        ]
+
+        with (
+            patch(_ENQUEUE) as mock_single,
+            patch(
+                "mltgnt.skill.matcher.match_pipeline",
+                new_callable=AsyncMock,
+                return_value=match_results,
+            ),
+            patch(_ENQUEUE_DAG, return_value=[(True, "pipe-done")]) as mock_dag,
+        ):
+            ok, msg = run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert ok is True
+        assert msg == "pipe-done"
+        mock_single.assert_not_called()
+        mock_dag.assert_called_once()
+
+
 class TestSnapshotWrites:
     def test_empty_patterns_returns_empty(self, tmp_path: Path) -> None:
         assert _snapshot_writes([], tmp_path) == {}

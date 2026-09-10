@@ -335,3 +335,44 @@ class TestMatchPipeline:
         assert results[0].decisive.name == "skill-a"
         assert results[1].decisive is not None
         assert results[1].decisive.name == "skill-b"
+
+
+class TestMatchPipelineComposeIntegration:
+    """Issue #3031: match_pipeline → compose_pipeline 統合。"""
+
+    @pytest.mark.asyncio
+    async def test_two_stage_pipe_builds_dag_chain(self) -> None:
+        from mltgnt.bridges.ghdag_bridge import compose_pipeline
+        from mltgnt.skill.models import ConsumesSpec, ProducesSpec
+
+        skills = {
+            "skill-a": SkillMeta(
+                name="skill-a",
+                description="a",
+                argument_hint="",
+                model=None,
+                path=Path("/fake/skills/skill-a/SKILL.md"),
+                skill_io="v1",
+                produces=ProducesSpec(content_type="text/markdown"),
+            ),
+            "skill-b": SkillMeta(
+                name="skill-b",
+                description="b",
+                argument_hint="",
+                model=None,
+                path=Path("/fake/skills/skill-b/SKILL.md"),
+                skill_io="v1",
+                produces=ProducesSpec(content_type="text/markdown"),
+                consumes=[
+                    ConsumesSpec(producer="skill-a", content_type="text/markdown")
+                ],
+            ),
+        }
+        results = await match_pipeline("/skill-a foo | /skill-b", skills)
+        steps = compose_pipeline(results, engine="codex", model="gpt-5")
+        assert [s.id for s in steps] == ["pipe_0_skill-a", "pipe_1_skill-b"]
+        assert steps[1].depends == ["pipe_0_skill-a"]
+        assert steps[0].skill_name == "skill-a"
+        assert steps[1].skill_name == "skill-b"
+        assert steps[0].prompt == "foo"
+        assert all(s.engine == "codex" for s in steps)
