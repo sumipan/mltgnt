@@ -200,3 +200,34 @@ class TestRunEnvVarSubstitution:
         result = run(skill, _make_persona(), "", _make_chat_input())
         sys_content = result.chat_input.messages[0]["content"]
         assert "root=[]" in sys_content
+
+
+class TestRunExtraContext:
+    """Issue #3021: extra_context によるコンテキスト注入。"""
+
+    def test_extra_context_appends_section(self) -> None:
+        """extra_context 渡し時にシステムプロンプトへ ## コンテキスト が挿入される。"""
+        skill = _make_skill("スキル本文")
+        result = run(
+            skill,
+            _make_persona(),
+            "",
+            _make_chat_input(),
+            extra_context="知識と記憶の断片",
+        )
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "スキル本文" in sys_content
+        assert "## コンテキスト" in sys_content
+        assert "知識と記憶の断片" in sys_content
+        # スキル本文の後にコンテキストが付く
+        assert sys_content.index("スキル本文") < sys_content.index("## コンテキスト")
+
+    def test_extra_context_none_is_backward_compatible(self) -> None:
+        """extra_context 未渡し / None 時は従来と同一出力。"""
+        skill = _make_skill("スキル本文")
+        persona = _make_persona()
+        chat_input = _make_chat_input()
+        without = run(skill, persona, "", chat_input)
+        with_none = run(skill, persona, "", chat_input, extra_context=None)
+        assert without.chat_input.messages[0]["content"] == with_none.chat_input.messages[0]["content"]
+        assert "## コンテキスト" not in without.chat_input.messages[0]["content"]

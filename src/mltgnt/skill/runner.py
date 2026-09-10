@@ -45,6 +45,7 @@ def run(
     persona: PersonaProtocol,
     arguments: str,
     chat_input: ChatInput,
+    extra_context: str | None = None,
 ) -> SkillRunResult:
     """
     スキル本文の変数を置換し、ペルソナ指示と合成した SkillRunResult を返す。
@@ -61,6 +62,9 @@ def run(
         persona.name,
         skill_dir,
     )
+
+    if extra_context is not None:
+        body_substituted = body_substituted + "\n\n## コンテキスト\n\n" + extra_context
 
     system_content = persona.format_prompt(body_substituted)
     system_message: Message = {"role": "system", "content": system_content}

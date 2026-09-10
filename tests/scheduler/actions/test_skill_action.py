@@ -8,6 +8,8 @@ from unittest.mock import patch
 from mltgnt.scheduler.actions.skill import (
     _compute_write_diff,
     _determine_exit_code,
+    _read_knowledge,
+    _read_memory,
     _snapshot_writes,
     run_skill_action,
 )
@@ -424,3 +426,149 @@ class TestSideEffectAuditIntegration:
 
         assert ok is True
         audit_path.chmod(0o644)
+
+
+def _write_knowledge(skill_meta: SkillMeta, text: str) -> None:
+    (skill_meta.path.parent / "knowledge.md").write_text(text, encoding="utf-8")
+
+
+def _write_memory(repo_root: Path, persona_name: str, text: str) -> None:
+    mem_dir = repo_root / "chat" / "memory"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    (mem_dir / f"{persona_name}.jsonl").write_text(text, encoding="utf-8")
+
+
+def _context_injection_records(audit_path: Path) -> list[dict]:
+    if not audit_path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in audit_path.read_text().splitlines()
+        if line.strip() and json.loads(line).get("event_type") == "context_injection"
+    ]
+
+
+class TestReadKnowledge:
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        skill_file = tmp_path / "skills" / "x" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text("body")
+        assert _read_knowledge(skill_file, 5) == ""
+
+    def test_returns_trailing_paragraphs(self, tmp_path: Path) -> None:
+        skill_file = tmp_path / "skills" / "x" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text("body")
+        (skill_file.parent / "knowledge.md").write_text(
+            "p1\n\np2\n\np3\n\np4\n\np5\n\np6",
+            encoding="utf-8",
+        )
+        assert _read_knowledge(skill_file, 3) == "p4\n\np5\n\np6"
+
+
+class TestReadMemory:
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        assert _read_memory(tmp_path, "タチコマ", 4096) == ""
+
+    def test_returns_trailing_bytes(self, tmp_path: Path) -> None:
+        _write_memory(tmp_path, "タチコマ", "abcdefghij")
+        result = _read_memory(tmp_path, "タチコマ", 4)
+        assert result == "ghij"
+
+
+class TestContextInjection:
+    """Issue #3021: knowledge.md × 記憶ファイルの 4 組み合わせと audit。"""
+
+    def _capture_prompt(
+        self,
+        tmp_path: Path,
+        *,
+        with_knowledge: bool,
+        with_memory: bool,
+        knowledge_count: int = 5,
+        memory_max_bytes: int = 4096,
+    ) -> tuple[str, list[dict]]:
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path)
+        if with_knowledge:
+            _write_knowledge(
+                meta,
+                "知1\n\n知2\n\n知3\n\n知4\n\n知5\n\n知6",
+            )
+        if with_memory:
+            _write_memory(tmp_path, "タチコマ", '{"ts":"2026-09-09","text":"昨夜の話"}\n')
+        (tmp_path / "jobs").mkdir(exist_ok=True)
+        job = _skill_job(
+            action_args={
+                "skill": "test-skill",
+                "persona": "タチコマ",
+                "knowledge_count": knowledge_count,
+                "memory_max_bytes": memory_max_bytes,
+            }
+        )
+        captured: dict = {}
+
+        def capture_enqueue(**kwargs):
+            captured["prompt"] = kwargs["prompt"]
+            return True, "ok"
+
+        with patch(_ENQUEUE, side_effect=capture_enqueue):
+            ok, _ = run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+        assert ok is True
+        records = _context_injection_records(tmp_path / "jobs" / "audit.jsonl")
+        return captured["prompt"], records
+
+    def test_neither_knowledge_nor_memory(self, tmp_path: Path) -> None:
+        prompt, records = self._capture_prompt(
+            tmp_path, with_knowledge=False, with_memory=False
+        )
+        assert "## コンテキスト" not in prompt
+        assert len(records) == 1
+        assert records[0]["knowledge_count"] == 0
+        assert records[0]["memory_bytes"] == 0
+
+    def test_knowledge_only(self, tmp_path: Path) -> None:
+        prompt, records = self._capture_prompt(
+            tmp_path, with_knowledge=True, with_memory=False, knowledge_count=3
+        )
+        assert "## コンテキスト" in prompt
+        assert "### knowledge（直近 3 件）" in prompt
+        assert "知4" in prompt and "知5" in prompt and "知6" in prompt
+        assert "知3" not in prompt
+        assert "### 記憶（末尾）" not in prompt
+        assert records[0]["knowledge_count"] == 3
+        assert records[0]["memory_bytes"] == 0
+
+    def test_memory_only(self, tmp_path: Path) -> None:
+        prompt, records = self._capture_prompt(
+            tmp_path, with_knowledge=False, with_memory=True
+        )
+        assert "## コンテキスト" in prompt
+        assert "### knowledge" not in prompt
+        assert "### 記憶（末尾）" in prompt
+        assert "昨夜の話" in prompt
+        assert records[0]["knowledge_count"] == 0
+        assert records[0]["memory_bytes"] > 0
+
+    def test_both_knowledge_and_memory(self, tmp_path: Path) -> None:
+        prompt, records = self._capture_prompt(
+            tmp_path, with_knowledge=True, with_memory=True, knowledge_count=2
+        )
+        assert "## コンテキスト" in prompt
+        assert "### knowledge（直近 2 件）" in prompt
+        assert "### 記憶（末尾）" in prompt
+        assert "知5" in prompt and "知6" in prompt
+        assert "昨夜の話" in prompt
+        assert records[0]["event_type"] == "context_injection"
+        assert records[0]["skill_name"] == "test-skill"
+        assert records[0]["job_id"] == "skill_job"
+        assert records[0]["schema_version"] == 1
+        assert records[0]["knowledge_count"] == 2
+        assert records[0]["memory_bytes"] > 0
+        assert "timestamp" in records[0]
