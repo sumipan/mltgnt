@@ -343,3 +343,56 @@ class TestLintPass:
             _path(),
         )
         assert errors == []
+
+
+class TestLintV7Existence:
+    def _v1_fm(self, path_str: str) -> dict:
+        return {
+            "name": "review",
+            "description": "desc",
+            "skill_io": "v1",
+            "produces": {"artifacts": [{"path": path_str, "role": "primary"}]},
+        }
+
+    def test_existing_file_no_v7(self, tmp_path: Path) -> None:
+        """AC-2: path が存在するファイルは V7 エラーなし"""
+        skill_dir = tmp_path / "review"
+        skill_dir.mkdir()
+        (skill_dir / "report.md").write_text("ok", encoding="utf-8")
+        skill_md = skill_dir / "SKILL.md"
+        errors = lint_skill_meta(self._v1_fm("report.md"), skill_md)
+        assert not any(e.startswith("V7:") for e in errors)
+
+    def test_missing_file_v7(self, tmp_path: Path) -> None:
+        """AC-2: path が存在しないファイルは V7 エラー"""
+        skill_dir = tmp_path / "review"
+        skill_dir.mkdir()
+        skill_md = skill_dir / "SKILL.md"
+        errors = lint_skill_meta(self._v1_fm("missing.md"), skill_md)
+        assert any(
+            e == "V7: produces.artifacts[0].path not found: 'missing.md'" for e in errors
+        )
+
+    def test_glob_match_no_v7(self, tmp_path: Path) -> None:
+        """AC-2: * glob で 1 件以上マッチは V7 エラーなし"""
+        skill_dir = tmp_path / "review"
+        skill_dir.mkdir()
+        (skill_dir / "out-1.md").write_text("a", encoding="utf-8")
+        skill_md = skill_dir / "SKILL.md"
+        errors = lint_skill_meta(self._v1_fm("out-*.md"), skill_md)
+        assert not any(e.startswith("V7:") for e in errors)
+
+    def test_glob_no_match_v7(self, tmp_path: Path) -> None:
+        """AC-2: * glob で 0 件マッチは V7 エラー"""
+        skill_dir = tmp_path / "review"
+        skill_dir.mkdir()
+        skill_md = skill_dir / "SKILL.md"
+        errors = lint_skill_meta(self._v1_fm("out-*.md"), skill_md)
+        assert any(
+            e == "V7: produces.artifacts[0].path no matches: 'out-*.md'" for e in errors
+        )
+
+    def test_fake_path_skips_existence(self) -> None:
+        """AC-2: skill_dir が存在しない場合（fake path）は実在チェックをスキップ"""
+        errors = lint_skill_meta(self._v1_fm("report.md"), _path())
+        assert not any(e.startswith("V7:") for e in errors)

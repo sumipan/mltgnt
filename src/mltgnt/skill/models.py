@@ -68,6 +68,7 @@ class SkillRunResult:
     diagnostics: list[str] = field(default_factory=list)
     artifacts: list[ArtifactSpec] = field(default_factory=list)
     status_markers: list[str] = field(default_factory=list)
+    produces: ProducesSpec | None = None
 
 
 @dataclass

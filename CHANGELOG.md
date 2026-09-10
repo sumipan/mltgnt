@@ -4,6 +4,7 @@
 
 ### Added
 
+- **discover ガバナンス（柱 5）**（#3041）: lint 失敗スキルの診断を `{base}/_unresolved/{name}.json` に書き出し、次回 discover で解消済みなら削除。V7 が `artifacts[].path` のスキルディレクトリ相対の実在（glob は 1 件以上マッチ）を検査。`skill_io: v1` 時は `write_result_frontmatter()` が result 先頭に `skill_io` / `produces`（content_type / status_markers）を書き込む
 - **スキル結果の `PIPELINE_STATUS` 突合と `CONTRACT_VIOLATION`**（#3040）: `ExitStatus.CONTRACT_VIOLATION = 3` を追加。scheduler が `SkillRunResult.expected_markers` と result 先頭/末尾の `PIPELINE_STATUS:` を突合し、宣言外・欠落は exit 3。`diagnostics` と `event_type: "skill_result"` audit を記録。fanout 各ステップにも audit を伝播。`tests/fixtures/marker_response/` に 3 エンジン × 3 ケースの実応答 fixture を追加
 - **スキルパイプライン合成器 `compose_pipeline`**（#3031）: `list[SkillMatchResult]` → 直線 `DagStep` 列。`scheduler` の `enable_pipeline: true` で `match_pipeline → compose_pipeline → typecheck_dag → enqueue_dag` を配線。`consumes.producer` 不一致は compose 時点で `SkillIOTypeError`（legacy はスキップ）。`enqueue_dag` は upstream result から `PIPELINE_STATUS:` を抽出し `{step_id}_pipeline_status` を下流へ注入、`INVALID_STATE` 時は downstream を投入しない
 - **DagHooks `on_task_cancelled` / `on_task_progress`**（#3023）: `MltgntHooks` が ghdag v0.40.0 以降の Protocol 12 メソッドに準拠。cancel / stream-json 進捗を `jobs/audit.jsonl` に記録する
@@ -14,6 +15,7 @@
 ### Changed
 
 - **`mltgnt.memory` から `_tail_utf8_bytes` を非公開化**（#3023）: package export は `tail_utf8_bytes` のみ。実装本体は `memory.api` に残す
+- **V7 lint**（#3041）: `produces.artifacts[].path` が str であることに加え、スキルディレクトリ実在時はファイル実在 / glob マッチを検査する
 
 ## v0.20.0
 

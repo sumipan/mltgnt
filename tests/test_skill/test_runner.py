@@ -231,3 +231,69 @@ class TestRunExtraContext:
         with_none = run(skill, persona, "", chat_input, extra_context=None)
         assert without.chat_input.messages[0]["content"] == with_none.chat_input.messages[0]["content"]
         assert "## コンテキスト" not in without.chat_input.messages[0]["content"]
+
+
+class TestWriteResultFrontmatter:
+    def test_v1_writes_frontmatter(self, tmp_path: Path) -> None:
+        """AC-3: skill_io=v1 スキルで result ファイルに frontmatter が書き込まれる"""
+        from mltgnt.skill.runner import write_result_frontmatter
+
+        result_path = tmp_path / "result.md"
+        result_path.write_text("body content\n", encoding="utf-8")
+        produces = ProducesSpec(
+            content_type="text/markdown",
+            status_markers=["ACCEPTED"],
+        )
+        run_result = SkillRunResult(
+            chat_input=_make_chat_input(),
+            expected_markers=["ACCEPTED"],
+            skill_io="v1",
+            produces=produces,
+        )
+        write_result_frontmatter(result_path, run_result)
+        text = result_path.read_text(encoding="utf-8")
+        assert text.startswith("---\n")
+        assert "skill_io: v1" in text
+        assert "content_type: text/markdown" in text
+        assert "ACCEPTED" in text
+        assert "body content" in text
+
+    def test_legacy_noop(self, tmp_path: Path) -> None:
+        """AC-3: skill_io=legacy スキルは noop"""
+        from mltgnt.skill.runner import write_result_frontmatter
+
+        result_path = tmp_path / "result.md"
+        original = "legacy body\n"
+        result_path.write_text(original, encoding="utf-8")
+        run_result = SkillRunResult(
+            chat_input=_make_chat_input(),
+            expected_markers=[],
+            skill_io="legacy",
+            produces=ProducesSpec(content_type="text/markdown"),
+        )
+        write_result_frontmatter(result_path, run_result)
+        assert result_path.read_text(encoding="utf-8") == original
+
+    def test_produces_none_noop(self, tmp_path: Path) -> None:
+        """AC-3: produces=None は noop"""
+        from mltgnt.skill.runner import write_result_frontmatter
+
+        result_path = tmp_path / "result.md"
+        original = "no produces\n"
+        result_path.write_text(original, encoding="utf-8")
+        run_result = SkillRunResult(
+            chat_input=_make_chat_input(),
+            expected_markers=[],
+            skill_io="v1",
+            produces=None,
+        )
+        write_result_frontmatter(result_path, run_result)
+        assert result_path.read_text(encoding="utf-8") == original
+
+    def test_run_sets_produces(self) -> None:
+        """AC-3: run() の戻り値に produces が載る"""
+        produces = ProducesSpec(content_type="text/plain", status_markers=["DONE"])
+        skill = _make_skill("body", skill_io="v1", produces=produces)
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        assert result.produces is produces
+        assert result.skill_io == "v1"
