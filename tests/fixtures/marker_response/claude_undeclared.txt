@@ -1,0 +1,6 @@
+PIPELINE_STATUS: BRUSHUP_DONE
+
+Issue #1514 のブラッシュアップが完了しました。
+
+- **pyproject.toml は既に v0.12.4** にピン留め済みで、v0.12.2 の変更（`match_triggers_only` 関数追加、breaking changes なし）は包含済み
+- diary 側のコード修正は不要、受け入れ条件はすべて充足済み

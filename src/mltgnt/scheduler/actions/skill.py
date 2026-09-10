@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import re
 import sys
 import uuid
 from datetime import datetime
@@ -13,6 +14,8 @@ from zoneinfo import ZoneInfo
 from mltgnt.scheduler.fanout import _FANOUT_PROMPT_SUFFIX, _parse_fanout_steps
 from mltgnt.scheduler.models import ScheduleJob
 from mltgnt.skill.models import ExitStatus
+
+_STATUS_MARKER_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$")
 
 
 def _snapshot_writes(patterns: list[str], repo_root: Path) -> dict[str, float]:
@@ -129,6 +132,81 @@ def _determine_exit_code(ok: bool, msg: str) -> int:
     if "PIPELINE_STATUS: INVALID_STATE" in msg:
         return ExitStatus.INVALID_STATE
     return ExitStatus.USAGE_ERROR
+
+
+def _extract_status_marker(msg: str) -> str | None:
+    """msg 先頭 3 行 + 末尾 3 行から PIPELINE_STATUS: <value> を抽出する。"""
+    lines = msg.splitlines()
+    if not lines:
+        return None
+    head = lines[:3]
+    tail = lines[-3:] if len(lines) > 3 else []
+    found: str | None = None
+    for line in head + tail:
+        m = _STATUS_MARKER_RE.match(line)
+        if m:
+            found = m.group(1)
+    return found
+
+
+def _resolve_exit_code(
+    ok: bool, msg: str, expected_markers: list[str]
+) -> tuple[int, list[str]]:
+    """expected_markers があれば marker 突合優先。空なら従来判定にフォールバック。"""
+    if expected_markers:
+        marker = _extract_status_marker(msg)
+        if marker is None:
+            diagnostics = [
+                f"exit_code={ExitStatus.CONTRACT_VIOLATION}",
+                "marker=<absent>",
+                "contract_violation: PIPELINE_STATUS marker missing",
+                f"expected_markers={expected_markers}",
+            ]
+            return ExitStatus.CONTRACT_VIOLATION, diagnostics
+        if marker not in expected_markers:
+            diagnostics = [
+                f"exit_code={ExitStatus.CONTRACT_VIOLATION}",
+                f"violated_marker={marker}",
+                "contract_violation: undeclared PIPELINE_STATUS marker",
+                f"expected_markers={expected_markers}",
+            ]
+            return ExitStatus.CONTRACT_VIOLATION, diagnostics
+        exit_code = _determine_exit_code(ok, msg)
+        return exit_code, [
+            f"exit_code={exit_code}",
+            f"marker={marker}",
+        ]
+
+    exit_code = _determine_exit_code(ok, msg)
+    marker = _extract_status_marker(msg)
+    diagnostics = [f"exit_code={exit_code}"]
+    if marker is not None:
+        diagnostics.append(f"marker={marker}")
+    return exit_code, diagnostics
+
+
+def _write_skill_result_audit(
+    audit_path: Path,
+    *,
+    skill_name: str,
+    job_id: str,
+    exit_code: int,
+    diagnostics: list[str],
+) -> None:
+    record = {
+        "schema_version": 1,
+        "event_type": "skill_result",
+        "timestamp": datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(),
+        "skill_name": skill_name,
+        "job_id": job_id,
+        "exit_code": exit_code,
+        "diagnostics": diagnostics,
+    }
+    try:
+        with audit_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"skill_result_audit: write failed: {e}", file=sys.stderr)
 
 
 def run_skill_action(
@@ -278,14 +356,39 @@ def run_skill_action(
                 request_id=request_id,
                 permission=permission,
             )
+            audit_path = repo_root / "jobs" / "audit.jsonl"
+            first_failure: tuple[str, str] | None = None
             for i, (step_ok, step_msg) in enumerate(dag_results):
-                if not step_ok:
+                step_exit, step_diag = _resolve_exit_code(step_ok, step_msg, [])
+                _write_skill_result_audit(
+                    audit_path,
+                    skill_name=skill_name,
+                    job_id=job.id,
+                    exit_code=step_exit,
+                    diagnostics=step_diag,
+                )
+                if not step_ok and first_failure is None:
                     step_id = fanout_steps[i].id
-                    return False, f"fanout: step '{step_id}' failed: {step_msg}"
+                    first_failure = (step_id, step_msg)
+            if first_failure is not None:
+                return False, (
+                    f"fanout: step '{first_failure[0]}' failed: {first_failure[1]}"
+                )
             return True, f"fanout: {len(dag_results)} steps completed"
 
-    run_output.exit_code = _determine_exit_code(ok, msg)
+    exit_code, diagnostics = _resolve_exit_code(
+        ok, msg, run_output.expected_markers
+    )
+    run_output.exit_code = exit_code
+    run_output.diagnostics = diagnostics
     run_output.content = msg
+    _write_skill_result_audit(
+        repo_root / "jobs" / "audit.jsonl",
+        skill_name=skill_name,
+        job_id=job.id,
+        exit_code=exit_code,
+        diagnostics=diagnostics,
+    )
     if run_output.exit_code == ExitStatus.SUCCESS:
         return True, msg
     if run_output.exit_code == ExitStatus.ALREADY_APPLIED:

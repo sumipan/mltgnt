@@ -1,0 +1,6 @@
+PIPELINE_STATUS: DONE
+
+Issue #3040 のマーカー突合が完了しました。
+
+- expected_markers と PIPELINE_STATUS の突合を実装済み
+- ExitStatus.CONTRACT_VIOLATION(3) を追加済み
