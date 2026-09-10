@@ -1,8 +1,8 @@
 # mltgnt
 
-**L1 agent runtime for host-integrated operations.** In the L0/L1/L2 stack (**L0 ghdag / L1 mltgnt / L2 host**), mltgnt defines type contracts, loop transitions, and orchestration boundaries while ghdag owns DAG transport and model execution wiring.
+**L1 agent runtime for host-integrated operations.** In the L0/L1/L2 stack (**L0 ghdag / L1 mltgnt / L2 host**), mltgnt owns type contracts, persona/memory orchestration, and loop boundaries; ghdag owns DAG transport and model-adapter wiring.
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.25.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.30.0)-orange)
 
 ## Not (what this is not)
 
@@ -14,48 +14,31 @@
 
 ## Installation
 
+Requires Python `>=3.10`.
+
+```bash
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.30.0"
+```
+
 | Item | Value |
 |------|-------|
-| Package | `pip install mltgnt` |
+| Package | `mltgnt` |
 | Python | `>=3.10` |
-| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.39.1` |
+| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.43.0` |
 | Script entry point | `mltgnt = mltgnt.cli.main:main` |
 | License | MIT |
 
+Dev extras (`pytest`, `mypy`, `ruff`, `import-linter`, …):
+
+```bash
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.30.0"
+```
+
 ## Quick Start
 
-### 1) Parse an objective file
+Examples below use public symbols from `mltgnt.__all__` and match patterns exercised in `tests/`.
 
-```python
-from pathlib import Path
-import tempfile
-
-from mltgnt.loops import Objective, ObjectiveError, parse_objective
-
-objective_md = """\
-```yaml
-id: release-readme
-title: Rewrite README for v0.25.0
-agent: operator
-max_iterations: 3
-status: active
-```
-
-Draft and verify a new README.
-"""
-
-with tempfile.TemporaryDirectory() as tmp:
-    path = Path(tmp) / "release-readme.md"
-    path.write_text(objective_md, encoding="utf-8")
-    result = parse_objective(path, default_persona="operator", default_max_iterations=5)
-    if isinstance(result, Objective):
-        print(result.loop_id, result.agent, result.max_iterations)
-    else:
-        assert isinstance(result, ObjectiveError)
-        print(result.message)
-```
-
-### 2) Load a persona
+### 1) Load a persona
 
 ```python
 from pathlib import Path
@@ -64,13 +47,13 @@ import tempfile
 from mltgnt import load_persona
 
 persona_md = """\
-```yaml
+---
 persona:
   name: Tachikoma
 ops:
   engine: claude
   model: claude-sonnet-5
-```
+---
 
 ## Background
 A curious multi-legged AI tank.
@@ -83,7 +66,35 @@ with tempfile.TemporaryDirectory() as tmp:
     print(persona.name)
 ```
 
-### 3) Run one chat pipeline call
+### 2) Write and read a dream summary
+
+```python
+from pathlib import Path
+import tempfile
+
+from mltgnt import DreamSection, DreamSummary, read_dream, write_dream
+
+with tempfile.TemporaryDirectory() as tmp:
+    persona_dir = Path(tmp) / "Tachikoma"
+    persona_dir.mkdir()
+    summary = DreamSummary(
+        persona="Tachikoma",
+        sections=[
+            DreamSection(
+                category="facts",
+                content="Likes curiosity.",
+                source_entries=1,
+            )
+        ],
+        updated_at="2026-09-11T00:00:00+09:00",
+    )
+    write_dream(persona_dir, summary)
+    loaded = read_dream(persona_dir)
+    assert loaded is not None
+    print(loaded.sections[0].category, loaded.sections[0].content)
+```
+
+### 3) Call the chat pipeline (requires a live ghdag LLM path)
 
 ```python
 from pathlib import Path
@@ -92,13 +103,13 @@ import tempfile
 from mltgnt import load_persona, run_pipeline
 
 persona_md = """\
-```yaml
+---
 persona:
   name: Tachikoma
 ops:
   engine: claude
   model: claude-sonnet-5
-```
+---
 
 ## Style
 Answer in one short paragraph.
@@ -108,11 +119,18 @@ with tempfile.TemporaryDirectory() as tmp:
     persona_dir = Path(tmp)
     (persona_dir / "Tachikoma.md").write_text(persona_md, encoding="utf-8")
     persona = load_persona("Tachikoma", persona_dir=persona_dir)
-    out = run_pipeline("Say hello from mltgnt.", persona, engine="claude", model="claude-sonnet-5")
+    out = run_pipeline(
+        "Say hello from mltgnt.",
+        persona,
+        engine="claude",
+        model="claude-sonnet-5",
+    )
     print(out.persona_name, out.content)
 ```
 
 ## CLI Reference
+
+Entry point: `mltgnt` → `mltgnt.cli.main:main`.
 
 ### `mltgnt run`
 
@@ -160,73 +178,74 @@ Remove one dream summary category for a persona.
 
 ## Public API
 
-The stable public surface is `mltgnt.__all__` (24 symbols):
+Stable public surface: `mltgnt.__all__` (24 symbols including `__version__`).
 
-| Symbol | Module | Description |
-|--------|--------|-------------|
-| `run_pipeline` | `mltgnt.chat.pipeline` | Run one chat turn through the L3 pipeline |
-| `read_memory_iterative` | `mltgnt.memory` | Iteratively retrieve memory entries |
-| `read_memory_by_relevance` | `mltgnt.memory` | Retrieve memory entries ranked by relevance |
-| `read_memory_with_sufficiency_check` | `mltgnt.memory` | Retrieve memory with sufficiency gating |
-| `DreamSection` | `mltgnt.memory.dream` | One category block inside a dream summary |
-| `DreamSummary` | `mltgnt.memory.dream` | Aggregated dream summary for a persona |
-| `read_dream` | `mltgnt.memory.dream` | Load a persona dream summary from disk |
-| `write_dream` | `mltgnt.memory.dream` | Persist a persona dream summary to disk |
-| `Persona` | `mltgnt.persona` | Loaded persona document and frontmatter |
-| `load_persona` | `mltgnt.persona` | Load a persona by name from a directory |
-| `list_personas` | `mltgnt.persona` | List available persona stems in a directory |
-| `validate_persona` | `mltgnt.persona` | Validate persona frontmatter and body |
-| `run_persona_prompt` | `mltgnt.persona` | Render and run a persona prompt template |
-| `ChatInput` | `mltgnt.interfaces.types` | Chat input dataclass |
-| `ChatOutput` | `mltgnt.interfaces.types` | Chat output dataclass |
-| `Message` | `mltgnt.interfaces.types` | Single chat message record |
-| `PersonaProtocol` | `mltgnt.interfaces.persona` | Minimal persona contract for runtime APIs |
-| `AgentResult` | `mltgnt.agent` | Result of one agent action classification |
-| `AgentRunner` | `mltgnt.agent` | Agent orchestration runner |
-| `enqueue_dag` | `mltgnt.bridges.ghdag_bridge` | Enqueue a ghdag job without waiting |
-| `enqueue_and_wait` | `mltgnt.bridges.ghdag_bridge` | Enqueue a ghdag job and wait for completion |
-| `PersonaScheduler` | `mltgnt.scheduler` | Schedule persona-driven actions |
-| `ScheduleJob` | `mltgnt.scheduler` | One scheduled job record |
-| `__version__` | `mltgnt` | Installed package version string |
+| Symbol | Signature / shape | Purpose |
+|--------|-------------------|---------|
+| `run_pipeline` | `(prompt, persona, *, engine='', model='', timeout=300, memory=None, orchestration_ctx=None, audit_path=None) -> ChatOutput` | Run one chat turn through the L1 pipeline |
+| `read_memory_iterative` | `(config, persona_stem, query, *, max_bytes, max_entries, llm_call, skill_paths=None, max_iterations=3) -> str` | Iteratively retrieve memory with an LLM sufficiency loop |
+| `read_memory_by_relevance` | `(config, persona_stem, query, *, max_bytes, max_entries, layers=None) -> str` | Retrieve memory entries ranked by relevance |
+| `read_memory_with_sufficiency_check` | `(config, persona_stem, query, *, max_bytes, max_entries, llm_call=None) -> str` | Retrieve memory with an optional sufficiency check |
+| `DreamSection` | `(category, content, source_entries)` | One category block inside a dream summary |
+| `DreamSummary` | `(persona, sections, updated_at)` | Aggregated dream summary for a persona |
+| `read_dream` | `(persona_dir, *, memory_dir_name='memory') -> DreamSummary \| None` | Load a persona dream summary from disk |
+| `write_dream` | `(persona_dir, summary, *, memory_dir_name='memory') -> None` | Persist a persona dream summary to disk |
+| `Persona` | dataclass from persona loader | Loaded persona document and frontmatter |
+| `load_persona` | `(name, *, persona_dir=None, config=None) -> Persona` | Load a persona by name or alias |
+| `list_personas` | `(persona_dir=None) -> list[str]` | List available persona stems |
+| `validate_persona` | `(persona, *, available_skills=None) -> list[str]` | Validate persona frontmatter/body; returns warnings |
+| `run_persona_prompt` | `(persona_name, prompt, persona_dir=None, timeout=120, memory=None) -> str` | Render and run a persona prompt |
+| `ChatInput` | dataclass | Chat pipeline input DTO |
+| `ChatOutput` | dataclass | Chat pipeline output DTO |
+| `Message` | `TypedDict` with `role`, `content` | Single chat message record |
+| `PersonaProtocol` | Protocol | Minimal persona contract for runtime APIs |
+| `AgentResult` | dataclass | Result of one agent action classification |
+| `AgentRunner` | class | Agent orchestration runner |
+| `enqueue_dag` | `(steps, timeout, idempotency_key, jobs_dir, exec_done_dir, ...) -> list[tuple[bool, str]]` | Enqueue a ghdag job without waiting |
+| `enqueue_and_wait` | `(prompt, engine, model, timeout, idempotency_key, jobs_dir, exec_done_dir, ...) -> tuple[bool, str]` | Enqueue a ghdag job and wait for completion |
+| `PersonaScheduler` | class | Schedule persona-driven actions |
+| `ScheduleJob` | dataclass | One scheduled job record |
+| `__version__` | `str` | Installed package version string |
 
 ## Protocols / Extension Points
 
 | Contract | Module | Purpose |
 |----------|--------|---------|
 | `PersonaProtocol` | `mltgnt.interfaces.persona` | Minimal contract for prompt formatting and persona identity |
-| `ChatPipelineProtocol` | `mltgnt.interfaces.chat` | Host-implemented L1 chat pipeline (`ChatInputBase` → `ChatOutputBase`) |
+| `ChatPipelineProtocol` | `mltgnt.interfaces.chat` | Host-implemented chat pipeline (`ChatInputBase` → `ChatOutputBase`) |
 | `SlackClientProtocol` | `mltgnt.interfaces.slack` | Slack message posting boundary (returns `bool`, does not raise) |
 | `DaemonComponent` | `mltgnt.daemon` | Daemon lifecycle component (`start` / `stop` / `name`) |
 | `HumanChannel` | `mltgnt.interfaces.loops` | Host callbacks for thread open/ask/notify/progress/deliverable |
 | `SubtaskExecutor` | `mltgnt.interfaces.loops` | Async submit/poll boundary for auto subtasks |
 | `ConditionEvaluator` | `mltgnt.interfaces.loops` | Host-defined watcher condition evaluation |
-| `PathConditionEvaluator` | `mltgnt.loops.conditions` | Deterministic `path_exists` / `path_changed` evaluation under a root |
 | `ActionExecutor` | `mltgnt.interfaces.loops` | Deterministic side-effect execution boundary |
 | `MemoryAppender` | `mltgnt.interfaces.loops` | Optional host sink for memory append events |
 | `ObserveSource` | `mltgnt.interfaces.ooda` | OODA observe-phase event source |
+| `ActDispatcher` | `mltgnt.interfaces.dispatch` | OODA act-phase dispatch boundary |
 
 ## Architecture
 
-Top-level subpackages under `src/mltgnt/`:
+Top-level packages and modules under `src/mltgnt/`:
 
 | Path | Responsibility |
 |------|----------------|
 | `agent/` | `AgentRunner` orchestration and action classification |
-| `bridges/` | ghdag integration (`audit`, `files`, `hooks`, `llm`, DAG bridge) |
+| `bridges/` | ghdag integration (`audit`, `files`, `hooks`, `llm`, DAG enqueue) |
 | `chat/` | Chat pipeline (`run_pipeline`) |
-| `cli/` | CLI entry points (`run`, `memory`) |
-| `config/` | Runtime configuration models and defaults |
-| `daemon/` | Daemon lifecycle (`PidLock`, `SkillWatcherComponent`) |
+| `cli/` | CLI entry points (`run`, `memory dream show|forget`) |
+| `config/` | Runtime configuration dataclasses (`PersonaConfig`, `MemoryConfig`, …) |
+| `daemon/` | Daemon lifecycle (`DaemonRunner`, `PidLock`, `SkillWatcherComponent`) |
+| `exceptions.py` | Shared exception hierarchy (`MltgntError`, `ConfigError`, `DependencyError`) |
 | `execution/` | Shared execution runner base interfaces |
-| `improvement/` | Improvement loop (`analyzer`, `hub`, `patch`, `rollback`) |
+| `improvement/` | Improvement loop (`analyzer`, `hub`, `patch`, `rollback`, `loop`) |
 | `interfaces/` | Type contracts and host boundary protocols |
 | `kpi/` | KPI calculation and reporting |
 | `loops/` | Objective loops (`engine`, `budget`, `conditions`, `requests`, `store`) |
 | `memory/` | Memory retrieval, compaction, and dream summaries |
-| `ooda/` | OODA orchestration (`audit_source`, exec dispatcher) |
+| `ooda/` | OODA orchestration (`audit_source`, `exec_dispatcher`, `runner`) |
 | `persona/` | Persona loading, validation, and compression helpers |
 | `routing/` | Channel routing and agentic triage |
-| `scheduler/` | `PersonaScheduler` and dream/skill schedule actions |
+| `scheduler/` | `PersonaScheduler` and schedule actions |
 | `skill/` | Skill loading, matching, linting, and execution |
 
 ### Layer structure (import-linter)
@@ -243,12 +262,6 @@ Additional contracts enforced by import-linter:
 
 - **Layered architecture**: upper layers may depend on lower layers; reverse imports are forbidden.
 - **L3 domain isolation**: `persona`, `chat`, `skill`, `memory`, and `loops` must not import `ghdag` directly (bridges mediate all ghdag access).
-
-### v0.25.0 highlights
-
-- `loops/budget.py`: JST daily shared LLM budget with `BudgetReserveResult` and `BudgetExceeded`
-- `loops/conditions.py`: `PathConditionEvaluator` for local path-based watcher conditions
-- ghdag dependency pinned to `v0.39.1`
 
 ## Configuration
 
@@ -271,19 +284,15 @@ MltgntError
 `- DependencyError
 ```
 
-### Publicly relevant error and exception types
+### Publicly documented exception types
 
-| Type | Module | Notes |
-|------|--------|-------|
-| `MltgntError` | `mltgnt.exceptions` | Base package exception type |
-| `ConfigError` | `mltgnt.exceptions` | Invalid configuration or component wiring |
-| `DependencyError` | `mltgnt.exceptions` | Missing or blocked external dependency |
-| `PersonaValidationError` | `mltgnt.persona` | Persona frontmatter validation failure |
-| `LlmCallError` | `mltgnt.memory.compaction` | Memory compaction LLM call failure |
-| `LlmCallError` | `mltgnt.loops.prompts` | Prompt rendering / JSON contract failure in loops |
-| `SkillLoadError` | `mltgnt.skill.models` | Skill metadata/schema loading failure |
-| `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | Skill I/O contract mismatch during type checking |
-| `BudgetExceeded` | `mltgnt.loops.engine` | Budget guard raised during loop execution |
+| Type | Module | Bases | Notes |
+|------|--------|-------|-------|
+| `MltgntError` | `mltgnt.exceptions` | `Exception` | Package base exception |
+| `ConfigError` | `mltgnt.exceptions` | `MltgntError` | Invalid configuration or component wiring |
+| `DependencyError` | `mltgnt.exceptions` | `MltgntError` | Missing or blocked external dependency |
+| `PersonaValidationError` | `mltgnt.persona` | `Exception` | Persona frontmatter validation failure |
+| `LlmCallError` | `mltgnt.memory.compaction` | `RuntimeError` | Memory compaction LLM call failure |
 
 ## Public API Stability
 
