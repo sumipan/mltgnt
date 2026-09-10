@@ -8,11 +8,12 @@ from unittest.mock import patch
 from mltgnt.scheduler.actions.skill import (
     _compute_write_diff,
     _determine_exit_code,
+    _resolve_exit_code,
     _snapshot_writes,
     run_skill_action,
 )
 from mltgnt.scheduler.models import ScheduleJob
-from mltgnt.skill.models import ExitStatus, SkillMeta, SideEffectsSpec
+from mltgnt.skill.models import ExitStatus, ProducesSpec, SkillMeta, SideEffectsSpec
 
 _ENQUEUE = "mltgnt.bridges.ghdag_bridge.enqueue_and_wait"
 _ENQUEUE_DAG = "mltgnt.bridges.ghdag_bridge.enqueue_dag"
@@ -30,13 +31,29 @@ _FANOUT_RESPONSE = (
 
 
 def _make_skill_meta(
-    name: str, tmp_path: Path, side_effects: SideEffectsSpec | None = None
+    name: str,
+    tmp_path: Path,
+    side_effects: SideEffectsSpec | None = None,
+    *,
+    status_markers: list[str] | None = None,
 ) -> SkillMeta:
     skill_dir = tmp_path / "skills" / name
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_file = skill_dir / "SKILL.md"
+    fm_lines = [f"name: {name}", "description: test skill"]
+    produces: ProducesSpec | None = None
+    if status_markers is not None:
+        fm_lines.append("skill_io: v1")
+        fm_lines.append("produces:")
+        fm_lines.append("  content_type: text/plain")
+        fm_lines.append("  status_markers:")
+        for marker in status_markers:
+            fm_lines.append(f"    - {marker}")
+        produces = ProducesSpec(
+            content_type="text/plain", status_markers=list(status_markers)
+        )
     skill_file.write_text(
-        f"---\nname: {name}\ndescription: test skill\n---\n\nスキル本文",
+        "---\n" + "\n".join(fm_lines) + "\n---\n\nスキル本文",
         encoding="utf-8",
     )
     return SkillMeta(
@@ -46,6 +63,8 @@ def _make_skill_meta(
         model=None,
         path=skill_file,
         side_effects=side_effects,
+        skill_io="v1" if status_markers is not None else "legacy",
+        produces=produces,
     )
 
 
@@ -114,6 +133,7 @@ class TestExitStatus:
         assert ExitStatus.SUCCESS == 0
         assert ExitStatus.ALREADY_APPLIED == 1
         assert ExitStatus.INVALID_STATE == 2
+        assert ExitStatus.CONTRACT_VIOLATION == 3
         assert ExitStatus.USAGE_ERROR == 64
 
 
@@ -131,6 +151,124 @@ class TestDetermineExitCode:
 
     def test_usage_error(self) -> None:
         assert _determine_exit_code(False, "generic error") == ExitStatus.USAGE_ERROR
+
+
+class TestResolveExitCode:
+    """Issue #3040: expected_markers 突合と diagnostics。"""
+
+    def test_marker_matches_expected(self) -> None:
+        code, diagnostics = _resolve_exit_code(
+            True, "PIPELINE_STATUS: DONE\n詳細テキスト", ["DONE"]
+        )
+        assert code == ExitStatus.SUCCESS
+        assert isinstance(diagnostics, list)
+
+    def test_marker_undeclared(self) -> None:
+        code, diagnostics = _resolve_exit_code(
+            True, "PIPELINE_STATUS: BRUSHUP_DONE\n...", ["DONE"]
+        )
+        assert code == ExitStatus.CONTRACT_VIOLATION
+        assert diagnostics
+
+    def test_marker_absent(self) -> None:
+        code, diagnostics = _resolve_exit_code(True, "処理済み", ["DONE"])
+        assert code == ExitStatus.CONTRACT_VIOLATION
+        assert diagnostics
+
+    def test_empty_expected_fallback(self) -> None:
+        code, diagnostics = _resolve_exit_code(
+            True, "PIPELINE_STATUS: ALREADY_APPLIED", []
+        )
+        assert code == ExitStatus.ALREADY_APPLIED
+        assert isinstance(diagnostics, list)
+
+
+class TestSkillResultDiagnosticsAndAudit:
+    """Issue #3040: run_output.diagnostics と fanout skill_result audit。"""
+
+    def test_diagnostics_populated_in_run_output(self, tmp_path: Path) -> None:
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path, status_markers=["DONE"])
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        (tmp_path / "jobs").mkdir(exist_ok=True)
+        captured: dict = {}
+
+        real_run = __import__(
+            "mltgnt.skill.runner", fromlist=["run"]
+        ).run
+
+        def wrap_run(*args, **kwargs):
+            result = real_run(*args, **kwargs)
+            captured["run_output"] = result
+            return result
+
+        with (
+            patch(_ENQUEUE, return_value=(True, "PIPELINE_STATUS: DONE")),
+            patch("mltgnt.skill.runner.run", side_effect=wrap_run),
+        ):
+            ok, _ = run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert ok is True
+        assert "run_output" in captured
+        assert captured["run_output"].diagnostics
+        assert captured["run_output"].exit_code == ExitStatus.SUCCESS
+
+        audit_path = tmp_path / "jobs" / "audit.jsonl"
+        records = [
+            json.loads(line)
+            for line in audit_path.read_text().splitlines()
+            if line.strip()
+            and json.loads(line).get("event_type") == "skill_result"
+        ]
+        assert len(records) == 1
+        assert records[0]["exit_code"] == ExitStatus.SUCCESS
+        assert records[0]["diagnostics"]
+
+    def test_fanout_steps_audit_written(self, tmp_path: Path) -> None:
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path)
+        job = _skill_job(
+            action_args={
+                "skill": "test-skill",
+                "persona": "タチコマ",
+                "enable_fanout": True,
+            }
+        )
+        (tmp_path / "jobs").mkdir(exist_ok=True)
+
+        with (
+            patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)),
+            patch(
+                _ENQUEUE_DAG,
+                return_value=[(True, ""), (False, "failed")],
+            ),
+        ):
+            ok, msg = run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert ok is False
+        assert "failed" in msg
+        audit_path = tmp_path / "jobs" / "audit.jsonl"
+        records = [
+            json.loads(line)
+            for line in audit_path.read_text().splitlines()
+            if line.strip()
+            and json.loads(line).get("event_type") == "skill_result"
+        ]
+        assert len(records) == 2
+        assert "exit_code" in records[0]
+        assert "diagnostics" in records[0]
 
 
 class TestRunSkillActionPermissionPassthrough:

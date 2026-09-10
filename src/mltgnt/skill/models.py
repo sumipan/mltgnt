@@ -42,6 +42,7 @@ class ExitStatus:
     SUCCESS = 0
     ALREADY_APPLIED = 1
     INVALID_STATE = 2
+    CONTRACT_VIOLATION = 3
     USAGE_ERROR = 64
 
 
