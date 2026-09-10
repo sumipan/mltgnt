@@ -77,6 +77,62 @@ def _write_side_effect_audit(
         print(f"side_effect_audit: write failed: {e}", file=sys.stderr)
 
 
+def _read_knowledge(skill_path: Path, knowledge_count: int) -> str:
+    """スキルディレクトリの knowledge.md から末尾 N パラグラフを読む。"""
+    knowledge_file = skill_path.parent / "knowledge.md"
+    if not knowledge_file.is_file():
+        return ""
+    text = knowledge_file.read_text(encoding="utf-8")
+    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    if knowledge_count <= 0:
+        return ""
+    return "\n\n".join(paragraphs[-knowledge_count:])
+
+
+def _read_memory(repo_root: Path, persona_name: str, max_bytes: int) -> str:
+    """ペルソナ記憶ファイルの末尾 max_bytes を読む。"""
+    memory_file = repo_root / "chat" / "memory" / f"{persona_name}.jsonl"
+    if not memory_file.is_file():
+        return ""
+    if max_bytes <= 0:
+        return ""
+    file_size = memory_file.stat().st_size
+    start = max(0, file_size - max_bytes)
+    with memory_file.open("rb") as f:
+        f.seek(start)
+        data = f.read(max_bytes)
+    text = data.decode("utf-8", errors="replace")
+    if start > 0:
+        nl = text.find("\n")
+        if nl != -1:
+            text = text[nl + 1 :]
+    return text.lstrip("\n")
+
+
+def _write_context_injection_audit(
+    audit_path: Path,
+    *,
+    skill_name: str,
+    job_id: str,
+    knowledge_count: int,
+    memory_bytes: int,
+) -> None:
+    record = {
+        "schema_version": 1,
+        "event_type": "context_injection",
+        "timestamp": datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(),
+        "skill_name": skill_name,
+        "job_id": job_id,
+        "knowledge_count": knowledge_count,
+        "memory_bytes": memory_bytes,
+    }
+    try:
+        with audit_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"context_injection_audit: write failed: {e}", file=sys.stderr)
+
+
 def _determine_exit_code(ok: bool, msg: str) -> int:
     if ok:
         if "PIPELINE_STATUS: ALREADY_APPLIED" in msg:
@@ -127,6 +183,18 @@ def run_skill_action(
     argv_list = aa.get("argv", [])
     argv_str = " ".join(str(x) for x in argv_list) if argv_list else ""
 
+    knowledge_count_cfg = aa.get("knowledge_count", 5)
+    memory_max_bytes_cfg = aa.get("memory_max_bytes", 4096)
+    knowledge_text = _read_knowledge(skill_file.meta.path, knowledge_count_cfg)
+    memory_text = _read_memory(repo_root, persona_name, memory_max_bytes_cfg)
+
+    parts: list[str] = []
+    if knowledge_text:
+        parts.append(f"### knowledge（直近 {knowledge_count_cfg} 件）\n\n{knowledge_text}")
+    if memory_text:
+        parts.append(f"### 記憶（末尾）\n\n{memory_text}")
+    extra_context: str | None = "\n\n".join(parts) if parts else None
+
     from mltgnt.interfaces.types import ChatInput, Message
     from mltgnt.skill import runner as skill_runner
 
@@ -137,7 +205,9 @@ def run_skill_action(
         persona_name=persona.name,
         model=model,
     )
-    run_output = skill_runner.run(skill_file, persona, argv_str, chat_input)
+    run_output = skill_runner.run(
+        skill_file, persona, argv_str, chat_input, extra_context=extra_context
+    )
 
     prompt = next(m["content"] for m in run_output.chat_input.messages if m["role"] == "system")
     resolved_model = run_output.chat_input.model
@@ -175,6 +245,18 @@ def run_skill_action(
             declared_writes=write_patterns,
             actual_writes=actual,
         )
+
+    _write_context_injection_audit(
+        repo_root / "jobs" / "audit.jsonl",
+        skill_name=skill_name,
+        job_id=job.id,
+        knowledge_count=(
+            len([p for p in knowledge_text.split("\n\n") if p.strip()])
+            if knowledge_text
+            else 0
+        ),
+        memory_bytes=len(memory_text.encode("utf-8")) if memory_text else 0,
+    )
 
     if ok and aa.get("enable_fanout", False):
         fanout_steps = _parse_fanout_steps(msg, engine=engine, model=resolved_model)
