@@ -799,7 +799,7 @@ def _context_injection_records(audit_path: Path) -> list[dict]:
 
 
 class TestContextInjection:
-    """Issue #3021: knowledge.md × 記憶ファイルの 4 組み合わせと audit。"""
+    """Issue #3021 / #3173: knowledge.md × 記憶ファイルの 4 組み合わせと audit。"""
 
     def _capture_prompt(
         self,
@@ -807,8 +807,10 @@ class TestContextInjection:
         *,
         with_knowledge: bool,
         with_memory: bool,
-        knowledge_count: int = 5,
-        memory_max_bytes: int = 4096,
+        knowledge_count: int | None = 5,
+        memory_max_bytes: int | None = 4096,
+        memory_exclude_source_tags: list[str] | None = None,
+        omit_injection_args: bool = False,
     ) -> tuple[str, list[dict]]:
         persona_dir = _make_persona(tmp_path)
         meta = _make_skill_meta("test-skill", tmp_path)
@@ -818,16 +820,26 @@ class TestContextInjection:
                 "知1\n\n知2\n\n知3\n\n知4\n\n知5\n\n知6",
             )
         if with_memory:
-            _write_memory(tmp_path, "タチコマ", '{"ts":"2026-09-09","text":"昨夜の話"}\n')
+            mem = (
+                '{"timestamp":"2026-09-09 10:00","role":"user",'
+                '"content":"昨夜の話","source_tag":"slack"}\n'
+                '{"timestamp":"2026-09-09 10:01","role":"assistant",'
+                '"content":"observe-only","source_tag":"slack-observe"}\n'
+            )
+            _write_memory(tmp_path, "タチコマ", mem)
         (tmp_path / "jobs").mkdir(exist_ok=True)
-        job = _skill_job(
-            action_args={
-                "skill": "test-skill",
-                "persona": "タチコマ",
-                "knowledge_count": knowledge_count,
-                "memory_max_bytes": memory_max_bytes,
-            }
-        )
+        action_args: dict = {
+            "skill": "test-skill",
+            "persona": "タチコマ",
+        }
+        if not omit_injection_args:
+            if knowledge_count is not None:
+                action_args["knowledge_count"] = knowledge_count
+            if memory_max_bytes is not None:
+                action_args["memory_max_bytes"] = memory_max_bytes
+            if memory_exclude_source_tags is not None:
+                action_args["memory_exclude_source_tags"] = memory_exclude_source_tags
+        job = _skill_job(action_args=action_args)
         captured: dict = {}
 
         def capture_enqueue(**kwargs):
@@ -846,14 +858,24 @@ class TestContextInjection:
         records = _context_injection_records(tmp_path / "jobs" / "audit.jsonl")
         return captured["prompt"], records
 
+    def test_defaults_skip_injection_and_audit(self, tmp_path: Path) -> None:
+        """AC-1 / AC-5: action_args 未指定は注入せず audit も書かない。"""
+        prompt, records = self._capture_prompt(
+            tmp_path,
+            with_knowledge=True,
+            with_memory=True,
+            omit_injection_args=True,
+        )
+        assert "## コンテキスト" not in prompt
+        assert records == []
+
     def test_neither_knowledge_nor_memory(self, tmp_path: Path) -> None:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=False, with_memory=False
         )
         assert "## コンテキスト" not in prompt
-        assert len(records) == 1
-        assert records[0]["knowledge_count"] == 0
-        assert records[0]["memory_bytes"] == 0
+        # 明示指定しても実データが空なら audit スキップ（#3173）
+        assert records == []
 
     def test_knowledge_only(self, tmp_path: Path) -> None:
         prompt, records = self._capture_prompt(
@@ -864,6 +886,7 @@ class TestContextInjection:
         assert "知4" in prompt and "知5" in prompt and "知6" in prompt
         assert "知3" not in prompt
         assert "### 記憶（末尾）" not in prompt
+        assert len(records) == 1
         assert records[0]["knowledge_count"] == 3
         assert records[0]["memory_bytes"] == 0
 
@@ -874,7 +897,9 @@ class TestContextInjection:
         assert "## コンテキスト" in prompt
         assert "### knowledge" not in prompt
         assert "### 記憶（末尾）" in prompt
-        assert "昨夜の話" in prompt
+        assert "- [2026-09-09 10:00] user: 昨夜の話" in prompt
+        assert '{"timestamp"' not in prompt
+        assert len(records) == 1
         assert records[0]["knowledge_count"] == 0
         assert records[0]["memory_bytes"] > 0
 
@@ -894,3 +919,16 @@ class TestContextInjection:
         assert records[0]["knowledge_count"] == 2
         assert records[0]["memory_bytes"] > 0
         assert "timestamp" in records[0]
+
+    def test_memory_exclude_source_tags_via_action_args(self, tmp_path: Path) -> None:
+        prompt, records = self._capture_prompt(
+            tmp_path,
+            with_knowledge=False,
+            with_memory=True,
+            memory_exclude_source_tags=["slack-observe"],
+        )
+        assert "## コンテキスト" in prompt
+        assert "昨夜の話" in prompt
+        assert "observe-only" not in prompt
+        assert len(records) == 1
+        assert records[0]["memory_bytes"] > 0

@@ -296,14 +296,16 @@ def run_skill_action(
     argv_list = aa.get("argv", [])
     argv_str = " ".join(str(x) for x in argv_list) if argv_list else ""
 
-    knowledge_count_cfg = aa.get("knowledge_count", 5)
-    memory_max_bytes_cfg = aa.get("memory_max_bytes", 4096)
+    knowledge_count_cfg = aa.get("knowledge_count", 0)
+    memory_max_bytes_cfg = aa.get("memory_max_bytes", 0)
+    memory_exclude_source_tags_cfg = aa.get("memory_exclude_source_tags", None)
     extra_context = build_extra_context(
         meta,
         repo_root,
         persona_name,
         knowledge_count=knowledge_count_cfg,
         memory_max_bytes=memory_max_bytes_cfg,
+        memory_exclude_source_tags=memory_exclude_source_tags_cfg,
     )
     knowledge_count_audit, memory_bytes_audit = _audit_stats_from_extra_context(
         extra_context
@@ -339,6 +341,7 @@ def run_skill_action(
             default_tz=default_tz,
             knowledge_count_cfg=knowledge_count_cfg,
             memory_max_bytes_cfg=memory_max_bytes_cfg,
+            memory_exclude_source_tags_cfg=memory_exclude_source_tags_cfg,
             knowledge_count_audit=knowledge_count_audit,
             memory_bytes_audit=memory_bytes_audit,
             skill_name=skill_name,
@@ -380,13 +383,14 @@ def run_skill_action(
             actual_writes=actual,
         )
 
-    _write_context_injection_audit(
-        repo_root / "jobs" / "audit.jsonl",
-        skill_name=skill_name,
-        job_id=job.id,
-        knowledge_count=knowledge_count_audit,
-        memory_bytes=memory_bytes_audit,
-    )
+    if knowledge_count_audit > 0 or memory_bytes_audit > 0:
+        _write_context_injection_audit(
+            repo_root / "jobs" / "audit.jsonl",
+            skill_name=skill_name,
+            job_id=job.id,
+            knowledge_count=knowledge_count_audit,
+            memory_bytes=memory_bytes_audit,
+        )
 
     if ok and aa.get("enable_fanout", False):
         fanout_steps = _parse_fanout_steps(msg, engine=engine, model=resolved_model)
@@ -461,6 +465,7 @@ def _run_pipeline_action(
     default_tz: str,
     knowledge_count_cfg: int,
     memory_max_bytes_cfg: int,
+    memory_exclude_source_tags_cfg: list[str] | None,
     knowledge_count_audit: int,
     memory_bytes_audit: int,
     skill_name: str,
@@ -499,6 +504,7 @@ def _run_pipeline_action(
             persona.name,
             knowledge_count=knowledge_count_cfg,
             memory_max_bytes=memory_max_bytes_cfg,
+            memory_exclude_source_tags=memory_exclude_source_tags_cfg,
         )
         chat_input = ChatInput(
             source="scheduler",
@@ -531,13 +537,14 @@ def _run_pipeline_action(
         permission=permission,
     )
 
-    _write_context_injection_audit(
-        repo_root / "jobs" / "audit.jsonl",
-        skill_name=skill_name,
-        job_id=job.id,
-        knowledge_count=knowledge_count_audit,
-        memory_bytes=memory_bytes_audit,
-    )
+    if knowledge_count_audit > 0 or memory_bytes_audit > 0:
+        _write_context_injection_audit(
+            repo_root / "jobs" / "audit.jsonl",
+            skill_name=skill_name,
+            job_id=job.id,
+            knowledge_count=knowledge_count_audit,
+            memory_bytes=memory_bytes_audit,
+        )
 
     for i, (step_ok, step_msg) in enumerate(dag_results):
         if not step_ok:
