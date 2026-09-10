@@ -8,6 +8,8 @@ from unittest.mock import patch
 from mltgnt.scheduler.actions.skill import (
     _compute_write_diff,
     _determine_exit_code,
+    _extract_status_marker,
+    _matches_expected,
     _resolve_exit_code,
     _snapshot_writes,
     run_skill_action,
@@ -153,8 +155,12 @@ class TestDetermineExitCode:
         assert _determine_exit_code(False, "generic error") == ExitStatus.USAGE_ERROR
 
 
+_NEXUS_MARKERS = ["ACCEPTED", "ACCEPTED:NO_ACTION", "REJECTED:引数不足"]
+_FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "marker_response"
+
+
 class TestResolveExitCode:
-    """Issue #3040: expected_markers 突合と diagnostics。"""
+    """Issue #3040 / #3172: expected_markers 突合と diagnostics。"""
 
     def test_marker_matches_expected(self) -> None:
         code, diagnostics = _resolve_exit_code(
@@ -164,16 +170,20 @@ class TestResolveExitCode:
         assert isinstance(diagnostics, list)
 
     def test_marker_undeclared(self) -> None:
+        # #3172: enforce=False（既定）では exit は _determine_exit_code に従う
         code, diagnostics = _resolve_exit_code(
             True, "PIPELINE_STATUS: BRUSHUP_DONE\n...", ["DONE"]
         )
-        assert code == ExitStatus.CONTRACT_VIOLATION
-        assert diagnostics
+        assert code == ExitStatus.SUCCESS
+        assert "contract_violation: undeclared PIPELINE_STATUS marker" in diagnostics
+        assert "violated_marker=BRUSHUP_DONE" in diagnostics
 
     def test_marker_absent(self) -> None:
+        # #3172: enforce=False（既定）では欠落でも CONTRACT_VIOLATION にしない
         code, diagnostics = _resolve_exit_code(True, "処理済み", ["DONE"])
-        assert code == ExitStatus.CONTRACT_VIOLATION
-        assert diagnostics
+        assert code == ExitStatus.SUCCESS
+        assert "contract_violation: PIPELINE_STATUS marker missing" in diagnostics
+        assert "marker=<absent>" in diagnostics
 
     def test_empty_expected_fallback(self) -> None:
         code, diagnostics = _resolve_exit_code(
@@ -181,6 +191,89 @@ class TestResolveExitCode:
         )
         assert code == ExitStatus.ALREADY_APPLIED
         assert isinstance(diagnostics, list)
+
+    def test_bare_marker_accepted_no_action(self) -> None:
+        code, diagnostics = _resolve_exit_code(
+            True, "ACCEPTED:NO_ACTION\n", _NEXUS_MARKERS
+        )
+        assert code == ExitStatus.SUCCESS
+        assert "marker=ACCEPTED:NO_ACTION" in diagnostics
+
+    def test_bare_marker_accepted_with_note(self) -> None:
+        code, diagnostics = _resolve_exit_code(
+            True, "本文\n\nACCEPTED\nnote: x", _NEXUS_MARKERS
+        )
+        assert code == ExitStatus.SUCCESS
+        assert "marker=ACCEPTED" in diagnostics
+
+    def test_bare_marker_rejected_usage_error(self) -> None:
+        code, diagnostics = _resolve_exit_code(
+            False, "REJECTED:引数不足", _NEXUS_MARKERS
+        )
+        assert code == ExitStatus.USAGE_ERROR
+        assert "marker=REJECTED:引数不足" in diagnostics
+
+    def test_prefix_match_rejected(self) -> None:
+        assert _matches_expected("REJECTED:FILE_NOT_FOUND", ["REJECTED:"]) is True
+        assert (
+            _extract_status_marker("REJECTED:FILE_NOT_FOUND", ["REJECTED:"])
+            == "REJECTED:FILE_NOT_FOUND"
+        )
+
+    def test_absent_observe_vs_enforce(self) -> None:
+        msg = "処理済み"
+        expected = ["DONE"]
+        code_obs, diag_obs = _resolve_exit_code(True, msg, expected, enforce=False)
+        assert code_obs == ExitStatus.SUCCESS
+        assert "contract_violation: PIPELINE_STATUS marker missing" in diag_obs
+        assert f"expected_markers={expected}" in diag_obs
+
+        code_enf, diag_enf = _resolve_exit_code(True, msg, expected, enforce=True)
+        assert code_enf == ExitStatus.CONTRACT_VIOLATION
+        assert "contract_violation: PIPELINE_STATUS marker missing" in diag_enf
+
+    def test_undeclared_observe_vs_enforce(self) -> None:
+        msg = "PIPELINE_STATUS: UNKNOWN_MARKER"
+        expected = ["DONE"]
+        code_obs, diag_obs = _resolve_exit_code(True, msg, expected, enforce=False)
+        assert code_obs == ExitStatus.SUCCESS
+        assert "violated_marker=UNKNOWN_MARKER" in diag_obs
+
+        code_enf, diag_enf = _resolve_exit_code(True, msg, expected, enforce=True)
+        assert code_enf == ExitStatus.CONTRACT_VIOLATION
+        assert "violated_marker=UNKNOWN_MARKER" in diag_enf
+
+    def test_empty_expected_ignores_enforce_and_bare(self) -> None:
+        code, diagnostics = _resolve_exit_code(
+            True, "ACCEPTED\n", [], enforce=True
+        )
+        assert code == ExitStatus.SUCCESS
+        assert all(not d.startswith("marker=") for d in diagnostics)
+
+    def test_fixture_bare_markers(self) -> None:
+        for name, expected_marker in (
+            ("claude_bare_marker.txt", "ACCEPTED"),
+            ("cursor_bare_marker.txt", "ACCEPTED"),
+            ("codex_bare_marker.txt", "ACCEPTED:NO_ACTION"),
+        ):
+            msg = (_FIXTURE_DIR / name).read_text(encoding="utf-8")
+            code, diagnostics = _resolve_exit_code(True, msg, _NEXUS_MARKERS)
+            assert code == ExitStatus.SUCCESS, name
+            assert f"marker={expected_marker}" in diagnostics, name
+
+    def test_fixture_no_markers_observe(self) -> None:
+        for name in (
+            "claude_no_marker.txt",
+            "cursor_no_marker.txt",
+            "codex_no_marker.txt",
+        ):
+            msg = (_FIXTURE_DIR / name).read_text(encoding="utf-8")
+            code, diagnostics = _resolve_exit_code(True, msg, _NEXUS_MARKERS)
+            assert code == ExitStatus.SUCCESS, name
+            assert "marker=<absent>" in diagnostics, name
+            assert (
+                "contract_violation: PIPELINE_STATUS marker missing" in diagnostics
+            ), name
 
 
 class TestSkillResultDiagnosticsAndAudit:

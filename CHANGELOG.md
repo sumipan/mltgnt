@@ -14,6 +14,7 @@
 
 ### Changed
 
+- **スキル結果の status marker 契約を観測既定に**（#3172）: `_resolve_exit_code` は欠落・宣言外でも既定で exit を変えず diagnostics / audit のみ記録。強制は `action_args.enforce_status_markers: true` の opt-in。裸マーカー行（例: `ACCEPTED`）と `REJECTED:` 前方一致も受理。`tests/fixtures/marker_response/*_bare_marker.txt` / 真の `*_no_marker.txt` を再構成
 - **`mltgnt.memory` から `_tail_utf8_bytes` を非公開化**（#3023）: package export は `tail_utf8_bytes` のみ。実装本体は `memory.api` に残す
 - **V7 lint**（#3041）: `produces.artifacts[].path` が str であることに加え、スキルディレクトリ実在時はファイル実在 / glob マッチを検査する
 

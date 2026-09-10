@@ -134,43 +134,89 @@ def _determine_exit_code(ok: bool, msg: str) -> int:
     return ExitStatus.USAGE_ERROR
 
 
-def _extract_status_marker(msg: str) -> str | None:
-    """msg 先頭 3 行 + 末尾 3 行から PIPELINE_STATUS: <value> を抽出する。"""
+def _extract_status_marker(
+    msg: str, expected_markers: list[str]
+) -> str | None:
+    """msg 先頭 3 行 + 末尾 3 行から status marker を抽出する。
+
+    Pass 1: ``PIPELINE_STATUS: <value>`` 形式（複数時は末尾寄りを採用）。
+    Pass 2: Pass 1 未検出時のみ、宣言済み裸マーカー行を照合（複数時は先頭寄り）。
+    """
     lines = msg.splitlines()
     if not lines:
         return None
     head = lines[:3]
     tail = lines[-3:] if len(lines) > 3 else []
+    scan = head + tail
+
     found: str | None = None
-    for line in head + tail:
+    for line in scan:
         m = _STATUS_MARKER_RE.match(line)
         if m:
             found = m.group(1)
-    return found
+    if found is not None:
+        return found
+
+    if not expected_markers:
+        return None
+    for line in scan:
+        stripped = line.strip()
+        for decl in expected_markers:
+            if decl.endswith(":"):
+                if stripped.startswith(decl):
+                    return stripped
+            elif stripped == decl:
+                return stripped
+    return None
+
+
+def _matches_expected(marker: str, expected_markers: list[str]) -> bool:
+    """抽出 marker が expected_markers のいずれかに適合するか。"""
+    for decl in expected_markers:
+        if decl.endswith(":"):
+            if marker.startswith(decl):
+                return True
+        elif marker == decl:
+            return True
+    return False
 
 
 def _resolve_exit_code(
-    ok: bool, msg: str, expected_markers: list[str]
+    ok: bool,
+    msg: str,
+    expected_markers: list[str],
+    *,
+    enforce: bool = False,
 ) -> tuple[int, list[str]]:
-    """expected_markers があれば marker 突合優先。空なら従来判定にフォールバック。"""
+    """expected_markers があれば marker 突合。強制は enforce=True のときのみ。"""
     if expected_markers:
-        marker = _extract_status_marker(msg)
+        marker = _extract_status_marker(msg, expected_markers)
         if marker is None:
+            exit_code = (
+                ExitStatus.CONTRACT_VIOLATION
+                if enforce
+                else _determine_exit_code(ok, msg)
+            )
             diagnostics = [
-                f"exit_code={ExitStatus.CONTRACT_VIOLATION}",
+                f"exit_code={exit_code}",
                 "marker=<absent>",
                 "contract_violation: PIPELINE_STATUS marker missing",
                 f"expected_markers={expected_markers}",
             ]
-            return ExitStatus.CONTRACT_VIOLATION, diagnostics
-        if marker not in expected_markers:
+            return exit_code, diagnostics
+        if not _matches_expected(marker, expected_markers):
+            exit_code = (
+                ExitStatus.CONTRACT_VIOLATION
+                if enforce
+                else _determine_exit_code(ok, msg)
+            )
             diagnostics = [
-                f"exit_code={ExitStatus.CONTRACT_VIOLATION}",
+                f"exit_code={exit_code}",
                 f"violated_marker={marker}",
                 "contract_violation: undeclared PIPELINE_STATUS marker",
                 f"expected_markers={expected_markers}",
             ]
-            return ExitStatus.CONTRACT_VIOLATION, diagnostics
+            return exit_code, diagnostics
         exit_code = _determine_exit_code(ok, msg)
         return exit_code, [
             f"exit_code={exit_code}",
@@ -178,7 +224,7 @@ def _resolve_exit_code(
         ]
 
     exit_code = _determine_exit_code(ok, msg)
-    marker = _extract_status_marker(msg)
+    marker = _extract_status_marker(msg, expected_markers)
     diagnostics = [f"exit_code={exit_code}"]
     if marker is not None:
         diagnostics.append(f"marker={marker}")
@@ -359,8 +405,11 @@ def run_skill_action(
             )
             audit_path = repo_root / "jobs" / "audit.jsonl"
             first_failure: tuple[str, str] | None = None
+            enforce = bool(aa.get("enforce_status_markers", False))
             for i, (step_ok, step_msg) in enumerate(dag_results):
-                step_exit, step_diag = _resolve_exit_code(step_ok, step_msg, [])
+                step_exit, step_diag = _resolve_exit_code(
+                    step_ok, step_msg, [], enforce=enforce
+                )
                 _write_skill_result_audit(
                     audit_path,
                     skill_name=skill_name,
@@ -377,8 +426,9 @@ def run_skill_action(
                 )
             return True, f"fanout: {len(dag_results)} steps completed"
 
+    enforce = bool(aa.get("enforce_status_markers", False))
     exit_code, diagnostics = _resolve_exit_code(
-        ok, msg, run_output.expected_markers
+        ok, msg, run_output.expected_markers, enforce=enforce
     )
     run_output.exit_code = exit_code
     run_output.diagnostics = diagnostics
