@@ -345,54 +345,39 @@ class TestLintPass:
         assert errors == []
 
 
-class TestLintV7Existence:
-    def _v1_fm(self, path_str: str) -> dict:
+class TestLintV7TypeOnly:
+    """Issue #3179: V7 は型検査のみ（ファイル実在は検査しない）。"""
+
+    def _v1_fm(self, path_value: object) -> dict:
         return {
             "name": "review",
             "description": "desc",
             "skill_io": "v1",
-            "produces": {"artifacts": [{"path": path_str, "role": "primary"}]},
+            "produces": {"artifacts": [{"path": path_value, "role": "primary"}]},
         }
 
-    def test_existing_file_no_v7(self, tmp_path: Path) -> None:
-        """AC-2: path が存在するファイルは V7 エラーなし"""
+    def test_nikki_root_path_no_v7(self, tmp_path: Path) -> None:
+        """AC-2: ${NIKKI_ROOT}/... 形式の str path は型検査を通過する"""
         skill_dir = tmp_path / "review"
         skill_dir.mkdir()
-        (skill_dir / "report.md").write_text("ok", encoding="utf-8")
         skill_md = skill_dir / "SKILL.md"
-        errors = lint_skill_meta(self._v1_fm("report.md"), skill_md)
+        errors = lint_skill_meta(
+            self._v1_fm("${NIKKI_ROOT}/tasks.md"), skill_md
+        )
         assert not any(e.startswith("V7:") for e in errors)
 
-    def test_missing_file_v7(self, tmp_path: Path) -> None:
-        """AC-2: path が存在しないファイルは V7 エラー"""
+    def test_missing_file_no_v7(self, tmp_path: Path) -> None:
+        """AC-2: 未作成の出力物 path でも V7 エラーにならない（実在検査なし）"""
         skill_dir = tmp_path / "review"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
         errors = lint_skill_meta(self._v1_fm("missing.md"), skill_md)
-        assert any(
-            e == "V7: produces.artifacts[0].path not found: 'missing.md'" for e in errors
-        )
-
-    def test_glob_match_no_v7(self, tmp_path: Path) -> None:
-        """AC-2: * glob で 1 件以上マッチは V7 エラーなし"""
-        skill_dir = tmp_path / "review"
-        skill_dir.mkdir()
-        (skill_dir / "out-1.md").write_text("a", encoding="utf-8")
-        skill_md = skill_dir / "SKILL.md"
-        errors = lint_skill_meta(self._v1_fm("out-*.md"), skill_md)
         assert not any(e.startswith("V7:") for e in errors)
 
-    def test_glob_no_match_v7(self, tmp_path: Path) -> None:
-        """AC-2: * glob で 0 件マッチは V7 エラー"""
+    def test_path_not_str_still_v7(self, tmp_path: Path) -> None:
+        """AC-2: path: 42（非 str）は従来どおり V7 エラー"""
         skill_dir = tmp_path / "review"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
-        errors = lint_skill_meta(self._v1_fm("out-*.md"), skill_md)
-        assert any(
-            e == "V7: produces.artifacts[0].path no matches: 'out-*.md'" for e in errors
-        )
-
-    def test_fake_path_skips_existence(self) -> None:
-        """AC-2: skill_dir が存在しない場合（fake path）は実在チェックをスキップ"""
-        errors = lint_skill_meta(self._v1_fm("report.md"), _path())
-        assert not any(e.startswith("V7:") for e in errors)
+        errors = lint_skill_meta(self._v1_fm(42), skill_md)
+        assert any(e.startswith("V7:") for e in errors)

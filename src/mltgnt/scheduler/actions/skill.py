@@ -369,7 +369,7 @@ def run_skill_action(
         exec_done_dir=repo_root / "jobs" / "done",
         request_id=request_id,
         permission=permission,
-        run_result=run_output,
+        run_result=run_output if aa.get("result_frontmatter", False) else None,
     )
 
     if write_patterns:

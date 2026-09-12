@@ -29,14 +29,14 @@ _VIOLATION_ID_RE = re.compile(r"^(V\d+)")
 
 
 def _write_unresolved_diagnosis(
-    base: Path,
+    diagnostics_dir: Path,
     skill_name: str,
     skill_path: Path,
+    base: Path,
     unresolved_errors: list[str],
 ) -> None:
-    """lint 失敗スキルの診断 JSON を `{base}/_unresolved/{skill_name}.json` に書き出す。"""
-    unresolved_dir = base / "_unresolved"
-    unresolved_dir.mkdir(exist_ok=True)
+    """lint 失敗スキルの診断 JSON を `diagnostics_dir/{skill_name}.json` に書き出す。"""
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
     errors = []
     for msg in unresolved_errors:
         m = _VIOLATION_ID_RE.match(msg)
@@ -46,15 +46,15 @@ def _write_unresolved_diagnosis(
         "path": str(skill_path.relative_to(base)),
         "errors": errors,
     }
-    (unresolved_dir / f"{skill_name}.json").write_text(
+    (diagnostics_dir / f"{skill_name}.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
 
-def _clear_unresolved_diagnosis(base: Path, skill_name: str) -> None:
+def _clear_unresolved_diagnosis(diagnostics_dir: Path, skill_name: str) -> None:
     """解消済みスキルの診断 JSON を削除する。"""
-    diag = base / "_unresolved" / f"{skill_name}.json"
+    diag = diagnostics_dir / f"{skill_name}.json"
     if diag.is_file():
         diag.unlink()
 
@@ -148,12 +148,19 @@ _build_meta = build_meta  # 後方互換 alias
 def discover(
     paths: list[Path],
     entry_file: str = "SKILL.md",
+    *,
+    diagnostics_dir: Path | None = None,
 ) -> dict[str, SkillMeta]:
     """
     指定パスから SKILL.md を再帰的に探索し、フロントマターのみパースする。
 
     戻り値: {skill_name: SkillMeta}。name 重複時は先勝ち（stderr に警告）。
     個別パースエラーは stderr 出力してスキップ。
+
+    diagnostics_dir:
+        None（既定）なら診断 JSON を書かない。
+        指定時は lint 失敗スキルを ``diagnostics_dir/{name}.json`` に書き、
+        通過時は同パスの stale JSON を削除する。
     """
     result: dict[str, SkillMeta] = {}
 
@@ -185,12 +192,18 @@ def discover(
             if unresolved_errors:
                 for err in unresolved_errors:
                     _log.warning("skill lint failed: %s: %s", skill_file, err)
-                _write_unresolved_diagnosis(
-                    base, meta.name, skill_file, unresolved_errors
-                )
+                if diagnostics_dir is not None:
+                    _write_unresolved_diagnosis(
+                        diagnostics_dir,
+                        meta.name,
+                        skill_file,
+                        base,
+                        unresolved_errors,
+                    )
                 continue
 
-            _clear_unresolved_diagnosis(base, meta.name)
+            if diagnostics_dir is not None:
+                _clear_unresolved_diagnosis(diagnostics_dir, meta.name)
 
             for err in errors:
                 _log.warning("skill lint warning: %s: %s", skill_file, err)

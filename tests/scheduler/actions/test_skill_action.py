@@ -414,6 +414,64 @@ class TestRunSkillActionPermissionPassthrough:
         assert captured_kwargs.get("permission") == "dangerous_full_access"
 
 
+class TestResultFrontmatterOptIn:
+    """Issue #3179 AC-4: result_frontmatter は action_args の opt-in。"""
+
+    def test_default_passes_run_result_none(self, tmp_path: Path) -> None:
+        """result_frontmatter キーなし → enqueue_and_wait に run_result=None"""
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path, status_markers=["DONE"])
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        (tmp_path / "jobs").mkdir(exist_ok=True)
+        captured_kwargs: dict = {}
+
+        def capture_enqueue(**kwargs):
+            captured_kwargs.update(kwargs)
+            return True, "PIPELINE_STATUS: DONE"
+
+        with patch(_ENQUEUE, side_effect=capture_enqueue):
+            run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert "run_result" in captured_kwargs
+        assert captured_kwargs["run_result"] is None
+
+    def test_true_passes_run_output(self, tmp_path: Path) -> None:
+        """result_frontmatter: true → enqueue_and_wait に run_output が渡る"""
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path, status_markers=["DONE"])
+        job = _skill_job(
+            action_args={
+                "skill": "test-skill",
+                "persona": "タチコマ",
+                "result_frontmatter": True,
+            }
+        )
+        (tmp_path / "jobs").mkdir(exist_ok=True)
+        captured_kwargs: dict = {}
+
+        def capture_enqueue(**kwargs):
+            captured_kwargs.update(kwargs)
+            return True, "PIPELINE_STATUS: DONE"
+
+        with patch(_ENQUEUE, side_effect=capture_enqueue):
+            run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        assert captured_kwargs.get("run_result") is not None
+        assert hasattr(captured_kwargs["run_result"], "chat_input")
+
+
 class TestRunSkillActionExitCodeBranch:
     def test_success_returns_original_msg(self, tmp_path: Path) -> None:
         ok, msg = _run_skill(tmp_path, enqueue_return=(True, "応答テキスト"))
