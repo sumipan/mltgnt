@@ -3,7 +3,7 @@ import pytest
 
 from ghdag.dag.fanout import (
     FanOutSpec,
-    build_child_exec_line,
+    build_child_jsonl_record,
     parse_fanout_spec,
 )
 from mltgnt.scheduler import _FANOUT_PROMPT_SUFFIX
@@ -75,17 +75,19 @@ class TestParseFanoutSpec:
         assert parse_fanout_spec(str(tmp_path / "missing.md")) is None
 
 
-class TestBuildChildExecLine:
+class TestBuildChildJsonlRecord:
     def test_format_matches_expected(self):
-        """AC: build_child_exec_line の出力が 'uuid: command' 形式。"""
-        result = build_child_exec_line("abc-uuid", "claude -p 'test'")
-        assert result == "abc-uuid: claude -p 'test'"
+        """AC: build_child_jsonl_record の出力が exec.jsonl 形式の JSON 行。"""
+        import json
+        result = build_child_jsonl_record("abc-uuid", "claude -p 'test'")
+        assert json.loads(result) == {"uuid": "abc-uuid", "command": "claude -p 'test'"}
 
     def test_format_with_complex_command(self):
-        """複雑なコマンドでも形式が維持される。"""
+        """複雑なコマンドでも JSON レコード形式が維持される。"""
+        import json
         cmd = "agent -p --force < /path/to/order.md"
-        result = build_child_exec_line("some-uuid-1234", cmd)
-        assert result == f"some-uuid-1234: {cmd}"
+        result = build_child_jsonl_record("some-uuid-1234", cmd)
+        assert json.loads(result) == {"uuid": "some-uuid-1234", "command": cmd}
 
 
 class TestFanoutPromptSuffix:
