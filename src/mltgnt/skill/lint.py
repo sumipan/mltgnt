@@ -51,25 +51,9 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
             )
         artifacts = produces.get("artifacts") or []
         if isinstance(artifacts, list):
-            skill_dir = path.parent
             for i, artifact in enumerate(artifacts):
                 if not isinstance(artifact, dict) or "path" not in artifact or not isinstance(artifact["path"], str):
                     errors.append(f"V7: produces.artifacts[{i}].path is required")
-                    continue
-                # スキルディレクトリが実在するときのみファイル実在を検査
-                # （テスト用 fake パス `/skills/.../SKILL.md` を壊さない）
-                if not skill_dir.is_dir():
-                    continue
-                path_str = artifact["path"]
-                if "*" in path_str:
-                    if not list(skill_dir.glob(path_str)):
-                        errors.append(
-                            f"V7: produces.artifacts[{i}].path no matches: {path_str!r}"
-                        )
-                elif not (skill_dir / path_str).exists():
-                    errors.append(
-                        f"V7: produces.artifacts[{i}].path not found: {path_str!r}"
-                    )
     # produces が dict 以外の場合は V6/V7 は lint 時点では触れず V5/V4 等に委譲
 
     # V8: consumes[*].producer 非空 str

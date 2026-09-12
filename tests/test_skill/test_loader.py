@@ -202,10 +202,8 @@ consumes:
 
 
 def _write_v1_skill(tmp_path: Path) -> Path:
-    """V1_SKILL_MD を書き、V7 実在チェック用に output.txt も置く（#3041）。"""
-    skill = _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
-    (skill.parent / "output.txt").write_text("artifact\n", encoding="utf-8")
-    return skill
+    """V1_SKILL_MD を書き出す。"""
+    return _write_skill(tmp_path, "v1-skill/SKILL.md", V1_SKILL_MD)
 
 
 class TestSkillIoParse:
@@ -441,7 +439,7 @@ class TestDiscoverKnowledgePaths:
 
 
 
-# --- Issue #3041: AC-1 discover → _unresolved/ JSON ---
+# --- Issue #3041 / #3179: discover diagnostics_dir opt-in ---
 
 INVALID_SKILL_IO_MD_FOR_UNRESOLVED = """\
 ---
@@ -464,32 +462,43 @@ description: fixed skill
 
 
 class TestUnresolved:
-    def test_lint_fail_writes_unresolved_json(self, tmp_path: Path) -> None:
-        """AC-1: lint 失敗時に _unresolved/{name}.json が書き出される"""
+    def test_default_diagnostics_dir_writes_nothing(self, tmp_path: Path) -> None:
+        """AC-3: diagnostics_dir=None（既定）では診断 JSON を一切書かない"""
         _write_skill(tmp_path, "bad-io/SKILL.md", INVALID_SKILL_IO_MD_FOR_UNRESOLVED)
         skills = discover([tmp_path])
         assert skills == {}
-        diag = tmp_path / "_unresolved" / "bad-io.json"
+        assert not (tmp_path / "_unresolved").exists()
+        assert list(tmp_path.glob("*.json")) == []
+
+    def test_lint_fail_writes_to_diagnostics_dir(self, tmp_path: Path) -> None:
+        """AC-3: diagnostics_dir 指定時は <tmp>/{name}.json に書く（_unresolved サブdir なし）"""
+        diag_dir = tmp_path / "diag-out"
+        diag_dir.mkdir()
+        _write_skill(tmp_path, "bad-io/SKILL.md", INVALID_SKILL_IO_MD_FOR_UNRESOLVED)
+        skills = discover([tmp_path], diagnostics_dir=diag_dir)
+        assert skills == {}
+        diag = diag_dir / "bad-io.json"
         assert diag.is_file()
+        assert not (tmp_path / "_unresolved").exists()
         data = json.loads(diag.read_text(encoding="utf-8"))
         assert data["skill_name"] == "bad-io"
         assert data["path"] == "bad-io/SKILL.md"
         assert any(e["id"] == "V4" for e in data["errors"])
         assert any("V4:" in e["message"] for e in data["errors"])
 
-    def test_lint_pass_deletes_unresolved_json(self, tmp_path: Path) -> None:
-        """AC-1: lint 通過後に _unresolved/{name}.json が削除される"""
-        unresolved = tmp_path / "_unresolved"
-        unresolved.mkdir()
-        stale = unresolved / "bad-io.json"
+    def test_lint_pass_deletes_from_diagnostics_dir(self, tmp_path: Path) -> None:
+        """AC-3: lint 通過後に diagnostics_dir/{name}.json が削除される"""
+        diag_dir = tmp_path / "diag-out"
+        diag_dir.mkdir()
+        stale = diag_dir / "bad-io.json"
         stale.write_text('{"skill_name":"bad-io"}', encoding="utf-8")
         _write_skill(tmp_path, "bad-io/SKILL.md", VALID_LEGACY_AFTER_FIX)
-        skills = discover([tmp_path])
+        skills = discover([tmp_path], diagnostics_dir=diag_dir)
         assert "bad-io" in skills
         assert not stale.exists()
 
     def test_unresolved_dir_skipped_by_discover(self, tmp_path: Path) -> None:
-        """AC-1: _unresolved/ 配下の SKILL.md は discover スキャンでスキップされる"""
+        """_ 始まりディレクトリ配下の SKILL.md は discover スキャンでスキップされる"""
         _write_skill(tmp_path, "review/SKILL.md", FULL_SKILL_MD)
         _write_skill(
             tmp_path,
