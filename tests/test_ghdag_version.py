@@ -52,8 +52,8 @@ def test_ghdag_dag_hooks_has_check_promote_target():
     )
 
 
-def test_pyproject_ghdag_pin_is_at_least_0_43_0():
-    """Issue #2991: ghdag 依存の pin が v0.43.0 以上であること。
+def test_pyproject_ghdag_pin_is_at_least_0_55_0():
+    """Issue #3143: ghdag 依存の pin が v0.55.0 以上であること。
 
     完全一致ではなく下限で検査する。pin の更新は release-watcher / issuesmith の
     bump が決定論的に行うため、完全一致にすると bump のたびにこのテストが落ちる
@@ -68,7 +68,7 @@ def test_pyproject_ghdag_pin_is_at_least_0_43_0():
     assert len(pins) == 1, f"ghdag の git pin は 1 本のみ想定: {pins}"
     tag = pins[0].rsplit("@v", 1)[1]
     parts = [int(x) for x in tag.split(".")[:3]]
-    assert parts >= [0, 43, 0], f"ghdag pin v{tag} は v0.43.0 より古い"
+    assert parts >= [0, 55, 0], f"ghdag pin v{tag} は v0.55.0 より古い"
 
 
 def test_issue_2991_mltgnt_does_not_import_renamed_adapters():
