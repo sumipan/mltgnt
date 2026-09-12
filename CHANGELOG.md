@@ -19,7 +19,7 @@
 - **`mltgnt.memory` から `_tail_utf8_bytes` を非公開化**（#3023）: package export は `tail_utf8_bytes` のみ。実装本体は `memory.api` に残す
 - **V7 lint**（#3041）: `produces.artifacts[].path` が str であることに加え、スキルディレクトリ実在時はファイル実在 / glob マッチを検査する
 
-## v0.31.0
+## v0.33.0
 
 ### Changed
 
