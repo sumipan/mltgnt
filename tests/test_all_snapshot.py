@@ -162,10 +162,26 @@ EXPECTED_ALL: dict[str, list[str]] = {
     ],
     "mltgnt.config": [
         "ChatConfig",
+        "ConversationConfig",
         "DEFAULT_WEIGHT_MAP",
         "MemoryConfig",
         "PersonaConfig",
         "SchedulerConfig",
+    ],
+    "mltgnt.conversation": [
+        "Attachment",
+        "ConversationConfig",
+        "HistoryMessage",
+        "TurnInput",
+        "TurnResult",
+        "configure",
+        "fake_media",
+        "get_config",
+        "session_compact",
+        "session_store",
+        "thread_index",
+        "thread_persona_store",
+        "thread_queue",
     ],
     "mltgnt.exceptions": [
         "ConfigError",
@@ -186,5 +202,5 @@ def test_all_snapshot(module_path: str, expected: list[str]) -> None:
     )
 
 
-def test_all_snapshot_covers_thirteen_modules() -> None:
-    assert len(EXPECTED_ALL) == 13
+def test_all_snapshot_covers_fourteen_modules() -> None:
+    assert len(EXPECTED_ALL) == 14
