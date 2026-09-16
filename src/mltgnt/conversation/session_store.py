@@ -263,7 +263,7 @@ def _resolve_created_at(data: dict, path: Path) -> datetime | None:
         try:
             parsed = datetime.fromisoformat(raw)
         except ValueError:
-            parsed = None
+            pass
         else:
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)

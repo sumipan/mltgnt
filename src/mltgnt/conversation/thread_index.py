@@ -81,7 +81,8 @@ def _lookup_in_file(index_path: Path, posted_ts: str) -> str | None:
             try:
                 entry = json.loads(line)
                 if entry.get("posted_ts") == posted_ts:
-                    return entry.get("result_path")
+                    result_path = entry.get("result_path")
+                    return result_path if isinstance(result_path, str) else None
             except json.JSONDecodeError:
                 continue
     except OSError:
