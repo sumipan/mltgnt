@@ -4,6 +4,7 @@
 
 ### Added
 
+- **媒体非依存ルーティング API**（#3285）: `resolve_persona(text, *, space_id, conversation_id, persona_map, pinned_personas)` と `find_observers_in_space` を新設。`SpacePersonaEntry` を正式名とし `ChannelPersonaEntry` は後方互換別名。旧 `resolve_responding_persona` / `find_observers` は互換ラッパとして残し `DeprecationWarning` を出す
 - **discover ガバナンス（柱 5）**（#3041）: lint 失敗スキルの診断を `{base}/_unresolved/{name}.json` に書き出し、次回 discover で解消済みなら削除。V7 が `artifacts[].path` のスキルディレクトリ相対の実在（glob は 1 件以上マッチ）を検査。`skill_io: v1` 時は `write_result_frontmatter()` が result 先頭に `skill_io` / `produces`（content_type / status_markers）を書き込む
 - **スキル結果の `PIPELINE_STATUS` 突合と `CONTRACT_VIOLATION`**（#3040）: `ExitStatus.CONTRACT_VIOLATION = 3` を追加。scheduler が `SkillRunResult.expected_markers` と result 先頭/末尾の `PIPELINE_STATUS:` を突合し、宣言外・欠落は exit 3。`diagnostics` と `event_type: "skill_result"` audit を記録。fanout 各ステップにも audit を伝播。`tests/fixtures/marker_response/` に 3 エンジン × 3 ケースの実応答 fixture を追加
 - **スキルパイプライン合成器 `compose_pipeline`**（#3031）: `list[SkillMatchResult]` → 直線 `DagStep` 列。`scheduler` の `enable_pipeline: true` で `match_pipeline → compose_pipeline → typecheck_dag → enqueue_dag` を配線。`consumes.producer` 不一致は compose 時点で `SkillIOTypeError`（legacy はスキップ）。`enqueue_dag` は upstream result から `PIPELINE_STATUS:` を抽出し `{step_id}_pipeline_status` を下流へ注入、`INVALID_STATE` 時は downstream を投入しない
@@ -11,6 +12,10 @@
 - **`mltgnt.skill.loader.build_meta` 公開**（#3023）: フロントマター→`SkillMeta` 構築を公開 API 化。`_build_meta` は後方互換 alias
 - **スケジューラ skill アクションのコンテキスト注入**（#3021）: `skill/runner.run(extra_context=...)` を追加。`run_skill_action` がスキルの `knowledge.md`（末尾 N パラグラフ）と `chat/memory/<persona>.jsonl`（末尾バイト）を読みプロンプトへ注入し、`jobs/audit.jsonl` に `context_injection` を記録する
 - **`skill/context.build_extra_context` + discover knowledge index**（#3030）: `SkillMeta.knowledge_paths` を discover 時に index。`build_extra_context()` に knowledge/memory 組立を集約し scheduler から private 重複を除去。`from mltgnt.skill import build_extra_context` で公開
+
+### Deprecated
+
+- **`resolve_responding_persona` / `find_observers`**（#3285）: Slack 語彙（`channel` / `thread_ts`）固定のため非推奨。`resolve_persona` / `find_observers_in_space` へ移行すること
 
 ### Changed
 
