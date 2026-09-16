@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security
+
+- **Remove host persona names from source and tests**（#3337）: `format_persona_body` の口調カットを固有名リテラルから汎用パターン（`\\n\\n\\S+口調の本文は`）へ変更。テストデータの固有名を合成名に置換
+
 ### Added
 
 - **くびれ契約 `TurnInput` / `TurnResult` / `TurnHandler`**（#3286）: `mltgnt.interfaces.turn` に媒体非依存の境界データ型と `TurnHandler` Protocol を追加。パッケージから `TurnInput` / `TurnResult` / `TurnHandler` / `Attachment` / `HistoryMessage` を公開。待機列・台帳の実装は持ち込まない

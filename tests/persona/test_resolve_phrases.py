@@ -28,10 +28,10 @@ def _write_agent(tmp_path: Path, name: str, phrases: dict[str, str] | None) -> N
 def test_load_persona_phrases_returns_dict(tmp_path: Path) -> None:
     _write_agent(
         tmp_path,
-        "あんどぅー試験",
+        "persona-a test",
         {"approval_hint": "『ok』で進めてね", "done": "✅ できたよ"},
     )
-    out = load_persona_phrases("あんどぅー試験", persona_dir=tmp_path / "agents")
+    out = load_persona_phrases("persona-a test", persona_dir=tmp_path / "agents")
     assert out["approval_hint"] == "『ok』で進めてね"
     assert out["done"] == "✅ できたよ"
 
@@ -51,7 +51,7 @@ def test_resolve_responder_uses_injected_fn() -> None:
         space_id="space-1",
         conversation_id="conv-1",
         persona_map={"space-1": []},
-        pinned_personas={"conv-1": "安藤瑞穂"},
+        pinned_personas={"conv-1": "persona-a"},
         resolve_fn=_resolve,
     )
     assert got == "タチコマ"

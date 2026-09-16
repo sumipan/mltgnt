@@ -87,7 +87,7 @@ class TestBuildExtraContext:
         line = _jsonl_line(
             timestamp="2026-04-21 14:25",
             role="user",
-            content="ハニさんいるかな？",
+            content="Is persona-b around?",
             source_tag="slack",
         )
         _write_memory(tmp_path, "タチコマ", line + "\n")
@@ -96,7 +96,7 @@ class TestBuildExtraContext:
 
         assert result is not None
         assert "### 記憶（末尾）" in result
-        assert "- [2026-04-21 14:25] user: ハニさんいるかな？" in result
+        assert "- [2026-04-21 14:25] user: Is persona-b around?" in result
         assert '{"timestamp"' not in result
         assert "### knowledge" not in result
 

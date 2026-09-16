@@ -57,9 +57,7 @@ def dedupe_persona_prefix(body: str) -> str:
     return body
 
 
-_PERSONA_CUT_MARKERS = (
-    "\n\nあんどぅー口調の本文は",
-)
+_PERSONA_CUT_RE = re.compile(r"\n\n\S+口調の本文は")
 
 
 def format_persona_body(text: str) -> str:
@@ -68,9 +66,8 @@ def format_persona_body(text: str) -> str:
     if not s:
         return ""
     s = extract_persona_block_after_meta_headers(s)
-    positions = [s.find(m) for m in _PERSONA_CUT_MARKERS]
-    positions = [p for p in positions if p != -1]
-    if positions:
-        s = s[: min(positions)].rstrip()
+    m = _PERSONA_CUT_RE.search(s)
+    if m:
+        s = s[: m.start()].rstrip()
     s = dedupe_persona_prefix(s)
     return s.strip()
