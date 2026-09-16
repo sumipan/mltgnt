@@ -4,6 +4,7 @@
 
 ### Added
 
+- **くびれ契約 `TurnInput` / `TurnResult` / `TurnHandler`**（#3286）: `mltgnt.interfaces.turn` に媒体非依存の境界データ型と `TurnHandler` Protocol を追加。パッケージから `TurnInput` / `TurnResult` / `TurnHandler` / `Attachment` / `HistoryMessage` を公開。待機列・台帳の実装は持ち込まない
 - **媒体非依存ルーティング API**（#3285）: `resolve_persona(text, *, space_id, conversation_id, persona_map, pinned_personas)` と `find_observers_in_space` を新設。`SpacePersonaEntry` を正式名とし `ChannelPersonaEntry` は後方互換別名。旧 `resolve_responding_persona` / `find_observers` は互換ラッパとして残し `DeprecationWarning` を出す
 - **discover ガバナンス（柱 5）**（#3041）: lint 失敗スキルの診断を `{base}/_unresolved/{name}.json` に書き出し、次回 discover で解消済みなら削除。V7 が `artifacts[].path` のスキルディレクトリ相対の実在（glob は 1 件以上マッチ）を検査。`skill_io: v1` 時は `write_result_frontmatter()` が result 先頭に `skill_io` / `produces`（content_type / status_markers）を書き込む
 - **スキル結果の `PIPELINE_STATUS` 突合と `CONTRACT_VIOLATION`**（#3040）: `ExitStatus.CONTRACT_VIOLATION = 3` を追加。scheduler が `SkillRunResult.expected_markers` と result 先頭/末尾の `PIPELINE_STATUS:` を突合し、宣言外・欠落は exit 3。`diagnostics` と `event_type: "skill_result"` audit を記録。fanout 各ステップにも audit を伝播。`tests/fixtures/marker_response/` に 3 エンジン × 3 ケースの実応答 fixture を追加

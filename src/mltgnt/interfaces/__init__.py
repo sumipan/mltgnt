@@ -9,6 +9,13 @@ from mltgnt.interfaces.types import (
     ChatInputBase,
     ChatOutputBase,
 )
+from mltgnt.interfaces.turn import (
+    Attachment,
+    HistoryMessage,
+    TurnHandler,
+    TurnInput,
+    TurnResult,
+)
 
 __all__ = [
     "SlackClientProtocol",
@@ -20,4 +27,9 @@ __all__ = [
     "ChatOutput",
     "ChatInputBase",
     "ChatOutputBase",
+    "Attachment",
+    "HistoryMessage",
+    "TurnHandler",
+    "TurnInput",
+    "TurnResult",
 ]
