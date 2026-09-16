@@ -1,0 +1,9 @@
+{
+  "engine": "cursor",
+  "case": "failure",
+  "raw_body": "queue result draft: 今日の予定を確認しました。",
+  "llm_body": "",
+  "success": false,
+  "returncode": 1,
+  "stderr": "agent exit 1"
+}

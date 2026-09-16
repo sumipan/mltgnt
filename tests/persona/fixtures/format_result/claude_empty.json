@@ -1,0 +1,9 @@
+{
+  "engine": "claude",
+  "case": "empty",
+  "raw_body": "queue result draft: 今日の予定を確認しました。",
+  "llm_body": "   ",
+  "success": true,
+  "returncode": 0,
+  "stderr": ""
+}
