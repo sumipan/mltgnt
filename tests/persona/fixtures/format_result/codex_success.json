@@ -1,0 +1,10 @@
+{
+  "engine": "codex",
+  "case": "success",
+  "raw_body": "queue result draft: 今日の予定を確認しました。会議は14時です。",
+  "llm_body": "今日の予定、確認したよ。会議は14時だね。",
+  "success": true,
+  "returncode": 0,
+  "stderr": "",
+  "raw_stdout": "{\"type\":\"thread.started\",\"thread_id\":\"thr_test\"}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"CLI_EVENT_LEAK\"}}\n"
+}

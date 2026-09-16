@@ -8,6 +8,9 @@
     compress_heavy_to_light(heavy_text, *, engine, model, ..) -> str
     regenerate_light_block(persona_path, *, engine, model, ..) -> RegenerationResult
     PersonaValidationError                                    (例外クラス)
+
+#3318 追加（層サブモジュール）:
+    extractor / formatter / memory / phrases / resolve / types / result_format
 """
 
 from __future__ import annotations
@@ -16,14 +19,20 @@ from pathlib import Path
 
 from mltgnt.config import PersonaConfig
 from mltgnt.persona.compress import compress_heavy_to_light, regenerate_light_block
+from mltgnt.persona.formatter import format_persona_body
 from mltgnt.persona.loader import Persona, load
 from mltgnt.persona.registry import list_personas as _list_personas
 from mltgnt.persona.registry import resolve_with_alias
+from mltgnt.persona.result_format import format_result_for_persona
 from mltgnt.persona.runner import run_persona_prompt
+from mltgnt.persona.types import PersonaContext
 
 __all__ = [
     "Persona",
+    "PersonaContext",
     "PersonaValidationError",
+    "format_persona_body",
+    "format_result_for_persona",
     "load_persona",
     "list_personas",
     "validate_persona",
