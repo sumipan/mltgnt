@@ -13,7 +13,7 @@ from mltgnt.persona.formatter import (
 def test_extract_persona_block_after_meta_headers() -> None:
     raw = (
         "前置き\n\n"
-        "あんどぅーとしての応答（標準出力相当）\n\n"
+        "persona-aとしての応答（標準出力相当）\n\n"
         "んー、わかるかも。\n\n"
         "---\n\n（以上）\n"
     )
@@ -41,7 +41,7 @@ def test_dedupe_persona_prefix_noop_when_single() -> None:
 def test_format_persona_body_composes_extract_and_dedupe() -> None:
     raw = (
         "メタ\n\n"
-        "あんどぅーとしての応答（標準出力相当）\n\n"
+        "persona-aとしての応答（標準出力相当）\n\n"
         "今週（3/24〜3/28）の計画、一回目。\n\n"
         "今週（3/24〜3/28）の計画、二回目だけ残す。"
     )
@@ -49,6 +49,12 @@ def test_format_persona_body_composes_extract_and_dedupe() -> None:
     assert "としての応答" not in out
     assert out.count("今週（") == 1
     assert "二回目だけ残す" in out
+
+
+def test_format_persona_body_cuts_generic_tone_marker() -> None:
+    """Cut marker must match any persona token, not a host-specific name (#3337)."""
+    raw = "本文です。\n\npersona-a口調の本文はここに続く説明"
+    assert format_persona_body(raw) == "本文です。"
 
 
 def test_formatter_source_has_no_media_or_sdk() -> None:
@@ -63,3 +69,7 @@ def test_formatter_source_has_no_media_or_sdk() -> None:
     assert "slack_sdk" not in src
     assert "ghdag" not in src
     assert "markdown_to_slack_mrkdwn" not in src
+    # Host persona tokens must not appear as contiguous literals (#3337).
+    assert "\u3042\u3093\u3069\u3045\u30fc" not in src
+    assert "\u5b89\u85e4\u745e\u7a42" not in src
+    assert "\u30cf\u30cb" not in src
