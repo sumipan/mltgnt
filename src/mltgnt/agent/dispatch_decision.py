@@ -230,22 +230,25 @@ def make_dispatch_decision(
         reply = agent_result.message
 
     deferred_escalated = False
-    if mode == MODE_REPLY and reply is not None:
-        if match_deferred_promise_fn(reply) is not None:
-            if not (instruction or "").strip():
-                return DispatchDecision(
-                    mode=MODE_REPLY,
-                    reply_text=REASK_MESSAGE,
-                    agent_result=agent_result,
-                    preempted=False,
-                    deferred_escalated=False,
-                    agent_spans=agent_spans,
-                    session_id=agent_result.session_id if agent_result else None,
-                    resumed_from_session=resumed_from_session if used_resume else None,
-                )
-            mode = MODE_DELEGATE
-            reply = None
-            deferred_escalated = True
+    if (
+        mode == MODE_REPLY
+        and reply is not None
+        and match_deferred_promise_fn(reply) is not None
+    ):
+        if not (instruction or "").strip():
+            return DispatchDecision(
+                mode=MODE_REPLY,
+                reply_text=REASK_MESSAGE,
+                agent_result=agent_result,
+                preempted=False,
+                deferred_escalated=False,
+                agent_spans=agent_spans,
+                session_id=agent_result.session_id if agent_result else None,
+                resumed_from_session=resumed_from_session if used_resume else None,
+            )
+        mode = MODE_DELEGATE
+        reply = None
+        deferred_escalated = True
 
     return DispatchDecision(
         mode=mode,
