@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEFAULT_WEIGHT_MAP",
+    "ConversationConfig",
     "MemoryConfig",
     "PersonaConfig",
     "SchedulerConfig",
@@ -43,6 +44,26 @@ class PersonaConfig:
     weight_map: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
     )
+
+
+@dataclass(frozen=True)
+class ConversationConfig:
+    """会話層（待機列・セッション・台帳）の保存先と閾値。
+
+    MemoryConfig と同様にホストがパスを注入する。ハードコードしない。
+    """
+
+    queue_dir: Path
+    sessions_dir: Path
+    ledger_dir: Path
+    thread_index_dir: Path
+    thread_persona_path: Path
+    posts_dir: Path | None = None
+    audit_path: Path | None = None
+    stale_after_sec: int = 3600
+    max_queued: int = 20
+    cleanup_ttl_days: int = 14
+    thread_persona_ttl_days: int = 30
 
 
 @dataclass(frozen=True)

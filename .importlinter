@@ -9,7 +9,7 @@ type = layers
 layers =
     daemon | loops
     scheduler | agent | routing
-    persona | chat | skill | memory
+    persona | chat | skill | memory | conversation
     bridges
     interfaces
 containers =
@@ -32,6 +32,7 @@ source_modules =
     mltgnt.skill
     mltgnt.memory
     mltgnt.loops
+    mltgnt.conversation
 forbidden_modules =
     ghdag
 allow_indirect_imports = True
