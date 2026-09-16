@@ -1,10 +1,10 @@
 """
-mltgnt.routing — チャンネル→ペルソナルーティング。
+mltgnt.routing — space → ペルソナルーティング（媒体非依存）。
 
 元コード: tools/secretary/config.py の ChannelPersonaEntry と load_channel_persona_map()
 OSS 分離: persona_loader を callable 引数で受け取る。
 
-設計: Issue #118 §3 (T2)
+設計: Issue #118 §3 (T2) / #3285
 """
 from __future__ import annotations
 
@@ -20,14 +20,17 @@ _log = logging.getLogger(__name__)
 __all__ = [
     "ChannelPersonaEntry",
     "RoutingRule",
+    "SpacePersonaEntry",
     "TRIAGE_PROFILE_MAX_CHARS",
     "detect_nickname",
     "evaluate",
     "extract_json_object",
     "extract_triage_section",
     "find_observers",
+    "find_observers_in_space",
     "load_channel_persona_map",
     "prepare_profile_for_triage",
+    "resolve_persona",
     "resolve_responding_persona",
 ]
 
@@ -63,22 +66,29 @@ def evaluate(
 
 
 @dataclass
-class ChannelPersonaEntry:
-    """1チャンネル内でのペルソナの役割を表す。"""
+class SpacePersonaEntry:
+    """1 スペース内でのペルソナの役割を表す。"""
     name: str
     role: Literal["primary", "secondary"]
-    nickname: str  # 副チャンネル呼び出し用（slack_nickname が None の場合は persona.name を使う）
+    nickname: str  # 呼び出し用（slack_nickname が None の場合は persona.name を使う）
+
+
+# 後方互換別名
+ChannelPersonaEntry = SpacePersonaEntry
 
 
 def load_channel_persona_map(
     persona_loader: Callable[[], list],
-) -> dict[str, list[ChannelPersonaEntry]]:
+) -> dict[str, list[SpacePersonaEntry]]:
     """
     persona_loader が返すペルソナオブジェクトのリストから
-    チャンネルマップを構築する。
-    {channel_id: list[ChannelPersonaEntry]} の dict を返す。
-    channel が未設定のペルソナはマップに含まれない。
-    同一チャンネルに primary が複数ある場合は ConfigError を送出する。
+    space マップを構築する。
+    {space_id: list[SpacePersonaEntry]} の dict を返す。
+    space（persona 定義上は ops.slack.channel 等）が未設定のペルソナはマップに含まれない。
+    同一 space に primary が複数ある場合は ConfigError を送出する。
+
+    キーは space_id として扱う（routing は媒体固有の意味を知らない）。
+    persona 定義が Slack の channel フィールドを読むのは定義側の都合であり、本関数の署名は変えない。
 
     persona_loader: () -> list of persona objects with attributes:
         - name: str
@@ -86,7 +96,7 @@ def load_channel_persona_map(
         - fm.slack_secondary_channels: list[str]
         - fm.slack_nickname: str | None
     """
-    result: dict[str, list[ChannelPersonaEntry]] = {}
+    result: dict[str, list[SpacePersonaEntry]] = {}
     try:
         personas = persona_loader()
     except Exception as e:
@@ -97,22 +107,22 @@ def load_channel_persona_map(
         try:
             nickname = persona.fm.slack_nickname or persona.name
 
-            # primary チャンネル
+            # primary スペース
             ch = persona.fm.slack_channel
             if ch:
                 if ch not in result:
                     result[ch] = []
-                result[ch].append(ChannelPersonaEntry(
+                result[ch].append(SpacePersonaEntry(
                     name=persona.name,
                     role="primary",
                     nickname=nickname,
                 ))
 
-            # secondary チャンネル群
+            # secondary スペース群
             for sec_ch in persona.fm.slack_secondary_channels:
                 if sec_ch not in result:
                     result[sec_ch] = []
-                result[sec_ch].append(ChannelPersonaEntry(
+                result[sec_ch].append(SpacePersonaEntry(
                     name=persona.name,
                     role="secondary",
                     nickname=nickname,
@@ -134,6 +144,8 @@ def load_channel_persona_map(
 from mltgnt.routing.channel_router import (  # noqa: E402
     detect_nickname,
     find_observers,
+    find_observers_in_space,
+    resolve_persona,
     resolve_responding_persona,
 )
 from mltgnt.routing.triage import (  # noqa: E402

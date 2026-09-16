@@ -107,14 +107,17 @@ EXPECTED_ALL: dict[str, list[str]] = {
     "mltgnt.routing": [
         "ChannelPersonaEntry",
         "RoutingRule",
+        "SpacePersonaEntry",
         "TRIAGE_PROFILE_MAX_CHARS",
         "detect_nickname",
         "evaluate",
         "extract_json_object",
         "extract_triage_section",
         "find_observers",
+        "find_observers_in_space",
         "load_channel_persona_map",
         "prepare_profile_for_triage",
+        "resolve_persona",
         "resolve_responding_persona",
     ],
     "mltgnt.persona": [
