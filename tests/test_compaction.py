@@ -458,7 +458,7 @@ class TestCompactionPublicApi:
         doc = compact.__doc__ or ""
         assert "llm_call" in doc
         # Japanese text intentionally kept for CJK processing test
-        assert "ラップ" in doc or "wrapper" in doc.lower()
+        assert "wrap" in doc.lower()
 
 
 # ---------------------------------------------------------------------------

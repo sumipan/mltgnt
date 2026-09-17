@@ -942,11 +942,11 @@ class TestContextInjection:
             tmp_path, with_knowledge=True, with_memory=False, knowledge_count=3
         )
         # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" in prompt
-        assert "### knowledge（直近 3 件）" in prompt
+        assert "## Context" in prompt
+        assert "### knowledge (last 3)" in prompt
         assert "k4" in prompt and "k5" in prompt and "k6" in prompt
         assert "k3" not in prompt
-        assert "### 記憶（末尾）" not in prompt
+        assert "### Memory (tail)" not in prompt
         assert len(records) == 1
         assert records[0]["knowledge_count"] == 3
         assert records[0]["memory_bytes"] == 0
@@ -956,9 +956,9 @@ class TestContextInjection:
             tmp_path, with_knowledge=False, with_memory=True
         )
         # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" in prompt
+        assert "## Context" in prompt
         assert "### knowledge" not in prompt
-        assert "### 記憶（末尾）" in prompt
+        assert "### Memory (tail)" in prompt
         assert "- [2026-09-09 10:00] user: last night's talk" in prompt
         assert '{"timestamp"' not in prompt
         assert len(records) == 1
@@ -970,9 +970,9 @@ class TestContextInjection:
             tmp_path, with_knowledge=True, with_memory=True, knowledge_count=2
         )
         # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" in prompt
-        assert "### knowledge（直近 2 件）" in prompt
-        assert "### 記憶（末尾）" in prompt
+        assert "## Context" in prompt
+        assert "### knowledge (last 2)" in prompt
+        assert "### Memory (tail)" in prompt
         assert "k5" in prompt and "k6" in prompt
         assert "last night's talk" in prompt
         assert records[0]["event_type"] == "context_injection"
@@ -991,7 +991,7 @@ class TestContextInjection:
             memory_exclude_source_tags=["slack-observe"],
         )
         # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" in prompt
+        assert "## Context" in prompt
         assert "last night's talk" in prompt
         assert "observe-only" not in prompt
         assert len(records) == 1

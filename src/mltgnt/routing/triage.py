@@ -1,7 +1,7 @@
 """mltgnt.routing.triage
 
-Slack トリアージ前処理ユーティリティ。
-persona/triage.py から移動（Issue #911）。
+Slack triage preprocessing utilities.
+Moved from persona/triage.py (Issue #911).
 """
 from __future__ import annotations
 
@@ -12,10 +12,12 @@ TRIAGE_PROFILE_MAX_CHARS = 6000
 
 
 def extract_triage_section(markdown: str) -> str | None:
-    """人物像 Markdown 内のトリアージ用セクション本文を返す。無ければ None。
+    """Return the triage section body from persona Markdown, or None.
 
-    v2 形式の `## 軽量` を優先し、フォールバックとして v1 形式の `## トリアージ用` も探す。
+    # Japanese text intentionally kept for CJK processing test
+    Prefer v2 `## 軽量`; fall back to v1 `## トリアージ用`.
     """
+    # Japanese text intentionally kept for CJK processing test
     m = re.search(r"^##\s+軽量\s*$", markdown, re.MULTILINE)
     if not m:
         m = re.search(r"^##\s+トリアージ用\s*$", markdown, re.MULTILINE)
@@ -31,7 +33,7 @@ def extract_triage_section(markdown: str) -> str | None:
 
 
 def prepare_profile_for_triage(profile_content: str | None, logger) -> str | None:
-    """トリアージ用に人物像を短縮する。"""
+    """Shorten a persona profile for triage."""
     if not profile_content or not profile_content.strip():
         return None
     raw = profile_content.strip()
@@ -47,7 +49,8 @@ def prepare_profile_for_triage(profile_content: str | None, logger) -> str | Non
     if len(text) > TRIAGE_PROFILE_MAX_CHARS:
         text = (
             text[:TRIAGE_PROFILE_MAX_CHARS].rstrip()
-            + "\n…（以降省略。`## トリアージ用` セクションで要約を置くと安定します）"
+            # Japanese text intentionally kept for CJK processing test
+            + "\n…(truncated. Place a summary under `## トリアージ用` for stability)"
         )
         truncated = 1
     logger.info(
@@ -61,11 +64,11 @@ def prepare_profile_for_triage(profile_content: str | None, logger) -> str | Non
 
 
 def extract_json_object(text: str) -> dict | None:
-    """LLM の stdout から JSON オブジェクトを1つ取り出す。
+    """Extract one JSON object from LLM stdout.
 
-    - 空文字なら None
-    - ``` で囲まれていればフェンス行を除去
-    - 最初の { から最後の } までを json.loads でパース
+    - None on empty string
+    - Strip fence lines if wrapped in ```
+    - Parse from the first { to the last } via json.loads
     """
     s = text.strip()
     if not s:

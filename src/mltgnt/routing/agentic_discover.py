@@ -1,8 +1,8 @@
 """
-mltgnt.routing.agentic_discover — AgenticSkillDiscoverer によるスキル発見。
+mltgnt.routing.agentic_discover — skill discovery via AgenticSkillDiscoverer.
 
-skill と memory の両層を横断するため routing 層に配置。
-設計: Issue #1895 Subtask 1 / Issue #1922
+Lives in routing because it spans both skill and memory layers.
+Design: Issue #1895 Subtask 1 / Issue #1922
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ __all__ = [
 
 @dataclass(frozen=True)
 class DiscoverRound:
-    """1 ラウンド分のスキル発見履歴。"""
+    """Skill-discovery history for one round."""
 
     query: str
     candidates: list[tuple[str, float]]  # (skill_name, score)
@@ -31,7 +31,7 @@ class DiscoverRound:
 
 @dataclass(frozen=True)
 class DiscoverResult:
-    """スキル発見の最終結果。"""
+    """Final skill-discovery result."""
 
     kind: Literal["selected", "ambiguous", "unresolved"]
     skill: SkillMeta | None = None
@@ -40,8 +40,8 @@ class DiscoverResult:
 
 
 class AgenticSkillDiscoverer:
-    """TF-IDF スコアリングと judge_for_discover を反復ループで組み合わせ、
-    スキルカタログから候補を絞り込む。
+    """Combine TF-IDF scoring with judge_for_discover in an iterative loop
+    to narrow candidates from the skill catalog.
     """
 
     def __init__(

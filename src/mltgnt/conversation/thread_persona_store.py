@@ -1,7 +1,7 @@
-"""会話固定ペルソナの JSONL 永続化（#3317）。
+"""JSONL persistence for conversation-bound personas (#3317).
 
-会話 ID でキーする。インメモリ map の更新はコールバックで注入する。
-保存先・TTL は ConversationConfig で注入する。
+Keyed by conversation ID. In-memory map updates are injected via callback.
+Storage and TTL are injected via ConversationConfig.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def configure(config: ConversationConfig) -> None:
 
 
 def configure_on_set(callback: _OnSet | None) -> None:
-    """インメモリ map 更新用コールバックを注入する。"""
+    """Inject a callback for in-memory map updates."""
     global _on_set
     _on_set = callback
 
@@ -140,7 +140,7 @@ def load() -> dict[str, str]:
 
 
 def set_persona(conversation_id: str, persona: str) -> None:
-    """会話 ID にペルソナを固定し、JSONL に追記する。"""
+    """Bind a persona to a conversation ID and append to JSONL."""
     key = conversation_id
     cb = _on_set
     if cb is not None:

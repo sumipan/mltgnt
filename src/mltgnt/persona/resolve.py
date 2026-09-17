@@ -1,6 +1,6 @@
-"""mltgnt.persona.resolve — 応答者決定・PersonaContext（#3318）。
+"""mltgnt.persona.resolve — choose responder and PersonaContext (#3318).
 
-routing / ホスト固有ローダは呼び出し側が注入する（層境界・媒体非依存）。
+Routing / host-specific loaders are injected by the caller (layer boundary, media-agnostic).
 """
 from __future__ import annotations
 
@@ -24,9 +24,9 @@ def resolve_responder(
     pinned_personas: dict[str, str],
     resolve_fn: ResolveFn,
 ) -> str | None:
-    """応答者ペルソナ名を返す。応答不要なら None。
+    """Return the responder persona name. None if no reply is needed.
 
-    space_id / conversation_id は不透明文字列（媒体固有の写像は呼び出し側）。
+    space_id / conversation_id are opaque strings (media mapping is the caller's job).
     """
     return resolve_fn(
         text,
@@ -48,7 +48,7 @@ def build_persona_context(
     skills_fn: SkillsFn,
     phrases_fn: PhrasesFn,
 ) -> PersonaContext:
-    """判断層へ渡す PersonaContext を組み立てる（ローダはホスト注入）。"""
+    """Build PersonaContext for the decision layer (loader is host-injected)."""
     profile, _err = load_profile_fn(persona_id, weight=weight)
     em = engine_model_fn(persona_id)
     skills = skills_fn(persona_id) or []

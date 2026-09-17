@@ -1,7 +1,7 @@
-"""mltgnt.bridges.ghdag_bridge — LLMPipelineAPI + wait_for_result のラッパー。
+"""mltgnt.bridges.ghdag_bridge — wrapper around LLMPipelineAPI + wait_for_result.
 
-scheduler の action: skill から呼ばれ、order/result ファイルを残しつつ
-(bool, str) インタフェースを提供する。
+Called from scheduler action: skill; keeps order/result files and exposes
+a (bool, str) interface.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _PIPELINE_STATUS_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$", re.MULTILINE)
 
 @dataclass
 class DagStep:
-    """enqueue_dag に渡す 1 ステップの定義。"""
+    """Definition of one step passed to enqueue_dag."""
 
     id: str
     prompt: str
@@ -37,11 +37,11 @@ class DagStep:
 
 
 class SkillIOTypeError(TypeError):
-    """compose-time typecheck で検出されたパイプ型不整合。"""
+    """Pipe type mismatch detected by compose-time typecheck."""
 
 
 def _extract_pipeline_status(content: str) -> str | None:
-    """result content から PIPELINE_STATUS: <value> を抽出する（最後の一致）。"""
+    """Extract PIPELINE_STATUS: <value> from result content (last match)."""
     matches = _PIPELINE_STATUS_RE.findall(content)
     return matches[-1] if matches else None
 
@@ -52,12 +52,13 @@ def compose_pipeline(
     engine: str,
     model: str | None = None,
 ) -> list[DagStep]:
-    """SkillMatchResult 列を直線パイプの DagStep 列に変換する。
+    """Convert a SkillMatchResult sequence into a linear DagStep pipe.
 
-    - decisive が None の要素があれば ValueError
-    - step_id は ``pipe_{i}_{skill_name}``、depends は前段 step_id
-    - skill_io: v1 の下流で consumes.producer が前段スキル名と不一致なら
-      SkillIOTypeError（exec.jsonl 書込前の fail fast）。legacy はスキップ
+    - ValueError if any element has decisive is None
+    - step_id is ``pipe_{i}_{skill_name}``; depends is the prior step_id
+    - skill_io: for v1 downstream, if consumes.producer mismatches the prior
+      skill name, raise SkillIOTypeError (fail fast before writing exec.jsonl).
+      Skip for legacy.
     """
     if not match_results:
         raise ValueError("match_results must not be empty")
@@ -105,7 +106,7 @@ def _scheduler_audit_context(
     parent_correlation_id: str | None,
     request_id: str | None = None,
 ):
-    """mltgnt-scheduler 用 AuditContext。ghdag < v0.25.5 では parent_correlation_id を省略する。"""
+    """AuditContext for mltgnt-scheduler. Omit parent_correlation_id on ghdag < v0.25.5."""
     from ghdag.pipeline.audit import AuditContext
 
     kwargs: dict = {
@@ -119,7 +120,7 @@ def _scheduler_audit_context(
 
 
 def _topological_sort(steps: list[DagStep]) -> list[DagStep]:
-    """Kahn's algorithm によるトポロジカルソート。循環依存時は ValueError を送出する。"""
+    """Topological sort via Kahn's algorithm. Raise ValueError on cycles."""
     step_map = {s.id: s for s in steps}
     in_degree = {s.id: 0 for s in steps}
     adjacency: dict[str, list[str]] = {s.id: [] for s in steps}
@@ -183,11 +184,11 @@ def typecheck_dag(
     steps: list[DagStep],
     skills: dict[str, SkillMeta],
 ) -> None:
-    """DAG エッジの produces/consumes 型整合を検証する。
+    """Validate produces/consumes type alignment on DAG edges.
 
-    不整合があれば SkillIOTypeError を送出する。
-    skill_name が None または skills に存在しないステップはスキップ。
-    skill_io が "legacy" の下流もスキップ。
+    Raise SkillIOTypeError on mismatch.
+    Skip steps with skill_name None or missing from skills.
+    Also skip downstream with skill_io "legacy".
     """
     step_map = {s.id: s for s in steps}
 
@@ -271,17 +272,17 @@ def enqueue_dag(
     permission: str | None = None,
     order_builder: OrderBuilder | None = None,
 ) -> list[tuple[bool, str]]:
-    """複数ステップを依存関係付きで逐次投入し、全完了を待つ。
+    """Submit multiple steps with dependencies sequentially and wait for all.
 
-    各ステップを 1 つずつ投入・完了待ちし、前段の result を後段の base_context に注入する。
+    Submit and wait one step at a time; inject prior results into later base_context.
 
     Returns:
-        入力ステップと同順の (bool, str) リスト。
-        (True, content)       — ステップ成功
-        (True, "")            — 冪等性チェックで既投入
-        (False, "timeout Ns") — タイムアウト
-        (False, "status: msg") — ステップ失敗
-        (False, "dependency failed") — 先行ステップ失敗
+        (bool, str) list in the same order as input steps.
+        (True, content)       — step succeeded
+        (True, "")            — already submitted (idempotency)
+        (False, "timeout Ns") — timeout
+        (False, "status: msg") — step failed
+        (False, "dependency failed") — upstream step failed
     """
     if not steps:
         raise ValueError("steps must not be empty")
@@ -325,7 +326,7 @@ def enqueue_dag(
             failed_steps.add(step.id)
             continue
 
-        # コンテキストのマージ（優先度: 固定値 < 自動注入 < ユーザー指定）
+        # Merge context (priority: fixed < auto-injected < user-specified)
         base_context: dict[str, str] = {"workflow_name": "scheduler"}
         for dep_id in step.depends:
             if dep_id in completed_results:
@@ -339,7 +340,7 @@ def enqueue_dag(
             template=step.prompt,
             engine=step.engine,
             model=step.model or "",
-            depends=[],  # 順序制御は enqueue_dag 側が担保するため不要
+            depends=[],  # ordering is enforced by enqueue_dag; not needed here
             permission=permission,
         )
 
@@ -383,7 +384,7 @@ def enqueue_dag(
             except OSError:
                 content = ""
             pipeline_status = _extract_pipeline_status(content)
-            # ghdag exit 成功でも INVALID_STATE なら fail（downstream 投入抑止）
+            # Fail on INVALID_STATE even if ghdag exit succeeded (block downstream submit)
             if pipeline_status == "INVALID_STATE":
                 results_by_id[step.id] = (False, "PIPELINE_STATUS: INVALID_STATE")
                 failed_steps.add(step.id)
@@ -416,22 +417,22 @@ def enqueue_and_wait(
     order_builder: OrderBuilder | None = None,
     run_result: SkillRunResult | None = None,
 ) -> tuple[bool, str]:
-    """LLMPipelineAPI 経由で order を投入し、完了まで待って結果を返す。
+    """Submit an order via LLMPipelineAPI and wait for the result.
 
     Args:
-        prompt: order ファイルに書き込むプロンプト本文（ペルソナ書式変換は呼び出し元が実施済みであること）
-        engine: LLM エンジン名（"claude", "gemini" 等）
-        model: モデル ID（None の場合はエンジンのデフォルト）
-        timeout: 最大待機秒数
-        idempotency_key: exec.jsonl に記録する冪等性キー
-        jobs_dir: order/result/exec.jsonl の置き場（jobs/）
-        exec_done_dir: 完了マーカー（jobs/done/<uuid>）の置き場
-        run_result: skill runner の結果。skill_io=v1 時に result frontmatter を書き込む
+        prompt: Prompt body written to the order file (caller must already apply persona formatting)
+        engine: LLM engine name ("claude", "gemini", etc.)
+        model: Model ID (engine default when None)
+        timeout: Max wait seconds
+        idempotency_key: Idempotency key recorded in exec.jsonl
+        jobs_dir: Location for order/result/exec.jsonl (jobs/)
+        exec_done_dir: Location for done markers (jobs/done/<uuid>)
+        run_result: Skill runner result; write result frontmatter when skill_io=v1
 
     Returns:
-        (True, result_content) — 成功時
-        (False, "timeout ({N}s)") — タイムアウト時
-        (False, "{status}: {first_line}") — 失敗時
+        (True, result_content) — success
+        (False, "timeout ({N}s)") — timeout
+        (False, "{status}: {first_line}") — failure
     """
     from ghdag.pipeline import (
         InlineOrderBuilder,
@@ -469,7 +470,7 @@ def enqueue_and_wait(
     )
     m = _UUID_RE.search(skill_line)
     if not m:
-        return False, f"exec_line に UUID が見つかりません: {skill_line!r}"
+        return False, f"UUID not found in exec_line: {skill_line!r}"
     step_uuid = m.group(0)
 
     try:
@@ -491,10 +492,10 @@ def enqueue_and_wait(
 
 
 def _extract_result_filename(exec_line: str) -> str:
-    """exec 行（テキスト形式または JSON 文字列）から result ファイル名を取り出す。
+    """Extract the result filename from an exec line (text or JSON string).
 
-    JSON 形式の場合は result_path フィールドから直接取得する。
-    テキスト形式の場合は order ファイルパスから result ファイル名を導出する。
+    For JSON, take result_path directly.
+    For text, derive the result filename from the order file path.
     """
     stripped = exec_line.strip()
     if stripped.startswith("{"):
@@ -508,9 +509,9 @@ def _extract_result_filename(exec_line: str) -> str:
 
 
 def _order_to_result_filename(exec_line: str) -> str:
-    """テキスト形式の exec 行から result ファイル名を導出する。
+    """Derive the result filename from a text-form exec line.
 
-    例: "jobs/20260505120000-claude-order-uuid.md" → "20260505120000-claude-result-uuid.md"
+    Example: "jobs/20260505120000-claude-order-uuid.md" → "20260505120000-claude-result-uuid.md"
     """
     m = re.search(r"(\S+)-order-(" + _UUID_RE.pattern + r")\.md", exec_line)
     if not m:

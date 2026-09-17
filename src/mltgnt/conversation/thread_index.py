@@ -1,7 +1,7 @@
-"""会話層のスレッド索引（#3317）。
+"""Conversation-layer thread index (#3317).
 
-会話 ID でキーする。外部エンジン SDK に依存しない。
-保存先は ConversationConfig で注入する。
+Keyed by conversation ID. No external engine SDK dependency.
+Storage is injected via ConversationConfig.
 """
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def _lookup_in_file(index_path: Path, posted_ts: str) -> str | None:
 
 
 def _write_post_content(uid: str, content: str) -> str:
-    """返信本文を永続化し、相対パス風の参照文字列を返す。"""
+    """Persist reply body and return a relative-path-like reference string."""
     posts = _posts_dir()
     posts.mkdir(parents=True, exist_ok=True)
     target = posts / f"{uid}.md"

@@ -17,5 +17,5 @@ def load_schedule_jobs(
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
     jobs_raw = data.get("jobs") or []
     if not isinstance(jobs_raw, list):
-        raise ValueError("schedule.yaml: jobs はリストである必要があります")
+        raise ValueError("schedule.yaml: jobs must be a list")
     return [ScheduleJob.from_dict(j, default_timezone=default_timezone) for j in jobs_raw]

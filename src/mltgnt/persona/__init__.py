@@ -1,15 +1,15 @@
-"""mltgnt.persona — ペルソナ管理モジュール
+"""mltgnt.persona — persona management module
 
-公開 API:
+Public API:
     load_persona(name, *, persona_dir)                        -> Persona
     list_personas(persona_dir)                                -> list[str]
     validate_persona(persona, *, available_skills)            -> list[str]
     run_persona_prompt(persona_name, prompt, persona_dir, ..) -> str
     compress_heavy_to_light(heavy_text, *, engine, model, ..) -> str
     regenerate_light_block(persona_path, *, engine, model, ..) -> RegenerationResult
-    PersonaValidationError                                    (例外クラス)
+    PersonaValidationError                                    (exception class)
 
-#3318 追加（層サブモジュール）:
+#3318 additions (layer submodules):
     extractor / formatter / memory / phrases / resolve / types / result_format
 """
 
@@ -43,17 +43,17 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# 例外クラス
+# Exception classes
 # ---------------------------------------------------------------------------
 
 
 class PersonaValidationError(Exception):
-    """ペルソナ定義が不正な場合に送出される例外。"""
+    """Raised when a persona definition is invalid."""
     pass
 
 
 # ---------------------------------------------------------------------------
-# 公開 API
+# Public API
 # ---------------------------------------------------------------------------
 
 
@@ -63,19 +63,19 @@ def load_persona(
     persona_dir: Path | None = None,
     config: PersonaConfig | None = None,
 ) -> Persona:
-    """名前またはエイリアスでペルソナを読み込む。
+    """Load a persona by name or alias.
 
     Args:
-        name: ペルソナ名またはエイリアス
-        persona_dir: ペルソナファイルのディレクトリ（デフォルト: ./agents/）
-        config: ペルソナ読み込み設定（省略時はデフォルト）
+        name: Persona name or alias
+        persona_dir: Persona file directory (default: ./agents/)
+        config: Persona load settings (defaults when omitted)
 
     Returns:
         Persona dataclass
 
     Raises:
-        FileNotFoundError: 該当ペルソナが見つからない
-        PersonaValidationError: frontmatter が不正
+        FileNotFoundError: Persona not found
+        PersonaValidationError: Invalid frontmatter
     """
     pdir = persona_dir if persona_dir is not None else Path("agents")
     path = resolve_with_alias(name, pdir)
@@ -83,13 +83,13 @@ def load_persona(
 
 
 def list_personas(persona_dir: Path | None = None) -> list[str]:
-    """利用可能なペルソナ名一覧を返す。
+    """Return available persona names.
 
     Args:
-        persona_dir: ペルソナファイルのディレクトリ（デフォルト: ./agents/）
+        persona_dir: Persona file directory (default: ./agents/)
 
     Returns:
-        ペルソナ名（stem）のリスト（名前順）
+        List of persona names (stems), sorted
     """
     pdir = persona_dir if persona_dir is not None else Path("agents")
     return _list_personas(pdir)
@@ -100,33 +100,33 @@ def validate_persona(
     *,
     available_skills: list[str] | None = None,
 ) -> list[str]:
-    """ペルソナ定義を検証し、警告メッセージのリストを返す。空リストなら正常。
+    """Validate a persona definition; return warning messages (empty = OK).
 
     Args:
-        persona: 検証対象の Persona オブジェクト
-        available_skills: 利用可能なスキル名リスト。
-                          None の場合はスキルチェックをスキップする。
+        persona: Persona object to validate
+        available_skills: Available skill name list.
+                          Skip skill checks when None.
 
     Returns:
-        警告メッセージのリスト（空リストなら正常）
+        List of warning messages (empty = OK)
     """
     messages: list[str] = []
 
-    # persona.name とファイル名(stem)の一致チェック
+    # Check persona.name matches file stem
     if persona.fm.name and persona.path.stem != persona.fm.name:
         messages.append(
-            f"persona.name ({persona.fm.name!r}) がファイル名 ({persona.path.stem!r}) と不一致です"
+            f"persona.name ({persona.fm.name!r}) does not match filename ({persona.path.stem!r})"
         )
 
-    # 未知 FM キーの警告
+    # Warn on unknown FM keys
     for k in persona.fm.unknown_keys:
-        messages.append(f"未定義の FM キー: {k!r}")
+        messages.append(f"Undefined FM key: {k!r}")
 
-    # スキルチェック（available_skills が指定された場合のみ）
+    # Skill check (only when available_skills is provided)
     if available_skills is not None:
         available_set = set(available_skills)
         for skill in persona.fm.skills:
             if skill not in available_set:
-                messages.append(f"未定義のスキル: {skill!r}")
+                messages.append(f"Undefined skill: {skill!r}")
 
     return messages

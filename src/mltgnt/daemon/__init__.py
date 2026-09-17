@@ -7,17 +7,17 @@ from ._skill_watcher import SkillWatcherComponent
 
 @runtime_checkable
 class DaemonComponent(Protocol):
-    """デーモンに登録できるコンポーネントの型契約。"""
+    """Type contract for components registerable with the daemon."""
 
     @property
     def name(self) -> str: ...
 
     def start(self) -> None:
-        """コンポーネントを起動する。ブロックしない。"""
+        """Start the component. Must not block."""
         ...
 
     def stop(self) -> None:
-        """コンポーネントを停止する。リソース解放を含む。"""
+        """Stop the component, including resource cleanup."""
         ...
 
 

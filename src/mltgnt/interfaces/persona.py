@@ -11,9 +11,9 @@ class PersonaProtocol(Protocol):
     fm: PersonaFMBase
 
     def format_prompt(self, instruction: str) -> str:
-        """システムプロンプト（人物像 + instruction）を返す。"""
+        """Return the system prompt (persona + instruction)."""
         ...
 
     def register_prompt_filter(self, name: str, fn: PromptFilter) -> None:
-        """名前付きフィルタを登録する。同名がある場合は置換。"""
+        """Register a named filter. Replaces an existing filter of the same name."""
         ...

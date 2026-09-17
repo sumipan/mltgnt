@@ -1,7 +1,7 @@
-"""L1 DTO — interfaces 層の型定義。
+"""L1 DTO — type definitions for the interfaces layer.
 
-L3 (domain) への依存を持たず、structural subtyping (Protocol) で
-L3 具象クラスとの型互換を保つ。
+No dependency on L3 (domain); keep type compatibility with L3
+concrete classes via structural subtyping (Protocol).
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Protocol, TypedDict, runtime_checkable
 
 
 class Message(TypedDict):
-    """チャットメッセージ。"""
+    """Chat message."""
 
     role: str
     content: str
@@ -20,7 +20,7 @@ class Message(TypedDict):
 
 @dataclass
 class ChatInput:
-    """チャット／Slack 共通のパイプライン入力。"""
+    """Shared pipeline input for chat / Slack."""
 
     source: str
     session_key: str
@@ -34,7 +34,7 @@ class ChatInput:
 
 @dataclass
 class ChatOutput:
-    """パイプライン出力。"""
+    """Pipeline output."""
 
     content: str
     persona_name: str
@@ -44,14 +44,14 @@ class ChatOutput:
 
 @runtime_checkable
 class PersonaFMBase(Protocol):
-    """ペルソナフロントマターの L1 Protocol。name のみ必須。"""
+    """L1 Protocol for persona frontmatter. Only name is required."""
 
     name: str
 
 
 @runtime_checkable
 class ChatInputBase(Protocol):
-    """チャットパイプライン入力の L1 Protocol。"""
+    """L1 Protocol for chat pipeline input."""
 
     source: str
     session_key: str
@@ -61,7 +61,7 @@ class ChatInputBase(Protocol):
 
 @runtime_checkable
 class ChatOutputBase(Protocol):
-    """チャットパイプライン出力の L1 Protocol。"""
+    """L1 Protocol for chat pipeline output."""
 
     content: str
     persona_name: str

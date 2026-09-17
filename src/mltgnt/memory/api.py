@@ -1,5 +1,5 @@
 """
-mltgnt.memory.api — パス解決・ロック・追記・読み取り（CRUD 操作）。
+mltgnt.memory.api — path resolve, lock, append, read (CRUD).
 """
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def _tail_utf8_bytes(s: str, max_bytes: int) -> str:
 
 
 def tail_utf8_bytes(s: str, max_bytes: int) -> str:
-    """文字列 `s` の末尾 `max_bytes` バイト分を UTF-8 で切り出して返す（public alias）。"""
+    """Return the trailing `max_bytes` of string `s` as UTF-8 (public alias)."""
     return _tail_utf8_bytes(s, max_bytes)
 
 
@@ -103,12 +103,12 @@ def persona_memory_lock(
 
 
 def _ensure_jsonl(config: "MemoryConfig", persona_stem: str) -> Path:
-    """JSONL ファイルパスを返す。"""
+    """Return the JSONL file path."""
     return memory_file_path(config, persona_stem)
 
 
 def _scan_tail_for_dedupe_key(path: Path, dedupe_key: str) -> bool:
-    """JSONL ファイルの末尾付近に dedupe_key が含まれているか確認。"""
+    """Whether dedupe_key appears near the end of the JSONL file."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -140,7 +140,7 @@ def _chroma_entry_id(entry: MemoryEntry) -> str:
 def _sync_chroma_entry(
     config: "MemoryConfig", persona_stem: str, entry: MemoryEntry
 ) -> None:
-    """JSONL 追記後に Chroma へ upsert する。失敗時は warning のみ。"""
+    """Upsert to Chroma after JSONL append. Warning only on failure."""
     from mltgnt.memory._chroma import get_collection, upsert_entry
 
     memory_dir = _resolve_memory_dir(config)
@@ -172,11 +172,11 @@ def append_memory_entry(
     under_lock: bool = False,
     layer: str | None = None,
 ) -> bool:
-    """JSONL 形式でエントリを追記。
+    """Append an entry in JSONL form.
 
-    layer が指定された場合、エントリに layer フィールドを付与する。
-    dedupe_key が非空で末尾付近に同一キーがあれば追記しない（冪等、True）。
-    ロック取得失敗（under_lock False 時）は False。
+    When layer is set, attach a layer field to the entry.
+    When dedupe_key is non-empty and already near the end, skip (idempotent, True).
+    Lock failure (under_lock False) returns False.
     """
     def _write() -> None:
         _resolve_memory_dir(config).mkdir(parents=True, exist_ok=True)
@@ -231,7 +231,7 @@ def read_memory_preferences(
     *,
     max_bytes: int | None = None,
 ) -> str:
-    """JSONL から source_tag="preferences" エントリを抽出して返す。"""
+    """Extract source_tag="preferences" entries from JSONL."""
     if max_bytes is None:
         max_bytes = config.preferences_max_bytes
     path = _ensure_jsonl(config, persona_stem)
@@ -262,9 +262,9 @@ def read_memory_tail_text(
     max_entries: int,
     layers: list[str] | None = None,
 ) -> str:
-    """JSONL ファイル末尾から最大 max_entries エントリを返す。
+    """Return up to max_entries from the end of a JSONL file.
 
-    layers 指定時は layer がリストに含まれるエントリのみ対象。
+    When layers is set, only entries whose layer is in the list.
     """
     if max_bytes == 0:
         return ""

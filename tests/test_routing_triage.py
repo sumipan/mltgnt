@@ -110,7 +110,7 @@ def test_prepare_profile_truncates_long_text():
     assert result is not None
     # Japanese text intentionally kept for CJK processing test
     assert len(result) > TRIAGE_PROFILE_MAX_CHARS  # 省略メッセージ込み
-    assert "省略" in result
+    assert "truncated" in result
 
 
 def test_prepare_profile_short_text_not_truncated():
@@ -120,4 +120,4 @@ def test_prepare_profile_short_text_not_truncated():
     result = prepare_profile_for_triage(text, mock_logger)
     assert result is not None
     # Japanese text intentionally kept for CJK processing test
-    assert "省略" not in result
+    assert "truncated" not in result

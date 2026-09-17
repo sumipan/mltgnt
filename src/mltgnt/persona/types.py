@@ -1,6 +1,6 @@
-"""mltgnt.persona.types — ペルソナ層の境界データ（#3318）。
+"""mltgnt.persona.types — persona-layer boundary data (#3318).
 
-媒体固有の語（channel / thread_ts 等）を持たない。
+No media-specific terms (channel / thread_ts, etc.).
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PersonaContext:
-    """判断層へ渡すペルソナ材料。"""
+    """Persona materials passed to the decision layer."""
 
     persona_id: str
     engine: str | None = None

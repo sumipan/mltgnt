@@ -1,6 +1,6 @@
-"""会話ログの自動圧縮（#3317）。
+"""Automatic compaction of conversation logs (#3317).
 
-会話 ID でキーする。LLM 呼び出しはコールバック注入。外部エンジン SDK に依存しない。
+Keyed by conversation ID. LLM calls are injected callbacks. No external engine SDK dependency.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def configure(config: ConversationConfig) -> None:
 
 
 def configure_llm_factory(factory: _LlmFactory | None) -> None:
-    """要約用 LLM 呼び出しファクトリを注入する。"""
+    """Inject an LLM call factory for summarization."""
     global _llm_factory
     _llm_factory = factory
 
@@ -100,10 +100,10 @@ def _format_turns_for_prompt(
 def _build_prompt(turns_to_compact: list[dict], existing_compacted: list[dict]) -> str:
     formatted = _format_turns_for_prompt(turns_to_compact, existing_compacted)
     return (
-        "以下のセッション会話ログを簡潔に要約してください。\n\n"
+        "Please briefly summarize the following session conversation log.\n\n"
         "- Include each speaker persona name (e.g. persona-a, persona-b) in the summary\n"
-        "- 主要なトピック・決定事項・依頼内容を漏らさないこと\n"
-        "- 出力は1段落のプレーンテキストのみ（見出し・箇条書き・メタ情報は禁止）\n\n"
+        "- Do not omit key topics, decisions, or requests\n"
+        "- Output only one paragraph of plain text (no headings, bullets, or metadata)\n\n"
         f"{formatted}"
     )
 

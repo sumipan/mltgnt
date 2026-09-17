@@ -1,4 +1,4 @@
-"""mltgnt.memory.dream.synthesizer — LLM による DreamSummary 合成。"""
+"""mltgnt.memory.dream.synthesizer — synthesize DreamSummary via LLM."""
 from __future__ import annotations
 
 import re
@@ -14,36 +14,37 @@ from mltgnt.memory.dream.api import read_dream, read_global
 
 LlmCall = Callable[[str], str]
 
-# persona.registry と同じ除外規則（レイヤー境界のためローカル定義）
+# Same exclusion rules as persona.registry (local copy for layer boundary)
 _EXCLUDE_PERSONA_STEMS = frozenset({"\u30b5\u30f3\u30d7\u30eb"})
 
+# Japanese text intentionally kept for CJK processing test
 _DEFAULT_CATEGORIES = ("行動パターン", "好み・傾向")
 
 _SYNTH_PROMPT = """\
-以下のメモリエントリを読み、指定カテゴリごとに要約・合成してください。
+Read the following memory entries and summarize/synthesize per specified category.
 
-カテゴリ:
+Categories:
 {categories}
 
-出力形式（厳守）:
-各カテゴリを `## カテゴリ名` 見出しで区切り、本文のみを記述してください。
-前置き・後書き・メタ情報は禁止です。
+Output format (strict):
+Separate each category with a `## CategoryName` heading; write body text only.
+No preamble, postscript, or metadata.
 
 {existing_block}
-【メモリエントリ】
+[Memory entries]
 {entries_text}
 """
 
 _GLOBAL_SYNTH_PROMPT = """\
-以下は複数ペルソナの記憶要約です。全ペルソナを横断して、ユーザー全体の統合プロファイルを生成してください。
+Below are memory summaries for multiple personas. Cross all personas and build a unified user profile.
 
-カテゴリ:
+Categories:
 {categories}
 
-出力形式（厳守）:
-各カテゴリを `## カテゴリ名` 見出しで区切り、本文のみを記述してください。
-ペルソナ間で共通するパターンは統合し、矛盾する特徴は文脈を添えて並記してください。
-前置き・後書き・メタ情報は禁止です。
+Output format (strict):
+Separate each category with a `## CategoryName` heading; write body text only.
+Unify shared patterns across personas; note conflicting traits with context.
+No preamble, postscript, or metadata.
 
 {existing_block}{persona_blocks}"""
 
@@ -70,7 +71,7 @@ class Synthesizer:
             existing_lines = "\n".join(
                 f"## {s.category}\n{s.content.strip()}" for s in existing.sections
             )
-            existing_block = f"【既存の dream サマリ】\n{existing_lines}\n\n"
+            existing_block = f"[Existing dream summary]\n{existing_lines}\n\n"
         else:
             existing_block = ""
 
@@ -113,13 +114,13 @@ class Synthesizer:
             existing_lines = "\n".join(
                 f"## {s.category}\n{s.content.strip()}" for s in existing.sections
             )
-            existing_block = f"【既存の global サマリ】\n{existing_lines}\n\n"
+            existing_block = f"[Existing global summary]\n{existing_lines}\n\n"
         else:
             existing_block = ""
 
         persona_blocks_parts: list[str] = []
         for summary in persona_summaries:
-            block_lines = [f"【ペルソナ: {summary.persona}】"]
+            block_lines = [f"[Persona: {summary.persona}]"]
             for section in summary.sections:
                 block_lines.append(f"## {section.category}")
                 block_lines.append(section.content.strip())
@@ -142,7 +143,7 @@ class Synthesizer:
 
 
 def _list_chat_persona_stems(chat_dir: Path) -> list[str]:
-    """chat_dir 直下のペルソナ .md から stem 一覧を返す（persona 層非依存）。"""
+    """Return stems from persona .md files under chat_dir (persona-layer independent)."""
     if not chat_dir.is_dir():
         return []
     stems: list[str] = []

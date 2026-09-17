@@ -81,13 +81,13 @@ def _write_side_effect_audit(
 
 
 def _audit_stats_from_extra_context(extra_context: str | None) -> tuple[int, int]:
-    """extra_context から audit 用の knowledge パラグラフ数と memory バイト数を算出する。"""
+    """Compute knowledge paragraph count and memory bytes for audit from extra_context."""
     if not extra_context:
         return 0, 0
     knowledge_count = 0
     memory_bytes = 0
     remainder = extra_context
-    mem_header = "### 記憶（末尾）\n\n"
+    mem_header = "### Memory (tail)\n\n"
     if mem_header in remainder:
         before, memory_text = remainder.split(mem_header, 1)
         memory_bytes = len(memory_text.encode("utf-8"))
@@ -137,10 +137,10 @@ def _determine_exit_code(ok: bool, msg: str) -> int:
 def _extract_status_marker(
     msg: str, expected_markers: list[str]
 ) -> str | None:
-    """msg 先頭 3 行 + 末尾 3 行から status marker を抽出する。
+    """Extract a status marker from the first 3 and last 3 lines of msg.
 
-    Pass 1: ``PIPELINE_STATUS: <value>`` 形式（複数時は末尾寄りを採用）。
-    Pass 2: Pass 1 未検出時のみ、宣言済み裸マーカー行を照合（複数時は先頭寄り）。
+    Pass 1: ``PIPELINE_STATUS: <value>`` (prefer last when multiple).
+    Pass 2: Only if Pass 1 misses, match declared bare marker lines (prefer first).
     """
     lines = msg.splitlines()
     if not lines:
@@ -171,7 +171,7 @@ def _extract_status_marker(
 
 
 def _matches_expected(marker: str, expected_markers: list[str]) -> bool:
-    """抽出 marker が expected_markers のいずれかに適合するか。"""
+    """Whether the extracted marker matches any of expected_markers."""
     for decl in expected_markers:
         if decl.endswith(":"):
             if marker.startswith(decl):
@@ -188,7 +188,7 @@ def _resolve_exit_code(
     *,
     enforce: bool = False,
 ) -> tuple[int, list[str]]:
-    """expected_markers があれば marker 突合。強制は enforce=True のときのみ。"""
+    """If expected_markers is set, match markers. Enforce only when enforce=True."""
     if expected_markers:
         marker = _extract_status_marker(msg, expected_markers)
         if marker is None:
@@ -263,30 +263,30 @@ def run_skill_action(
     default_tz: str,
     repo_root: Path,
 ) -> tuple[bool, str]:
-    """skill アクションを実行し (成功フラグ, メッセージ) を返す。"""
+    """Run the skill action; return (success, message)."""
     aa = job.action_args
     skill_name = aa.get("skill")
     if not skill_name:
-        return False, f"job {job.id}: action_args.skill が未指定です"
+        return False, f"job {job.id}: action_args.skill is not set"
     persona_name = aa.get("persona")
     if not persona_name:
-        return False, f"job {job.id}: action_args.persona が未指定です"
+        return False, f"job {job.id}: action_args.persona is not set"
 
     from mltgnt.persona import load_persona
 
     try:
         persona = load_persona(persona_name, persona_dir=persona_dir)
     except FileNotFoundError as e:
-        return False, f"ペルソナファイルが見つかりません: {e}"
+        return False, f"Persona file not found: {e}"
     except Exception as e:
-        return False, f"ペルソナ読込失敗 {persona_name}: {e}"
+        return False, f"Persona load failed {persona_name}: {e}"
 
     engine = aa.get("engine") or (persona.fm.engine or None)
     model = aa.get("model") or (persona.fm.model or None)
 
     meta = skill_registry.get(skill_name)
     if meta is None:
-        return False, f"スキルが見つかりません: {skill_name}"
+        return False, f"Skill not found: {skill_name}"
 
     from mltgnt.skill import load
     from mltgnt.skill.context import build_extra_context
@@ -328,7 +328,7 @@ def run_skill_action(
     prompt = next(m["content"] for m in run_output.chat_input.messages if m["role"] == "system")
     resolved_model = run_output.chat_input.model
 
-    # enable_pipeline 優先（fanout との同時指定時も pipeline を取る）
+    # Prefer enable_pipeline (also when fanout is set together)
     if aa.get("enable_pipeline", False):
         return _run_pipeline_action(
             job,
@@ -494,7 +494,7 @@ def _run_pipeline_action(
         match_results, engine=engine, model=resolved_model
     )
 
-    # 各段のプロンプトをスキル本文 + ペルソナで合成
+    # Compose each stage prompt from skill body + persona
     for step, mr in zip(steps, match_results):
         assert mr.decisive is not None
         skill_file = load(mr.decisive)

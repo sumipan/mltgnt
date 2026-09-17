@@ -1,6 +1,6 @@
-"""Fake 媒体層 — Slack 無しで TurnInput を組み立てる（#3317）。
+"""Fake media layer — build TurnInput without Slack (#3317).
 
-会話層より内側のテスト・移行検証用。本番の入口には使わない。
+For tests and migration checks inside the conversation layer. Not a production entrypoint.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from mltgnt.conversation.types import Attachment, HistoryMessage, TurnInput
 
 @dataclass(frozen=True)
 class FakeMediaEvent:
-    """媒体非依存の最小イベント。"""
+    """Minimal media-agnostic event."""
 
     conversation_id: str
     text: str
@@ -23,7 +23,7 @@ class FakeMediaEvent:
 
 
 def to_turn_input(event: FakeMediaEvent) -> TurnInput:
-    """FakeMediaEvent → TurnInput（くびれ）。"""
+    """FakeMediaEvent → TurnInput (neck)."""
     return TurnInput(
         conversation_id=event.conversation_id,
         text=event.text,

@@ -1,4 +1,4 @@
-"""mltgnt.memory.dream.selector — 合成対象 persona の選別。"""
+"""mltgnt.memory.dream.selector — select personas for synthesis."""
 from __future__ import annotations
 
 from datetime import datetime

@@ -1,4 +1,4 @@
-"""cosine similarity によるスコアリング。"""
+"""Scoring via cosine similarity."""
 from __future__ import annotations
 
 import logging
@@ -16,24 +16,24 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ScoredEntry:
-    """スコア付き memory エントリ。"""
+    """A scored memory entry."""
 
-    text: str    # エントリ本文
-    score: float  # cosine similarity（0.0 〜 1.0、TF-IDF は非負）
+    text: str    # entry body
+    score: float  # cosine similarity (0.0–1.0; TF-IDF is non-negative)
 
 
 def cosine_similarity_matrix(
     query_vec: NDArray[np.float64],
     entry_vecs: NDArray[np.float64],
 ) -> NDArray[np.float64]:
-    """クエリベクトルと各エントリベクトルの cosine similarity を返す。
+    """Return cosine similarity of the query vector to each entry vector.
 
     Args:
         query_vec: shape (1, D)
         entry_vecs: shape (N, D)
 
     Returns:
-        shape (N,) の similarity スコア配列
+        Similarity score array of shape (N,)
     """
     query_norm = np.linalg.norm(query_vec)
     if query_norm == 0.0:
@@ -53,18 +53,18 @@ def score_entries(
     *,
     chroma_collection: "chromadb.Collection | None" = None,
 ) -> list[ScoredEntry]:
-    """各エントリをスコアリングし、スコア降順でソートして返す。
+    """Score each entry and return sorted descending by score.
 
-    Chroma コレクションが利用可能な場合は意味検索を優先する。
-    不可時または失敗時は TF-IDF + cosine similarity にフォールバックする。
+    Prefer semantic search when a Chroma collection is available.
+    On unavailability or failure, fall back to TF-IDF + cosine similarity.
 
     Args:
-        query: ユーザーの入力テキスト
-        entries: memory エントリ本文のリスト
-        chroma_collection: Chroma コレクション（None なら TF-IDF）
+        query: User input text
+        entries: List of memory entry bodies
+        chroma_collection: Chroma collection (TF-IDF when None)
 
     Returns:
-        ScoredEntry のリスト（スコア降順）
+        List of ScoredEntry (descending by score)
     """
     if chroma_collection is not None:
         try:

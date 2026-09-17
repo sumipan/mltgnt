@@ -1,7 +1,7 @@
 """
-mltgnt.memory._format — メモリファイルのパース・フォーマット。
+mltgnt.memory._format — parse and format memory files.
 
-設計: Issue #823 (JSONL 統一)
+Design: Issue #823 (JSONL unification)
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ class MemoryEntry:
 
 
 def serialize_entry(entry: MemoryEntry) -> str:
-    """MemoryEntry を JSON 1行に変換。null フィールドは省略。"""
+    """Convert a MemoryEntry to one JSON line. Omit null fields."""
     d: dict[str, Any] = {
         "timestamp": entry.timestamp,
         "role": entry.role,
@@ -44,7 +44,7 @@ def serialize_entry(entry: MemoryEntry) -> str:
 
 
 def parse_jsonl(path: Path) -> list[MemoryEntry]:
-    """JSONL ファイルを MemoryEntry リストに変換。不正行はスキップ。"""
+    """Convert a JSONL file to a MemoryEntry list. Skip bad lines."""
     entries: list[MemoryEntry] = []
     try:
         text = path.read_text(encoding="utf-8")
@@ -69,6 +69,7 @@ def parse_jsonl(path: Path) -> list[MemoryEntry]:
     return entries
 
 
+# Japanese text intentionally kept for CJK processing test
 _PREFS_HEADING = "ユーザーの好み・傾向"
 
 
@@ -77,11 +78,11 @@ def assemble_entries_text(
     *,
     preferences_heading: str = _PREFS_HEADING,
 ) -> str:
-    """MemoryEntry リストを表示用テキストに変換。
+    """Convert a MemoryEntry list to display text.
 
-    source_tag="preferences" のエントリは `## {preferences_heading}` 見出しで出力し、
-    他のエントリは `## {timestamp} — {role}` 形式で出力する。
-    エントリは `---` で区切られる。
+    Entries with source_tag="preferences" use a `## {preferences_heading}` heading;
+    others use `## {timestamp} — {role}`.
+    Entries are separated by `---`.
     """
     parts: list[str] = []
     for entry in entries:

@@ -1,7 +1,7 @@
-"""会話層の待機列（#3317）。
+"""Conversation-layer wait queue (#3317).
 
-会話 ID でキーし、drain は TurnInput を返すだけ。Slack API / dispatch は持たない。
-保存先は ConversationConfig（または THREAD_QUEUE_DIR 上書き）で注入する。
+Keyed by conversation ID; drain only returns TurnInput. No Slack API / dispatch.
+Storage is injected via ConversationConfig (or THREAD_QUEUE_DIR override).
 """
 from __future__ import annotations
 
@@ -24,25 +24,28 @@ _log = logging.getLogger(__name__)
 
 AdmitResult = namedtuple("AdmitResult", ["proceed", "queued", "status"])
 
-# テストの monkeypatch 互換（configure 前のフォールバックにも使う）
+# Test monkeypatch compatibility (also used as pre-configure fallback)
 THREAD_QUEUE_DIR: Path | None = None
 
+# Japanese text intentionally kept for CJK processing test
 _CANCEL_WORDS = frozenset({"キャンセル", "止めて", "cancel", "stop"})
 
 _locks_guard = threading.Lock()
 _locks: dict[str, threading.Lock] = {}
 _active_config: ConversationConfig | None = None
 
+# Japanese text intentionally kept for CJK processing test
 _COMPOSITE_HEADER = (
     "処理中に以下の発言がありました。これらを踏まえて対応してください。"
 )
+# Japanese text intentionally kept for CJK processing test
 _COMPOSITE_CANCEL_SUFFIX = (
     "※ 中止指示が含まれています。現在の作業を中止し、中止した旨を報告してください。"
 )
 
 
 def configure(config: ConversationConfig) -> None:
-    """待機列の保存先・閾値を注入する。"""
+    """Inject queue storage path and thresholds."""
     global _active_config, THREAD_QUEUE_DIR
     _active_config = config
     THREAD_QUEUE_DIR = config.queue_dir
@@ -77,7 +80,7 @@ def _thread_queue_config() -> dict[str, int]:
 
 
 def storage_key(conversation_id: str) -> str:
-    """会話 ID → 状態ディレクトリ名。"""
+    """conversation ID → state directory name."""
     return conversation_id.replace(":", "-").replace("/", "_")
 
 
@@ -197,7 +200,7 @@ def admit(
     message_ts: str,
     author: str = "",
 ) -> AdmitResult:
-    """idle→accepted / running→queued / 上限超過→rejected。リアクションは付けない。"""
+    """idle→accepted / running→queued / over limit→rejected. No reactions."""
     thread_key = storage_key(conversation_id)
     lock = _get_lock(thread_key)
     with lock:
@@ -248,7 +251,7 @@ def record_job(conversation_id: str, uuid: str) -> None:
 
 
 def record_job_by_key(thread_key: str, uuid: str) -> None:
-    """storage_key 直指定（旧 make_thread_key 互換）。"""
+    """Direct storage_key (compat with former make_thread_key)."""
     lock = _get_lock(thread_key)
     with lock:
         state = _read_state(thread_key)
@@ -283,7 +286,7 @@ def _clear_inbox(thread_key: str) -> None:
 
 
 def finish_turn(thread_key: str) -> list[dict] | None:
-    """ターン完了時に inbox を drain。空なら idle にして None。"""
+    """On turn completion, drain inbox. If empty, set idle and return None."""
     lock = _get_lock(thread_key)
     with lock:
         entries = _read_inbox_entries(thread_key)
@@ -320,7 +323,7 @@ def drain_to_turn_input(
     *,
     persona_id: str | None = None,
 ) -> TurnInput | None:
-    """inbox を drain し、次ターンの TurnInput を返す。空なら None。起動はしない。"""
+    """Drain inbox and return the next turn's TurnInput. None if empty. Does not start work."""
     thread_key = storage_key(conversation_id)
     entries = finish_turn(thread_key)
     if entries is None:
@@ -340,7 +343,7 @@ def drain_to_turn_input(
 
 
 def drained_entries_meta(entries: list[dict]) -> dict:
-    """入口計測用のメタ（queued_count / earliest received_at）。"""
+    """Ingress metrics meta (queued_count / earliest received_at)."""
     best: datetime | None = None
     for entry in entries:
         raw = entry.get("received_at")

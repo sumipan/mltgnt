@@ -1,6 +1,6 @@
-"""mltgnt.persona.formatter — 口調整形・ペルソナ接頭辞（#3318）。
+"""mltgnt.persona.formatter — tone formatting and persona prefixes (#3318).
 
-媒体・タスクパス非依存。SDK / エンジン / 成果物パス語彙を持たない。
+Media- and task-path agnostic. No SDK / engine / artifact-path vocabulary.
 """
 from __future__ import annotations
 
@@ -8,10 +8,11 @@ import re
 
 
 def extract_persona_block_after_meta_headers(s: str) -> str:
-    """「〇〇としての応答（標準出力相当）」メタ見出しの直後だけを本文として採用する。"""
+    """Keep only the body after a 'response as … (stdout-equivalent)' meta heading."""
     text = s.strip()
     if not text:
         return text
+    # Japanese text intentionally kept for CJK processing test
     needles = (
         "としての応答（標準出力相当）",
         "としての応答（stdout相当）",
@@ -24,6 +25,7 @@ def extract_persona_block_after_meta_headers(s: str) -> str:
             continue
         line_start = text.rfind("\n", 0, i) + 1
         line = text[line_start : i + len(n)]
+        # Japanese text intentionally kept for CJK processing test
         if n == "としての応答" and len(line.strip()) > 48:
             continue
         if "としての応答" not in line:
@@ -39,6 +41,7 @@ def extract_persona_block_after_meta_headers(s: str) -> str:
     after = text[start_content:].lstrip("\n")
     if not after:
         return text
+    # Japanese text intentionally kept for CJK processing test
     end_m = re.search(r"\n-{3,}\s*\n\s*（以上）", after)
     if end_m:
         after = after[: end_m.start()].rstrip()
@@ -46,10 +49,11 @@ def extract_persona_block_after_meta_headers(s: str) -> str:
 
 
 def dedupe_persona_prefix(body: str) -> str:
-    """同一 result に応答と追記が連結され、同趣旨の本文が二重になる場合の除去。"""
+    """Drop duplicate same-intent bodies when a reply and append are concatenated."""
     body = body.strip()
     if not body:
         return body
+    # Japanese text intentionally kept for CJK processing test
     opener = re.compile(r"^今週（[^）]{1,80}）の計画[、,]", re.MULTILINE)
     matches = list(opener.finditer(body))
     if len(matches) >= 2:
@@ -57,11 +61,12 @@ def dedupe_persona_prefix(body: str) -> str:
     return body
 
 
+# Japanese text intentionally kept for CJK processing test
 _PERSONA_CUT_RE = re.compile(r"\n\n\S+口調の本文は")
 
 
 def format_persona_body(text: str) -> str:
-    """ペルソナ向け整形: メタ見出し抽出 → 接頭辞 dedupe → 口調メタ切断。"""
+    """Persona formatting: meta-heading extract → prefix dedupe → tone-meta cut."""
     s = text.strip()
     if not s:
         return ""

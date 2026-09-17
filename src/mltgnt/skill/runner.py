@@ -1,7 +1,7 @@
 """
-mltgnt.skill.runner — 変数置換とプロンプト合成。
+mltgnt.skill.runner — variable substitution and prompt composition.
 
-設計: Issue #124 §6.4
+Design: Issue #124 §6.4
 """
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ _VAR_PATTERN = re.compile(r"\$(\d+|\w+)")
 
 
 def write_result_frontmatter(result_path: Path, run_result: SkillRunResult) -> None:
-    """skill_io: v1 の result ファイル先頭に produces / skill_io frontmatter を書き込む。
+    """Write produces / skill_io frontmatter at the top of a skill_io:v1 result file.
 
-    skill_io != "v1" または produces が None の場合は noop。
+    Noop when skill_io != "v1" or produces is None.
     """
     if run_result.skill_io != "v1" or run_result.produces is None:
         return
@@ -42,7 +42,7 @@ def write_result_frontmatter(result_path: Path, run_result: SkillRunResult) -> N
 
 
 def _substitute(body: str, arguments: str, persona_name: str, skill_dir: str) -> str:
-    """スキル本文の変数を置換する。"""
+    """Substitute variables in the skill body."""
     args = arguments.split(" ") if arguments else []
 
     def replacer(m: re.Match) -> str:
@@ -73,12 +73,12 @@ def run(
     extra_context: str | None = None,
 ) -> SkillRunResult:
     """
-    スキル本文の変数を置換し、ペルソナ指示と合成した SkillRunResult を返す。
+    Substitute skill-body variables and compose with persona instructions into SkillRunResult.
 
-    戻り値:
+    Returns:
         SkillRunResult（chat_input / expected_markers / skill_io）。
-        chat_input.model: skill.meta.model が優先、None なら chat_input.model を引き継ぐ
-        chat_input.messages: システムプロンプト（ペルソナ指示 + スキル本文）+ 元のユーザーメッセージ
+        chat_input.model: prefer skill.meta.model; else inherit chat_input.model
+        chat_input.messages: system prompt (persona + skill body) + original user message
     """
     skill_dir = str(skill.meta.path.parent.resolve())
     body_substituted = _substitute(
@@ -89,7 +89,7 @@ def run(
     )
 
     if extra_context is not None:
-        body_substituted = body_substituted + "\n\n## コンテキスト\n\n" + extra_context
+        body_substituted = body_substituted + "\n\n## Context\n\n" + extra_context
 
     system_content = persona.format_prompt(body_substituted)
     system_message: Message = {"role": "system", "content": system_content}

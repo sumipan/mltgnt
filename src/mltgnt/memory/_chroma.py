@@ -1,4 +1,4 @@
-"""Chroma ベクトル DB による意味検索バックエンド。"""
+"""Semantic search backend using a Chroma vector DB."""
 from __future__ import annotations
 
 import logging
@@ -23,7 +23,7 @@ def _import_chromadb() -> type[Any] | None:
 def get_collection(
     memory_dir: Path, persona_stem: str
 ) -> "chromadb.Collection | None":
-    """ペルソナ用 Chroma コレクションを取得する。不可時は None。"""
+    """Get the Chroma collection for a persona. None if unavailable."""
     chromadb = _import_chromadb()
     if chromadb is None:
         return None
@@ -42,7 +42,7 @@ def upsert_entry(
     entry_id: str,
     text: str,
 ) -> None:
-    """エントリを Chroma コレクションに upsert する。"""
+    """Upsert entries into the Chroma collection."""
     collection.upsert(ids=[entry_id], documents=[text])
 
 
@@ -52,10 +52,10 @@ def query_similar(
     *,
     n_results: int,
 ) -> list[tuple[str, float]]:
-    """クエリに意味的に近いドキュメントを返す。
+    """Return documents semantically close to the query.
 
     Returns:
-        (document_text, similarity_score) のリスト（スコア降順）
+        List of (document_text, similarity_score) descending by score
     """
     raw = collection.query(
         query_texts=[query_text],

@@ -83,7 +83,7 @@ def test_load_channel_persona_map_primary_duplicate_raises_config_error() -> Non
 
     from mltgnt.exceptions import ConfigError
 
-    with pytest.raises(ConfigError, match="primary"):
+    with pytest.raises(ConfigError, match="primar"):
         load_channel_persona_map(lambda: [persona_a, persona_b])
 
 

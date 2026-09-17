@@ -1,10 +1,10 @@
 """
-mltgnt.scheduler — ジョブディスパッチコア + YAML パーサ。
+mltgnt.scheduler — job dispatch core + YAML parser.
 
-元コード: tools/secretary/scheduler.py のコア + YAML パーサ
-SchedulerConfig 引数で受け取る。ペルソナ関連コールバックは __init__ 引数で注入。
+Origin: core + YAML parser from tools/secretary/scheduler.py
+Takes SchedulerConfig. Persona-related callbacks are injected via __init__.
 
-設計: Issue #118 §3 (T4)
+Design: Issue #118 §3 (T4)
 """
 from __future__ import annotations
 

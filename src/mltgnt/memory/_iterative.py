@@ -1,7 +1,7 @@
 """
-mltgnt.memory._iterative — judge_sufficiency を用いた反復検索による情報収集。
+mltgnt.memory._iterative — iterative retrieval using judge_sufficiency.
 
-設計: Issue #913
+Design: Issue #913
 """
 from __future__ import annotations
 
@@ -26,17 +26,17 @@ __all__ = [
 
 @dataclass(frozen=True)
 class SearchResult:
-    """1回の検索結果"""
+    """One search result."""
 
     source: Literal["memory", "skill"]
     entries: list  # list[ScoredEntry]
 
 
 class IterativeRetriever:
-    """judge_sufficiency による反復的な情報収集を実行するリトリーバー。
+    """Retriever that gathers info iteratively via judge_sufficiency.
 
-    LLM が INSUFFICIENT と判定するたびに source 指定で memory または skill を再検索し、
-    SUFFICIENT になるか max_iterations に達するまで繰り返す。
+    Each time the LLM judges INSUFFICIENT, re-search memory or skill by source
+    until SUFFICIENT or max_iterations.
     """
 
     def __init__(
@@ -55,20 +55,20 @@ class IterativeRetriever:
         self._max_iterations = max_iterations
 
     def retrieve(self, query: str, *, max_bytes: int, max_entries: int) -> str:
-        """反復検索ループを実行し、収集した情報をテキストとして返す。
+        """Run the iterative search loop; return collected info as text.
 
         Returns:
-            preferences + 収集エントリを結合したテキスト（max_bytes 以内）
+            preferences + collected entries joined (within max_bytes)
         """
         from mltgnt.memory._sufficiency import judge_sufficiency
 
-        # Step 0: memory から初回検索
+        # Step 0: initial search from memory
         initial_entries = self._search_memory(query, max_entries)
 
-        # 収集済みエントリ（テキストをキーとして重複排除）
+        # Collected entries (dedupe by text key)
         collected: dict[str, object] = {e.text: e for e in initial_entries}
 
-        # Loop (最大 max_iterations 回)
+        # Loop (up to max_iterations)
         for _ in range(self._max_iterations):
             collected_text = self._format_collected(collected)
 
@@ -87,7 +87,7 @@ class IterativeRetriever:
             if action is None:
                 break
 
-            # Action: source に応じて検索実行
+            # Action: search by source
             if action.source == "memory":
                 new_entries = self._search_memory(action.query, max_entries)
             else:  # "skill"
@@ -96,7 +96,7 @@ class IterativeRetriever:
                 else:
                     new_entries = self._search_skills(action.query, max_entries)
 
-            # Observe: 新規エントリを collected にマージ（重複排除）
+            # Observe: merge new entries into collected (dedupe)
             for entry in new_entries:
                 if entry.text not in collected:
                     collected[entry.text] = entry
@@ -104,16 +104,16 @@ class IterativeRetriever:
         return self._build_output(collected, max_bytes, max_entries)
 
     def retrieve_skills(self, query: str, max_entries: int) -> list:
-        """skill ソースのみを検索し ScoredEntry のリストを返す。
+        """Search the skill source only; return ScoredEntry list.
 
-        search_skills コールバックが未注入の場合は空リストを返す。
+        Return [] if search_skills callback is not injected.
         """
         if self._search_skills is None:
             return []
         return self._search_skills(query, max_entries)
 
     def _search_memory(self, query: str, max_entries: int) -> list:
-        """memory ファイルからエントリを TF-IDF でスコアリングして返す（JSONL 対応）。
+        """Score memory-file entries with TF-IDF (JSONL-aware).
 
         Returns:
             list[ScoredEntry]
@@ -147,18 +147,18 @@ class IterativeRetriever:
         return scored[:max_entries]
 
     def _format_collected(self, collected: dict) -> str:
-        """収集済みエントリをテキストとして結合する。"""
+        """Join collected entries as text."""
         if not collected:
             return ""
         return "\n\n---\n\n".join(e.text for e in collected.values())
 
     def _build_output(self, collected: dict, max_bytes: int, max_entries: int) -> str:
-        """preferences + 収集エントリを結合して max_bytes 以内で返す。"""
+        """Join preferences + collected entries within max_bytes."""
         from mltgnt.memory.api import read_memory_preferences
 
         prefs = read_memory_preferences(self._config, self._persona_stem)
 
-        # スコア降順で上位 max_entries を選択
+        # Take top max_entries by score descending
         sorted_entries = sorted(
             collected.values(), key=lambda e: e.score, reverse=True
         )
@@ -170,7 +170,7 @@ class IterativeRetriever:
         parts.extend(top_entries)
 
         if not parts:
-            return prefs  # 空文字列かもしれない
+            return prefs  # may be empty string
 
         text = "\n\n---\n\n".join(parts)
 

@@ -1,7 +1,7 @@
 """
-mltgnt.skill.loader — SKILL.md の glob 探索とフロントマターパース。
+mltgnt.skill.loader — glob SKILL.md and parse frontmatter.
 
-設計: Issue #124 §6.2
+Design: Issue #124 §6.2
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def _write_unresolved_diagnosis(
     base: Path,
     unresolved_errors: list[str],
 ) -> None:
-    """lint 失敗スキルの診断 JSON を `diagnostics_dir/{skill_name}.json` に書き出す。"""
+    """Write lint-failure diagnostics JSON to `diagnostics_dir/{skill_name}.json`."""
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     errors = []
     for msg in unresolved_errors:
@@ -53,25 +53,25 @@ def _write_unresolved_diagnosis(
 
 
 def _clear_unresolved_diagnosis(diagnostics_dir: Path, skill_name: str) -> None:
-    """解消済みスキルの診断 JSON を削除する。"""
+    """Delete diagnostics JSON for a resolved skill."""
     diag = diagnostics_dir / f"{skill_name}.json"
     if diag.is_file():
         diag.unlink()
 
 
 def build_meta(fm: dict, path: Path) -> SkillMeta:
-    """フロントマター dict から SkillMeta を構築する（公開 API）。"""
+    """Build SkillMeta from a frontmatter dict (public API)."""
     name: str = fm.get("name") or path.parent.name
     description: str | None = fm.get("description")
     if not description:
-        raise ValueError("description フィールドが必須です")
+        raise ValueError("description field is required")
     argument_hint: str = fm.get("argument_hint") or ""
     model: str | None = fm.get("model") or None
     triggers_raw = fm.get("triggers")
     if triggers_raw is None:
         triggers: list[str] = []
     elif not isinstance(triggers_raw, list):
-        raise ValueError(f"triggers フィールドはリストである必要があります: {triggers_raw!r}")
+        raise ValueError(f"triggers field must be a list: {triggers_raw!r}")
     else:
         triggers = [str(t) for t in triggers_raw]
 
@@ -79,7 +79,7 @@ def build_meta(fm: dict, path: Path) -> SkillMeta:
     if tools_raw is None:
         tools: list[str] = []
     elif not isinstance(tools_raw, list):
-        raise ValueError(f"tools フィールドはリストである必要があります: {tools_raw!r}")
+        raise ValueError(f"tools field must be a list: {tools_raw!r}")
     else:
         tools = [str(t) for t in tools_raw]
 
@@ -142,7 +142,7 @@ def build_meta(fm: dict, path: Path) -> SkillMeta:
     )
 
 
-_build_meta = build_meta  # 後方互換 alias
+_build_meta = build_meta  # backward-compat alias
 
 
 def discover(
@@ -152,33 +152,33 @@ def discover(
     diagnostics_dir: Path | None = None,
 ) -> dict[str, SkillMeta]:
     """
-    指定パスから SKILL.md を再帰的に探索し、フロントマターのみパースする。
+    Recursively find SKILL.md under the given paths; parse frontmatter only.
 
-    戻り値: {skill_name: SkillMeta}。name 重複時は先勝ち（stderr に警告）。
-    個別パースエラーは stderr 出力してスキップ。
+    Returns: {skill_name: SkillMeta}. First wins on name collision (warn on stderr).
+    Skip individual parse errors after logging to stderr.
 
     diagnostics_dir:
-        None（既定）なら診断 JSON を書かない。
-        指定時は lint 失敗スキルを ``diagnostics_dir/{name}.json`` に書き、
-        通過時は同パスの stale JSON を削除する。
+        None (default): do not write diagnostics JSON.
+        When set, write lint failures to ``diagnostics_dir/{name}.json``
+        and delete stale JSON on pass.
     """
     result: dict[str, SkillMeta] = {}
 
     for base in paths:
         base = Path(base)
         if not base.exists():
-            _log.warning("パスが存在しません: %s", base)
+            _log.warning("Path does not exist: %s", base)
             continue
 
         for skill_file in sorted(base.rglob(entry_file)):
-            # _ 始まりディレクトリ（内部・フォールバック用）はスキップ
+            # Skip directories starting with _ (internal / fallback)
             if any(p.startswith("_") for p in skill_file.relative_to(base).parts[:-1]):
                 continue
             try:
                 md = md_read(str(skill_file.relative_to(base)), repo_root=base)
                 meta = build_meta(md.frontmatter, skill_file)
             except Exception as e:
-                _log.warning("パースエラー（スキップ）: %s: %s", skill_file, e)
+                _log.warning("Parse error (skip): %s: %s", skill_file, e)
                 continue
 
             errors = lint_skill_meta(md.frontmatter, skill_file)
@@ -210,7 +210,7 @@ def discover(
 
             if meta.name in result:
                 _log.warning(
-                    "スキル名重複（先勝ち）: '%s' (%s vs %s)",
+                    "Duplicate skill name (first wins): '%s' (%s vs %s)",
                     meta.name,
                     result[meta.name].path,
                     meta.path,
@@ -233,10 +233,10 @@ def discover(
 
 
 def _get_available_tools(tools_path: Path) -> set[str]:
-    """ghdag tools list --path <path> --json を subprocess 呼出し、Tool 名の集合を返す。
+    """Call `ghdag tools list --path <path> --json` via subprocess; return Tool name set.
 
     Raises:
-        SkillLoadError: subprocess 失敗 or JSON パースエラー時
+        SkillLoadError: On subprocess failure or JSON parse error
     """
     try:
         result = subprocess.run(
@@ -246,17 +246,17 @@ def _get_available_tools(tools_path: Path) -> set[str]:
             timeout=10,
         )
     except subprocess.TimeoutExpired as e:
-        raise SkillLoadError(f"ghdag tools list がタイムアウトしました: {tools_path}") from e
+        raise SkillLoadError(f"ghdag tools list timed out: {tools_path}") from e
 
     if result.returncode != 0:
         raise SkillLoadError(
-            f"ghdag tools list が失敗しました (exit {result.returncode}): {result.stderr}"
+            f"ghdag tools list failed (exit {result.returncode}): {result.stderr}"
         )
 
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as e:
-        raise SkillLoadError(f"ghdag tools list の JSON パースに失敗: {e}") from e
+        raise SkillLoadError(f"Failed to parse ghdag tools list JSON: {e}") from e
 
     tools_list = data.get("tools", [])
     return {
@@ -270,14 +270,14 @@ def validate_tool_refs(
     skills: dict[str, SkillMeta],
     tools_path: Path,
 ) -> None:
-    """各スキルの tools フィールドを利用可能 Tool と突合。
+    """Cross-check each skill tools field against available Tools.
 
-    - tools が空のスキルはスキップ
-    - 未知 Tool があるスキルのエラーを全件収集し、1 つの SkillLoadError にまとめて raise
-    - エラーメッセージ形式: "スキル '<name>': 未知 Tool ['x', 'y']"
+    - Skip skills with empty tools
+    - Collect all unknown-Tool errors and raise one SkillLoadError
+    - Error form: "skill '<name>': unknown Tool ['x', 'y']"
 
     Raises:
-        SkillLoadError: 未知 Tool 参照または ghdag tools list 失敗時
+        SkillLoadError: On unknown Tool refs or ghdag tools list failure
     """
     skills_with_tools = {name: meta for name, meta in skills.items() if meta.tools}
     if not skills_with_tools:
@@ -288,22 +288,22 @@ def validate_tool_refs(
     for name, meta in skills_with_tools.items():
         unknown = [t for t in meta.tools if t not in available]
         if unknown:
-            errors.append(f"スキル '{name}': 未知 Tool {unknown!r}")
+            errors.append(f"skill '{name}': unknown Tool {unknown!r}")
     if errors:
         raise SkillLoadError("\n".join(errors))
 
 
 def load(meta: SkillMeta) -> SkillFile:
     """
-    SkillMeta.path から全文を読み込み、SkillFile を返す。
+    Read the full text from SkillMeta.path and return SkillFile.
 
     Raises:
-        FileNotFoundError: ファイルが存在しない場合
-        ValueError: フロントマターのパースに失敗した場合
+        FileNotFoundError: File missing
+        ValueError: Frontmatter parse failed
     """
     path = meta.path
     if not path.exists():
-        raise FileNotFoundError(f"SKILL.md が見つかりません: {path}")
+        raise FileNotFoundError(f"SKILL.md not found: {path}")
 
     md = md_read(path.name, repo_root=path.parent)
     loaded_meta = build_meta(md.frontmatter, path)

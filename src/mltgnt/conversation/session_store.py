@@ -1,8 +1,8 @@
-"""会話層のセッション台帳・ターンログ（#3317）。
+"""Conversation-layer session ledger and turn log (#3317).
 
-会話 ID（不透明文字列）でキーする。エンジン SDK に依存しない。
-resume 可否は configure_resume_check で注入する。
-保存先は ConversationConfig で注入する。
+Keyed by opaque conversation ID. No engine SDK dependency.
+Resume eligibility is injected via configure_resume_check.
+Storage is injected via ConversationConfig.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 _JST = timezone(timedelta(hours=9))
 
-# エンジン層への問い合わせ（未設定時は resume 不可）
+# Query to the engine layer (resume disabled when unset)
 _ResumeCheck = Callable[[str], bool]
 _resume_check: _ResumeCheck | None = None
 _active_config: ConversationConfig | None = None
@@ -30,7 +30,7 @@ _ledger_dir_override: Path | None = None
 
 @dataclass(frozen=True)
 class SessionRecord:
-    """会話層が保持するセッションメタデータ（媒体・エンジン実装非依存）。"""
+    """Session metadata held by the conversation layer (media/engine-agnostic)."""
 
     engine: str
     session_id: str
@@ -41,7 +41,7 @@ class SessionRecord:
 
 
 def configure(config: ConversationConfig) -> None:
-    """保存先を ConversationConfig から注入する。"""
+    """Inject storage paths from ConversationConfig."""
     global _active_config, _sessions_dir_override, _ledger_dir_override
     _active_config = config
     _sessions_dir_override = config.sessions_dir
@@ -49,7 +49,7 @@ def configure(config: ConversationConfig) -> None:
 
 
 def configure_resume_check(check: _ResumeCheck | None) -> None:
-    """resume 可否判定を注入する。None で解除。"""
+    """Inject resume eligibility check. Pass None to clear."""
     global _resume_check
     _resume_check = check
 
@@ -59,7 +59,7 @@ def configure_paths(
     sessions_dir: Path | None = None,
     ledger_dir: Path | None = None,
 ) -> None:
-    """保存先を注入する（ホスト側の互換パス用）。"""
+    """Inject storage paths (host compatibility path)."""
     global _sessions_dir_override, _ledger_dir_override
     if sessions_dir is not None:
         _sessions_dir_override = sessions_dir
@@ -88,7 +88,7 @@ def _ledger_dir() -> Path:
 
 
 def storage_key(conversation_id: str) -> str:
-    """会話 ID をファイル名用キーへ（不透明文字列をパス安全化）。"""
+    """conversation ID → filename key (path-safe opaque string)."""
     return conversation_id.replace(":", "-").replace("/", "_")
 
 
@@ -101,7 +101,7 @@ def _ledger_path(key: str) -> Path:
 
 
 def record_ledger_entry(key: str, engine: str, session_id: str) -> None:
-    """台帳へ直接キー指定で記録（互換キー用）。"""
+    """Record to the ledger with a direct key (compat keys)."""
     _atomic_write_ledger(
         key,
         {
@@ -191,7 +191,7 @@ def gc_sessions(*, max_age: timedelta) -> int:
 
 
 def resume_supported(engine: str | None) -> bool:
-    """注入されたコールバックで resume 可否を返す。未注入・空 engine は False。"""
+    """Return resume eligibility via injected callback. False if unset or empty engine."""
     name = (engine or "").strip()
     if not name:
         return False
@@ -210,7 +210,7 @@ def append_turn(
     persona: str | None = None,
     raw_result_path: str | None = None,
 ) -> None:
-    """ターンを追記する。persona は後方互換エイリアス。"""
+    """Append a turn. persona is a backward-compat alias."""
     del raw_result_path  # accepted for compatibility, not stored
     path = session_path(conversation_id)
     path.parent.mkdir(parents=True, exist_ok=True)

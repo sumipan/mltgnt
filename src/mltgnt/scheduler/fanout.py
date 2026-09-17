@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import yaml
 
-# fanout 指示: ペルソナが動的子タスクを生成できるよう result 末尾に YAML を出力させる。
-# action_args.enable_fanout=true の skill ジョブでプロンプトに付加する。
+# Fanout instruction: ask the persona to emit YAML at the end of the result for dynamic child tasks.
+# Appended to the prompt for skill jobs with action_args.enable_fanout=true.
 _FANOUT_PROMPT_SUFFIX = """
 ---
 If you determine that the task should be split into independent parallel subtasks,
@@ -29,10 +29,10 @@ def _parse_fanout_steps(
     engine: str,
     model: "str | None",
 ) -> "list | None":
-    """ghdag_fanout YAML ブロックをパースして DagStep リストに変換する。
+    """Parse a ghdag_fanout YAML block into a DagStep list.
 
-    content: enqueue_and_wait の応答文字列
-    Returns DagStep のリスト。ブロックが存在しない場合は None。
+    content: Response string from enqueue_and_wait
+    Returns a DagStep list. None when the block is absent.
     """
     lines = content.splitlines()
     last_sep_idx = None

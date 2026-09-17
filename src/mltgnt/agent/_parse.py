@@ -1,4 +1,4 @@
-"""mltgnt.agent._parse — LLM レスポンスから JSON をパースする。"""
+"""mltgnt.agent._parse — parse JSON from an LLM response."""
 from __future__ import annotations
 
 import json
@@ -19,22 +19,22 @@ def _validate_tool_entry(item: dict) -> dict | None:
 
 
 def _parse_json_response(raw: str) -> dict | list[dict] | None:
-    """LLM の生テキストからツール呼び出し JSON を抽出する。
+    """Extract tool-call JSON from raw LLM text.
 
-    パース優先順位:
-      1. ```json {...} ``` コードブロック内の JSON
-      2. 最初の { から最後の } までの部分文字列
+    Parse priority:
+      1. JSON inside a ```json {...} ``` code block
+      2. Substring from the first { to the last }
 
-    単一形式: {"tool": str, "args": dict} → dict
-    複数形式: {"tools": [{"tool": str, "args": dict}, ...]} → list[dict]
-    "args" キーは必須。"thought" キーは省略可能（欠落時は WARN ログ）。
+    Single form: {"tool": str, "args": dict} → dict
+    Multi form: {"tools": [{"tool": str, "args": dict}, ...]} → list[dict]
+    "args" is required. "thought" is optional (WARN log when missing).
     """
-    # 1. コードブロック内 JSON
+    # 1. JSON inside a code block
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
     if m:
         candidate = m.group(1)
     else:
-        # 2. 最初の { から最後の } まで
+        # 2. From the first { to the last }
         start = raw.find("{")
         end = raw.rfind("}")
         if start == -1 or end == -1 or end < start:

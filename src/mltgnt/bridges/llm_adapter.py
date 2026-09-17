@@ -1,7 +1,7 @@
 """mltgnt.bridges.llm_adapter
 
-L2 ブリッジ層: ghdag.llm.call_text の薄いラッパ。
-L3（domain）→ L0（ghdag）の直接依存を隔離する。
+L2 bridge: thin wrapper around ghdag.llm.call_text.
+Isolates L3 (domain) from direct L0 (ghdag) dependency.
 """
 from __future__ import annotations
 
@@ -18,17 +18,17 @@ def call_llm(
     model: str = "",
     timeout: int = 120,
 ) -> "TextResult":
-    """ghdag.llm.call_text の薄いラッパ。L2 として L0 依存を隔離する。
+    """Thin wrapper around ghdag.llm.call_text. L2 isolates the L0 dependency.
 
-    ghdag.llm.call ではなく call_text を使うのは、エンジンごとの stdout 形式を
-    engine output adapter で正規化させるため。codex は EngineSpec が常に
-    `codex exec - --json` で起動するため raw stdout は JSONL であり、
-    call() の LLMResult.stdout をそのまま本文として扱うと JSONL が
-    Slack 投稿やペルソナメモリに漏れる。
+    Prefer call_text over ghdag.llm.call so per-engine stdout formats are
+    normalized by the engine output adapter. Codex EngineSpec always starts
+    with ``codex exec - --json``, so raw stdout is JSONL; treating
+    call()'s LLMResult.stdout as the body would leak JSONL into Slack posts
+    and persona memory.
 
     Returns:
-        TextResult。本文は .body（adapter 抽出済み）、成否は .success。
-        raw stdout が必要な場合のみ .raw.stdout を参照すること。
+        TextResult. Body is .body (adapter-extracted); success is .success.
+        Use .raw.stdout only when raw stdout is required.
     """
     from ghdag.llm import call_text
 

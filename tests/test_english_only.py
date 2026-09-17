@@ -49,3 +49,26 @@ def test_tests_directory_is_english_except_marked_cjk() -> None:
         "Unmarked Japanese in tests/ (add English translation or "
         f"`# {_MARKER}` near the data):\n" + "\n".join(violations[:80])
     )
+
+
+def test_src_directory_is_english_except_marked_cjk() -> None:
+    """Gate: src/ must be English except intentionally marked CJK literals (#3342)."""
+    root = Path(__file__).resolve().parent.parent / "src"
+    violations: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        try:
+            file_text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        lines = file_text.splitlines()
+        for i, line in enumerate(lines):
+            if not _JP.search(line):
+                continue
+            if _is_marked(lines, i):
+                continue
+            rel = path.relative_to(root.parent)
+            violations.append(f"{rel}:{i + 1}: {line.strip()[:120]}")
+    assert not violations, (
+        "Unmarked Japanese in src/ (add English translation or "
+        f"`# {_MARKER}` near the data):\n" + "\n".join(violations[:80])
+    )

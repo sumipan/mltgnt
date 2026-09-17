@@ -167,9 +167,7 @@ def test_validate_persona_name_mismatch(agents_dir: Path) -> None:
     """), encoding="utf-8")
     persona = load_persona("other-name", persona_dir=agents_dir)
     warnings = validate_persona(persona)
-    # Product warning text is still Japanese (src Englishization is out of scope).
-    # Japanese text intentionally kept for CJK processing test
-    assert any("不一致" in w or "mismatch" in w.lower() for w in warnings)
+    assert any("does not match" in w or "mismatch" in w.lower() for w in warnings)
 
 
 def test_validate_persona_no_available_skills(tachikoma_persona_file: Path, agents_dir: Path) -> None:
@@ -209,7 +207,7 @@ def test_format_prompt_contains_datetime(tachikoma_persona_file: Path, agents_di
     persona = load_persona("persona-a", persona_dir=agents_dir)
     result = persona.format_prompt("Test instructions")
     # Japanese text intentionally kept for CJK processing test
-    assert "現在日時: 2026-04-23 10:00:00 (JST)" in result
+    assert "Current datetime: 2026-04-23 10:00:00 (JST)" in result
 
 
 @freeze_time("2026-04-23T10:00:00+09:00")
@@ -218,7 +216,7 @@ def test_format_prompt_datetime_before_body(tachikoma_persona_file: Path, agents
     persona = load_persona("persona-a", persona_dir=agents_dir)
     result = persona.format_prompt("Test instructions")
     # Japanese text intentionally kept for CJK processing test
-    dt_pos = result.index("現在日時:")
+    dt_pos = result.index("Current datetime:")
     # Japanese text intentionally kept for CJK processing test
     body_pos = result.index("persona-aはGHSの多脚戦車型AIロボット。")
     assert dt_pos < body_pos
@@ -230,11 +228,11 @@ def test_format_prompt_datetime_not_in_instruction_section(tachikoma_persona_fil
     persona = load_persona("persona-a", persona_dir=agents_dir)
     result = persona.format_prompt("Test instructions")
     # Japanese text intentionally kept for CJK processing test
-    separator = "--- ユーザーからの指示 ---"
+    separator = "--- User instruction ---"
     sep_pos = result.index(separator)
     instruction_section = result[sep_pos:]
     # Japanese text intentionally kept for CJK processing test
-    assert "現在日時:" not in instruction_section
+    assert "Current datetime:" not in instruction_section
 
 
 @freeze_time("2026-04-23T01:00:00Z")
@@ -243,4 +241,4 @@ def test_format_prompt_timezone_jst(tachikoma_persona_file: Path, agents_dir: Pa
     persona = load_persona("persona-a", persona_dir=agents_dir)
     result = persona.format_prompt("Test instructions")
     # Japanese text intentionally kept for CJK processing test
-    assert "現在日時: 2026-04-23 10:00:00 (JST)" in result
+    assert "Current datetime: 2026-04-23 10:00:00 (JST)" in result

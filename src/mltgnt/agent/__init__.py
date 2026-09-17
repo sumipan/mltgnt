@@ -1,6 +1,6 @@
-"""mltgnt.agent — 汎用エージェントループ + 判断層骨格（#3318）。
+"""mltgnt.agent — generic agent loop + decision-layer skeleton (#3318).
 
-設計: Issue #287 / #3318
+Design: Issue #287 / #3318
 """
 from mltgnt.agent._runner import AgentResult, AgentRunner
 from mltgnt.agent.deterministic_gate import (

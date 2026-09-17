@@ -1,10 +1,10 @@
 """
-mltgnt.skill._registry — スキルレジストリ。
+mltgnt.skill._registry — skill registry.
 
 Threading model:
-- SkillWatcherComponent のバックグラウンドスレッドが reload() を呼ぶ
-- メインスレッド（または他コンポーネント）が get() で読み取る
-- Lock で排他制御
+- SkillWatcherComponent background thread calls reload()
+- Main thread (or other components) read via get()
+- Exclusive access via Lock
 """
 from __future__ import annotations
 import logging
@@ -26,7 +26,7 @@ class SkillRegistry:
         new_skills = discover(self._paths, entry_file=self._entry_file)
         with self._lock:
             self._skills = new_skills
-        logger.info("SkillRegistry: %d スキルをロード", len(new_skills))
+        logger.info("SkillRegistry: loaded %d skills", len(new_skills))
         return dict(new_skills)
 
     def get(self) -> dict[str, SkillMeta]:

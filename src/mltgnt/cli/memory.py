@@ -1,4 +1,4 @@
-"""mltgnt.cli.memory — memory dream show/forget サブコマンド。"""
+"""mltgnt.cli.memory — memory dream show/forget subcommands."""
 from __future__ import annotations
 
 import argparse

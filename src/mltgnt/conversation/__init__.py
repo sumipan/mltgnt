@@ -1,6 +1,6 @@
-"""mltgnt.conversation — 媒体非依存の会話層（#3317）。
+"""mltgnt.conversation — media-agnostic conversation layer (#3317).
 
-待機列・セッション台帳・スレッド固定・圧縮。くびれ型は mltgnt.interfaces.turn。
+Queue, session ledger, thread binding, compaction. Neck types live in mltgnt.interfaces.turn.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ _active_config: ConversationConfig | None = None
 
 
 def configure(config: ConversationConfig) -> None:
-    """会話層の保存先・閾値を注入する。"""
+    """Inject conversation-layer storage paths and thresholds."""
     global _active_config
     _active_config = config
     thread_queue.configure(config)
@@ -37,7 +37,7 @@ def configure(config: ConversationConfig) -> None:
 
 
 def get_config() -> ConversationConfig:
-    """現在の ConversationConfig を返す。未設定なら RuntimeError。"""
+    """Return the active ConversationConfig. Raises RuntimeError if unset."""
     if _active_config is None:
         raise RuntimeError("mltgnt.conversation is not configured; call configure() first")
     return _active_config

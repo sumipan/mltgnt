@@ -1,7 +1,7 @@
-"""委譲判定（decision）の骨格（#3318）。
+"""Dispatch decision skeleton (#3318).
 
-エージェント実行・セッション台帳・ツール名判定はホストが注入する。
-プロンプト本文・ツール定義・plan 承認ポリシーは本モジュールに置かない。
+Agent execution, session ledger, and tool-name checks are host-injected.
+Prompt bodies, tool definitions, and plan-approval policy do not live here.
 """
 from __future__ import annotations
 
@@ -14,7 +14,9 @@ from mltgnt.agent.dispatch_preflight import PreflightContext
 from mltgnt.conversation.session_store import SessionRecord
 from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE
 
-REASK_MESSAGE = "この場では完了できないため、対象と作業内容を明記して依頼し直してください"
+REASK_MESSAGE = (
+    "This cannot be completed here; please restate the target and work clearly"
+)
 
 MODE_REPLY = "reply"
 MODE_DELEGATE = "delegate"
@@ -22,9 +24,9 @@ MODE_DELEGATE = "delegate"
 
 @dataclass
 class DirectAgentResult:
-    """直接応答エージェント（secretary_agent 相当）の実行結果。
+    """Result from a direct-reply agent (secretary_agent equivalent).
 
-    既存の ``mltgnt.agent.AgentResult``（AgentRunner 用）とは別型。
+    Separate from ``mltgnt.agent.AgentResult`` (used by AgentRunner).
     """
 
     tool: str
@@ -75,7 +77,7 @@ def _merge_memory_with_memo(
 ) -> str | None:
     merged = memory_excerpt
     if secretary_memo:
-        memo_block = f"--- 今日の秘書メモ（状況認識） ---\n{secretary_memo}\n\n"
+        memo_block = f"--- Today's secretary memo (situational awareness) ---\n{secretary_memo}\n\n"
         merged = f"{memo_block}{merged}" if merged else memo_block
     return merged
 
@@ -103,7 +105,7 @@ def make_dispatch_decision(
     utc_now_fn: Callable[[], str] | None = None,
     logger=None,
 ) -> DispatchDecision:
-    """reply / delegate を決定する。ホスト依存はすべて注入必須。"""
+    """Decide reply vs delegate. All host dependencies must be injected."""
     utc_now = utc_now_fn or (lambda: datetime.now(_timezone.utc).isoformat())
     resume_check = resume_supported_fn or (lambda _engine: False)
     key_fn = ledger_key_fn or (lambda space, thread: f"{space}-{thread}")

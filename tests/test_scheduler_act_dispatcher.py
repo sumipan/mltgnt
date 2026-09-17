@@ -62,7 +62,7 @@ def test_execute_action_unknown_raises(tmp_path):
     sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
     job = _make_job("unknown_action_xyz")
     # Japanese text intentionally kept for CJK processing test
-    with pytest.raises(ValueError, match="未対応"):
+    with pytest.raises(ValueError, match="Unsupported action"):
         sched.execute_action(job)
 
 

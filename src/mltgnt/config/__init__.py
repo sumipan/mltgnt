@@ -1,7 +1,7 @@
 """
-mltgnt.config — diary 非依存な設定 dataclass。
+mltgnt.config — diary-independent configuration dataclasses.
 
-設計: Issue #118 §4.1, Issue #123 §4.1
+Design: Issue #118 §4.1, Issue #123 §4.1
 """
 from __future__ import annotations
 
@@ -17,10 +17,12 @@ __all__ = [
 ]
 
 DEFAULT_WEIGHT_MAP: dict[str, str] = {
-    # 日本語（v1/v2）
+    # Japanese text intentionally kept for CJK processing test
+    # Japanese (v1/v2) persona YAML section names
     "基本情報": "heavy",
     "価値観": "heavy",
     "反応パターン": "heavy",
+    # Japanese text intentionally kept for CJK processing test
     "口調": "heavy",
     "アウトプット形式": "reference",
     "軽量": "light",
@@ -35,7 +37,7 @@ DEFAULT_WEIGHT_MAP: dict[str, str] = {
 
 @dataclass(frozen=True)
 class PersonaConfig:
-    """ペルソナ読み込み・解釈に必要な設定。"""
+    """Settings required for persona load and interpretation."""
     weight_map: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
     )
@@ -43,9 +45,9 @@ class PersonaConfig:
 
 @dataclass(frozen=True)
 class ConversationConfig:
-    """会話層（待機列・セッション・台帳）の保存先と閾値。
+    """Conversation-layer storage paths and thresholds (queue, session, ledger).
 
-    MemoryConfig と同様にホストがパスを注入する。ハードコードしない。
+    Like MemoryConfig, the host injects paths. Do not hardcode them.
     """
 
     queue_dir: Path
@@ -63,7 +65,7 @@ class ConversationConfig:
 
 @dataclass(frozen=True)
 class MemoryConfig:
-    """メモリ管理に必要なパス・閾値。"""
+    """Paths and thresholds for memory management."""
     chat_dir: Path
     chat_memory_dir: Path | None = None
     inject_max_bytes: int = 10_240
@@ -75,9 +77,10 @@ class MemoryConfig:
     mid_weeks: int = 3
     compact_threshold_bytes: int = 40_960
     compact_target_bytes: int = 25_600
+    # Japanese text intentionally kept for CJK processing test
     preferences_section_name: str = "ユーザーの好み・傾向"
     protected_layers: tuple[str, ...] = ("caveat",)
-    timezone: str = "Asia/Tokyo"  # _redistribute_entries で使用
+    timezone: str = "Asia/Tokyo"  # used by _redistribute_entries
     dream_model: str = "claude-haiku-4-5-20251001"
     use_dream_summary: bool = False
     dream_dir_name: str = "memory"
@@ -86,7 +89,7 @@ class MemoryConfig:
 
 @dataclass(frozen=True)
 class SchedulerConfig:
-    """スケジューラに必要なパス・設定。"""
+    """Paths and settings for the scheduler."""
     schedule_yaml: Path
     state_dir: Path
     timezone: str = "Asia/Tokyo"
