@@ -1,4 +1,4 @@
-"""mltgnt.execution.base_runner — tick ループの共通 ABC。"""
+"""mltgnt.scheduler.base_runner — tick ループの共通 ABC。"""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

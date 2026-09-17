@@ -45,6 +45,8 @@ def test_removed_imports() -> None:
     with pytest.raises(ImportError):
         from mltgnt.chat.pipeline import run_chat  # noqa: F401
     with pytest.raises(ImportError):
+        from mltgnt.chat.pipeline import run_pipeline  # noqa: F401
+    with pytest.raises(ImportError):
         from mltgnt.memory import read_memory_agentic  # noqa: F401
     with pytest.raises(ImportError):
         from mltgnt.memory._compaction import compact  # noqa: F401
@@ -56,11 +58,12 @@ def test_removed_imports() -> None:
         from mltgnt import compact  # noqa: F401
     with pytest.raises(ImportError):
         from mltgnt import needs_compaction  # noqa: F401
+    with pytest.raises(ImportError):
+        from mltgnt import run_pipeline  # noqa: F401
 
 
 def test_canonical_imports() -> None:
     from mltgnt.interfaces.types import ChatInput, ChatOutput, Message  # noqa: F401
-    from mltgnt.chat import ChatInput as CI, run_pipeline  # noqa: F401
     from mltgnt.memory import (
         LlmCall,
         compact as compact_from_memory,
@@ -70,9 +73,12 @@ def test_canonical_imports() -> None:
     from mltgnt.memory.compaction import CompactionResult, compact as compact_from_compaction  # noqa: F401
     from mltgnt.bridges.ghdag_bridge import enqueue_and_wait  # noqa: F401
 
-    assert CI is ChatInput
-    assert callable(run_pipeline)
     assert callable(compact_from_memory)
     assert callable(compact_from_compaction)
     assert callable(needs_compaction)
     assert LlmCall is not None
+    assert ChatInput is not None
+    assert ChatOutput is not None
+    assert Message is not None
+    assert callable(enqueue_and_wait)
+    assert callable(read_memory_iterative)
