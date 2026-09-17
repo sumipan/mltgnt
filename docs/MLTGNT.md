@@ -1,6 +1,27 @@
-# MLTGNT — skill pipeline notes（#3031）
+# MLTGNT — package layout notes（#3321）
 
-nexus 側の総合設計書（`docs/MLTGNT.md`）のうち、本リポジトリで実装するスキルパイプライン周りの状態をここに追記する。
+nexus 側の総合設計書（`docs/MLTGNT.md`）のうち、本リポジトリで実装する公開パッケージの現状をここに追記する。
+
+## 残すパッケージ（`src/mltgnt/`）
+
+| パッケージ | 役割 |
+|---|---|
+| `agent/` | 汎用エージェントループ・委譲判定骨格 |
+| `bridges/` | ghdag / LLM / files / hooks アダプタ |
+| `cli/` | CLI エントリ |
+| `config/` | ホスト注入用 dataclass（`ConversationConfig` / `MemoryConfig` 等） |
+| `conversation/` | 媒体非依存の会話層（待機列・セッション・台帳） |
+| `daemon/` | デーモンランナーとコンポーネント |
+| `interfaces/` | Protocol / DTO（slack / persona / types / turn） |
+| `memory/` | メモリ読み取り・compact・dream |
+| `persona/` | ペルソナ loader / registry / 整形 |
+| `routing/` | 媒体非依存ルーティング |
+| `scheduler/` | ジョブスケジューラ（`BaseRunner` / `PersonaScheduler`） |
+| `skill/` | スキル discover / match / runner / pipeline 合成 |
+
+## 削除済み（#3321 / #3301 サブ6）
+
+`loops` / `ooda` / `improvement` / `kpi` / `chat` / `execution` および `interfaces` の loops / ooda / chat Protocol は削除した。
 
 ## 7.4 柱 / Phase F（スキルパイプライン）
 

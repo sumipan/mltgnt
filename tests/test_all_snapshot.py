@@ -28,7 +28,6 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "read_memory_iterative",
         "read_memory_with_sufficiency_check",
         "run_persona_prompt",
-        "run_pipeline",
         "write_dream",
         "validate_persona",
     ],
@@ -99,12 +98,6 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "should_force_delegate",
         "should_preempt_delegate",
     ],
-    "mltgnt.chat": [
-        "ChatInput",
-        "ChatOutput",
-        "Message",
-        "run_pipeline",
-    ],
     "mltgnt.bridges": [
         "DagStep",
         "MltgntHooks",
@@ -154,7 +147,6 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "ChatInputBase",
         "ChatOutput",
         "ChatOutputBase",
-        "ChatPipelineProtocol",
         "HistoryMessage",
         "Message",
         "PersonaFMBase",
@@ -179,7 +171,6 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "SkillWatcherComponent",
     ],
     "mltgnt.config": [
-        "ChatConfig",
         "ConversationConfig",
         "DEFAULT_WEIGHT_MAP",
         "MemoryConfig",
@@ -220,5 +211,5 @@ def test_all_snapshot(module_path: str, expected: list[str]) -> None:
     )
 
 
-def test_all_snapshot_covers_fourteen_modules() -> None:
-    assert len(EXPECTED_ALL) == 14
+def test_all_snapshot_covers_thirteen_modules() -> None:
+    assert len(EXPECTED_ALL) == 13

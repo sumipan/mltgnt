@@ -4,14 +4,14 @@
 
 - 最終ファイル（`<persona_dir>/<名前>.md`）のみを返す
 - サブディレクトリ（`<persona_dir>/<名前>/`）は除外
-- `サンプル.md` など除外対象を EXCLUDE_STEMS で設定可能
+- sample persona stem (CJK via escapes) is excluded via EXCLUDE_STEMS
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-EXCLUDE_STEMS: frozenset[str] = frozenset({"サンプル"})
+EXCLUDE_STEMS: frozenset[str] = frozenset({"\u30b5\u30f3\u30d7\u30eb"})
 
 
 def resolve(name: str, persona_dir: Path) -> Path:

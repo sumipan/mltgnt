@@ -4,7 +4,6 @@ from importlib.metadata import PackageNotFoundError, version
 
 from mltgnt.agent import AgentResult, AgentRunner
 from mltgnt.bridges.ghdag_bridge import enqueue_and_wait, enqueue_dag
-from mltgnt.chat.pipeline import run_pipeline
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.interfaces.types import ChatInput, ChatOutput, Message
 from mltgnt.memory import (
@@ -28,8 +27,6 @@ except PackageNotFoundError:
     __version__ = "0.0.0"
 
 __all__ = [
-    # chat
-    "run_pipeline",
     # memory
     "read_memory_iterative",
     "read_memory_by_relevance",

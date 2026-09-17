@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Callable, Optional
 from zoneinfo import ZoneInfo
 
 from mltgnt.exceptions import ConfigError
-from mltgnt.execution import BaseRunner
 from mltgnt.scheduler.actions.skill import run_skill_action
+from mltgnt.scheduler.base_runner import BaseRunner
 from mltgnt.scheduler.loader import load_schedule_jobs
 from mltgnt.scheduler.models import (
     DAY_NAMES,

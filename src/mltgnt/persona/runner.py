@@ -23,7 +23,7 @@ def run_persona_prompt(
     """ペルソナのコンテキストを含めてプロンプトを LLM に実行し、応答を返す。
 
     Args:
-        persona_name: ペルソナ名（例: "安宅和人"）またはエイリアス。
+        persona_name: Persona name (e.g. "persona-a") or alias.
         prompt: LLM に渡す指示テキスト。ペルソナの body + format_prompt() でラップされる。
         persona_dir: ペルソナファイルのディレクトリ。None の場合は Path("agents")。
         timeout: LLM 呼び出しのタイムアウト秒数。デフォルト 120 秒。

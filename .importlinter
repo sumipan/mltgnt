@@ -7,9 +7,9 @@ include_external_packages = True
 name = mltgnt layered architecture
 type = layers
 layers =
-    daemon | loops
+    daemon
     scheduler | agent | routing
-    persona | chat | skill | memory | conversation
+    persona | skill | memory | conversation
     bridges
     interfaces
 containers =
@@ -17,9 +17,6 @@ containers =
 ignore_imports =
     mltgnt.* -> mltgnt.config
     mltgnt.bridges.* -> mltgnt.skill.*
-    mltgnt.persona.* -> mltgnt.chat.*
-    mltgnt.chat.* -> mltgnt.persona.*
-    mltgnt.skill.* -> mltgnt.chat.*
     mltgnt.skill.matcher -> mltgnt.routing.agentic_discover
 unmatched_ignore_imports_alerting = warn
 
@@ -28,10 +25,8 @@ name = L3 domain must not import ghdag directly
 type = forbidden
 source_modules =
     mltgnt.persona
-    mltgnt.chat
     mltgnt.skill
     mltgnt.memory
-    mltgnt.loops
     mltgnt.conversation
 forbidden_modules =
     ghdag

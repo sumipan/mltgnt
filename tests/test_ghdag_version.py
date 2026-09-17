@@ -8,7 +8,6 @@ import ast
 import importlib.metadata
 import inspect
 from pathlib import Path
-from typing import get_args
 try:
     import tomllib
 except ModuleNotFoundError:  # Python <3.11
@@ -130,11 +129,11 @@ def test_step_config_has_resume_from_field():
     assert "resume_from" in field_names
 
 
-def test_step_status_literal_includes_engine_error():
-    """Issue #2721: StepStatus Literal includes engine_error."""
-    from mltgnt.interfaces.loops import StepStatus
+def test_ghdag_interpret_done_recognizes_engine_error():
+    """Issue #2721 / #3321: engine_error remains a done status after loops StepStatus removal."""
+    from ghdag.pipeline.status import interpret_done
 
-    assert "engine_error" in get_args(StepStatus)
+    assert interpret_done("ENGINE_ERROR\n") == "engine_error"
 
 
 def test_interpret_done_engine_error_maps_to_engine_error():

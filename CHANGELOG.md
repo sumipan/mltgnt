@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+
+- **未使用モジュール削除**（#3321 / #3301 サブ6）: `mltgnt.loops` / `mltgnt.ooda` / `mltgnt.improvement` / `mltgnt.kpi` / `mltgnt.chat` / `mltgnt.execution` を削除。併せて `mltgnt.interfaces.loops` / `ooda` / `chat`（および ooda 専用の `dispatch`）と `LoopsConfig` / `ChatConfig` / トップレベル `run_pipeline` を削除。`BaseRunner` は `mltgnt.scheduler.base_runner` へ移設。loops 専用の `enqueue_step` / `poll_step` も撤去
+
 ### Security
 
 - **Remove host persona names from source and tests**（#3337）: `format_persona_body` の口調カットを固有名リテラルから汎用パターン（`\\n\\n\\S+口調の本文は`）へ変更。テストデータの固有名を合成名に置換

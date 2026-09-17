@@ -3,39 +3,28 @@ from __future__ import annotations
 
 import pytest
 
-from mltgnt.execution import BaseRunner
-from mltgnt.ooda.runner import OODARunner
+from mltgnt.scheduler.base_runner import BaseRunner
 from mltgnt.scheduler.runner import PersonaScheduler
 
 
-def test_base_runner_is_abstract():
+def test_cannot_instantiate_abstract() -> None:
     with pytest.raises(TypeError):
         BaseRunner()  # type: ignore[abstract]
 
 
-def test_concrete_subclass_is_instantiable():
+def test_concrete_subclass_requires_tick() -> None:
     class ConcreteRunner(BaseRunner):
         def tick(self, now=None):
-            return "ticked"
+            return "ok"
 
-    runner = ConcreteRunner()
-    assert runner.tick() == "ticked"
+    assert ConcreteRunner().tick() == "ok"
 
 
-def test_persona_scheduler_is_base_runner():
+def test_persona_scheduler_is_base_runner() -> None:
     assert issubclass(PersonaScheduler, BaseRunner)
 
 
-def test_ooda_runner_is_base_runner():
-    assert issubclass(OODARunner, BaseRunner)
-
-
-def test_persona_scheduler_instance_is_base_runner(tmp_path):
-    sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
-    assert isinstance(sched, BaseRunner)
-
-
-def test_subclass_without_tick_raises():
+def test_incomplete_subclass_cannot_instantiate() -> None:
     class IncompleteRunner(BaseRunner):
         pass
 
