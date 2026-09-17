@@ -1,4 +1,4 @@
-"""tests/test_react_pattern.py — Thought フェーズ対応の単体テスト。"""
+"""tests/test_react_pattern.py — Thought Phase-compatible unit testing."""
 from __future__ import annotations
 
 import logging
@@ -10,17 +10,17 @@ from mltgnt.agent._runner import AgentResult, AgentRunner
 
 
 # ---------------------------------------------------------------------------
-# _parse_json_response: thought フィールド抽出
+# _parse_json_response: thought Field Extraction
 # ---------------------------------------------------------------------------
 
 
 def test_parse_with_thought():
-    raw = '{"thought": "まず状況を確認する", "tool": "search", "args": {"query": "今日の日記"}}'
+    raw = '{"thought": "Check the status", "tool": "search", "args": {"query": "today"}}'
     result = _parse_json_response(raw)
     assert result is not None
-    assert result["thought"] == "まず状況を確認する"
+    assert result["thought"] == "Check the status"
     assert result["tool"] == "search"
-    assert result["args"] == {"query": "今日の日記"}
+    assert result["args"] == {"query": "today"}
 
 
 def test_parse_without_thought_still_succeeds():
@@ -40,14 +40,14 @@ def test_parse_without_thought_logs_warning(caplog):
 
 
 def test_parse_thought_in_codeblock():
-    raw = '```json\n{"thought": "考える", "tool": "done", "args": {}}\n```'
+    raw = '```json\n{"thought": "Think", "tool": "done", "args": {}}\n```'
     result = _parse_json_response(raw)
     assert result is not None
-    assert result["thought"] == "考える"
+    assert result["thought"] == "Think"
 
 
 # ---------------------------------------------------------------------------
-# AgentRunner: tool_trace に thought フィールドが記録される
+# AgentRunner: tool_trace Home thought Fields are recorded
 # ---------------------------------------------------------------------------
 
 
@@ -79,28 +79,28 @@ def _make_runner(responses: list[str], tool_results: list[str]) -> AgentRunner:
 
 def test_trace_includes_thought():
     responses = [
-        '{"thought": "まず検索する", "tool": "search", "args": {"query": "q"}}',
-        '{"thought": "完了する", "tool": "done", "args": {}}',
+        '{"thought": "First search", "tool": "search", "args": {"query": "q"}}',
+        '{"thought": "Complete", "tool": "done", "args": {}}',
     ]
-    runner = _make_runner(responses, ["検索結果"])
-    result = runner.run("テスト")
+    runner = _make_runner(responses, ["Search"])
+    result = runner.run("test")
     assert result is not None
     assert result.tool_trace is not None
     assert len(result.tool_trace) == 1
-    assert result.tool_trace[0]["thought"] == "まず検索する"
+    assert result.tool_trace[0]["thought"] == "First search"
     assert result.tool_trace[0]["tool"] == "search"
-    assert result.tool_trace[0]["result"] == "検索結果"
+    assert result.tool_trace[0]["result"] == "Search"
 
 
 def test_trace_thought_absent_when_missing(caplog):
-    """thought なし応答でも処理が継続し、tool_trace に thought キーは含まれない。"""
+    """thought processing continues even without response,tool_trace Home thought Keys are not included."""
     responses = [
         '{"tool": "search", "args": {"query": "q"}}',
         '{"tool": "done", "args": {}}',
     ]
     with caplog.at_level(logging.WARNING, logger="mltgnt.agent._parse"):
-        runner = _make_runner(responses, ["結果"])
-        result = runner.run("テスト")
+        runner = _make_runner(responses, ["Result"])
+        result = runner.run("test")
     assert result is not None
     assert result.tool_trace is not None
     assert "thought" not in result.tool_trace[0]
@@ -108,15 +108,15 @@ def test_trace_thought_absent_when_missing(caplog):
 
 
 def test_trace_thought_only_present_when_provided():
-    """thought あり応答では thought キーが trace に含まれ、なし応答では含まれない。"""
+    """thought In response thought key trace However, not included in non-response."""
     responses = [
-        '{"thought": "考える", "tool": "search", "args": {}}',
+        '{"thought": "Think", "tool": "search", "args": {}}',
         '{"tool": "search", "args": {}}',
         '{"tool": "done", "args": {}}',
     ]
     runner = _make_runner(responses, ["ok", "ok"])
-    result = runner.run("テスト")
+    result = runner.run("test")
     assert result is not None
     assert result.tool_trace is not None
-    assert result.tool_trace[0]["thought"] == "考える"
+    assert result.tool_trace[0]["thought"] == "Think"
     assert "thought" not in result.tool_trace[1]

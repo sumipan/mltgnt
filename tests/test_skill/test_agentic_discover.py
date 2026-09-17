@@ -1,7 +1,7 @@
 """
-tests/test_skill/test_agentic_discover.py — AgenticSkillDiscoverer のユニットテスト。
+tests/test_skill/test_agentic_discover.py — unit tests for AgenticSkillDiscoverer.
 
-設計: Issue #1922
+Design: Issue #1922
 """
 from __future__ import annotations
 
@@ -31,18 +31,18 @@ def _catalog() -> dict[str, SkillMeta]:
     return {
         "calendar": _meta(
             "calendar",
-            "カレンダーの予定を確認・追加する",
-            triggers=["予定", "スケジュール", "カレンダー"],
+            "Check and add calendar events",
+            triggers=["schedule", "calendar", "agenda"],
         ),
         "diary-draft": _meta(
             "diary-draft",
-            "日記の下書きを作成する",
-            triggers=["日記", "下書き"],
+            "Create a diary draft",
+            triggers=["diary", "draft"],
         ),
         "review": _meta(
             "review",
-            "週次レビューを実行する",
-            triggers=["振り返り", "レビュー"],
+            "Run a weekly review",
+            triggers=["retrospective", "review"],
         ),
     }
 
@@ -63,7 +63,7 @@ def test_discover_selected():
     )
 
     result = discoverer.discover(
-        user_input="予定を確認して",
+        user_input="check the schedule",
         skill_catalog=_catalog(),
     )
 
@@ -78,7 +78,7 @@ def test_discover_empty_catalog():
     discoverer = AgenticSkillDiscoverer(lambda _: "SELECTED\ncalendar")
 
     result = discoverer.discover(
-        user_input="予定を確認して",
+        user_input="check the schedule",
         skill_catalog={},
     )
 
@@ -92,7 +92,7 @@ def test_discover_persona_skills_empty_after_filter():
     discoverer = AgenticSkillDiscoverer(lambda _: "SELECTED\ncalendar")
 
     result = discoverer.discover(
-        user_input="予定を確認して",
+        user_input="check the schedule",
         skill_catalog=_catalog(),
         persona_skills=["nonexistent"],
     )
@@ -104,15 +104,15 @@ def test_discover_persona_skills_empty_after_filter():
 def test_discover_max_iterations_ambiguous():
     discoverer = AgenticSkillDiscoverer(
         _make_llm_responses(
-            "NEED_MORE\n予定 確認",
-            "NEED_MORE\nスケジュール",
-            "NEED_MORE\nカレンダー",
+            "NEED_MORE\nschedule check",
+            "NEED_MORE\ncalendar",
+            "NEED_MORE\nagenda",
         ),
         max_iterations=3,
     )
 
     result = discoverer.discover(
-        user_input="予定を確認して",
+        user_input="check the schedule",
         skill_catalog=_catalog(),
     )
 
@@ -130,7 +130,7 @@ def test_discover_unresolved_verdict():
     )
 
     result = discoverer.discover(
-        user_input="予定を確認して",
+        user_input="check the schedule",
         skill_catalog=_catalog(),
     )
 
@@ -147,7 +147,7 @@ def test_discover_persona_skills_filter():
     )
 
     result = discoverer.discover(
-        user_input="予定を確認して",
+        user_input="check the schedule",
         skill_catalog=_catalog(),
         persona_skills=["calendar"],
     )

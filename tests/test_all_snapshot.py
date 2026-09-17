@@ -1,4 +1,4 @@
-"""全公開モジュールの __all__ スナップショットテスト（Issue #1300 P1-1）。"""
+"""Snapshot tests for __all__ of all public modules (Issue #1300 P1-1)."""
 from __future__ import annotations
 
 import importlib

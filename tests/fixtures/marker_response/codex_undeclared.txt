@@ -1,3 +1,3 @@
-了解ー。今日の日記に残っていることを、いまの時間の夜の気配も見ながら整えるねー。
-`even-post-todo` の手順を使って進めてるよー。
+Got it. I'll tidy what's left in today's diary while keeping tonight's mood in mind.
+Following the `even-post-todo` steps now.
 PIPELINE_STATUS: BRUSHUP_DONE

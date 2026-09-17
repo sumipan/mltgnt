@@ -1,6 +1,6 @@
-### コミット
+### Commit
 
-`feat/issue-3040-f1019b90` ブランチにコミット済み。
+Committed on branch `feat/issue-3040-f1019b90`.
 
 ```
 PIPELINE_STATUS: DONE

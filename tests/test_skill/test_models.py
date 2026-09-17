@@ -1,4 +1,4 @@
-"""SkillMeta / I/O dataclass のユニットテスト（Issue #1382 U1）。"""
+"""Unit tests for SkillMeta / I/O dataclasses (Issue #1382 U1)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -73,12 +73,12 @@ class TestSideEffectsSpec:
             writes=["jobs/*.jsonl"],
             network=["api.github.com"],
             mutates=["git", "github"],
-            conditional=["--force 時のみ git push"],
+            conditional=["git push only with --force"],
         )
         assert spec.writes == ["jobs/*.jsonl"]
         assert spec.network == ["api.github.com"]
         assert spec.mutates == ["git", "github"]
-        assert spec.conditional == ["--force 時のみ git push"]
+        assert spec.conditional == ["git push only with --force"]
 
 
 class TestSkillRunResult:

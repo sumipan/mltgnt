@@ -1,7 +1,7 @@
 """
-tests/test_mltgnt_config.py — mltgnt.config のユニットテスト（AC-2）
+tests/test_config.py — unit tests for mltgnt.config (AC-2)
 
-設計: Issue #118 §7 AC-2
+Design: Issue #118 §7 AC-2
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 def test_memory_config_instantiation():
-    """MemoryConfig が diary 固有定数なしでインスタンス化できる。"""
+    """MemoryConfig instantiates without diary-specific constants."""
     from mltgnt.config import MemoryConfig
     config = MemoryConfig(chat_dir=Path("/tmp/chat"), chat_memory_dir=Path("/tmp/chat/memory"))
     assert config.chat_dir == Path("/tmp/chat")
@@ -21,7 +21,7 @@ def test_memory_config_instantiation():
 
 
 def test_scheduler_config_instantiation():
-    """SchedulerConfig が diary 固有定数なしでインスタンス化できる。"""
+    """SchedulerConfig instantiates without diary-specific constants."""
     from mltgnt.config import SchedulerConfig
     config = SchedulerConfig(schedule_yaml=Path("/tmp/schedule.yaml"), state_dir=Path("/tmp/state"))
     assert config.schedule_yaml == Path("/tmp/schedule.yaml")
@@ -31,7 +31,7 @@ def test_scheduler_config_instantiation():
 
 
 def test_memory_config_frozen():
-    """MemoryConfig は frozen=True で immutable。"""
+    """MemoryConfig is frozen=True (immutable)."""
     from mltgnt.config import MemoryConfig
     import pytest
     config = MemoryConfig(chat_dir=Path("/tmp/chat"), chat_memory_dir=Path("/tmp/chat/memory"))
@@ -40,7 +40,7 @@ def test_memory_config_frozen():
 
 
 def test_scheduler_config_custom_values():
-    """SchedulerConfig のカスタム値が正しく設定される。"""
+    """SchedulerConfig custom values are applied correctly."""
     from mltgnt.config import SchedulerConfig
     config = SchedulerConfig(
         schedule_yaml=Path("/tmp/sched.yaml"),
@@ -53,7 +53,7 @@ def test_scheduler_config_custom_values():
 
 
 def test_no_diary_constants_in_mltgnt_config():
-    """mltgnt.config モジュール内に diary 固有定数が存在しない。"""
+    """mltgnt.config has no diary-specific constants."""
     import mltgnt.config as cfg_module
     assert not hasattr(cfg_module, "REPO_ROOT")
     assert not hasattr(cfg_module, "DIARY_DIR")
@@ -61,9 +61,9 @@ def test_no_diary_constants_in_mltgnt_config():
 
 
 def test_import_without_tools_dependency():
-    """from mltgnt.config import が tools/ への依存なしに成功する。"""
+    """from mltgnt.config import succeeds without depending on tools/."""
     from mltgnt.config import MemoryConfig, SchedulerConfig
-    # インスタンス化できればOK
+    # Instantiation success is enough
     mc = MemoryConfig(chat_dir=Path("/a"), chat_memory_dir=Path("/b"))
     sc = SchedulerConfig(schedule_yaml=Path("/c"), state_dir=Path("/d"))
     assert mc is not None

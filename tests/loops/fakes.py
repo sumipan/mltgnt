@@ -1,4 +1,4 @@
-"""tests/loops/fakes.py — FakeHumanChannel / FakeExecutor / fake LLM。"""
+"""tests/loops/fakes.py — FakeHumanChannel / FakeExecutor / fake LLM."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,7 +8,7 @@ from mltgnt.interfaces.loops import HumanThreadRef, StepPoll, StepSubmission
 
 @dataclass
 class FakeLLMResult:
-    """ghdag.llm.TextResult 相当（body / stderr / returncode / success）。"""
+    """Stand-in for ghdag.llm.TextResult (body / stderr / returncode / success)."""
 
     body: str = ""
     stderr: str = ""
@@ -27,9 +27,9 @@ def make_llm_result(
     stderr: str = "",
     returncode: int | None = None,
 ) -> FakeLLMResult:
-    """テスト用に TextResult 相当を返すヘルパ。
+    """Helper that returns a TextResult-like object for tests.
 
-    stdout 引数名は既存テストとの互換のため維持する（値は body に入る）。
+    Keep the stdout kwarg name for compatibility with existing tests (value goes into body).
     """
     if returncode is None:
         returncode = 0 if ok else 1

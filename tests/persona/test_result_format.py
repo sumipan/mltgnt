@@ -1,4 +1,4 @@
-"""mltgnt.persona.result_format — 3 エンジン fixture で整形骨格を固定（#3318）。"""
+"""mltgnt.persona.result_format — pin formatting skeleton with 3-engine fixtures (#3318)."""
 from __future__ import annotations
 
 import json
@@ -62,7 +62,7 @@ def test_format_result_for_persona_matches_fixture_expectation(
         )
 
     logger = SimpleNamespace(warning=lambda *_a, **_k: None)
-    prompt_header = "【人物像】\nテスト口調\n\n--- 入力テキスト ---\n"
+    prompt_header = "[Persona]\ntest tone\n\n--- input text ---\n"
     result = format_result_for_persona(
         fx["raw_body"],
         prompt_header=prompt_header,
@@ -85,21 +85,21 @@ def test_format_result_for_persona_matches_fixture_expectation(
 
 def test_format_result_for_persona_uses_injected_postprocess() -> None:
     def _llm_call(*_a, **_k) -> _FakeLLMResult:
-        return _FakeLLMResult(body="**太字**の本文", success=True)
+        return _FakeLLMResult(body="**bold** body text", success=True)
 
     def _post(text: str) -> str:
         return text.replace("**", "")
 
     logger = SimpleNamespace(warning=lambda *_a, **_k: None)
     out = format_result_for_persona(
-        "下書き",
+        "draft",
         prompt_header="HDR\n",
         llm_call=_llm_call,
         logger=logger,
         engine="claude",
         postprocess=_post,
     )
-    assert out == "太字の本文"
+    assert out == "bold body text"
 
 
 def test_format_result_for_persona_empty_raw_returns_none() -> None:

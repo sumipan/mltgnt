@@ -1,4 +1,4 @@
-"""tests/loops/test_store.py — 永続化テスト。"""
+"""tests/loops/test_store.py — persistence tests."""
 from __future__ import annotations
 
 import json
@@ -105,7 +105,7 @@ def test_state_load_rejects_wrong_required_type(tmp_path):
 
 
 def test_append_event_accepts_non_json_native_objects(tmp_path):
-    """LLMResult / dataclass を含む data でも TypeError にならず JSONL に追記する。"""
+    """Appending data that includes LLMResult / dataclasses must not raise TypeError."""
     from dataclasses import dataclass
 
     from tests.loops.fakes import FakeLLMResult
@@ -199,7 +199,7 @@ def test_deliverable_uses_files_adapter(tmp_path, monkeypatch):
 
 
 def test_v0194_state_fixture_loads_with_defaults():
-    """v0.19.4 形式（追加キーなし・schema_version: 1）をロードできる。"""
+    """Can load v0.19.4 format (no extra keys, schema_version: 1)."""
     data = {
         "loop_id": "legacy",
         "objective_path": "/tmp/obj.md",

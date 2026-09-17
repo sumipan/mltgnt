@@ -1,6 +1,6 @@
-"""tests/test_ghdag_version.py — ghdag 互換性テスト。
+"""tests/test_ghdag_version.py — ghdag compatibility tests.
 
-Issue #1697: mltgnt が ghdag v0.28.3 の API に追従していることを検証する。
+Issue #1697: verify mltgnt tracks the ghdag v0.28.3 API.
 """
 from __future__ import annotations
 
@@ -16,48 +16,48 @@ except ModuleNotFoundError:  # Python <3.11
 
 
 def test_ghdag_version_is_at_least_0_28_3():
-    """ghdag のインストール済みバージョンが 0.28.3 以上であることを確認する。"""
+    """Installed ghdag version must be at least 0.28.3."""
     version_str = importlib.metadata.version("ghdag")
     parts = [int(x) for x in version_str.split(".")[:3]]
     assert parts >= [0, 28, 3], (
-        f"ghdag {version_str} は v0.28.3 より古い。pyproject.toml の依存ピンを更新してください。"
+        f"ghdag {version_str} is older than v0.28.3. Update the dependency pin in pyproject.toml."
     )
 
 
 def test_ghdag_llm_pipeline_api_submit_accepts_metadata():
-    """LLMPipelineAPI.submit() が metadata 引数を受け付ける (v0.21.0 新機能)。"""
+    """LLMPipelineAPI.submit() accepts a metadata argument (v0.21.0 feature)."""
     from ghdag.pipeline import LLMPipelineAPI
 
     sig = inspect.signature(LLMPipelineAPI.submit)
     assert "metadata" in sig.parameters, (
-        "LLMPipelineAPI.submit() に metadata パラメータがない。ghdag v0.21.0 以上が必要です。"
+        "LLMPipelineAPI.submit() has no metadata parameter. ghdag v0.21.0+ is required."
     )
 
 
 def test_ghdag_dag_hooks_has_on_task_start():
-    """DagHooks プロトコルに on_task_start が含まれる (v0.21.0 新機能)。"""
+    """DagHooks protocol includes on_task_start (v0.21.0 feature)."""
     from ghdag.dag.hooks import DagHooks
 
     assert hasattr(DagHooks, "on_task_start"), (
-        "DagHooks に on_task_start が存在しない。ghdag v0.21.0 以上が必要です。"
+        "DagHooks has no on_task_start. ghdag v0.21.0+ is required."
     )
 
 
 def test_ghdag_dag_hooks_has_check_promote_target():
-    """DagHooks プロトコルに check_promote_target が含まれる (v0.21.0 新機能)。"""
+    """DagHooks protocol includes check_promote_target (v0.21.0 feature)."""
     from ghdag.dag.hooks import DagHooks
 
     assert hasattr(DagHooks, "check_promote_target"), (
-        "DagHooks に check_promote_target が存在しない。ghdag v0.21.0 以上が必要です。"
+        "DagHooks has no check_promote_target. ghdag v0.21.0+ is required."
     )
 
 
 def test_pyproject_ghdag_pin_is_at_least_0_55_0():
-    """Issue #3143: ghdag 依存の pin が v0.55.0 以上であること。
+    """Issue #3143: ghdag dependency pin must be at least v0.55.0.
 
-    完全一致ではなく下限で検査する。pin の更新は release-watcher / issuesmith の
-    bump が決定論的に行うため、完全一致にすると bump のたびにこのテストが落ちる
-    （2026-09-06〜10 に 6 回連続で「期待値の書き換え」だけの修正が積まれた）。
+    Check a lower bound, not an exact match. Pin updates are done deterministically
+    by release-watcher / issuesmith bumps; an exact match would fail this test on
+    every bump (six consecutive 'expected-value-only' fixes landed 2026-09-06–10).
     """
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
@@ -65,16 +65,16 @@ def test_pyproject_ghdag_pin_is_at_least_0_55_0():
         dep for dep in project["dependencies"]
         if dep.startswith("ghdag @ git+https://github.com/sumipan/ghdag.git@v")
     ]
-    assert len(pins) == 1, f"ghdag の git pin は 1 本のみ想定: {pins}"
+    assert len(pins) == 1, f"expected exactly one ghdag git pin: {pins}"
     tag = pins[0].rsplit("@v", 1)[1]
     parts = [int(x) for x in tag.split(".")[:3]]
-    assert parts >= [0, 55, 0], f"ghdag pin v{tag} は v0.55.0 より古い"
+    assert parts >= [0, 55, 0], f"ghdag pin v{tag} is older than v0.55.0"
 
 
 def test_issue_2991_mltgnt_does_not_import_renamed_adapters():
-    """Issue #2991: ghdag v0.43.0 のアダプタリネームは mltgnt に影響しない。
+    """Issue #2991: ghdag v0.43.0 adapter renames must not affect mltgnt.
 
-    mltgnt は cursor/codex アダプタを直接 import せず、公開 API のみを使う。
+    mltgnt must not import cursor/codex adapters directly; use public APIs only.
     """
     src_root = Path(__file__).resolve().parents[1] / "src"
     forbidden_modules = {
@@ -106,7 +106,7 @@ def test_issue_2991_mltgnt_does_not_import_renamed_adapters():
 
 
 def test_issue_2702_required_imports_are_available():
-    """Issue #2702: v0.33.0 追従で必要な import が維持されていること。"""
+    """Issue #2702: imports required for v0.33.0 tracking remain available."""
     from ghdag.dag._util import check_pipeline_status, default_check_rejected
     from ghdag.llm.engines import EngineError
     from ghdag.pipeline.audit import write_task_exit_audit
@@ -121,7 +121,7 @@ def test_issue_2702_required_imports_are_available():
 
 
 def test_step_config_has_resume_from_field():
-    """Issue #2702: StepConfig に resume_from 属性が存在すること。"""
+    """Issue #2702: StepConfig has a resume_from attribute."""
     from ghdag.workflow.schema import StepConfig
 
     field_names: set[str] = set(getattr(StepConfig, "__annotations__", {}).keys())
@@ -131,14 +131,14 @@ def test_step_config_has_resume_from_field():
 
 
 def test_step_status_literal_includes_engine_error():
-    """Issue #2721: StepStatus Literal に engine_error が含まれること。"""
+    """Issue #2721: StepStatus Literal includes engine_error."""
     from mltgnt.interfaces.loops import StepStatus
 
     assert "engine_error" in get_args(StepStatus)
 
 
 def test_interpret_done_engine_error_maps_to_engine_error():
-    """Issue #2721: interpret_done が ENGINE_ERROR を engine_error に解釈すること。"""
+    """Issue #2721: interpret_done maps ENGINE_ERROR to engine_error."""
     from ghdag.pipeline.status import interpret_done
 
     assert interpret_done("ENGINE_ERROR") == "engine_error"

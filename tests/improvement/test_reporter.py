@@ -13,7 +13,7 @@ def _pattern(pattern_id: str, category: str, count: int) -> FailurePattern:
         category=category,
         count=count,
         example_correlation_ids=[f"{pattern_id}-corr"],
-        affected_persona="タチコマ",
+        affected_persona="persona-a",
         affected_skill=None,
     )
 
@@ -22,9 +22,9 @@ def _proposal(proposal_id: str) -> ImprovementProposal:
     return ImprovementProposal(
         proposal_id=proposal_id,
         target_type="persona",
-        target_name="タチコマ",
+        target_name="persona-a",
         action="adjust_section",
-        description="テスト提案",
+        description="test proposal",
         diff_preview="+ hint",
         confidence=0.8,
         source_patterns=["p1"],
@@ -41,6 +41,7 @@ def test_format_cycle_report_with_patterns_and_proposals() -> None:
 
     report = format_cycle_report(result)
 
+    # Japanese text intentionally kept for CJK processing test
     assert "# サマリ" in report
     assert "# 失敗パターン一覧" in report
     assert "# 改善提案一覧" in report
@@ -68,6 +69,7 @@ def test_format_cycle_report_empty_result() -> None:
 
     report = format_cycle_report(result)
 
+    # Japanese text intentionally kept for CJK processing test
     assert "対象期間に失敗パターンは検出されませんでした" in report
     assert "| category |" not in report
     assert "| target_type |" not in report

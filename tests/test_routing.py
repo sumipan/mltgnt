@@ -1,7 +1,7 @@
 """
-tests/test_mltgnt_routing.py — mltgnt.routing のユニットテスト（AC-4）
+tests/test_mltgnt_routing.py — mltgnt.routing  unit tests（AC-4）
 
-設計: Issue #118 §7 AC-4
+Design: Issue #118 §7 AC-4
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from mltgnt.routing import ChannelPersonaEntry, load_channel_persona_map
 
 
 def test_channel_persona_entry_instantiation() -> None:
-    """ChannelPersonaEntry がインスタンス化できる。"""
+    """ChannelPersonaEntry"""
     entry = ChannelPersonaEntry(name="Test", role="primary", nickname="test")
     assert entry.name == "Test"
     assert entry.role == "primary"
@@ -28,7 +28,7 @@ def test_channel_persona_entry_secondary() -> None:
 
 
 def test_load_channel_persona_map_builds_map() -> None:
-    """load_channel_persona_map がチャンネルマップを構築する。"""
+    """load channel persona map builds channel maps."""
     persona_a = MagicMock()
     persona_a.name = "PersonaA"
     persona_a.fm.slack_channel = "C_A"
@@ -54,7 +54,7 @@ def test_load_channel_persona_map_builds_map() -> None:
 
 
 def test_load_channel_persona_map_nickname_fallback() -> None:
-    """slack_nickname=None の場合 persona.name をニックネームとして使用する。"""
+    """If slack nickname=None, use persona.name as the command line."""
     persona = MagicMock()
     persona.name = "PersonaA"
     persona.fm.slack_channel = "C_A"
@@ -68,7 +68,7 @@ def test_load_channel_persona_map_nickname_fallback() -> None:
 
 
 def test_load_channel_persona_map_primary_duplicate_raises_config_error() -> None:
-    """同一チャンネルに primary が2つ → ConfigError。"""
+    """Two primary channels → ConfigError。"""
     persona_a = MagicMock()
     persona_a.name = "PersonaA"
     persona_a.fm.slack_channel = "C_SAME"
@@ -88,7 +88,7 @@ def test_load_channel_persona_map_primary_duplicate_raises_config_error() -> Non
 
 
 def test_load_channel_persona_map_loader_exception_raises_dependency_error() -> None:
-    """persona_loader が例外を投げた場合、DependencyError を送出する。"""
+    """If the persona loader throws an exception, send theependencyE or."""
     def failing_loader():
         raise RuntimeError("connection refused")
 
@@ -97,7 +97,7 @@ def test_load_channel_persona_map_loader_exception_raises_dependency_error() -> 
 
 
 def test_load_channel_persona_map_no_channel_skipped() -> None:
-    """channel が未設定のペルソナはマップに含まれない。"""
+    """Persona not set by channel is not included in the map."""
     persona = MagicMock()
     persona.name = "PersonaNoChannel"
     persona.fm.slack_channel = None

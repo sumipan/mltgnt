@@ -1,4 +1,4 @@
-"""Chroma 意味検索バックエンドの単体テスト。"""
+"""Unit tests for the Chroma semantic search backend."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +16,7 @@ from mltgnt.memory.api import append_memory_entry, memory_file_path  # noqa: E40
 def chroma_collection(tmp_path: Path):
     collection = get_collection(tmp_path, "test")
     assert collection is not None
+    # Japanese text intentionally kept for CJK processing test
     upsert_entry(collection, "cat1", "うちの猫は茶トラです")
     upsert_entry(collection, "weather", "今日は天気がいい")
     upsert_entry(collection, "neko", "ネコはかわいい動物です")
@@ -24,22 +25,25 @@ def chroma_collection(tmp_path: Path):
 
 
 def test_query_similar_semantic_synonyms(chroma_collection) -> None:
-    """同義語（ネコ・にゃんこ）を含むエントリが「猫の話」クエリでヒットする。"""
+    """Entries with Japanese cat synonyms should hit a cat-related query."""
+    # Japanese text intentionally kept for CJK processing test
     results = query_similar(chroma_collection, "猫の話", n_results=3)
     texts = [text for text, _score in results]
 
     assert len(results) >= 2
+    # Japanese text intentionally kept for CJK processing test
     cat_related = [t for t in texts if any(k in t for k in ("猫", "ネコ", "にゃんこ"))]
     assert len(cat_related) >= 2
     assert all("天気" not in t for t in cat_related)
 
 
 def test_append_memory_entry_syncs_to_chroma(tmp_path: Path) -> None:
-    """append_memory_entry 後、query_similar で追加エントリが検索可能。"""
+    """After append_memory_entry, the new entry is searchable via query_similar."""
     config = MemoryConfig(
         chat_dir=tmp_path,
         chat_memory_dir=tmp_path / "memory",
     )
+    # Japanese text intentionally kept for CJK processing test
     content = "新しく追加した猫のエピソード"
 
     ok = append_memory_entry(
@@ -57,6 +61,7 @@ def test_append_memory_entry_syncs_to_chroma(tmp_path: Path) -> None:
     collection = get_collection(config.chat_memory_dir, "persona")
     assert collection is not None
 
+    # Japanese text intentionally kept for CJK processing test
     results = query_similar(collection, "猫の話", n_results=3)
     texts = [text for text, _score in results]
     assert any(content in t for t in texts)

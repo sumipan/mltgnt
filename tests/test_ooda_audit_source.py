@@ -1,4 +1,4 @@
-"""AuditJsonlSource のユニットテスト。"""
+"""Unit tests for AuditJsonlSource."""
 from __future__ import annotations
 
 import json

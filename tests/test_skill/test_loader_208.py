@@ -1,5 +1,5 @@
 """
-tests/test_skill/test_loader_208.py — Issue #208 AC-5: triggers パース テスト。
+tests/test_skill/test_loader_208.py — Issue #208 AC-5: triggers parse tests.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def test_ac5_1_triggers_list(tmp_path):
 
 
 def test_ac5_2_triggers_missing(tmp_path):
-    """AC-5-2: triggers キー未指定 -> SkillMeta.triggers == []"""
+    """AC-5-2: missing triggers key -> SkillMeta.triggers == []"""
     meta = _fm_and_meta("name: test\ndescription: desc\n", tmp_path)
     assert meta.triggers == []
 

@@ -52,8 +52,8 @@ def test_dream_show_outputs_sections(persona_setup: tuple[Path, str]) -> None:
     _write_dream(
         chat_dir / persona,
         [
-            DreamSection(category="行動パターン", content="朝型", source_entries=2),
-            DreamSection(category="好み・傾向", content="簡潔", source_entries=1),
+            DreamSection(category="behavior patterns", content="morning type", source_entries=2),
+            DreamSection(category="preferences", content="concise", source_entries=1),
         ],
     )
 
@@ -64,11 +64,11 @@ def test_dream_show_outputs_sections(persona_setup: tuple[Path, str]) -> None:
     )
 
     assert result.returncode == 0
-    assert "行動パターン" in result.stdout
-    assert "朝型" in result.stdout
+    assert "behavior patterns" in result.stdout
+    assert "morning type" in result.stdout
     assert "source_entries: 2" in result.stdout
-    assert "好み・傾向" in result.stdout
-    assert "簡潔" in result.stdout
+    assert "preferences" in result.stdout
+    assert "concise" in result.stdout
     assert "source_entries: 1" in result.stdout
 
 
@@ -91,14 +91,14 @@ def test_dream_forget_removes_category(persona_setup: tuple[Path, str]) -> None:
     _write_dream(
         persona_dir,
         [
-            DreamSection(category="行動パターン", content="削除対象", source_entries=1),
-            DreamSection(category="好み・傾向", content="残す", source_entries=1),
+            DreamSection(category="behavior patterns", content="to delete", source_entries=1),
+            DreamSection(category="preferences", content="keep", source_entries=1),
         ],
     )
 
     result = _run_mltgnt(
         "memory", "dream", "forget", persona,
-        "--category", "行動パターン",
+        "--category", "behavior patterns",
         "--chat-dir", str(chat_dir),
         cwd=_worktree_root(),
     )
@@ -107,8 +107,8 @@ def test_dream_forget_removes_category(persona_setup: tuple[Path, str]) -> None:
     loaded = read_dream(persona_dir)
     assert loaded is not None
     assert len(loaded.sections) == 1
-    assert loaded.sections[0].category == "好み・傾向"
-    assert loaded.sections[0].content == "残す"
+    assert loaded.sections[0].category == "preferences"
+    assert loaded.sections[0].content == "keep"
 
 
 def test_dream_forget_no_dream_exits_one(persona_setup: tuple[Path, str]) -> None:
@@ -116,7 +116,7 @@ def test_dream_forget_no_dream_exits_one(persona_setup: tuple[Path, str]) -> Non
 
     result = _run_mltgnt(
         "memory", "dream", "forget", persona,
-        "--category", "行動パターン",
+        "--category", "behavior patterns",
         "--chat-dir", str(chat_dir),
         cwd=_worktree_root(),
     )
@@ -129,12 +129,12 @@ def test_dream_forget_missing_category_exits_one(persona_setup: tuple[Path, str]
     chat_dir, persona = persona_setup
     _write_dream(
         chat_dir / persona,
-        [DreamSection(category="行動パターン", content="text", source_entries=1)],
+        [DreamSection(category="behavior patterns", content="text", source_entries=1)],
     )
 
     result = _run_mltgnt(
         "memory", "dream", "forget", persona,
-        "--category", "存在しないカテゴリ",
+        "--category", "nonexistent category",
         "--chat-dir", str(chat_dir),
         cwd=_worktree_root(),
     )

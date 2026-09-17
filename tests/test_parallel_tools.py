@@ -1,4 +1,4 @@
-"""tests/test_parallel_tools.py — 並列ツール実行の受け入れ条件テスト (#1778)"""
+"""tests/test_parallel_tools.py — Acceptance tests for parallel tool execution (#1778)"""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ from mltgnt.agent.action_classifier import ActionClass, ActionClassifier
 
 
 # ---------------------------------------------------------------------------
-# _parse_json_response: tools リスト形式
+# _parse_json_response: tools List format
 # ---------------------------------------------------------------------------
 
 
@@ -57,13 +57,13 @@ def test_parse_single_tool_still_returns_dict():
 def test_parse_tools_with_thought_per_element():
     raw = json.dumps({
         "tools": [
-            {"thought": "検索する", "tool": "search", "args": {"q": "x"}},
+            {"thought": "Search", "tool": "search", "args": {"q": "x"}},
             {"tool": "read", "args": {"path": "y"}},
         ]
     })
     result = _parse_json_response(raw)
     assert isinstance(result, list)
-    assert result[0]["thought"] == "検索する"
+    assert result[0]["thought"] == "Search"
     assert "thought" not in result[1]
 
 
@@ -103,13 +103,13 @@ def make_executor(results: dict, *, fail_tools: frozenset[str] = frozenset()):
 
 
 # ---------------------------------------------------------------------------
-# AgentRunner: 並列実行
+# AgentRunner: Parallel execution
 # ---------------------------------------------------------------------------
 
 
 @patch("mltgnt.agent._runner.ThreadPoolExecutor")
 def test_parallel_tools_use_thread_pool(mock_executor_cls):
-    """search と read が ThreadPoolExecutor 経由で並列実行される。"""
+    """search and read run via ThreadPoolExecutor."""
     mock_executor = mock_executor_cls.return_value.__enter__.return_value
     submitted: list[tuple[str, dict]] = []
 
@@ -151,7 +151,7 @@ class _FakeFuture:
 
 
 def test_parallel_three_tools_one_fails():
-    """3 ツール並列で 1 つが例外の場合、残り 2 つは正常、失敗は [ERROR] 付き。"""
+    """3 Tools in 1 if the 2 is normal, failure is [ERROR] Close"""
     parallel_response = json.dumps({
         "tools": [
             {"tool": "search", "args": {"q": "a"}},
@@ -181,7 +181,7 @@ def test_parallel_three_tools_one_fails():
 
 
 def test_parallel_empty_tools_list():
-    """空 tools リストはスキップされ、空文字列で次の LLM 呼び出しへ。"""
+    """Home tools Lists are skipped and empty strings are LLM Contact Us"""
     llm = make_tracking_llm(['{"tools": []}', '{"tool": "done", "args": {}}'])
     runner = AgentRunner(
         llm_call=llm,
@@ -194,7 +194,7 @@ def test_parallel_empty_tools_list():
 
 
 def test_parallel_terminal_tool_in_list():
-    """並列リスト内の terminal tool: 非 terminal を先に実行してから AgentResult を返す。"""
+    """When a terminal tool is in the list: run non-terminal first, then return AgentResult."""
     parallel_response = json.dumps({
         "tools": [
             {"tool": "search", "args": {"q": "x"}},
@@ -224,10 +224,10 @@ def test_parallel_terminal_tool_in_list():
 
 
 def test_parallel_tool_trace_format():
-    """tool_trace の各エントリが既存フォーマットを維持する。"""
+    """tool_trace Each entry maintains the existing format."""
     parallel_response = json.dumps({
         "tools": [
-            {"thought": "検索", "tool": "search", "args": {"q": "x"}},
+            {"thought": "Search", "tool": "search", "args": {"q": "x"}},
             {"tool": "read", "args": {"path": "y"}},
         ]
     })
@@ -244,7 +244,7 @@ def test_parallel_tool_trace_format():
         "tool": "search",
         "args": {"q": "x"},
         "result": "found",
-        "thought": "検索",
+        "thought": "Search",
     }
     assert result.tool_trace[1] == {
         "tool": "read",
@@ -254,7 +254,7 @@ def test_parallel_tool_trace_format():
 
 
 def test_parallel_reflexion_per_tool():
-    """ReflexionEvaluator が各ツール結果に個別に評価される。"""
+    """ReflexionEvaluator rated to each tool result."""
     parallel_response = json.dumps({
         "tools": [
             {"tool": "search", "args": {"q": "x"}},
@@ -286,7 +286,7 @@ def test_parallel_reflexion_per_tool():
 
 
 def test_parallel_action_classifier(tmp_path: Path):
-    """ActionClassifier が並列実行された各ツールに独立して classification を記録。"""
+    """ActionClassifier is independent of each tool executed in classification """
     rules_path = tmp_path / "rules.jsonl"
     classifier = ActionClassifier(rules_path=rules_path)
     parallel_response = json.dumps({

@@ -1,4 +1,4 @@
-"""tests/test_action_classifier.py — ActionClassifier 受け入れ条件テスト (#1777)"""
+"""tests/test_action_classifier.py — ActionClassifier acceptance tests (#1777)"""
 from __future__ import annotations
 
 from pathlib import Path

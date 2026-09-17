@@ -1,5 +1,5 @@
 """
-tests/test_skill/test_lint.py — lint_skill_meta V1–V12, V13 単体テスト（Issue #1383 U3, #1832, #1828）。
+tests/test_skill/test_lint.py — lint_skill_meta V1–V12, V13 unit tests (Issue #1383 U3, #1832, #1828).
 """
 from __future__ import annotations
 
@@ -346,7 +346,7 @@ class TestLintPass:
 
 
 class TestLintV7TypeOnly:
-    """Issue #3179: V7 は型検査のみ（ファイル実在は検査しない）。"""
+    """Issue #3179: V7 is type-check only (does not require files to exist)."""
 
     def _v1_fm(self, path_value: object) -> dict:
         return {
@@ -357,7 +357,7 @@ class TestLintV7TypeOnly:
         }
 
     def test_nikki_root_path_no_v7(self, tmp_path: Path) -> None:
-        """AC-2: ${NIKKI_ROOT}/... 形式の str path は型検査を通過する"""
+        """AC-2: str path in ${NIKKI_ROOT}/... form passes type check"""
         skill_dir = tmp_path / "review"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
@@ -367,7 +367,7 @@ class TestLintV7TypeOnly:
         assert not any(e.startswith("V7:") for e in errors)
 
     def test_missing_file_no_v7(self, tmp_path: Path) -> None:
-        """AC-2: 未作成の出力物 path でも V7 エラーにならない（実在検査なし）"""
+        """AC-2: not-yet-created output paths do not fail V7 (no existence check)"""
         skill_dir = tmp_path / "review"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
@@ -375,7 +375,7 @@ class TestLintV7TypeOnly:
         assert not any(e.startswith("V7:") for e in errors)
 
     def test_path_not_str_still_v7(self, tmp_path: Path) -> None:
-        """AC-2: path: 42（非 str）は従来どおり V7 エラー"""
+        """AC-2: path: 42 (non-str) still fails V7 as before"""
         skill_dir = tmp_path / "review"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"

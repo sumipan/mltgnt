@@ -1,8 +1,8 @@
 {
   "engine": "claude",
   "case": "success",
-  "raw_body": "queue result draft: 今日の予定を確認しました。会議は14時です。",
-  "llm_body": "今日の予定、確認したよ。会議は14時だね。",
+  "raw_body": "queue result draft: Checked today's schedule. The meeting is at 2pm.",
+  "llm_body": "Checked today's schedule. Meeting at 2pm.",
   "success": true,
   "returncode": 0,
   "stderr": ""

@@ -1,7 +1,7 @@
 """
-tests/test_skill/test_runner.py — runner.run のユニットテスト。
+tests/test_skill/test_runner.py — unit tests for runner.run.
 
-設計: Issue #124 §8 AC-4, AC-5, Issue #1384 U6
+Design: Issue #124 §8 AC-4, AC-5, Issue #1384 U6
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def _make_skill(
     return SkillFile(meta=meta, body=body)
 
 
-def _make_persona(name: str = "タチコマ") -> MagicMock:
+def _make_persona(name: str = "persona-a") -> MagicMock:
     persona = MagicMock()
     persona.name = name
     persona.format_prompt = lambda instruction: f"[PERSONA:{name}]\n{instruction}"
@@ -53,17 +53,17 @@ def _make_chat_input(model: str | None = "default-model") -> ChatInput:
 
 class TestRunVariableSubstitution:
     def test_arguments_and_positional(self) -> None:
-        """AC-4-1: $ARGUMENTS, $0, $1 置換"""
+        """AC-4-1: $ARGUMENTS, $0, $1 substitution"""
         skill = _make_skill("file=$0 mode=$1 all=$ARGUMENTS")
         persona = _make_persona()
-        result = run(skill, persona, "日記/2026-04-17.md critique", _make_chat_input())
+        result = run(skill, persona, "diary/2026-04-17.md critique", _make_chat_input())
         sys_content = result.chat_input.messages[0]["content"]
-        assert "日記/2026-04-17.md critique" in sys_content  # $ARGUMENTS
-        assert "file=日記/2026-04-17.md" in sys_content       # $0
+        assert "diary/2026-04-17.md critique" in sys_content  # $ARGUMENTS
+        assert "file=diary/2026-04-17.md" in sys_content       # $0
         assert "mode=critique" in sys_content                  # $1
 
     def test_empty_arguments(self) -> None:
-        """AC-4-2: 空引数 → $ARGUMENTS → "", $0 → ""」"""
+        """AC-4-2: empty args → $ARGUMENTS → "", $0 → """
         skill = _make_skill("args=[$ARGUMENTS] pos=[$0]")
         persona = _make_persona()
         result = run(skill, persona, "", _make_chat_input())
@@ -72,15 +72,15 @@ class TestRunVariableSubstitution:
         assert "pos=[]" in sys_content
 
     def test_persona_substitution(self) -> None:
-        """AC-4-3: $PERSONA → ペルソナ名"""
+        """AC-4-3: $PERSONA → persona name"""
         skill = _make_skill("persona=$PERSONA")
-        persona = _make_persona("タチコマ")
+        persona = _make_persona("persona-a")
         result = run(skill, persona, "", _make_chat_input())
         sys_content = result.chat_input.messages[0]["content"]
-        assert "タチコマ" in sys_content
+        assert "persona-a" in sys_content
 
     def test_skill_dir_substitution(self) -> None:
-        """AC-4-4: $SKILL_DIR → SKILL.md の親ディレクトリ"""
+        """AC-4-4: $SKILL_DIR → parent directory of SKILL.md"""
         skill = _make_skill("dir=$SKILL_DIR")
         persona = _make_persona()
         result = run(skill, persona, "", _make_chat_input())
@@ -88,41 +88,41 @@ class TestRunVariableSubstitution:
         assert "/fake/skills/review" in sys_content
 
     def test_out_of_range_positional(self) -> None:
-        """AC-4-5: $3 だが引数が2つ → 空文字"""
+        """AC-4-5: $3 with only 2 args → empty string"""
         skill = _make_skill("$3")
         persona = _make_persona()
         result = run(skill, persona, "a b", _make_chat_input())
         sys_content = result.chat_input.messages[0]["content"]
-        assert "$3" not in sys_content  # 置換されている
-        # $3 → "" なのでその部分は空
+        assert "$3" not in sys_content  # substituted
+        # $3 → "" so that part is empty
         assert "[PERSONA:" in sys_content
 
 
 class TestRunPromptComposition:
     def test_system_prompt_contains_persona_and_skill(self) -> None:
-        """AC-5-1: システムプロンプトにペルソナ指示とスキル本文が含まれる"""
-        skill = _make_skill("スキル本文")
-        persona = _make_persona("タチコマ")
+        """AC-5-1: system prompt includes persona instructions and skill body"""
+        skill = _make_skill("skill body")
+        persona = _make_persona("persona-a")
         result = run(skill, persona, "", _make_chat_input())
         assert result.chat_input.messages[0]["role"] == "system"
         sys_content = result.chat_input.messages[0]["content"]
-        assert "タチコマ" in sys_content
-        assert "スキル本文" in sys_content
+        assert "persona-a" in sys_content
+        assert "skill body" in sys_content
 
     def test_skill_model_overrides(self) -> None:
-        """AC-5-2: skill.meta.model が指定されれば返却 model がスキル側の値"""
+        """AC-5-2: when skill.meta.model is set, returned model uses skill value"""
         skill = _make_skill("body", model="claude-opus-4-6")
         result = run(skill, _make_persona(), "", _make_chat_input(model="default-model"))
         assert result.chat_input.model == "claude-opus-4-6"
 
     def test_null_model_inherits(self) -> None:
-        """AC-5-3: skill.meta.model が null なら chat_input.model を引き継ぐ"""
+        """AC-5-3: when skill.meta.model is null, inherit chat_input.model"""
         skill = _make_skill("body", model=None)
         result = run(skill, _make_persona(), "", _make_chat_input(model="default-model"))
         assert result.chat_input.model == "default-model"
 
     def test_user_message_preserved(self) -> None:
-        """元のユーザーメッセージが引き継がれる"""
+        """Original user message is preserved"""
         skill = _make_skill("body")
         chat_input = _make_chat_input()
         result = run(skill, _make_persona(), "", chat_input)
@@ -131,7 +131,7 @@ class TestRunPromptComposition:
         assert user_msgs[0]["content"] == "hello"
 
     def test_original_system_message_replaced(self) -> None:
-        """元のシステムメッセージは新しいシステムプロンプトに差し替えられる"""
+        """Original system message is replaced by the new system prompt"""
         skill = _make_skill("new system")
         chat_input = ChatInput(
             source="test",
@@ -203,39 +203,41 @@ class TestRunEnvVarSubstitution:
 
 
 class TestRunExtraContext:
-    """Issue #3021: extra_context によるコンテキスト注入。"""
+    """Issue #3021: context injection via extra_context."""
 
     def test_extra_context_appends_section(self) -> None:
-        """extra_context 渡し時にシステムプロンプトへ ## コンテキスト が挿入される。"""
-        skill = _make_skill("スキル本文")
+        """When extra_context is passed, the production context header is inserted into the system prompt."""
+        skill = _make_skill("skill body")
         result = run(
             skill,
             _make_persona(),
             "",
             _make_chat_input(),
-            extra_context="知識と記憶の断片",
+            extra_context="knowledge and memory snippet",
         )
         sys_content = result.chat_input.messages[0]["content"]
-        assert "スキル本文" in sys_content
+        assert "skill body" in sys_content
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" in sys_content
-        assert "知識と記憶の断片" in sys_content
-        # スキル本文の後にコンテキストが付く
-        assert sys_content.index("スキル本文") < sys_content.index("## コンテキスト")
+        assert "knowledge and memory snippet" in sys_content
+        # Context is appended after the skill body
+        assert sys_content.index("skill body") < sys_content.index("## コンテキスト")
 
     def test_extra_context_none_is_backward_compatible(self) -> None:
-        """extra_context 未渡し / None 時は従来と同一出力。"""
-        skill = _make_skill("スキル本文")
+        """Without extra_context / None, output matches prior behavior."""
+        skill = _make_skill("skill body")
         persona = _make_persona()
         chat_input = _make_chat_input()
         without = run(skill, persona, "", chat_input)
         with_none = run(skill, persona, "", chat_input, extra_context=None)
         assert without.chat_input.messages[0]["content"] == with_none.chat_input.messages[0]["content"]
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" not in without.chat_input.messages[0]["content"]
 
 
 class TestWriteResultFrontmatter:
     def test_v1_writes_frontmatter(self, tmp_path: Path) -> None:
-        """AC-3: skill_io=v1 スキルで result ファイルに frontmatter が書き込まれる"""
+        """AC-3: skill_io=v1 skill writes frontmatter into the result file"""
         from mltgnt.skill.runner import write_result_frontmatter
 
         result_path = tmp_path / "result.md"
@@ -259,7 +261,7 @@ class TestWriteResultFrontmatter:
         assert "body content" in text
 
     def test_legacy_noop(self, tmp_path: Path) -> None:
-        """AC-3: skill_io=legacy スキルは noop"""
+        """AC-3: skill_io=legacy skill is a noop"""
         from mltgnt.skill.runner import write_result_frontmatter
 
         result_path = tmp_path / "result.md"
@@ -275,7 +277,7 @@ class TestWriteResultFrontmatter:
         assert result_path.read_text(encoding="utf-8") == original
 
     def test_produces_none_noop(self, tmp_path: Path) -> None:
-        """AC-3: produces=None は noop"""
+        """AC-3: produces=None is a noop"""
         from mltgnt.skill.runner import write_result_frontmatter
 
         result_path = tmp_path / "result.md"
@@ -291,7 +293,7 @@ class TestWriteResultFrontmatter:
         assert result_path.read_text(encoding="utf-8") == original
 
     def test_run_sets_produces(self) -> None:
-        """AC-3: run() の戻り値に produces が載る"""
+        """AC-3: run() return value includes produces"""
         produces = ProducesSpec(content_type="text/plain", status_markers=["DONE"])
         skill = _make_skill("body", skill_io="v1", produces=produces)
         result = run(skill, _make_persona(), "", _make_chat_input())

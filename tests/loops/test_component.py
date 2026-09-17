@@ -1,4 +1,4 @@
-"""tests/loops/test_component.py — LoopsComponent テスト。"""
+"""tests/loops/test_component.py — LoopsComponent tests."""
 from __future__ import annotations
 
 import json

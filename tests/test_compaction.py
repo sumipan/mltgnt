@@ -1,6 +1,6 @@
-"""tests/test_compaction.py — extract_promote_candidates + compact() のテスト。
+"""tests/test_compaction.py — test of extract promote candidates + compact().
 
-設計: Issue #996, Issue #1135
+Design: Issue #996, Issue #1135
 """
 from __future__ import annotations
 
@@ -100,21 +100,21 @@ class TestExtractPromoteCandidates:
             assert f"detail_{i}" in result[0].summary
 
     def test_no_md_promote_call(self, monkeypatch):
-        """extract_promote_candidates 内で md_promote は呼ばれない。"""
+        """md promote is not called in extract promote candidates."""
         called = []
         monkeypatch.setattr(
             "mltgnt.memory.compaction.extract_promote_candidates",
             lambda *a, **kw: called.append(True) or [],
             raising=False,
         )
-        # 直接 import した関数を呼ぶのでモンキーパッチは不要
-        # md_promote が存在しないことだけ確認する
+        # No monkeyp needed
+        # md_promote only verify it does not exist
         import mltgnt.memory.compaction as mod
-        assert not hasattr(mod, "md_promote"), "md_promote が compaction に混入している"
+        assert not hasattr(mod, "md_promote"), "md promote is compaction has leaked into"
 
 
 # ---------------------------------------------------------------------------
-# CompactionResult に promote_candidates フィールドがあること
+# Compact candidates
 # ---------------------------------------------------------------------------
 
 
@@ -146,7 +146,7 @@ class TestCompactionResultField:
 
 
 # ---------------------------------------------------------------------------
-# MemoryConfig に timezone フィールドがあること（AC-9）
+# MemoryConfig has a timezone field (AC-9)
 # ---------------------------------------------------------------------------
 
 
@@ -181,7 +181,7 @@ class TestEffectiveBytesForRatio:
         normal = '{"timestamp": "2026-05-02T00:00:00+09:00", "role": "user", "content": "normal", "source_tag": "chat"}'
         text = observe + "\n" + normal
         result = _effective_bytes_for_ratio(text)
-        # observe エントリは除外されるべき
+        # observe entries should be excluded
         assert result < len(text.encode("utf-8"))
         assert result > 0
 
@@ -193,6 +193,7 @@ class TestEffectiveBytesForRatio:
 
 class TestSanitizePhase1Output:
     def test_removes_meta_lines(self):
+        # Japanese text intentionally kept for CJK processing test
         text = "承知しました\n- コーヒーが好き\n分析します\n- 朝型の生活"
         result = _sanitize_phase1_output(text)
         assert "承知しました" not in result
@@ -200,6 +201,7 @@ class TestSanitizePhase1Output:
         assert "コーヒーが好き" in result
 
     def test_removes_headings(self):
+        # Japanese text intentionally kept for CJK processing test
         text = "## 分析結果\n- コーヒーが好き"
         result = _sanitize_phase1_output(text)
         assert "## 分析結果" not in result
@@ -294,11 +296,13 @@ class TestExtractAndMergePreferences:
 
     def test_merges_preferences(self):
         def _llm(prompt: str) -> str:
+            # Japanese text intentionally kept for CJK processing test
             return "- コーヒーが好き\n- 朝型の生活"
 
         result, warning = _extract_and_merge_preferences(
             "", "最近コーヒーを毎朝飲んでいる", 1024, _llm
         )
+        # Japanese text intentionally kept for CJK processing test
         assert "コーヒー" in result
         assert warning is None
 
@@ -393,7 +397,7 @@ class TestRedistributeEntries:
         assert result[0].source_tag == "preferences"
 
     def test_uses_config_timezone(self, tmp_path: Path):
-        """_redistribute_entries が tools._core.tz を import していないこと。"""
+        """re bute entries does not import tools. core.tz."""
         import mltgnt.memory.compaction as mod
         import inspect
         src = inspect.getsource(mod._redistribute_entries)
@@ -402,7 +406,7 @@ class TestRedistributeEntries:
 
 
 # ---------------------------------------------------------------------------
-# DeprecationWarning 非発行（#2128）
+# DeprecationWarning  not emitted（#2128）
 # ---------------------------------------------------------------------------
 
 
@@ -453,11 +457,12 @@ class TestCompactionPublicApi:
     def test_compact_docstring_includes_wrapper_example(self):
         doc = compact.__doc__ or ""
         assert "llm_call" in doc
+        # Japanese text intentionally kept for CJK processing test
         assert "ラップ" in doc or "wrapper" in doc.lower()
 
 
 # ---------------------------------------------------------------------------
-# compact() — per-section cap 方式（AC-1, AC-2, AC-3, AC-5, AC-6, AC-7, AC-8, AC-10）
+# compact() — per-section cap  approach（AC-1, AC-2, AC-3, AC-5, AC-6, AC-7, AC-8, AC-10）
 # ---------------------------------------------------------------------------
 
 
@@ -471,7 +476,7 @@ class TestCompactPerSectionCap:
         )
 
     def test_no_compaction_when_under_cap(self, tmp_path: Path):
-        """全セクションが cap 以内 → LLM は呼ばれない（AC-1）。"""
+        """all sections within cap → LLM is not called（AC-1）。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 
@@ -487,14 +492,14 @@ class TestCompactPerSectionCap:
             return "compressed"
 
         result = compact(cfg, "test_persona", llm_call=_llm)
-        # cap 以内なので LLM は呼ばれない
+        # cap within cap so LLM is not called
         assert llm_called == []
-        # result は正常に返る
+        # result returns successfully
         assert isinstance(result, CompactionResult)
         assert result.before_bytes > 0
 
     def test_promote_candidates_field_is_empty_list(self, tmp_path: Path):
-        """compact() の結果に promote_candidates フィールドが空リストで存在する（AC-3）。"""
+        """compact()  result has promote_candidates as an empty list（AC-3）。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
         entries = [self._make_entry("2026-05-01T00:00:00+09:00", "hello", "recent")]
@@ -505,24 +510,24 @@ class TestCompactPerSectionCap:
         assert result.promote_candidates == []
 
     def test_backward_compatible_signature(self, tmp_path: Path):
-        """compact(config, stem, llm_call=fn) が max_retries/skip_min_ratio のデフォルト値で動作（AC-2）。"""
+        """compact(config, stem, llm_call=fn)  works with default max_retries/skip_min_ratio（AC-2）。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
         entries = [self._make_entry("2026-05-01T00:00:00+09:00", "hello world", "recent")]
         _write_jsonl(path, entries)
 
-        # デフォルト引数のみで呼び出す
+        # call with default arguments only
         result = compact(cfg, "test_persona", llm_call=lambda p: "ok")
         assert isinstance(result, CompactionResult)
 
     def test_filenotfounderror_on_missing_file(self, tmp_path: Path):
-        """メモリファイルが存在しない → FileNotFoundError（AC-10 境界値）。"""
+        """memory file missing → FileNotFoundError（AC-10 boundary）。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         with pytest.raises(FileNotFoundError):
             compact(cfg, "nonexistent", llm_call=lambda p: "compressed")
 
     def test_dry_run_does_not_write_file(self, tmp_path: Path):
-        """dry_run=True のときはファイルを変更しない。"""
+        """dry_run=True does not modify the file。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
         entries = [
@@ -532,16 +537,16 @@ class TestCompactPerSectionCap:
         original_text = path.read_text(encoding="utf-8")
 
         compact(cfg, "test_persona", llm_call=lambda p: "compressed", dry_run=True)
-        # ファイルの内容は変わらない
+        # file contents are unchanged
         assert path.read_text(encoding="utf-8") == original_text
 
     def test_long_term_over_cap_triggers_llm(self, tmp_path: Path):
-        """long_term が cap（25%）超過 → LLM 圧縮が発火する（AC-1）。"""
+        """long_term  exceeds 25% cap → LLM compression fires（AC-1）。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 
         # long_term_cap = 25600 * 0.25 = 6400 bytes
-        # この値を超えるコンテンツを long_term に配置
+        # place content exceeding this value into  long_term
         long_content = "L" * 7000  # 7KB > 6.4KB cap
         entries = [
             self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
@@ -551,19 +556,19 @@ class TestCompactPerSectionCap:
         llm_calls: list[str] = []
         def _llm(prompt: str) -> str:
             llm_calls.append(prompt)
-            # cap に収まるサイズで返す（元の90%以上を保持）
+            # cap return a size that fits within the cap（keep at least 90% of original）
             return "L" * 6000
 
         compact(cfg, "test_persona", llm_call=_llm)
         assert len(llm_calls) > 0, "LLM should be called when long_term exceeds cap"
 
     def test_mid_term_over_cap_promotes_to_long_term(self, tmp_path: Path):
-        """mid_term が cap 超過 → long_term に玉突き昇格（AC-8）。"""
+        """mid term exceeded → long_term  cascade-promotes into （AC-8）。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 
         # mid_term_cap = 25600 * 0.25 = 6400 bytes
-        # mid_term に cap を超えるコンテンツを配置
+        # mid_term  place content exceeding the cap
         mid_content = "M" * 7000  # 7KB > 6.4KB cap
         entries = [
             self._make_entry("2026-02-01T00:00:00+09:00", mid_content, "mid_term"),
@@ -576,15 +581,15 @@ class TestCompactPerSectionCap:
             return "M" * 6000
 
         result = compact(cfg, "test_persona", llm_call=_llm)
-        # mid_term が cap 超過なので何らかの処理が発生するはず
+        # mid_term  exceeds cap so some processing should occur
         assert isinstance(result, CompactionResult)
 
     def test_warnings_on_llm_failure(self, tmp_path: Path):
-        """LLM 失敗 → warning に記録、元テキスト保持（テスト観点: 異常系）。"""
+        """LLM failure → record warning, keep original text (error-path test)。"""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 
-        long_content = "L" * 7000  # cap 超過
+        long_content = "L" * 7000  # cap  exceeded
         entries = [
             self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
         ]
@@ -594,12 +599,12 @@ class TestCompactPerSectionCap:
             raise RuntimeError("LLM unavailable")
 
         result = compact(cfg, "test_persona", llm_call=_llm_fail)
-        # LLM 失敗でも exception ではなく warning になる
+        # LLM fails to get warning instead of exception
         assert isinstance(result, CompactionResult)
         assert len(result.warnings) > 0
 
     def test_no_diary_dependency(self):
-        """compaction.py が tools._core.tz を import していない（AC-5）。"""
+        """compaction.py does not import tools. core.tz (AC-5)."""
         import mltgnt.memory.compaction as mod
         import inspect
         src = inspect.getsource(mod)
@@ -607,10 +612,10 @@ class TestCompactPerSectionCap:
         assert "from tools" not in src
 
     def test_redistribute_uses_config_timezone(self, tmp_path: Path):
-        """_redistribute_entries が config.timezone を使用（AC-5）。"""
+        """re bute entries uses config.timezone (AC-5)."""
         cfg = MemoryConfig(chat_dir=tmp_path, chat_memory_dir=tmp_path, timezone="UTC")
         assert cfg.timezone == "UTC"
-        # UTC timezone でも正常に動作する
+        # UTC timezone
         from datetime import datetime, timezone as tz
         import mltgnt.memory.compaction as mod
         now = datetime.now(tz.utc)
@@ -622,10 +627,10 @@ class TestCompactPerSectionCap:
         assert len(result) == 1
 
     def test_wrapped_llm_call_applies_preprocessing(self, tmp_path: Path):
-        """ラッパー callable が全 LLM 呼び出しに前処理を適用する。"""
+        """The wrapper callable returns pre-processing for all LLM calls."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
-        long_content = "L" * 7000  # long_term_cap(6400B) を超過させる
+        long_content = "L" * 7000  # long_term_cap(6400B)  to exceed
         entries = [
             self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
         ]
@@ -636,7 +641,7 @@ class TestCompactPerSectionCap:
 
         def _base_llm(prompt: str) -> str:
             captured_prompts.append(prompt)
-            # long_term max_ratio=0.90 を満たす長さで返す
+            # long term max 0.9io=0.90
             return "L" * 6500
 
         def _wrapped_llm(prompt: str) -> str:
@@ -649,7 +654,7 @@ class TestCompactPerSectionCap:
         assert all(p.startswith(date_prefix) for p in captured_prompts)
 
     def test_compact_handles_over_256kb_prompt_without_truncation(self, tmp_path: Path):
-        """256KB超プロンプトでも llm_call に全文が渡る。"""
+        """llm call is passed even with 256KB super prompt."""
         cfg = _make_config(tmp_path, target_bytes=1_024_000)
         path = tmp_path / "test_persona.jsonl"
         long_content = "X" * 300_000

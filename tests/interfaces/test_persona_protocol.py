@@ -15,26 +15,26 @@ from mltgnt.persona.schema import PersonaFM
 VALID_PERSONA_CONTENT = textwrap.dedent("""\
     ---
     persona:
-      name: テストペルソナ
+      name: test-persona
     ops:
       engine: claude
       model: claude-3-5-sonnet-20241022
     ---
 
-    ## 基本情報
-    テスト用ペルソナ。
+    ## \u57fa\u672c\u60c5\u5831
+    Persona for tests.
 
-    ## 価値観
-    テスト。
+    ## \u4fa1\u5024\u89b3
+    Test.
 
-    ## 反応パターン
-    パターン。
+    ## \u53cd\u5fdc\u30d1\u30bf\u30fc\u30f3
+    Pattern.
 
-    ## 口調
-    口調。
+    ## \u53e3\u8abf
+    Tone.
 
-    ## アウトプット形式
-    形式。
+    ## \u30a2\u30a6\u30c8\u30d7\u30c3\u30c8\u5f62\u5f0f
+    Format.
 """)
 
 
@@ -42,30 +42,30 @@ VALID_PERSONA_CONTENT = textwrap.dedent("""\
 def persona(tmp_path: Path) -> Persona:
     d = tmp_path / "agents"
     d.mkdir()
-    f = d / "テストペルソナ.md"
+    f = d / "test-persona.md"
     f.write_text(VALID_PERSONA_CONTENT, encoding="utf-8")
     from mltgnt.persona import load_persona
-    return load_persona("テストペルソナ", persona_dir=d)
+    return load_persona("test-persona", persona_dir=d)
 
 
 def test_persona_isinstance_protocol(persona: Persona) -> None:
-    """Persona インスタンスは PersonaProtocol を満たす。"""
+    """Persona instances satisfy PersonaProtocol."""
     assert isinstance(persona, PersonaProtocol)
 
 
 def test_persona_fm_is_persona_fm(persona: Persona) -> None:
-    """Persona.fm が PersonaFM 型である。"""
+    """Persona.fm is a PersonaFM."""
     assert isinstance(persona.fm, PersonaFM)
 
 
 def test_protocol_fm_access(persona: Persona) -> None:
-    """PersonaProtocol 型経由で .fm.engine にアクセスできる。"""
+    """.fm.engine is accessible via PersonaProtocol."""
     p: PersonaProtocol = persona
     assert p.fm.engine == "claude"
 
 
 def test_no_fm_fails_isinstance() -> None:
-    """fm プロパティを持たないオブジェクトは isinstance が False。"""
+    """Objects without fm fail isinstance."""
     class NoFM:
         name: str = "dummy"
 
@@ -76,7 +76,7 @@ def test_no_fm_fails_isinstance() -> None:
 
 
 def test_name_only_fails_isinstance() -> None:
-    """name のみ持ち fm を持たないオブジェクトも isinstance が False。"""
+    """Objects with only name also fail isinstance."""
     class NameOnly:
         name: str = "only-name"
 
@@ -87,12 +87,12 @@ def test_name_only_fails_isinstance() -> None:
 
 
 def test_persona_fm_satisfies_persona_fm_base(persona: Persona) -> None:
-    """PersonaFM インスタンスは PersonaFMBase Protocol を満たす（structural subtyping）。"""
+    """PersonaFM satisfies PersonaFMBase (structural subtyping)."""
     assert isinstance(persona.fm, PersonaFMBase)
 
 
 def test_persona_protocol_no_domain_import() -> None:
-    """interfaces/persona.py が mltgnt.persona.schema を import していないこと。"""
+    """interfaces/persona.py must not import mltgnt.persona.schema."""
     import importlib
     import importlib.util
 

@@ -24,10 +24,10 @@ def _touch(path: Path, text: str = "stub") -> None:
 
 
 def _four_category_audit_records() -> list[dict]:
-    """4カテゴリ各 count>=3 相当の task_failed を含む audit レコード。
+    """Audit records with task_failed events for all 4 categories at count>=3.
 
-    freeze_time コンテキスト内では date.today() が frozen date を返すため、
-    in-process テストでも subprocess テストでも "today-1" が正しい期間内に入る。
+    Inside a freeze_time context, date.today() returns the frozen date, so
+    "today-1" falls within the window for both in-process and subprocess tests.
     """
     d = (date.today() - timedelta(days=1)).isoformat()
     records: list[dict] = []
@@ -36,7 +36,7 @@ def _four_category_audit_records() -> list[dict]:
             {
                 "event_type": "task_failed",
                 "correlation_id": "slack:triage-1",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "timestamp": f"{d}T10:00:00+09:00",
             }
         )
@@ -52,7 +52,7 @@ def _four_category_audit_records() -> list[dict]:
                 "event_type": "task_failed",
                 "correlation_id": f"sched:timeout-{i}",
                 "error": "upstream timeout reached",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "timestamp": f"{d}T11:00:00+09:00",
             }
         )
@@ -62,7 +62,7 @@ def _four_category_audit_records() -> list[dict]:
                 "event_type": "task_failed",
                 "correlation_id": f"agent:skill-{i}",
                 "skill": "system-improve-agents",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "timestamp": f"{d}T12:00:00+09:00",
             }
         )
@@ -71,7 +71,7 @@ def _four_category_audit_records() -> list[dict]:
             {
                 "event_type": "task_failed",
                 "correlation_id": f"agent:quality-{i}",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "timestamp": f"{d}T13:00:00+09:00",
             }
         )
@@ -83,7 +83,7 @@ def test_run_improvement_cycle_returns_patterns_and_proposals(tmp_path: Path) ->
     audit_path = tmp_path / "audit.jsonl"
     persona_dir = tmp_path / "personas"
     skills_dir = tmp_path / "skills"
-    _touch(persona_dir / "タチコマ.md")
+    _touch(persona_dir / "persona-a.md")
     _touch(skills_dir / "system-improve-agents" / "SKILL.md")
     _write_audit(audit_path, _four_category_audit_records())
 
@@ -166,7 +166,7 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
     audit_path = tmp_path / "audit.jsonl"
     persona_dir = tmp_path / "personas"
     skills_dir = tmp_path / "skills"
-    _touch(persona_dir / "タチコマ.md")
+    _touch(persona_dir / "persona-a.md")
     _touch(skills_dir / "system-improve-agents" / "SKILL.md")
     # freeze_time cannot affect subprocesses, so use relative timestamps that
     # always fall within the default 7-day window regardless of when the test runs.
@@ -176,7 +176,7 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         recent_records.append({
             "event_type": "task_failed",
             "correlation_id": "slack:triage-1",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "timestamp": f"{ts}T10:00:00+09:00",
         })
     recent_records.extend([
@@ -188,7 +188,7 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
             "event_type": "task_failed",
             "correlation_id": f"sched:timeout-{i}",
             "error": "upstream timeout reached",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "timestamp": f"{ts}T11:00:00+09:00",
         })
     for i in range(3):
@@ -196,14 +196,14 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
             "event_type": "task_failed",
             "correlation_id": f"agent:skill-{i}",
             "skill": "system-improve-agents",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "timestamp": f"{ts}T12:00:00+09:00",
         })
     for i in range(3):
         recent_records.append({
             "event_type": "task_failed",
             "correlation_id": f"agent:quality-{i}",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "timestamp": f"{ts}T13:00:00+09:00",
         })
     _write_audit(audit_path, recent_records)
@@ -223,6 +223,7 @@ def test_cli_prints_markdown_report(tmp_path: Path) -> None:
         cwd=worktree,
     )
     assert result.returncode == 0
+    # Japanese text intentionally kept for CJK processing test
     assert "# サマリ" in result.stdout
     assert "# 失敗パターン一覧" in result.stdout
 

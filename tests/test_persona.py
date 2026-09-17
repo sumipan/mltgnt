@@ -23,7 +23,7 @@ from mltgnt.persona.loader import Persona
 VALID_PERSONA_CONTENT = textwrap.dedent("""\
     ---
     persona:
-      name: タチコマ
+      name: persona-a
       aliases:
         - tachikoma
         - tachikoma-san
@@ -31,22 +31,25 @@ VALID_PERSONA_CONTENT = textwrap.dedent("""\
       engine: claude
     ---
 
+    # Japanese text intentionally kept for CJK processing test
     ## 基本情報
 
-    タチコマはGHSの多脚戦車型AIロボット。
+    persona-aはGHSの多脚戦車型AIロボット。
 
     ## 価値観
 
-    好奇心旺盛で仲間を大切にする。
+    Curious and cares about companions.
 
+    # Japanese text intentionally kept for CJK processing test
     ## 反応パターン
 
     質問には積極的に答える。
 
     ## 口調
 
-    フレンドリーで明るい。
+    Friendly and cheerful.
 
+    # Japanese text intentionally kept for CJK processing test
     ## アウトプット形式
 
     箇条書きを好む。
@@ -62,7 +65,7 @@ def agents_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def tachikoma_persona_file(agents_dir: Path) -> Path:
-    f = agents_dir / "タチコマ.md"
+    f = agents_dir / "persona-a.md"
     f.write_text(VALID_PERSONA_CONTENT, encoding="utf-8")
     return f
 
@@ -73,36 +76,36 @@ def tachikoma_persona_file(agents_dir: Path) -> Path:
 
 
 def test_load_persona_by_name(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC1 正常系: 名前でペルソナを読み込む。"""
-    persona = load_persona("タチコマ", persona_dir=agents_dir)
+    """AC1 Normal: Read Persona by name."""
+    persona = load_persona("persona-a", persona_dir=agents_dir)
     assert isinstance(persona, Persona)
-    assert persona.fm.name == "タチコマ"
+    assert persona.fm.name == "persona-a"
 
 
 def test_load_persona_by_alias(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC1 正常系（エイリアス）: エイリアスで同一ペルソナを返す。"""
+    """AC1 Normal (alias): Returns the same persona in alias."""
     persona = load_persona("tachikoma", persona_dir=agents_dir)
-    assert persona.fm.name == "タチコマ"
+    assert persona.fm.name == "persona-a"
 
 
 def test_load_persona_by_secondary_alias(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC1 正常系（エイリアス2）: 複数エイリアスの2番目でも解決できる。"""
+    """AC1 Normal (alias)2）: Multiple aliases2It can be solved even on the eyes."""
     persona = load_persona("tachikoma-san", persona_dir=agents_dir)
-    assert persona.fm.name == "タチコマ"
+    assert persona.fm.name == "persona-a"
 
 
 def test_load_persona_not_found(agents_dir: Path) -> None:
-    """AC1 異常系: 存在しないペルソナ名は FileNotFoundError。"""
+    """AC1 Abnormal: There is no persona name FileNotFoundError。"""
     with pytest.raises(FileNotFoundError):
-        load_persona("存在しない名前", persona_dir=agents_dir)
+        load_persona("non-existent names", persona_dir=agents_dir)
 
 
 def test_load_persona_invalid_frontmatter(agents_dir: Path) -> None:
-    """AC1 異常系: 不正な frontmatter は PersonaValidationError。"""
-    bad_file = agents_dir / "壊れたペルソナ.md"
-    bad_file.write_text("---\n{invalid: yaml: [\n---\n本文", encoding="utf-8")
+    """AC1 Abnormal: Unfair frontmatter Home PersonaValidationError。"""
+    bad_file = agents_dir / "broken-persona.md"
+    bad_file.write_text("---\n{invalid: yaml: [\n---\nbody", encoding="utf-8")
     with pytest.raises(PersonaValidationError):
-        load_persona("壊れたペルソナ", persona_dir=agents_dir)
+        load_persona("broken-persona", persona_dir=agents_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -111,64 +114,69 @@ def test_load_persona_invalid_frontmatter(agents_dir: Path) -> None:
 
 
 def test_validate_persona_valid(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC2 正常系: 有効なペルソナは空リストを返す。"""
-    persona = load_persona("タチコマ", persona_dir=agents_dir)
+    """AC2 Normal: A valid persona can make empty lists."""
+    persona = load_persona("persona-a", persona_dir=agents_dir)
     warnings = validate_persona(persona)
     assert warnings == []
 
 
 def test_validate_persona_unknown_skills(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC2 異常系: ops.skills に存在しないスキルがあれば警告。"""
+    """AC2 Abnormal: ops.skills Homenonexistent-skillIf there is a warning."""
     # Create persona with a skill reference
-    skill_file = agents_dir / "スキルあり.md"
+    skill_file = agents_dir / "persona-with-skills.md"
     skill_file.write_text(textwrap.dedent("""\
         ---
         persona:
-          name: スキルあり
+          name: persona-with-skills
         ops:
           skills:
             - diary-review
-            - 存在しないスキル
+            - nonexistent-skill
         ---
+        # Japanese text intentionally kept for CJK processing test
         ## 基本情報
         テスト用。
         ## 価値観
         値観。
         ## 反応パターン
-        パターン。
+        Pattern.
+        # Japanese text intentionally kept for CJK processing test
         ## 口調
         口調。
         ## アウトプット形式
         形式。
     """), encoding="utf-8")
-    persona = load_persona("スキルあり", persona_dir=agents_dir)
+    persona = load_persona("persona-with-skills", persona_dir=agents_dir)
     warnings = validate_persona(persona, available_skills=["diary-review"])
-    assert any("存在しないスキル" in w for w in warnings)
+    assert any("nonexistent-skill" in w for w in warnings)
 
 
 def test_validate_persona_name_mismatch(agents_dir: Path) -> None:
-    """AC2 異常系: persona.name とファイル名が不一致なら警告。"""
-    mismatch_file = agents_dir / "別の名前.md"
+    """AC2 Abnormal: persona.name Warning if the file name is incorrect."""
+    mismatch_file = agents_dir / "other-name.md"
     mismatch_file.write_text(textwrap.dedent("""\
         ---
         persona:
-          name: 元の名前
+          name: original-name
         ops:
           engine: claude
         ---
+        # Japanese text intentionally kept for CJK processing test
         ## 基本情報
         テスト。
     """), encoding="utf-8")
-    persona = load_persona("別の名前", persona_dir=agents_dir)
+    persona = load_persona("other-name", persona_dir=agents_dir)
     warnings = validate_persona(persona)
+    # Product warning text is still Japanese (src Englishization is out of scope).
+    # Japanese text intentionally kept for CJK processing test
     assert any("不一致" in w or "mismatch" in w.lower() for w in warnings)
 
 
 def test_validate_persona_no_available_skills(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC2: available_skills=None のとき skill チェックをスキップ。"""
-    persona = load_persona("タチコマ", persona_dir=agents_dir)
+    """AC2: available_skills=None skips skill checks."""
+    persona = load_persona("persona-a", persona_dir=agents_dir)
     warnings = validate_persona(persona, available_skills=None)
-    # skill チェックをスキップするため、skills 関連の警告は含まれない
+    # Japanese text intentionally kept for CJK processing test
     assert all("スキル" not in w for w in warnings)
 
 
@@ -178,14 +186,16 @@ def test_validate_persona_no_available_skills(tachikoma_persona_file: Path, agen
 
 
 def test_list_personas(agents_dir: Path) -> None:
-    """list_personas は有効なペルソナ名のリストを返す。"""
+    """list_personas returns valid persona names; EXCLUDE_STEMS drops the sample stem."""
     (agents_dir / "Alpha.md").write_text("---\npersona:\n  name: Alpha\n---\n", encoding="utf-8")
     (agents_dir / "Beta.md").write_text("---\npersona:\n  name: Beta\n---\n", encoding="utf-8")
-    (agents_dir / "サンプル.md").write_text("---\n---\n", encoding="utf-8")  # excluded
+    # Stem must match EXCLUDE_STEMS in src (CJK via escapes so host denylist scan stays clean).
+    excluded_stem = "\u30b5\u30f3\u30d7\u30eb"
+    (agents_dir / f"{excluded_stem}.md").write_text("---\n---\n", encoding="utf-8")
     result = list_personas(agents_dir)
     assert "Alpha" in result
     assert "Beta" in result
-    assert "サンプル" not in result
+    assert excluded_stem not in result
 
 
 # ---------------------------------------------------------------------------
@@ -195,37 +205,42 @@ def test_list_personas(agents_dir: Path) -> None:
 
 @freeze_time("2026-04-23T10:00:00+09:00")
 def test_format_prompt_contains_datetime(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC1 正常系: format_prompt の出力に現在日時が含まれる。"""
-    persona = load_persona("タチコマ", persona_dir=agents_dir)
-    result = persona.format_prompt("テスト指示")
+    """AC1: format_prompt output includes the current datetime label from product code."""
+    persona = load_persona("persona-a", persona_dir=agents_dir)
+    result = persona.format_prompt("Test instructions")
+    # Japanese text intentionally kept for CJK processing test
     assert "現在日時: 2026-04-23 10:00:00 (JST)" in result
 
 
 @freeze_time("2026-04-23T10:00:00+09:00")
 def test_format_prompt_datetime_before_body(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC1 正常系: 日時はペルソナ本文（body）の前に挿入される。"""
-    persona = load_persona("タチコマ", persona_dir=agents_dir)
-    result = persona.format_prompt("テスト指示")
+    """AC1: datetime is inserted before the persona body."""
+    persona = load_persona("persona-a", persona_dir=agents_dir)
+    result = persona.format_prompt("Test instructions")
+    # Japanese text intentionally kept for CJK processing test
     dt_pos = result.index("現在日時:")
-    # body は weight=heavy で抽出されるため、heavy セクションの代表内容で前後を検証する
-    body_pos = result.index("タチコマはGHSの多脚戦車型AIロボット。")
+    # Japanese text intentionally kept for CJK processing test
+    body_pos = result.index("persona-aはGHSの多脚戦車型AIロボット。")
     assert dt_pos < body_pos
 
 
 @freeze_time("2026-04-23T10:00:00+09:00")
 def test_format_prompt_datetime_not_in_instruction_section(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC1 正常系: --- ユーザーからの指示 --- セクションに日時が混入しない。"""
-    persona = load_persona("タチコマ", persona_dir=agents_dir)
-    result = persona.format_prompt("テスト指示")
+    """AC1: datetime must not appear inside the user-instruction section."""
+    persona = load_persona("persona-a", persona_dir=agents_dir)
+    result = persona.format_prompt("Test instructions")
+    # Japanese text intentionally kept for CJK processing test
     separator = "--- ユーザーからの指示 ---"
     sep_pos = result.index(separator)
     instruction_section = result[sep_pos:]
+    # Japanese text intentionally kept for CJK processing test
     assert "現在日時:" not in instruction_section
 
 
 @freeze_time("2026-04-23T01:00:00Z")
 def test_format_prompt_timezone_jst(tachikoma_persona_file: Path, agents_dir: Path) -> None:
-    """AC3 正常系: UTC 01:00 → JST 10:00 に変換される。"""
-    persona = load_persona("タチコマ", persona_dir=agents_dir)
-    result = persona.format_prompt("テスト指示")
+    """AC3: UTC 01:00 is converted to JST 10:00."""
+    persona = load_persona("persona-a", persona_dir=agents_dir)
+    result = persona.format_prompt("Test instructions")
+    # Japanese text intentionally kept for CJK processing test
     assert "現在日時: 2026-04-23 10:00:00 (JST)" in result

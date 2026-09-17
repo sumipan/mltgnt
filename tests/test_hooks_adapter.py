@@ -1,4 +1,4 @@
-"""tests/test_hooks_adapter.py — hooks_adapter 受け入れ条件テスト (#1036, #1128)"""
+"""tests/test_hooks_adapter.py — hooks_adapter acceptance tests (#1036, #1128)"""
 import json
 
 from ghdag.dag.hooks import Task, TaskMetrics
@@ -28,7 +28,7 @@ def make_executor(results: dict):
 
 class TestCreateAuditWriter:
     def test_writes_tool_exec_event(self, tmp_path):
-        """AC-1: ツール実行で event_type=tool_exec のレコードが audit_path に追記される。"""
+        """AC-1: Tool execution event_type=tool_exec record audit_path Added to."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -46,7 +46,7 @@ class TestCreateAuditWriter:
         assert record["correlation_id"] == "search"
 
     def test_no_audit_file_when_writer_is_none(self, tmp_path):
-        """AC-2: audit_writer=None(デフォルト)の場合、audit ファイルは作成されない。"""
+        """AC-2: audit_writer=None(default)Foraudit File is not created."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -60,7 +60,7 @@ class TestCreateAuditWriter:
         assert not audit_path.exists()
 
     def test_tool_args_not_in_record(self, tmp_path):
-        """AC-3: tool_args の値がレコードに含まれない（機密データ混入防止）。"""
+        """AC-3: tool_args values are not recorded (prevent confidential data leaks)."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -76,7 +76,7 @@ class TestCreateAuditWriter:
         assert "secret123" not in audit_text
 
     def test_multiple_tools_separate_records_unique_uuids(self, tmp_path):
-        """AC-4: ツール 3 回実行 → 行数 3、UUID 全て異なる。"""
+        """AC-4: Tools 3 Run → Number of lines 3、UUID All different."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -97,7 +97,7 @@ class TestCreateAuditWriter:
         assert len(set(uuids)) == 3
 
     def test_source_appears_in_engine_field(self, tmp_path):
-        """source 引数が engine フィールドとして記録される。"""
+        """source Arguments engine Recorded as a field."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -113,6 +113,7 @@ class TestCreateAuditWriter:
         assert record["engine"] == "my-agent"
 
     def test_default_source_is_mltgnt_agent(self, tmp_path):
+        # Japanese text intentionally kept for CJK processing test
         """source を省略したとき engine は 'mltgnt-agent'。"""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
@@ -129,7 +130,7 @@ class TestCreateAuditWriter:
         assert record["engine"] == "mltgnt-agent"
 
     def test_uses_explicit_correlation_id_when_given(self, tmp_path):
-        """correlation_id 指定時は tool_name ではなく指定値を使う。"""
+        """correlation_id When specified tool_name Use the specified value instead."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -145,6 +146,7 @@ class TestCreateAuditWriter:
         assert record["correlation_id"] == "session-123"
 
     def test_falls_back_to_tool_name_when_correlation_id_omitted(self, tmp_path):
+        # Japanese text intentionally kept for CJK processing test
         """correlation_id 省略時は従来どおり tool_name を使う。"""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
@@ -179,10 +181,10 @@ def _make_metrics(uuid: str = "t1", status: str = "success") -> TaskMetrics:
     )
 
 
-# AC-4: ghdag on_task_progress に渡る event の実測サンプル（CLAUDE.md §10/§11）
-# claude: jobs/events/9c3d8e05-...jsonl 先頭行（model=claude-sonnet-4-6）
-# cursor: ghdag tests/fixtures/cursor_stream_success.jsonl 先頭行
-# codex: ghdag tests/fixtures/codex_jsonl_success.jsonl 先頭行
+# AC-4: ghdag on_task_progress Contact Us event sample()CLAUDE.md §10/§11）
+# claude: jobs/events/9c3d8e05-...jsonl First Linemodel=claude-sonnet-4-6）
+# cursor: ghdag tests/fixtures/cursor_stream_success.jsonl Contact Us
+# codex: ghdag tests/fixtures/codex_jsonl_success.jsonl Contact Us
 _PROGRESS_EVENT_CLAUDE = {
     "type": "system",
     "subtype": "init",
@@ -208,7 +210,7 @@ _PROGRESS_EVENT_CODEX = {
 
 class TestMltgntHooks:
     def test_protocol_compliance(self, tmp_path):
-        """AC-1: DagHooks Protocol の全 12 メソッドが実装されている（structural typing チェック）。"""
+        """AC-1: DagHooks Protocol All 12 Methods are implementedstructural typing check)."""
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         required = [
             "on_task_start", "on_task_success", "on_task_failure",
@@ -218,7 +220,7 @@ class TestMltgntHooks:
         ]
         assert len(required) == 12
         for method in required:
-            assert callable(getattr(hooks, method, None)), f"{method} が実装されていない"
+            assert callable(getattr(hooks, method, None)), f"{method} is not implemented"
 
     def test_on_task_cancelled_writes_cancelled(self, tmp_path):
         """AC-1: on_task_cancelled → event_type=task_cancelled + status=cancelled。"""
@@ -238,7 +240,7 @@ class TestMltgntHooks:
         ids=["claude", "cursor", "codex"],
     )
     def test_on_task_progress_writes_progress(self, tmp_path, event):
-        """AC-4: 3 エンジン実データ event を on_task_progress に渡し audit が書ける。"""
+        """AC-4: 3 Engine Data event Home on_task_progress Contact Us audit Contact Us"""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path, source="mltgnt-scheduler")
         hooks.on_task_progress("t1", event)
@@ -250,7 +252,7 @@ class TestMltgntHooks:
         assert record["correlation_id"] == event["type"]
 
     def test_on_task_start_writes_task_started(self, tmp_path):
-        """AC-1: on_task_start → audit_path に event_type=task_started のレコードが 1 行追記される。"""
+        """AC-1: on_task_start → audit_path Home event_type=task_started record 1 Post navigation"""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_task_start("t1", _make_task())
@@ -258,7 +260,7 @@ class TestMltgntHooks:
         assert record["event_type"] == "task_started"
 
     def test_on_task_success_writes_success(self, tmp_path):
-        """AC-1: on_task_success → event_type=task_success + status=success のレコードが追記される。"""
+        """AC-1: on_task_success → event_type=task_success + status=success The record is added."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_task_success("t1", _make_task(), _make_metrics())
@@ -267,7 +269,7 @@ class TestMltgntHooks:
         assert record["status"] == "success"
 
     def test_on_task_failure_writes_failure(self, tmp_path):
-        """AC-1: on_task_failure → event_type=task_failure + status=failure のレコードが追記される。"""
+        """AC-1: on_task_failure → event_type=task_failure + status=failure The record is added."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_task_failure("t1", _make_task(), 1, "error msg", _make_metrics(status="failure"))
@@ -276,7 +278,7 @@ class TestMltgntHooks:
         assert record["status"] == "failure"
 
     def test_on_task_rejected_writes_rejected(self, tmp_path):
-        """on_task_rejected → event_type=task_rejected が追記される。"""
+        """on_task_rejected → event_type=task_rejected is added."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_task_rejected("t1", _make_task(), retry_depth=1, is_final=False, metrics=_make_metrics())
@@ -284,7 +286,7 @@ class TestMltgntHooks:
         assert record["event_type"] == "task_rejected"
 
     def test_on_task_dep_failed_writes_dep_failed(self, tmp_path):
-        """on_task_dep_failed → event_type=task_dep_failed が追記される。"""
+        """on_task_dep_failed → event_type=task_dep_failed is added."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_task_dep_failed("t1", _make_task(), "dep-uuid")
@@ -292,7 +294,7 @@ class TestMltgntHooks:
         assert record["event_type"] == "task_dep_failed"
 
     def test_on_task_empty_result_writes_empty_result(self, tmp_path):
-        """on_task_empty_result → event_type=task_empty_result が追記される。"""
+        """on_task_empty_result → event_type=task_empty_result is added."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_task_empty_result("t1", _make_task(), "stderr text", _make_metrics())
@@ -300,7 +302,7 @@ class TestMltgntHooks:
         assert record["event_type"] == "task_empty_result"
 
     def test_on_shutdown_writes_shutdown(self, tmp_path):
-        """on_shutdown → event_type=shutdown が追記される。"""
+        """on_shutdown → event_type=shutdown is added."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_shutdown(15)
@@ -308,33 +310,33 @@ class TestMltgntHooks:
         assert record["event_type"] == "shutdown"
 
     def test_check_rejected_true(self, tmp_path):
-        """AC-2: REJECTED: マーカーを含む結果ファイルに対して True を返す。"""
+        """AC-2: REJECTED: For result files containing markers True """
         result_file = tmp_path / "result.md"
-        result_file.write_text("REJECTED: 不適切な応答\n", encoding="utf-8")
+        result_file.write_text("REJECTED: inappropriate response\n", encoding="utf-8")
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_rejected(str(result_file)) is True
 
     def test_check_rejected_false(self, tmp_path):
-        """AC-2: 通常の結果ファイルに対して False を返す。"""
+        """AC-2: For normal results files False """
         result_file = tmp_path / "result.md"
-        result_file.write_text("ACCEPTED\n通常の出力\n", encoding="utf-8")
+        result_file.write_text("ACCEPTED\nnormal output\n", encoding="utf-8")
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_rejected(str(result_file)) is False
 
     def test_check_pipeline_status(self, tmp_path):
-        """AC-2: PIPELINE_STATUS: BRUSHUP_DONE を含むファイルに対して 'BRUSHUP_DONE' を返す。"""
+        """AC-2: PIPELINE_STATUS: BRUSHUP_DONE For files containing 'BRUSHUP_DONE' """
         result_file = tmp_path / "result.md"
-        result_file.write_text("出力\nPIPELINE_STATUS: BRUSHUP_DONE\n", encoding="utf-8")
+        result_file.write_text("output\nPIPELINE_STATUS: BRUSHUP_DONE\n", encoding="utf-8")
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_pipeline_status(str(result_file)) == "BRUSHUP_DONE"
 
     def test_check_promote_target_returns_none(self, tmp_path):
-        """AC-2: check_promote_target は任意の入力に対して None を返す。"""
+        """AC-2: check_promote_target for any input None """
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_promote_target("any/path.md") is None
 
     def test_custom_source_in_records(self, tmp_path):
-        """source 引数がレコードの engine フィールドに反映される（on_task_start 経由）。"""
+        """source The argument is the record engine reflected in the fieldon_task_start via)."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path, source="my-scheduler")
         hooks.on_task_start("t1", _make_task())
@@ -342,6 +344,7 @@ class TestMltgntHooks:
         assert record["engine"] == "my-scheduler"
 
     def test_default_source_is_mltgnt_scheduler(self, tmp_path):
+        # Japanese text intentionally kept for CJK processing test
         """source を省略したとき engine は 'mltgnt-scheduler'（on_task_start で確認）。"""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
@@ -351,7 +354,7 @@ class TestMltgntHooks:
 
 
 class TestLayerBoundaryReExports:
-    """Issue #1228: 後方互換 re-export 削除後の import 整合性。"""
+    """Issue #1228: Backward compatibility re-export After removal import Conformity."""
 
     def test_routing_resolve_skill_not_reexported(self) -> None:
         import mltgnt.routing as routing
@@ -387,7 +390,7 @@ class TestLayerBoundaryReExports:
 
 
 class TestBuildMetaPublicApi:
-    """AC-2: build_meta 公開と _build_meta 後方互換 alias。"""
+    """AC-2: build_meta Open _build_meta Backward compatibility alias。"""
 
     def test_build_meta_importable_and_alias(self, tmp_path) -> None:
         from mltgnt.skill.loader import _build_meta, build_meta

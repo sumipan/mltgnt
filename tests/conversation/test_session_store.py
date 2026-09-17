@@ -1,6 +1,6 @@
-"""会話 ID ベースの session_store テスト（#3317）。
+"""Conversation-id-based session_store tests (#3317).
 
-ghdag を import せず、resume 可否はコールバック注入で判定する。
+Do not import ghdag; resume support is decided via injected callbacks.
 """
 from __future__ import annotations
 

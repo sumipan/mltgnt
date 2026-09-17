@@ -1,8 +1,8 @@
-"""tests/test_ghdag_bridge_order_builder.py — order_builder 引数の注入テスト。
+"""tests/test_ghdag_bridge_order_builder.py — injection tests for the order_builder argument.
 
-受け入れ条件:
-  - enqueue_dag / enqueue_and_wait に order_builder 引数を渡すと LLMPipelineAPI に注入される
-  - order_builder 省略時は InlineOrderBuilder() がフォールバックとして使われる（後方互換）
+Acceptance criteria:
+  - Passing order_builder to enqueue_dag / enqueue_and_wait injects it into LLMPipelineAPI
+  - When order_builder is omitted, InlineOrderBuilder() is used as a backward-compatible fallback
 """
 from __future__ import annotations
 
@@ -45,13 +45,13 @@ def _fake_exec_line(filename: str = "jobs/result-abc.md") -> str:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_and_wait — order_builder 注入
+# enqueue_and_wait — order_builder injection
 # ---------------------------------------------------------------------------
 
 
 class TestEnqueueAndWaitOrderBuilder:
     def test_custom_order_builder_is_passed_to_pipeline_api(self, tmp_path):
-        """order_builder を渡すと LLMPipelineAPI に注入される。"""
+        """Passing order_builder injects it into LLMPipelineAPI."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -84,7 +84,7 @@ class TestEnqueueAndWaitOrderBuilder:
         assert captured[0] is custom_builder
 
     def test_default_order_builder_is_inline(self, tmp_path):
-        """order_builder 省略時は InlineOrderBuilder() がフォールバックに使われる。"""
+        """When order_builder is omitted, InlineOrderBuilder() is the fallback."""
         from ghdag.pipeline import InlineOrderBuilder, LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -115,13 +115,13 @@ class TestEnqueueAndWaitOrderBuilder:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_dag — order_builder 注入
+# enqueue_dag — order_builder injection
 # ---------------------------------------------------------------------------
 
 
 class TestEnqueueDagOrderBuilder:
     def test_custom_order_builder_is_passed_to_pipeline_api(self, tmp_path):
-        """order_builder を渡すと LLMPipelineAPI に注入される。"""
+        """Passing order_builder injects it into LLMPipelineAPI."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
@@ -152,7 +152,7 @@ class TestEnqueueDagOrderBuilder:
         assert captured[0] is custom_builder
 
     def test_default_order_builder_is_inline(self, tmp_path):
-        """order_builder 省略時は InlineOrderBuilder() がフォールバックに使われる。"""
+        """When order_builder is omitted, InlineOrderBuilder() is the fallback."""
         from ghdag.pipeline import InlineOrderBuilder, LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)

@@ -1,10 +1,10 @@
-"""tests/test_ghdag_bridge.py — ghdag_bridge の単体＋統合テスト。
+"""tests/test_ghdag_bridge.py — ghdag_bridge non-consolidated + integrated testing.
 
-カバレッジ対象:
-  - _extract_result_filename(): JSON 形式 / テキスト形式 / フォールバック
-  - _order_to_result_filename(): 標準テキスト exec 行からの導出
-  - enqueue_and_wait() 統合: exec.jsonl に書き込む行が全て valid JSON
-  - enqueue_and_wait() 結果読み取り: ghdag.files.md_read 経由での result 取得
+Coverage:
+  - _extract_result_filename(): JSON Type / Text format / Fallback
+  - _order_to_result_filename(): Standard text exec line
+  - enqueue_and_wait() : exec.jsonl All lines to write valid JSON
+  - enqueue_and_wait() Read results: ghdag.files.md_read via result
 """
 from __future__ import annotations
 
@@ -33,13 +33,13 @@ from mltgnt.bridges.ghdag_bridge import (
 from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMatchResult, SkillMeta
 
 # ---------------------------------------------------------------------------
-# bridges/__init__ — パッケージ re-export（AC1, AC2, AC7）
+# bridges/__init__ — Package re-export（AC1, AC2, AC7）
 # ---------------------------------------------------------------------------
 
 
 class TestBridgesInitImports:
     def test_bridges_init_imports(self):
-        """AC1: bridges パッケージ経由で全公開シンボルが import できる。"""
+        """AC1: bridges All public symbols via package import Yes."""
         from mltgnt.bridges import DagStep, call_llm, create_audit_writer
         from mltgnt.bridges import enqueue_and_wait, enqueue_dag, md_read, md_write
 
@@ -52,7 +52,7 @@ class TestBridgesInitImports:
         assert callable(call_llm)
 
     def test_bridges_all_exports(self):
-        """AC2: __all__ が公開シンボルのみを含む。"""
+        """AC2: __all__ contains only public symbols."""
         import mltgnt.bridges
 
         assert set(mltgnt.bridges.__all__) == {
@@ -71,19 +71,19 @@ class TestBridgesInitImports:
         }
 
     def test_scheduler_shim_removed(self):
-        """v0.8.0: scheduler/ghdag_bridge.py shim は削除済み。"""
+        """v0.8.0: scheduler/ghdag_bridge.py shim has been removed."""
         with pytest.raises(ImportError):
             from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
-# correlation_id — AuditContext 伝搬（AC3〜AC5）
+# correlation_id — AuditContext PropagationAC3〜AC5）
 # ---------------------------------------------------------------------------
 
 
 class TestCorrelationIdPropagation:
     def test_enqueue_and_wait_correlation_id(self, tmp_path):
-        """AC3: enqueue_and_wait の correlation_id が AuditContext に渡される。"""
+        """AC3: enqueue_and_wait Home correlation_id Home AuditContext passed to."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -116,7 +116,7 @@ class TestCorrelationIdPropagation:
         assert ctx.correlation_id == "test-123"
 
     def test_enqueue_dag_correlation_id(self, tmp_path):
-        """AC4: enqueue_dag の correlation_id が AuditContext に渡される。"""
+        """AC4: enqueue_dag Home correlation_id Home AuditContext passed to."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
@@ -147,6 +147,7 @@ class TestCorrelationIdPropagation:
         assert ctx.correlation_id == "dag-456"
 
     def test_enqueue_and_wait_default_correlation_id(self, tmp_path):
+        # Japanese text intentionally kept for CJK processing test
         """AC5: correlation_id 省略時は None が AuditContext に渡される。"""
         from ghdag.pipeline import LLMPipelineAPI
 
@@ -180,19 +181,19 @@ class TestCorrelationIdPropagation:
 
 
 # ---------------------------------------------------------------------------
-# request_id — AuditContext 伝搬（#1346）
+# request_id — AuditContext Propagation#1346）
 # ---------------------------------------------------------------------------
 
 
 class TestRequestIdPropagation:
     def test_scheduler_audit_context_with_request_id(self):
-        """_scheduler_audit_context が request_id を AuditContext に渡す。"""
+        """_scheduler_audit_context Home request_id Home AuditContext Pass to."""
         ctx = _scheduler_audit_context(None, None, request_id="test-rid")
         assert ctx.source == "mltgnt-scheduler"
         assert ctx.request_id == "test-rid"
 
     def test_enqueue_and_wait_request_id(self, tmp_path):
-        """enqueue_and_wait の request_id が api.submit の audit_context に渡される。"""
+        """enqueue_and_wait Home request_id Home api.submit Home audit_context passed to."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -223,7 +224,7 @@ class TestRequestIdPropagation:
         assert captured_contexts[0].request_id == "test-rid"
 
     def test_enqueue_dag_request_id(self, tmp_path):
-        """enqueue_dag の request_id が api.submit の audit_context に渡される。"""
+        """enqueue_dag Home request_id Home api.submit Home audit_context passed to."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
@@ -252,6 +253,7 @@ class TestRequestIdPropagation:
         assert captured_contexts[0].request_id == "test-rid"
 
     def test_enqueue_and_wait_default_request_id(self, tmp_path):
+        # Japanese text intentionally kept for CJK processing test
         """request_id 省略時は None が AuditContext に渡される。"""
         from ghdag.pipeline import LLMPipelineAPI
 
@@ -291,21 +293,21 @@ UUID_A = "38d6b791-1072-42f0-838d-45c7d10748ff"
 
 class TestOrderToResultFilename:
     def test_claude_order_line(self):
-        """cursor-order 行から cursor-result 行を導出する。"""
+        """cursor-order From Line cursor-result ."""
         line = f"jobs/20260508230000-cursor-order-{UUID_A}.md"
         assert _order_to_result_filename(line) == f"20260508230000-cursor-result-{UUID_A}.md"
 
     def test_claude_engine(self):
-        """claude エンジンでも正しく導出する。"""
+        """claude The engine is also correctly guided."""
         line = f"jobs/20260508230000-claude-order-{UUID_A}.md"
         assert _order_to_result_filename(line) == f"20260508230000-claude-result-{UUID_A}.md"
 
     def test_no_order_pattern_returns_empty(self):
-        """-order- パターンがなければ空文字を返す。"""
+        """-order- If there is no pattern, you can check the empty character."""
         assert _order_to_result_filename("some random text") == ""
 
     def test_no_uuid_returns_empty(self):
-        """UUID が含まれない行では空文字を返す。"""
+        """Lines without a UUID return an empty string."""
         assert _order_to_result_filename("jobs/20260508-cursor-order-no-uuid.md") == ""
 
 
@@ -315,7 +317,7 @@ class TestOrderToResultFilename:
 
 class TestExtractResultFilename:
     def test_json_format_extracts_result_path_name(self):
-        """JSON 形式の exec_line から result_path の basename を取得する。"""
+        """Get the basename of result_path from a JSON-format exec_line."""
         record = {
             "uuid": UUID_A,
             "command": "agent -p --force < order.md",
@@ -326,7 +328,7 @@ class TestExtractResultFilename:
         assert result == f"20260508230000-cursor-result-{UUID_A}.md"
 
     def test_json_format_relative_result_path(self):
-        """相対パスの result_path でも basename を正しく取得する。"""
+        """relative path result_path But basename get correctly."""
         record = {
             "uuid": UUID_A,
             "command": "cmd",
@@ -336,17 +338,17 @@ class TestExtractResultFilename:
         assert result == f"20260508230000-cursor-result-{UUID_A}.md"
 
     def test_json_format_no_result_path_returns_empty(self):
-        """result_path フィールドがない JSON レコードは空文字を返す。"""
+        """result_path No fields JSON Records return empty characters."""
         record = {"uuid": UUID_A, "command": "cmd"}
         assert _extract_result_filename(json.dumps(record)) == ""
 
     def test_json_format_empty_result_path_returns_empty(self):
-        """result_path が空文字の JSON レコードは空文字を返す。"""
+        """result_path empty JSON Records return empty characters."""
         record = {"uuid": UUID_A, "command": "cmd", "result_path": ""}
         assert _extract_result_filename(json.dumps(record)) == ""
 
     def test_invalid_json_starting_brace_falls_back_to_text(self):
-        """{ で始まるが invalid JSON → テキスト形式パーサーへフォールバック。"""
+        """{ Close invalid JSON → Fallback to text parser."""
         line = f"{{not valid json}} jobs/20260508230000-cursor-order-{UUID_A}.md"
         # Falls back to text parser which can't parse this either → ""
         result = _extract_result_filename(line)
@@ -354,7 +356,7 @@ class TestExtractResultFilename:
         assert isinstance(result, str)
 
     def test_text_format_exec_line(self):
-        """テキスト形式（uuid: cmd | tee result）から result ファイル名を導出する。"""
+        """Derive the result filename from text format (uuid: cmd | tee result)."""
         line = (
             f"{UUID_A}: agent -p --force < jobs/20260508230000-cursor-order-{UUID_A}.md"
             f" | tee -a jobs/20260508230000-cursor-result-{UUID_A}.md"
@@ -363,7 +365,7 @@ class TestExtractResultFilename:
         assert result == f"20260508230000-cursor-result-{UUID_A}.md"
 
     def test_json_format_idempotency_key_not_confused(self):
-        """idempotency_key フィールドがあっても result_path 取得に干渉しない。"""
+        """idempotency_key field result_path Do not interfere with acquisition."""
         record = {
             "uuid": UUID_A,
             "command": "cmd",
@@ -375,8 +377,8 @@ class TestExtractResultFilename:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_and_wait — 統合テスト
-# （wait_for_result だけモック; LLMPipelineAPI は実物）
+# enqueue_and_wait — integration tests
+# (only wait_for_result is mocked; LLMPipelineAPI is real)
 # ---------------------------------------------------------------------------
 
 def _make_jobs_dir(tmp_path: Path) -> Path:
@@ -390,7 +392,7 @@ _WAIT = "ghdag.pipeline.wait_for_result"
 
 
 class TestEnqueueAndWaitJsonlIntegration:
-    """exec.jsonl に書き込む内容が valid JSON であることを保証する統合テスト。"""
+    """exec.jsonl Write to valid JSON Integrated testing to ensure that."""
 
     def _run(self, tmp_path: Path, *, engine: str = "cursor", model: str = "auto",
              wait_return=None) -> Path:
@@ -408,7 +410,7 @@ class TestEnqueueAndWaitJsonlIntegration:
             # We just need to observe exec.jsonl content; result_path doesn't need to match
             try:
                 enqueue_and_wait(
-                    prompt="テストプロンプト",
+                    prompt="test prompt",
                     engine=engine,
                     model=model,
                     timeout=5.0,
@@ -422,10 +424,10 @@ class TestEnqueueAndWaitJsonlIntegration:
         return jobs_dir / "exec.jsonl"
 
     def test_exec_jsonl_all_lines_valid_json(self, tmp_path):
-        """enqueue_and_wait が exec.jsonl に書き込む全行が valid JSON。"""
+        """enqueue_and_wait Home exec.jsonl All lines to write valid JSON。"""
         exec_jsonl = self._run(tmp_path)
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
-        assert len(lines) >= 1, "exec.jsonl に行が書き込まれていない"
+        assert len(lines) >= 1, "exec.jsonl s are not written"
         for line in lines:
             try:
                 json.loads(line)
@@ -433,13 +435,13 @@ class TestEnqueueAndWaitJsonlIntegration:
                 pytest.fail(f"Invalid JSON line in exec.jsonl: {line!r}\n{e}")
 
     def test_exec_jsonl_no_comment_lines(self, tmp_path):
-        """exec.jsonl に # で始まる行（テキスト形式の冪等キー行）が含まれない。"""
+        """exec.jsonl Home # does not include lines starting with the idemic key line in the text format."""
         exec_jsonl = self._run(tmp_path)
         for line in exec_jsonl.read_text().splitlines():
             assert not line.startswith("#"), f"comment line found: {line!r}"
 
     def test_exec_jsonl_record_has_required_fields(self, tmp_path):
-        """書き込まれた JSON レコードに uuid / command / result_path が存在する。"""
+        """Write JSON Record uuid / command / result_path exist."""
         exec_jsonl = self._run(tmp_path)
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
@@ -448,14 +450,14 @@ class TestEnqueueAndWaitJsonlIntegration:
         assert "result_path" in record
 
     def test_exec_jsonl_idempotency_key_in_record_not_comment(self, tmp_path):
-        """idempotency_key が JSON フィールドとして埋め込まれ、コメント行として書かれない。"""
+        """idempotency_key Home JSON It is embedded as a field and cannot be written as a comment line."""
         exec_jsonl = self._run(tmp_path)
         content = exec_jsonl.read_text()
         assert '"idempotency_key"' in content
         assert "# idempotency:" not in content
 
     def test_exec_jsonl_cursor_engine_command_format(self, tmp_path):
-        """cursor エンジン時の command が agent -p < order_path 形式（TEXT_ONLY デフォルト）。"""
+        """cursor Engine command Home agent -p < order_path TypeTEXT_ONLY default)."""
         exec_jsonl = self._run(tmp_path, engine="cursor")
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
@@ -464,7 +466,7 @@ class TestEnqueueAndWaitJsonlIntegration:
         assert "--force" not in record["command"]
 
     def test_exec_jsonl_claude_engine_command_format(self, tmp_path):
-        """claude エンジン時の command が claude -p ... 形式（TEXT_ONLY デフォルト）。"""
+        """claude Engine command Home claude -p ... TypeTEXT_ONLY default)."""
         exec_jsonl = self._run(tmp_path, engine="claude", model="claude-sonnet-4-6")
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         record = json.loads(lines[0])
@@ -473,7 +475,7 @@ class TestEnqueueAndWaitJsonlIntegration:
         assert "--permission-mode default" in record["command"]
 
     def test_idempotency_prevents_duplicate_submission(self, tmp_path):
-        """同じ idempotency_key で 2 回呼ぶと exec.jsonl の行数が増えない。"""
+        """Same idempotency_key Home 2 Contact Us exec.jsonl No more lines."""
         jobs_dir = _make_jobs_dir(tmp_path)
         key = "scheduler:diary_review:2026-05-08T23:00:00+09:00"
 
@@ -496,11 +498,11 @@ class TestEnqueueAndWaitJsonlIntegration:
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         # Second call should be a no-op due to idempotency
         assert len(lines) == 1, (
-            f"idempotency が機能していない: {len(lines)} 行書き込まれた"
+            f"idempotency not working: {len(lines)} lines written"
         )
 
     def test_timeout_returns_false(self, tmp_path):
-        """wait_for_result が TimeoutError を送出したとき (False, 'timeout ...') を返す。"""
+        """wait_for_result Home TimeoutError When sending out (False, 'timeout ...') """
         jobs_dir = _make_jobs_dir(tmp_path)
 
         with patch(_WAIT, side_effect=TimeoutError):
@@ -519,7 +521,7 @@ class TestEnqueueAndWaitJsonlIntegration:
         assert "1.0" in msg
 
     def test_timeout_exec_jsonl_still_valid(self, tmp_path):
-        """タイムアウトしても exec.jsonl に書き込んだ行は valid JSON のまま。"""
+        """Timeout exec.jsonl s written to valid JSON Contact Us"""
         jobs_dir = _make_jobs_dir(tmp_path)
 
         with patch(_WAIT, side_effect=TimeoutError):
@@ -540,13 +542,13 @@ class TestEnqueueAndWaitJsonlIntegration:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_and_wait — permission 透過テスト（Issue #2191）
+# enqueue_and_wait — permission Transmittance TestIssue #2191）
 # ---------------------------------------------------------------------------
 
 
 class TestEnqueueAndWaitPermissionPassthrough:
     def test_permission_none_passed_to_step_config(self, tmp_path):
-        """permission 未指定時、StepConfig.permission が None であること。"""
+        """permission When not specified,StepConfig.permission Home None to be."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -576,7 +578,7 @@ class TestEnqueueAndWaitPermissionPassthrough:
         assert captured_steps[0].permission is None
 
     def test_permission_dangerous_full_access_passed_to_step_config(self, tmp_path):
-        """permission='dangerous_full_access' 指定時、StepConfig.permission に設定されること。"""
+        """permission='dangerous_full_access' When specified,StepConfig.permission set."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -608,15 +610,15 @@ class TestEnqueueAndWaitPermissionPassthrough:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_and_wait — プロンプト受け渡しテスト
+# enqueue_and_wait — Prompt delivery test
 # ---------------------------------------------------------------------------
 
 
 class TestEnqueueAndWaitPromptPassthrough:
-    """enqueue_and_wait はペルソナ変換を行わず、prompt をそのまま submit する。"""
+    """enqueue_and_wait does not conduct persona conversion,prompt Close submit """
 
     def test_prompt_passed_as_is_to_submit(self, tmp_path):
-        """書式変換済み prompt が submit に渡されること（bridge 側で変換しない）。"""
+        """Format converted prompt Home submit to be passedbridge do not convert by side)."""
         jobs_dir = _make_jobs_dir(tmp_path)
         submitted_templates = []
 
@@ -629,7 +631,7 @@ class TestEnqueueAndWaitPromptPassthrough:
                 submitted_templates.append(step.template)
             return original_submit(self_api, steps, **kwargs)
 
-        pre_formatted = "ペルソナ書式変換済みプロンプト（呼び出し元が事前適用済み）"
+        pre_formatted = "Persona format converted prompt (pre-ap  by the caller)"
 
         with (
             patch.object(LLMPipelineAPI, "submit", capture_submit),
@@ -653,7 +655,7 @@ class TestEnqueueAndWaitPromptPassthrough:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_dag — DAG 投入テスト（AC-1〜AC-7）
+# enqueue_dag — DAG Input TestAC-1〜AC-7）
 # ---------------------------------------------------------------------------
 
 
@@ -667,10 +669,10 @@ def _make_jobs_dir_dag(tmp_path: Path) -> tuple[Path, Path]:
 
 
 class TestEnqueueDag:
-    """enqueue_dag() の受け入れ条件テスト。"""
+    """enqueue_dag() Acceptance test."""
 
     def test_ac1_two_step_linear_dag_submit(self, tmp_path):
-        """AC-1: 2ステップ線形 DAG が s1→s2 の順で submit されること（逐次投入モデル）。"""
+        """AC-1: 2Step Linear DAG Home s1→s2 in order submit (separate model)."""
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
 
@@ -700,16 +702,16 @@ class TestEnqueueDag:
             except (StopIteration, OSError):
                 pass
 
-        # 逐次投入: submit は 1 ステップずつ、s1 → s2 の順で呼ばれる
+        # Contact Us: submit Home 1 step by steps1 → s2 called in the order of
         assert len(captured_steps) == 2
         assert captured_steps[0].id == "s1"
         assert captured_steps[1].id == "s2"
-        # 逐次投入では depends は空（順序制御は enqueue_dag 側が担保）
+        # In se tial input depends empty (order control) enqueue_dag collateral)
         assert captured_steps[0].depends == []
         assert captured_steps[1].depends == []
 
     def test_ac2_pre_formatted_prompts_passed_as_is(self, tmp_path):
-        """AC-2: 呼び出し元が事前変換済みの prompt を DagStep に渡すと、そのまま submit される。"""
+        """AC-2: The caller is pre-converted prompt Home DagStep If you pass to submit """
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
 
@@ -728,8 +730,8 @@ class TestEnqueueDag:
             try:
                 enqueue_dag(
                     steps=[
-                        DagStep(id="s1", prompt="ペルソナ変換済み: 指示A", engine="claude"),
-                        DagStep(id="s2", prompt="指示B", engine="claude"),
+                        DagStep(id="s1", prompt="Persian Transformed: A", engine="claude"),
+                        DagStep(id="s2", prompt="B", engine="claude"),
                     ],
                     timeout=5.0,
                     idempotency_key=f"dag:ac2:{uuid.uuid4()}",
@@ -742,11 +744,11 @@ class TestEnqueueDag:
         assert len(captured_steps) == 2
         s1 = next(s for s in captured_steps if s.id == "s1")
         s2 = next(s for s in captured_steps if s.id == "s2")
-        assert s1.template == "ペルソナ変換済み: 指示A"
-        assert s2.template == "指示B"
+        assert s1.template == "Persian Transformed: A"
+        assert s2.template == "B"
 
     def test_ac3_empty_steps_raises_value_error(self, tmp_path):
-        """AC-3: 空リストで ValueError（'empty' を含むメッセージ）。"""
+        """AC-3: empty list ValueError（'empty' messages)."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
         with pytest.raises(ValueError, match="empty"):
@@ -759,7 +761,7 @@ class TestEnqueueDag:
             )
 
     def test_ac4_idempotency_prevents_duplicate_submission(self, tmp_path):
-        """AC-4: 冪等性による二重投入防止。"""
+        """AC-4: Anti-injection due to idemic properties."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         key = f"dag:ac4:{uuid.uuid4()}"
         steps = [
@@ -782,9 +784,9 @@ class TestEnqueueDag:
 
         exec_jsonl = jobs_dir / "exec.jsonl"
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
-        assert len(lines) == 2, f"冪等性チェック後も行が増えている: {len(lines)} 行"
+        assert len(lines) == 2, f"line count grew after idempotency check: {len(lines)} lines"
 
-        # 2回目の呼び出しは [(True, ""), (True, "")] を返す
+        # 2calls [(True, ""), (True, "")]
         with patch(_WAIT, return_value=("success", "")):
             second_result = enqueue_dag(
                 steps=steps,
@@ -796,7 +798,7 @@ class TestEnqueueDag:
         assert second_result == [(True, ""), (True, "")]
 
     def test_ac5_timeout_returns_false_with_message(self, tmp_path):
-        """AC-5: タイムアウト時に (False, 'timeout (Ns)') を返す。"""
+        """AC-5: Timeout (False, 'timeout (Ns)') """
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
         with patch(_WAIT, side_effect=TimeoutError):
@@ -817,14 +819,14 @@ class TestEnqueueDag:
         assert "timeout" in msg
 
     def test_ac6_existing_tests_still_pass(self):
-        """AC-6: このテスト自体が pass していれば既存テストは非破壊（pytest で確認済み）。"""
+        """AC-6: This test itself pass Existing tests are non-destructive (if any)pytest ed)."""
         # This test verifies the test suite can be collected without import errors.
         assert enqueue_and_wait is not None
         assert enqueue_dag is not None
         assert DagStep is not None
 
     def test_ac7_exec_jsonl_valid_json_with_required_fields(self, tmp_path):
-        """AC-7: exec.jsonl レコードの valid JSON 保証。"""
+        """AC-7: exec.jsonl Records valid JSON Warranty."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
         with patch(_WAIT, return_value=("success", "")):
@@ -844,27 +846,27 @@ class TestEnqueueDag:
 
         exec_jsonl = jobs_dir / "exec.jsonl"
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
-        assert len(lines) == 2, f"2 ステップ分の行が書き込まれていない: {len(lines)} 行"
+        assert len(lines) == 2, f"expected 2 step lines, got {len(lines)}"
         for line in lines:
             record = json.loads(line)
-            assert "uuid" in record, f"uuid フィールドがない: {record}"
-            assert "command" in record, f"command フィールドがない: {record}"
-            assert "result_path" in record, f"result_path フィールドがない: {record}"
+            assert "uuid" in record, f"missing uuid field: {record}"
+            assert "command" in record, f"missing command field: {record}"
+            assert "result_path" in record, f"missing result_path field: {record}"
 
 
 # ---------------------------------------------------------------------------
-# enqueue_and_wait — result 読み取りテスト
-# （md_read をモックして result content の取得を検証）
+# enqueue_and_wait — result Read Test
+# （md_read  result content Verify acquisition)
 # ---------------------------------------------------------------------------
 
 _MD_READ = "mltgnt.bridges.ghdag_bridge.md_read"
 
 
 class TestEnqueueAndWaitResultRead:
-    """result ファイル読み取りが ghdag.files.md_read 経由で行われることを検証する。"""
+    """result File reading ghdag.files.md_read Verify what is done via."""
 
     def test_success_uses_md_read(self, tmp_path):
-        """wait_for_result が success のとき md_read 経由で content を返す。"""
+        """wait_for_result Home success Home md_read via content """
         jobs_dir = _make_jobs_dir(tmp_path)
         mock_md = MagicMock()
         mock_md.content = "result text"
@@ -886,7 +888,7 @@ class TestEnqueueAndWaitResultRead:
         mock_read.assert_called_once()
 
     def test_result_not_found_returns_empty(self, tmp_path):
-        """result ファイルが存在しないとき content="" を返す。"""
+        """result When the file does not exist content="" """
         jobs_dir = _make_jobs_dir(tmp_path)
 
         with patch(_WAIT, return_value=("success", "")), \
@@ -905,7 +907,7 @@ class TestEnqueueAndWaitResultRead:
         assert content == ""
 
     def test_frontmatter_stripped_from_result(self, tmp_path):
-        """result ファイルに frontmatter があっても content のみが返る。"""
+        """result File frontmatter Contact Us content only returns."""
         jobs_dir = _make_jobs_dir(tmp_path)
         mock_md = MagicMock()
         mock_md.content = "body only"
@@ -926,7 +928,7 @@ class TestEnqueueAndWaitResultRead:
         assert content == "body only"
 
     def test_md_read_called_with_jobs_dir_as_repo_root(self, tmp_path):
-        """md_read の repo_root が jobs_dir になっていること。"""
+        """md_read Home repo_root Home jobs_dir """
         jobs_dir = _make_jobs_dir(tmp_path)
         mock_md = MagicMock()
         mock_md.content = ""
@@ -948,15 +950,15 @@ class TestEnqueueAndWaitResultRead:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_dag — データフロー・結果伝搬テスト（AC-8〜AC-12）
+# enqueue_dag — Data Flow Result Propagation TestAC-8〜AC-12）
 # ---------------------------------------------------------------------------
 
 
 class TestEnqueueDagDataFlow:
-    """AC-8〜AC-12: ステップ間の result 伝搬・逐次投入モデル検証。"""
+    """AC-8–AC-12: verify result propagation between steps and sequential input model."""
 
     def test_ac8_result_content_propagated_to_dependent_step(self, tmp_path):
-        """AC-8: step_a の result が step_b の base_context['step_a_result'] に伝搬される。"""
+        """AC-8: step_a result is propagated to step_b base_context['step_a_result']."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
@@ -968,6 +970,7 @@ class TestEnqueueDagDataFlow:
             return original_submit(self_api, step_list, base_context=base_context, **kwargs)
 
         mock_md_a = MagicMock()
+        # Japanese text intentionally kept for CJK processing test
         mock_md_a.content = "分析結果A"
         mock_md_b = MagicMock()
         mock_md_b.content = ""
@@ -979,8 +982,8 @@ class TestEnqueueDagDataFlow:
         ):
             results = enqueue_dag(
                 steps=[
-                    DagStep(id="step_a", prompt="指示A", engine="cursor"),
-                    DagStep(id="step_b", prompt="$step_a_result を踏まえて", engine="cursor", depends=["step_a"]),
+                    DagStep(id="step_a", prompt="A", engine="cursor"),
+                    DagStep(id="step_b", prompt="$step_a_result Contact Us", engine="cursor", depends=["step_a"]),
                 ],
                 timeout=5.0,
                 idempotency_key=f"dag:ac8:{uuid.uuid4()}",
@@ -989,15 +992,16 @@ class TestEnqueueDagDataFlow:
             )
 
         assert len(captured_contexts) == 2
-        # step_b の submit 時に step_a_result が注入されている
+        # step_b Home submit Home step_a_result Injected
         step_b_context = captured_contexts[1]
         assert "step_a_result" in step_b_context
+        # Japanese text intentionally kept for CJK processing test
         assert step_b_context["step_a_result"] == "分析結果A"
-        # step_a は成功
+        # step_a Success
         assert results[0] == (True, "分析結果A")
 
     def test_ac9_independent_steps_no_cross_context(self, tmp_path):
-        """AC-9: depends なしのステップの base_context に他ステップの _result が含まれない。"""
+        """AC-9: depends No Steps base_context to other steps _result not included."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
@@ -1016,7 +1020,7 @@ class TestEnqueueDagDataFlow:
             enqueue_dag(
                 steps=[
                     DagStep(id="step_a", prompt="P_a", engine="cursor"),
-                    DagStep(id="step_b", prompt="P_b", engine="cursor"),  # depends なし
+                    DagStep(id="step_b", prompt="P_b", engine="cursor"),  # depends None
                 ],
                 timeout=5.0,
                 idempotency_key=f"dag:ac9:{uuid.uuid4()}",
@@ -1025,13 +1029,13 @@ class TestEnqueueDagDataFlow:
             )
 
         assert len(captured_contexts) == 2
-        # step_a の context に step_b_result がない
+        # step_a Home context Home step_b_result None
         assert "step_b_result" not in captured_contexts[0]
-        # step_b の context に step_a_result がない（depends していない）
+        # step_b Home context Home step_a_result Nonedepends not)
         assert "step_a_result" not in captured_contexts[1]
 
     def test_ac10_user_context_overrides_auto_injection(self, tmp_path):
-        """AC-10: ユーザー指定 context が自動注入より優先される。"""
+        """AC-10: User specification context precedes auto injection."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
@@ -1043,7 +1047,7 @@ class TestEnqueueDagDataFlow:
             return original_submit(self_api, step_list, base_context=base_context, **kwargs)
 
         mock_md_a = MagicMock()
-        mock_md_a.content = "自動注入値"
+        mock_md_a.content = "auto-injected value"
         mock_md_b = MagicMock()
         mock_md_b.content = ""
 
@@ -1054,13 +1058,13 @@ class TestEnqueueDagDataFlow:
         ):
             enqueue_dag(
                 steps=[
-                    DagStep(id="step_a", prompt="指示A", engine="cursor"),
+                    DagStep(id="step_a", prompt="A", engine="cursor"),
                     DagStep(
                         id="step_b",
-                        prompt="$step_a_result を踏まえて",
+                        prompt="$step_a_result Contact Us",
                         engine="cursor",
                         depends=["step_a"],
-                        context={"step_a_result": "カスタム値"},
+                        context={"step_a_result": "custom value"},
                     ),
                 ],
                 timeout=5.0,
@@ -1070,11 +1074,11 @@ class TestEnqueueDagDataFlow:
             )
 
         assert len(captured_contexts) == 2
-        # ユーザー指定値が自動注入を上書きする
-        assert captured_contexts[1]["step_a_result"] == "カスタム値"
+        # Overwrite auto injection directly from user specified
+        assert captured_contexts[1]["step_a_result"] == "custom value"
 
     def test_ac11_failed_step_prevents_dependent_submission(self, tmp_path):
-        """AC-11: 先行ステップ失敗時、依存する後続ステップが submit されない。"""
+        """AC-11: The following steps depend on the previous step failure submit not."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
@@ -1101,18 +1105,18 @@ class TestEnqueueDagDataFlow:
                 exec_done_dir=done_dir,
             )
 
-        # step_a は submit されたが step_b は submit されていない
+        # step_a Home submit  step_b Home submit Unrated
         assert "step_a" in submitted_ids
         assert "step_b" not in submitted_ids
-        # 両方 False
+        # both False
         assert results[0][0] is False
         assert results[1][0] is False
 
     def test_ac12_backward_compat_no_context_field(self, tmp_path):
-        """AC-12: context 未指定の既存呼び出しパターンが後方互換で動作する。"""
+        """AC-12: context Unspecified existing call pattern works backward."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
-        # context フィールドなしで DagStep を生成できる
+        # context Without Field DagStep rate
         step = DagStep(id="s1", prompt="P1", engine="cursor")
         assert step.context == {}
 
@@ -1376,7 +1380,7 @@ class TestTypecheckDag:
 
 class TestEnqueueDagTypecheck:
     def test_enqueue_dag_typecheck_on_by_default(self, tmp_path):
-        """SKILL_IO_TYPECHECK 未設定では typecheck を実行（mismatch で SkillIOTypeError）。"""
+        """SKILL_IO_TYPECHECK Unset typecheck Run()mismatch Home SkillIOTypeError）。"""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         skills = {
             "upstream": _skill_meta(
@@ -1418,7 +1422,7 @@ class TestEnqueueDagTypecheck:
         assert (jobs_dir / "exec.jsonl").read_text().strip() == ""
 
     def test_enqueue_dag_typecheck_off_with_zero(self, tmp_path):
-        """SKILL_IO_TYPECHECK=0 では typecheck をスキップ（mismatch でも通過）。"""
+        """SKILL_IO_TYPECHECK=0 Home typecheck Skip to contentmismatch 。"""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         skills = {
             "upstream": _skill_meta(
@@ -1516,10 +1520,10 @@ class TestEnqueueDagTypecheck:
 
 
 class TestFanoutPermissionInheritance:
-    """enqueue_dag() の permission パラメータが StepConfig に伝搬されることを検証する。"""
+    """enqueue_dag() propagates permission parameters onto StepConfig."""
 
     def test_permission_passed_to_step_config(self, tmp_path):
-        """permission='dangerous_full_access' を指定すると各 StepConfig に伝搬される。"""
+        """permission='dangerous_full_access' is propagated to each StepConfig."""
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
 
@@ -1553,7 +1557,7 @@ class TestFanoutPermissionInheritance:
             assert step.permission == "dangerous_full_access"
 
     def test_permission_none_when_not_specified(self, tmp_path):
-        """permission 未指定時は各 StepConfig の permission が None になる。"""
+        """permission Not specified StepConfig Home permission Home None Contact Us"""
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
 
@@ -1582,7 +1586,7 @@ class TestFanoutPermissionInheritance:
         assert captured_steps[0].permission is None
 
     def test_backward_compat_existing_callers(self, tmp_path):
-        """既存の enqueue_dag() 呼び出し（permission 未指定）が後方互換で動作する。"""
+        """Existing enqueue_dag() Callspermission Unspecified) works backward compatible."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
         with patch(_WAIT, return_value=("success", "")):
@@ -1602,7 +1606,7 @@ class TestFanoutPermissionInheritance:
 
 
 # ---------------------------------------------------------------------------
-# compose_pipeline / PIPELINE_STATUS 伝搬（Issue #3031）
+# compose_pipeline / PIPELINE_STATUS PropagationIssue #3031）
 # ---------------------------------------------------------------------------
 
 
@@ -1621,7 +1625,7 @@ def _match_result(
 
 
 class TestComposePipeline:
-    """AC-1 / AC-3: match_results → DagStep 列の合成。"""
+    """AC-1 / AC-3: match_results → DagStep Syn  of columns."""
 
     def test_linear_pipe_depends_and_step_ids(self):
         upstream = _skill_meta(
@@ -1709,7 +1713,7 @@ class TestComposePipeline:
 
 
 class TestEnqueueDagPipelineStatus:
-    """AC-2: PIPELINE_STATUS 抽出・注入・INVALID_STATE で downstream 抑止。"""
+    """AC-2: PIPELINE_STATUS Extraction / Injection /INVALID_STATE Home downstream ."""
 
     def test_pipeline_status_injected_into_downstream_context(self, tmp_path):
         from ghdag.pipeline import LLMPipelineAPI
@@ -1723,9 +1727,10 @@ class TestEnqueueDagPipelineStatus:
             return original_submit(self_api, step_list, base_context=base_context, **kwargs)
 
         mock_md_a = MagicMock()
+        # Japanese text intentionally kept for CJK processing test
         mock_md_a.content = "分析結果\nPIPELINE_STATUS: OK\n"
         mock_md_b = MagicMock()
-        mock_md_b.content = "要約"
+        mock_md_b.content = "summary"
 
         with (
             patch.object(LLMPipelineAPI, "submit", capture_submit),
@@ -1797,7 +1802,7 @@ class TestEnqueueDagPipelineStatus:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_step / poll_step — loops サブタスク実行（Issue #2511）
+# enqueue_step / poll_step — loops Subtask executionIssue #2511）
 # ---------------------------------------------------------------------------
 
 

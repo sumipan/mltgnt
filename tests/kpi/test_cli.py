@@ -1,4 +1,4 @@
-"""KPI CLI 出力テスト。"""
+"""KPI CLI output tests."""
 from __future__ import annotations
 
 import json

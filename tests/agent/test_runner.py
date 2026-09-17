@@ -1,11 +1,11 @@
-"""tests/agent/test_runner.py — AgentRunner の受け入れ条件テスト (#287)"""
+"""tests/agent/test_runner.py — AgentRunner acceptance tests (#287)"""
 from mltgnt.agent import AgentRunner
 
 
 # ---- helpers ----
 
 def make_llm(responses: list):
-    """呼び出されるたびに responses から順に返す llm_call モック。"""
+    """llm_call mock that returns responses in order."""
     calls = iter(responses)
 
     def llm_call(prompt: str, *, tool_result: str | None = None) -> str | None:
@@ -15,16 +15,16 @@ def make_llm(responses: list):
 
 
 def make_executor(results: dict):
-    """tool_name をキーに結果を返す tool_executor モック。"""
+    """tool_executor mock keyed by tool_name."""
     def executor(tool_name: str, tool_args: dict) -> str:
         return results[tool_name]
     return executor
 
 
-# ---- 正常系 ----
+# ---- happy path ----
 
 def test_terminal_tool_immediate():
-    """#1: 終端ツールが即座に返る。"""
+    """#1: terminal tool returns immediately."""
     runner = AgentRunner(
         llm_call=make_llm(['{"tool": "slack_reply", "args": {"message": "hello"}}']),
         tool_executor=make_executor({}),
@@ -37,7 +37,7 @@ def test_terminal_tool_immediate():
 
 
 def test_two_step_non_terminal_then_terminal():
-    """#2: 非終端→終端の2ステップ。tool_trace が記録される。"""
+    """#2: non-terminal then terminal; tool_trace is recorded."""
     runner = AgentRunner(
         llm_call=make_llm([
             '{"tool": "search", "args": {"q": "x"}}',
@@ -57,7 +57,7 @@ def test_two_step_non_terminal_then_terminal():
 
 
 def test_json_in_code_block():
-    """#3: コードブロック内 JSON が正しくパースされる。"""
+    """#3: JSON inside a code block is parsed correctly."""
     raw = '```json\n{"tool": "done", "args": {}}\n```'
     runner = AgentRunner(
         llm_call=make_llm([raw]),
@@ -70,7 +70,7 @@ def test_json_in_code_block():
 
 
 def test_args_key_required():
-    """v0.8.0: args キーなし JSON はパース失敗。"""
+    """v0.8.0: JSON without args key fails to parse."""
     runner = AgentRunner(
         llm_call=make_llm(['{"tool": "slack_reply", "message": "hi"}']),
         tool_executor=make_executor({}),
@@ -79,10 +79,10 @@ def test_args_key_required():
     assert runner.run("prompt") is None
 
 
-# ---- 異常系 ----
+# ---- error path ----
 
 def test_llm_returns_none():
-    """#5: LLM が None を返す → run() が None を返す。"""
+    """#5: LLM returns None → run() returns None."""
     runner = AgentRunner(
         llm_call=make_llm([None]),
         tool_executor=make_executor({}),
@@ -92,7 +92,7 @@ def test_llm_returns_none():
 
 
 def test_json_parse_failure():
-    """#6: JSON パース失敗 → run() が None を返す。"""
+    """#6: JSON parse failure → run() returns None."""
     runner = AgentRunner(
         llm_call=make_llm(["I don't know"]),
         tool_executor=make_executor({}),
@@ -102,7 +102,7 @@ def test_json_parse_failure():
 
 
 def test_missing_tool_key():
-    """#7: tool キーなし → run() が None を返す。"""
+    """#7: missing tool key → run() returns None."""
     runner = AgentRunner(
         llm_call=make_llm(['{"action": "reply"}']),
         tool_executor=make_executor({}),
@@ -112,7 +112,7 @@ def test_missing_tool_key():
 
 
 def test_max_iterations_exceeded():
-    """#8: max_iterations 超過（非終端ツールが3回連続）→ run() が None を返す。"""
+    """#8: max_iterations exceeded (3 non-terminal tools) → run() returns None."""
     runner = AgentRunner(
         llm_call=make_llm([
             '{"tool": "search", "args": {"q": "a"}}',
@@ -127,7 +127,7 @@ def test_max_iterations_exceeded():
 
 
 def test_tool_executor_raises_exception():
-    """#9: tool_executor が例外を送出 → ループ中断、run() が None を返す。"""
+    """#9: tool_executor raises → loop stops, run() returns None."""
     def failing_executor(tool_name: str, tool_args: dict) -> str:
         raise RuntimeError("network error")
 
@@ -139,17 +139,17 @@ def test_tool_executor_raises_exception():
     assert runner.run("prompt") is None
 
 
-# ---- import 確認 ----
+# ---- import checks ----
 
 def test_import():
-    """#11: mltgnt.agent から AgentRunner, AgentResult が import できる。"""
+    """#11: AgentRunner, AgentResult importable from mltgnt.agent."""
     from mltgnt.agent import AgentRunner  # noqa: F401
 
 
 # ---- audit_writer ----
 
 def test_audit_writer_called_for_non_terminal_tool():
-    """AC-1: 非終端ツール実行時に audit_writer が1回呼ばれる。"""
+    """AC-1: audit_writer called once for a non-terminal tool."""
     calls = []
 
     def mock_writer(name, args, result):
@@ -170,7 +170,7 @@ def test_audit_writer_called_for_non_terminal_tool():
 
 
 def test_audit_writer_not_called_for_terminal_tool():
-    """AC-2: ターミナルツールのみの場合 audit_writer は呼ばれない。"""
+    """AC-2: audit_writer not called for terminal-only tools."""
     calls = []
     runner = AgentRunner(
         llm_call=make_llm(['{"tool": "slack_reply", "args": {"message": "hi"}}']),
@@ -183,7 +183,7 @@ def test_audit_writer_not_called_for_terminal_tool():
 
 
 def test_audit_writer_none_default_compat():
-    """AC-3: audit_writer=None（デフォルト）で既存テスト全パス。"""
+    """AC-3: audit_writer=None (default) keeps existing tests passing."""
     runner = AgentRunner(
         llm_call=make_llm([
             '{"tool": "search", "args": {"q": "x"}}',
@@ -198,7 +198,7 @@ def test_audit_writer_none_default_compat():
 
 
 def test_audit_writer_exception_does_not_break_loop():
-    """AC-4: audit_writer が例外を送出してもループは中断しない。"""
+    """AC-4: audit_writer exceptions do not abort the loop."""
     def failing_writer(name, args, result):
         raise RuntimeError("audit write failed")
 
@@ -217,7 +217,7 @@ def test_audit_writer_exception_does_not_break_loop():
 
 
 def test_audit_writer_called_for_each_non_terminal_tool():
-    """AC-5: 複数の非終端ツール呼び出しで audit_writer が毎回呼ばれる。"""
+    """AC-5: audit_writer called on every non-terminal tool invocation."""
     calls = []
     runner = AgentRunner(
         llm_call=make_llm([

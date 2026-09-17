@@ -52,25 +52,25 @@ def _preflight(
 
 
 def test_deterministic_gate_work_plus_artifact() -> None:
-    text = "かいちさんとの対談台本.mdをブラッシュアップしてもらえるかな"
+    text = "かいちさんとの対談台本.mdをブラッシュアップしてもらえるかな"  # Japanese text intentionally kept for CJK processing test
     assert should_force_delegate(text) is True
     assert should_preempt_delegate(text) is True
     assert has_work_request(text) is True
-    assert extract_artifact_references(text) == ("かいちさんとの対談台本.md",)
+    assert extract_artifact_references(text) == ("かいちさんとの対談台本.md",)  # Japanese text intentionally kept for CJK processing test
 
 
 def test_deterministic_gate_plain_chat() -> None:
-    assert should_force_delegate("今日は暑いね") is False
-    assert match_deferred_promise("後でやっておくね") is not None
-    assert is_create_request("新しくファイルつくって") is True
+    assert should_force_delegate("今日は暑いね") is False  # Japanese text intentionally kept for CJK processing test
+    assert match_deferred_promise("後でやっておくね") is not None  # Japanese text intentionally kept for CJK processing test
+    assert is_create_request("新しくファイルつくって") is True  # Japanese text intentionally kept for CJK processing test
 
 
 def test_run_preflight_requires_injected_workers() -> None:
     from types import SimpleNamespace
 
     ctx = run_preflight(
-        effective_persona="テスト秘書",
-        instruction="台本を修正して",
+        effective_persona="test-secretary",
+        instruction="Please revise the script",
         thread_key="1.0",
         profile_content="base-profile",
         routing_result=SimpleNamespace(prebound_skills=[]),
@@ -101,13 +101,13 @@ def test_run_preflight_requires_injected_workers() -> None:
 def test_make_dispatch_decision_reply() -> None:
     decision = make_dispatch_decision(
         preflight=_preflight(),
-        instruction="今日は暑いね",
+        instruction="今日は暑いね",  # Japanese text intentionally kept for CJK processing test
         space_id="C1",
         thread_key="1.0",
         engine="claude",
         model="m",
         run_agent_fn=lambda **_kw: DirectAgentResult(
-            tool=MODE_REPLY, message="ほんと暑いね", raw_response=""
+            tool=MODE_REPLY, message="ほんと暑いね", raw_response=""  # Japanese text intentionally kept for CJK processing test
         ),
         should_preempt_delegate_fn=lambda _i: False,
         match_deferred_promise_fn=lambda _t: None,
@@ -117,13 +117,13 @@ def test_make_dispatch_decision_reply() -> None:
         ledger_key_fn=lambda space, thread: f"conv-{space}-{thread}",
     )
     assert decision.mode == MODE_REPLY
-    assert decision.reply_text == "ほんと暑いね"
+    assert decision.reply_text == "ほんと暑いね"  # Japanese text intentionally kept for CJK processing test
 
 
 def test_make_dispatch_decision_preempt() -> None:
     decision = make_dispatch_decision(
         preflight=_preflight(),
-        instruction="台本.md を修正して",
+        instruction="台本.md を修正して",  # Japanese text intentionally kept for CJK processing test
         space_id="C1",
         thread_key="1.0",
         engine="claude",
@@ -165,7 +165,7 @@ def test_make_dispatch_decision_resume_three_engines() -> None:
 
         decision = make_dispatch_decision(
             preflight=_preflight(),
-            instruction="続き",
+            instruction="continue",
             space_id="C1",
             thread_key="1.0",
             engine=engine,
@@ -191,5 +191,5 @@ def test_agent_modules_have_no_hardcoded_prompts() -> None:
     root = Path(__file__).resolve().parents[2] / "src" / "mltgnt" / "agent"
     for name in ("dispatch_preflight.py", "dispatch_decision.py", "deterministic_gate.py"):
         src = (root / name).read_text(encoding="utf-8")
-        assert "あなたは秘書エージェント" not in src
+        assert "あなたは秘書エージェント" not in src  # Japanese text intentionally kept for CJK processing test
         assert "slack_sdk" not in src

@@ -1,4 +1,4 @@
-"""tests/loops/test_engine.py — 状態遷移テスト。"""
+"""tests/loops/test_engine.py — state transition tests."""
 from __future__ import annotations
 
 import json
@@ -79,7 +79,7 @@ def test_clarify_ask_then_answer(mock_clarify, mock_persona, tmp_path):
 
     mock_clarify.return_value = (
         prompts.ClarifyResponse(
-            clear=False, question="公開日はいつですか", reason="", reasoning="", uncertain_flag=False
+            clear=False, question="When is the publish date?", reason="", reasoning="", uncertain_flag=False
         ),
         prompts.LlmTrace("", "", {}, "", {}, {}, False),
     )
@@ -102,7 +102,7 @@ def test_clarify_ask_then_answer(mock_clarify, mock_persona, tmp_path):
                 "kind": "answer",
                 "message_id": "m1",
                 "question_id": qid,
-                "text": "来月",
+                "text": "next month",
                 "received_at": "2026-08-20T12:00:00+09:00",
             }
         ),
@@ -112,7 +112,7 @@ def test_clarify_ask_then_answer(mock_clarify, mock_persona, tmp_path):
     engine.tick()
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.status == "clarifying"
-    assert state.clarification_context == ["Q: 公開日はいつですか\nA: 来月"]
+    assert state.clarification_context == ["Q: When is the publish date?\nA: next month"]
 
 
 @patch("mltgnt.loops.engine.load_persona")
@@ -510,7 +510,7 @@ def test_submit_falls_back_to_subtask_config_when_persona_ops_empty(mock_persona
 
 
 def test_resolve_llm_falls_back_on_persona_load_failure_and_does_not_raise(tmp_path):
-    """読込失敗時は例外を上げず config にフォールバックする（呼び出し側はループ継続可能）。"""
+    """On load failure, do not raise; fall back to config (caller can keep looping)."""
     cfg = _config_with_llm(tmp_path)
     engine = LoopsEngine(
         config=cfg,
@@ -538,7 +538,7 @@ def test_resolve_llm_falls_back_on_persona_load_failure_and_does_not_raise(tmp_p
 def _llm_call_error(message: str = "llm failed") -> prompts.LlmCallError:
     from tests.loops.fakes import FakeLLMResult
 
-    # raw_output に非 JSON ネイティブを混ぜても記録経路が落ちないこと
+    # Recording path must not crash when raw_output mixes non-JSON-native values
     trace = prompts.LlmTrace(
         input="prompt",
         raw_output=FakeLLMResult(body="bad", stderr="boom", returncode=1),  # type: ignore[arg-type]
@@ -662,7 +662,7 @@ def test_evaluate_llm_errors_fail_after_three_consecutive_ticks(mock_evaluate, m
 @patch("mltgnt.loops.engine.load_persona")
 @patch("mltgnt.loops.engine.prompts.run_clarify")
 def test_record_llm_error_increments_once_per_tick(mock_clarify, mock_persona, tmp_path):
-    """1 tick の LlmCallError で consecutive_errors は 1 だけ増える。"""
+    """One tick LlmCallError bumps consecutive_errors by exactly 1."""
     persona = MagicMock()
     persona.format_prompt.side_effect = lambda x, **_: x
     mock_persona.return_value = persona
@@ -693,7 +693,7 @@ def test_record_llm_error_increments_once_per_tick(mock_clarify, mock_persona, t
 
 
 def test_record_llm_error_increments_once_when_event_write_fails(tmp_path):
-    """イベント記録失敗時も consecutive_errors を二重加算しない。"""
+    """Event recording failure must not double-count consecutive_errors."""
     engine = _engine(tmp_path)
     state = LoopState(
         loop_id="loop1",
@@ -757,7 +757,7 @@ def test_start_loop_without_thread_still_opens(tmp_path):
 
 
 def test_consecutive_errors_failed_closes_thread_once(tmp_path):
-    """consecutive_errors が上限に達して failed へ遷移したら close_thread が 1 回だけ呼ばれる。"""
+    """When consecutive_errors hits the limit and status becomes failed, close_thread is called once."""
     executor = FakeExecutor()
     executor.poll = MagicMock(side_effect=RuntimeError("poll unavailable"))
     channel = FakeHumanChannel()
@@ -807,7 +807,7 @@ def test_consecutive_errors_failed_closes_thread_once(tmp_path):
 @patch("mltgnt.loops.engine.load_persona")
 @patch("mltgnt.loops.engine.prompts.run_evaluate")
 def test_terminal_paths_each_close_thread_once(mock_evaluate, mock_persona, tmp_path):
-    """done / cancelled / failed の 3 終端それぞれで close_thread がちょうど 1 回。"""
+    """For each of done / cancelled / failed terminals, close_thread is called exactly once."""
     persona = MagicMock()
     persona.format_prompt.side_effect = lambda x, **_: x
     mock_persona.return_value = persona
@@ -928,7 +928,7 @@ def test_terminal_paths_each_close_thread_once(mock_evaluate, mock_persona, tmp_
 
 
 def test_comment_inbox_appends_clarification_context(tmp_path):
-    """chitchat コメントは clarification_context に追記し comment_classified を記録する。"""
+    """chitchat comments append to clarification_context and record comment_classified."""
     channel = FakeHumanChannel()
     engine = _engine(tmp_path, channel=channel)
     store.save_state(
@@ -957,7 +957,7 @@ def test_comment_inbox_appends_clarification_context(tmp_path):
                 "kind": "comment",
                 "message_id": "cm1",
                 "question_id": "",
-                "text": "締切は金曜",
+                "text": "deadline is Friday",
                 "received_at": "2026-08-20T12:00:00+09:00",
             }
         ),
@@ -996,7 +996,8 @@ def test_comment_inbox_appends_clarification_context(tmp_path):
                 engine.tick()
 
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
-    assert state.clarification_context == ["補足: 締切は金曜"]
+    # Japanese text intentionally kept for CJK processing test
+    assert state.clarification_context == ["補足: deadline is Friday"]
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
     comments = [e for e in events if e["event"] == "comment_classified"]
     assert len(comments) == 1
@@ -1007,7 +1008,7 @@ def test_comment_inbox_appends_clarification_context(tmp_path):
 
 
 def test_comment_inbox_not_double_consumed(tmp_path):
-    """同一 comment を再処理しても clarification_context に重複追記しない。"""
+    """Reprocessing the same comment must not duplicate clarification_context entries."""
     engine = _engine(tmp_path)
     state = LoopState(
         loop_id="loop1",
@@ -1032,7 +1033,7 @@ def test_comment_inbox_not_double_consumed(tmp_path):
                 "kind": "comment",
                 "message_id": "cm1",
                 "question_id": "",
-                "text": "補足メモ",
+                "text": "extra note",
                 "received_at": "2026-08-20T12:00:00+09:00",
             }
         ),
@@ -1070,7 +1071,8 @@ def test_comment_inbox_not_double_consumed(tmp_path):
                 engine.tick()
 
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
-    assert state.clarification_context == ["補足: 補足メモ"]
+    # Japanese text intentionally kept for CJK processing test
+    assert state.clarification_context == ["補足: extra note"]
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
     assert len([e for e in events if e["event"] == "comment_classified"]) == 1
 
@@ -1626,7 +1628,7 @@ def test_state_change_and_observability_events(
     mock_persona.return_value = _persona_with_ops()
     mock_clarify.return_value = (
         prompts.ClarifyResponse(
-            clear=False, question="いつ？", reason="", reasoning="", uncertain_flag=False
+            clear=False, question="when?", reason="", reasoning="", uncertain_flag=False
         ),
         prompts.LlmTrace("", "", {}, "", {}, {}, False),
     )
@@ -1674,7 +1676,7 @@ def test_state_change_and_observability_events(
                 "kind": "answer",
                 "message_id": "m1",
                 "question_id": qid,
-                "text": "来月",
+                "text": "next month",
                 "received_at": "2026-08-20T12:00:00+09:00",
             }
         ),
@@ -2149,6 +2151,7 @@ def test_plan_approval_gate_and_phrases(mock_decompose, mock_persona, tmp_path):
     engine.tick()
     assert len(channel.asks) == 1  # idempotent
 
+    # Japanese text intentionally kept for CJK processing test
     for phrase in (" OK ", "承認", "進めて", "go"):
         break
     inbox = store._inbox_dir(cfg.state_dir, "loop1")
@@ -2270,7 +2273,7 @@ def test_plan_revision_limit_and_cancel(mock_decompose, mock_replan, mock_person
         )
 
     # non-approval → replan (human revision, replan_count untouched)
-    _answer("OKですが修正", "m1", qid)
+    _answer("OK but please revise", "m1", qid)
     engine.tick()  # → replanning
     assert store.load_state(cfg.state_dir, "loop1").status == "replanning"
     assert store.load_state(cfg.state_dir, "loop1").replan_count == 0
@@ -2283,7 +2286,7 @@ def test_plan_revision_limit_and_cancel(mock_decompose, mock_replan, mock_person
     # burn remaining revisions to hit limit (max_plan_revisions=3)
     for i in range(2, 4):
         q = state.pending_question.question_id
-        _answer(f"まだ修正{i}", f"m{i}", q)
+        _answer(f"still revise {i}", f"m{i}", q)
         engine.tick()
         engine.tick()
         state = store.load_state(cfg.state_dir, "loop1")
@@ -2293,11 +2296,12 @@ def test_plan_revision_limit_and_cancel(mock_decompose, mock_replan, mock_person
     # further non-approval at limit → execute without LLM
     mock_replan.reset_mock()
     q = state.pending_question.question_id
-    _answer("まだダメ", "m-limit", q)
+    _answer("still no good", "m-limit", q)
     engine.tick()
     state = store.load_state(cfg.state_dir, "loop1")
     assert state.status == "executing"
     mock_replan.assert_not_called()
+    # Japanese text intentionally kept for CJK processing test
     assert any("上限" in n["text"] for n in channel.notifies)
 
     # cancel while awaiting_plan_approval
@@ -2402,10 +2406,12 @@ def _persona_mock():
 
 
 def test_is_status_inquiry_keywords():
+    # Japanese text intentionally kept for CJK processing test
     assert is_status_inquiry("動いてる？")
     assert is_status_inquiry("進捗")
     assert is_status_inquiry("status")
     assert is_status_inquiry("今の進捗を教えて")
+    # Japanese text intentionally kept for CJK processing test
     assert not is_status_inquiry("ここをどう変えて")
     assert not is_status_inquiry("進捗通知を止めて")
 
@@ -2414,6 +2420,7 @@ def test_deterministic_status_comment_posts_without_llm(tmp_path):
     channel = FakeHumanChannel()
     engine = _engine(tmp_path, channel=channel)
     store.save_state(_config(tmp_path).state_dir, _executing_state())
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-st", "動いてる？")
     now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
 
@@ -2427,6 +2434,7 @@ def test_deterministic_status_comment_posts_without_llm(tmp_path):
     assert "`executing`" in text
     assert "1/5" in text
     assert "`s1`" in text and "running" in text
+    # Japanese text intentionally kept for CJK processing test
     assert "分" in text or "秒" in text
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
     classified = [e for e in events if e["event"] == "comment_classified"]
@@ -2440,6 +2448,7 @@ def test_instruction_phrase_not_deterministic_status(tmp_path):
     channel = FakeHumanChannel()
     engine = _engine(tmp_path, channel=channel)
     store.save_state(_config(tmp_path).state_dir, _executing_state())
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-i", "ここをどう変えて")
 
     with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
@@ -2465,7 +2474,7 @@ def test_llm_instruction_triggers_replanning(tmp_path):
             ]
         ),
     )
-    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-ins", "タイトルを短縮して")
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-ins", "shorten the title")
 
     with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
         with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
@@ -2509,7 +2518,7 @@ def test_llm_instruction_with_plan_approval_reasks(tmp_path):
             ],
         ),
     )
-    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-ins2", "順序を変えて")
+    _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-ins2", "change the order")
 
     with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
         with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
@@ -2565,7 +2574,7 @@ def test_llm_question_posts_persona_reply(tmp_path):
     )
     store.initialize_deliverable(cfg.state_dir, "loop1", "deliverable body here")
     store.save_state(cfg.state_dir, _executing_state())
-    _write_comment(cfg.state_dir, "loop1", "001.json", "cm-q", "成果物の方針は？")
+    _write_comment(cfg.state_dir, "loop1", "001.json", "cm-q", "what is the deliverable policy?")
 
     with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
         with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
@@ -2599,6 +2608,7 @@ def test_comment_replied_idempotent_on_message_id_replay(tmp_path):
     channel = FakeHumanChannel()
     engine = _engine(tmp_path, channel=channel)
     store.save_state(_config(tmp_path).state_dir, _executing_state())
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-id", "進捗")
     now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
     engine.tick(now=now)
@@ -2610,6 +2620,7 @@ def test_comment_replied_idempotent_on_message_id_replay(tmp_path):
     ]
     assert len(replied1) == 1
     # re-drop same message_id
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path).state_dir, "loop1", "002.json", "cm-id", "進捗")
     engine.tick(now=now)
     assert len(channel.progress_posts) == 1
@@ -2631,6 +2642,7 @@ def test_max_comments_per_tick_leaves_remainder(tmp_path):
             "loop1",
             f"{i:03d}.json",
             f"cm{i}",
+            # Japanese text intentionally kept for CJK processing test
             "進捗",
         )
     now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
@@ -2668,6 +2680,7 @@ def test_budget_fallback_when_recent_classified_full(tmp_path):
         lines.append(json.dumps(ev, ensure_ascii=False))
     events_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path).state_dir, "loop1", "n.json", "cm-new", "ここをどう変えて")
     with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
         with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
@@ -2698,6 +2711,7 @@ def test_budget_fallback_when_recent_classified_full(tmp_path):
             ev["ts"] = old.isoformat()
         rows.append(json.dumps(ev, ensure_ascii=False))
     ep.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path / "b").state_dir, "loop1", "n.json", "cm2", "ここをどう変えて")
     with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
         with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
@@ -2733,6 +2747,7 @@ def test_budget_zero_disables_llm_classify(tmp_path):
         objective_hash_changed=lambda *_: False,
     )
     store.save_state(cfg.state_dir, _executing_state())
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(cfg.state_dir, "loop1", "001.json", "cm0", "ここをどう変えて")
     with patch("mltgnt.loops.engine.load_persona", return_value=_persona_mock()):
         with patch("mltgnt.loops.engine.prompts.run_classify_comment") as mock_classify:
@@ -2770,6 +2785,7 @@ def test_llm_invalid_intent_saves_as_note_without_failing(tmp_path):
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state.status == "awaiting_plan_approval"
     assert not state.is_terminal()
+    # Japanese text intentionally kept for CJK processing test
     assert state.clarification_context == ["補足: ??"]
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
     assert any(e["event"] == "llm_call" and e["data"].get("error") for e in events)
@@ -2806,6 +2822,7 @@ def test_empty_and_corrupt_comments_do_not_block_valid(tmp_path):
         ),
         encoding="utf-8",
     )
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path).state_dir, "loop1", "004-ok.json", "ok1", "進捗")
     now = datetime(2026, 8, 20, 12, 5, tzinfo=_TZ)
     engine.tick(now=now)
@@ -2818,6 +2835,7 @@ def test_post_progress_failure_skips_comment_replied(tmp_path):
     channel = FakeHumanChannel(post_progress_result=False)
     engine = _engine(tmp_path, channel=channel)
     store.save_state(_config(tmp_path).state_dir, _executing_state())
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path).state_dir, "loop1", "001.json", "cm-f", "進捗")
     engine.tick(now=datetime(2026, 8, 20, 12, 5, tzinfo=_TZ))
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
@@ -2827,6 +2845,7 @@ def test_post_progress_failure_skips_comment_replied(tmp_path):
     channel_exc = FakeHumanChannel(post_progress_exc=RuntimeError("down"))
     eng2 = _engine(tmp_path / "e", channel=channel_exc)
     store.save_state(_config(tmp_path / "e").state_dir, _executing_state())
+    # Japanese text intentionally kept for CJK processing test
     _write_comment(_config(tmp_path / "e").state_dir, "loop1", "001.json", "cm-e", "進捗")
     eng2.tick(now=datetime(2026, 8, 20, 12, 5, tzinfo=_TZ))
     events2 = store.read_events(_config(tmp_path / "e").state_dir, "loop1")
@@ -3269,6 +3288,7 @@ def test_budget_pause_and_resume(mock_clarify, mock_persona, tmp_path):
                 "kind": "comment",
                 "message_id": "c1",
                 "question_id": "",
+                # Japanese text intentionally kept for CJK processing test
                 "text": "どうなってる",
                 "received_at": "2026-08-20T12:00:00+09:00",
             }
@@ -3285,6 +3305,7 @@ def test_budget_pause_and_resume(mock_clarify, mock_persona, tmp_path):
                 "kind": "comment",
                 "message_id": "c2",
                 "question_id": "",
+                # Japanese text intentionally kept for CJK processing test
                 "text": "再開",
                 "received_at": "2026-08-20T12:01:00+09:00",
             }

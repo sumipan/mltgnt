@@ -1,7 +1,7 @@
 """
-eval_discover_benchmark — 旧 Step 5（単発 LLM）vs 新 Step 4（AgenticSkillDiscoverer）の比較ベンチマーク。
+eval_discover_benchmark — compare old Step 5 (single-shot LLM) vs new Step 4 (AgenticSkillDiscoverer).
 
-設計: Issue #1925
+Design: Issue #1925
 """
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from mltgnt.skill.models import SkillMeta
 _DEFAULT_EVAL_MODEL = "claude-haiku-4-5-20251001"
 
 _LLM_SYSTEM_PROMPT = """\
-あなたはスキルマッチャーです。
-ユーザー入力が以下のスキル一覧のどれかに対応するか判定してください。
-対応するスキルがあればそのスキル名のみを返してください。
-どれにも対応しない場合は "none" とだけ返してください。
-余計な説明は不要です。
+You are a skill matcher.
+Decide whether the user input corresponds to one of the skills listed below.
+If a skill matches, return only that skill name.
+If none match, return only "none".
+No extra explanation.
 """
 
 
@@ -53,116 +53,116 @@ def _catalog() -> dict[str, SkillMeta]:
     return {
         "calendar": _meta(
             "calendar",
-            "カレンダーの予定を確認・追加・更新する",
-            triggers=["予定", "スケジュール", "カレンダー"],
+            "Check, add, and update calendar events",
+            triggers=["schedule", "calendar", "agenda"],
         ),
         "diary-draft": _meta(
             "diary-draft",
-            "ユーザーの代わりにメモや素材から日記を代筆する",
-            triggers=["日記", "下書き", "代筆"],
+            "Draft a diary entry from notes or source material on the user's behalf",
+            triggers=["diary", "draft", "ghostwrite"],
         ),
         "diary-daily": _meta(
             "diary-daily",
-            "今日の日記ファイルを作成・更新する",
-            triggers=["daily", "今日の日記"],
+            "Create or update today's diary file",
+            triggers=["daily", "today's diary"],
         ),
         "diary-weekly": _meta(
             "diary-weekly",
-            "今週の週の振り返りファイルを作成する",
-            triggers=["週次", "weekly"],
+            "Create this week's weekly retrospective file",
+            triggers=["weekly retro", "weekly"],
         ),
         "diary-review": _meta(
             "diary-review",
-            "日記の振り返り・レビューを実行する",
-            triggers=["振り返り", "レビュー"],
+            "Run a diary retrospective / review",
+            triggers=["retrospective", "review"],
         ),
         "diary-callout": _meta(
             "diary-callout",
-            "日記から重要な出来事を抽出してコールアウトする",
-            triggers=["コールアウト", "callout"],
+            "Extract important events from the diary as callouts",
+            triggers=["callout extract", "callout"],
         ),
         "research": _meta(
             "research",
-            "リサーチテーマの対話→Issue作成→ワークフロー実行→結果報告の一連のフローを担当する",
-            triggers=["リサーチ", "調査", "research"],
+            "Own the flow from research-theme dialogue → Issue creation → workflow run → report",
+            triggers=["research topic", "investigate", "research"],
         ),
         "asana": _meta(
             "asana",
-            "Asana タスクの棚卸し・再構成および CRUD 操作",
-            triggers=["asana", "タスク"],
+            "Inventory / restructure Asana tasks and perform CRUD",
+            triggers=["asana", "task"],
         ),
         "project": _meta(
             "project",
-            "プロジェクトの進捗管理・タスク整理を行う",
-            triggers=["プロジェクト", "project"],
+            "Manage project progress and organize tasks",
+            triggers=["project progress", "project"],
         ),
         "mltgnt-persona": _meta(
             "mltgnt-persona",
-            "ペルソナ定義の作成・更新を行う",
-            triggers=["ペルソナ", "persona"],
+            "Create or update persona definitions",
+            triggers=["persona setup", "persona"],
         ),
         "okr-reflection": _meta(
             "okr-reflection",
-            "OKR の振り返り・進捗確認を行う",
-            triggers=["OKR", "目標"],
+            "Reflect on OKRs and check progress",
+            triggers=["OKR", "goal"],
         ),
         "diary-wrapup": _meta(
             "diary-wrapup",
-            "1日の締めくくりとして日記をまとめる",
-            triggers=["wrapup", "締め"],
+            "Wrap up the day by summarizing the diary",
+            triggers=["wrapup", "wrap-up"],
         ),
     }
 
 
 def _eval_samples() -> list[EvalSample]:
     return [
-        # --- 複数スキルの triggers が重複する表現 ---
-        EvalSample("予定を日記に書いて", "diary-draft"),
-        EvalSample("今日の予定を日記にまとめて", "diary-draft"),
-        EvalSample("スケジュールを振り返りに使って", "diary-review"),
-        EvalSample("カレンダーの予定を日記の下書きに", "diary-draft"),
-        EvalSample("予定確認して日記も書いて", None),
-        EvalSample("来週の予定と振り返り", None),
-        # --- triggers 直接一致 ---
-        EvalSample("カレンダー確認して", "calendar"),
-        EvalSample("今日のスケジュール教えて", "calendar"),
-        EvalSample("日記の下書き作って", "diary-draft"),
-        EvalSample("daily 日記更新", "diary-daily"),
-        EvalSample("週次振り返りファイル作って", "diary-weekly"),
-        EvalSample("日記レビューお願い", "diary-review"),
-        EvalSample("リサーチして", "research"),
-        EvalSample("asana タスク整理", "asana"),
-        EvalSample("プロジェクト進捗確認", "project"),
-        EvalSample("ペルソナ設定変更", "mltgnt-persona"),
-        EvalSample("OKR 振り返り", "okr-reflection"),
-        EvalSample("wrapup お願い", "diary-wrapup"),
-        EvalSample("コールアウト抽出", "diary-callout"),
-        # --- description から推論可能（triggers 弱い / なし） ---
-        EvalSample("来週の空き時間ある？", "calendar"),
-        EvalSample("明日の予定追加したい", "calendar"),
-        EvalSample("メモから日記書いて", "diary-draft"),
-        EvalSample("素材を日記にして", "diary-draft"),
-        EvalSample("今週の振り返りファイル作って", "diary-weekly"),
-        EvalSample("日記の振り返りしたい", "diary-review"),
-        EvalSample("調査テーマ決めたい", "research"),
-        EvalSample("企業調査したい", "research"),
-        EvalSample("タスクの期限切れチェック", "asana"),
-        EvalSample("Asana でタスク更新", "asana"),
-        EvalSample("1日の締めくくり", "diary-wrapup"),
-        EvalSample("重要な出来事を抜き出して", "diary-callout"),
-        EvalSample("目標の進捗どう？", "okr-reflection"),
-        EvalSample("persona 定義更新", "mltgnt-persona"),
-        # --- 存在しないスキル（unresolved が正解） ---
-        EvalSample("天気教えて", None),
-        EvalSample("Python のバグ直して", None),
-        EvalSample("ランチ何食べよう", None),
-        EvalSample("GitHub Actions の設定方法", None),
-        EvalSample("株価教えて", None),
-        EvalSample("英語に翻訳して", None),
-        EvalSample("Docker イメージビルド", None),
-        EvalSample("Slack 通知の色変更", None),
-        EvalSample("会議室予約して", None),
-        EvalSample("給与明細ダウンロード", None),
+        # --- phrases where multiple skills' triggers overlap ---
+        EvalSample("write the schedule into the diary", "diary-draft"),
+        EvalSample("summarize today's schedule into the diary", "diary-draft"),
+        EvalSample("use the schedule for the retrospective", "diary-review"),
+        EvalSample("put calendar events into a diary draft", "diary-draft"),
+        EvalSample("check the schedule and also write a diary", None),
+        EvalSample("next week's schedule and retrospective", None),
+        # --- direct trigger hits ---
+        EvalSample("check the calendar", "calendar"),
+        EvalSample("tell me today's schedule", "calendar"),
+        EvalSample("make a diary draft", "diary-draft"),
+        EvalSample("daily diary update", "diary-daily"),
+        EvalSample("create the weekly retro file", "diary-weekly"),
+        EvalSample("please review the diary", "diary-review"),
+        EvalSample("do some research", "research"),
+        EvalSample("asana task cleanup", "asana"),
+        EvalSample("check project progress", "project"),
+        EvalSample("change persona setup", "mltgnt-persona"),
+        EvalSample("OKR retrospective", "okr-reflection"),
+        EvalSample("please wrapup", "diary-wrapup"),
+        EvalSample("extract callouts", "diary-callout"),
+        # --- inferable from description (weak / no triggers) ---
+        EvalSample("any free time next week?", "calendar"),
+        EvalSample("I want to add tomorrow's schedule", "calendar"),
+        EvalSample("write a diary from my notes", "diary-draft"),
+        EvalSample("turn the material into a diary", "diary-draft"),
+        EvalSample("create this week's retrospective file", "diary-weekly"),
+        EvalSample("I want a diary retrospective", "diary-review"),
+        EvalSample("I want to pick a research topic", "research"),
+        EvalSample("I want to investigate a company", "research"),
+        EvalSample("check overdue tasks", "asana"),
+        EvalSample("update a task in Asana", "asana"),
+        EvalSample("end-of-day wrap-up", "diary-wrapup"),
+        EvalSample("pull out the important events", "diary-callout"),
+        EvalSample("how is goal progress?", "okr-reflection"),
+        EvalSample("update persona definition", "mltgnt-persona"),
+        # --- non-existent skills (unresolved is correct) ---
+        EvalSample("what's the weather", None),
+        EvalSample("fix a Python bug", None),
+        EvalSample("what should I eat for lunch", None),
+        EvalSample("how to configure GitHub Actions", None),
+        EvalSample("tell me the stock price", None),
+        EvalSample("translate this to English", None),
+        EvalSample("build a Docker image", None),
+        EvalSample("change Slack notification color", None),
+        EvalSample("book a meeting room", None),
+        EvalSample("download the payslip", None),
     ]
 
 
@@ -184,7 +184,7 @@ def old_llm_classify(
     llm_fn: Callable[[str], str],
 ) -> str | None:
     skill_list = "\n".join(f"- {m.name}: {m.description}" for m in catalog.values())
-    prompt = f"{_LLM_SYSTEM_PROMPT}\n\nスキル一覧:\n{skill_list}\n\nユーザー入力: {user_input}"
+    prompt = f"{_LLM_SYSTEM_PROMPT}\n\nSkill list:\n{skill_list}\n\nUser input: {user_input}"
     response = llm_fn(prompt).strip().lower()
     if response == "none" or response not in catalog:
         return None
@@ -289,29 +289,29 @@ def _pct(value: float) -> str:
 
 def format_report(old_run: BenchmarkRun, new_run: BenchmarkRun) -> str:
     lines = [
-        "| 方式 | discover 成功率 | 平均ラウンド数 | 誤選定率 | unresolved 率 |",
+        "| Method | discover success | avg rounds | misclassification | unresolved |",
         "|---|---|---|---|---|",
         (
-            f"| 旧（単発 LLM） | {_pct(old_run.metrics.success_rate)} | "
+            f"| Old (single-shot LLM) | {_pct(old_run.metrics.success_rate)} | "
             f"{old_run.metrics.avg_rounds:.1f} | {_pct(old_run.metrics.misclassification_rate)} | "
             f"{_pct(old_run.metrics.unresolved_rate)} |"
         ),
         (
-            f"| 新（AgenticDiscoverer） | {_pct(new_run.metrics.success_rate)} | "
+            f"| New (AgenticDiscoverer) | {_pct(new_run.metrics.success_rate)} | "
             f"{new_run.metrics.avg_rounds:.1f} | {_pct(new_run.metrics.misclassification_rate)} | "
             f"{_pct(new_run.metrics.unresolved_rate)} |"
         ),
         "",
-        "## 誤選定詳細",
+        "## Misclassification details",
     ]
 
-    for label, run in [("旧（単発 LLM）", old_run), ("新（AgenticDiscoverer）", new_run)]:
+    for label, run in [("Old (single-shot LLM)", old_run), ("New (AgenticDiscoverer)", new_run)]:
         lines.append(f"\n### {label}")
         if not run.misclassifications:
-            lines.append("（誤選定なし）")
+            lines.append("(no misclassifications)")
             continue
         for user_input, expected, actual in run.misclassifications:
-            lines.append(f"- 入力: {user_input!r} / 期待: {expected!r} / 実際: {actual!r}")
+            lines.append(f"- input: {user_input!r} / expected: {expected!r} / actual: {actual!r}")
 
     return "\n".join(lines)
 
@@ -336,12 +336,12 @@ def test_eval_dataset_has_minimum_samples():
 def test_benchmark_metrics_with_mocked_llm():
     catalog = _catalog()
     samples = [
-        EvalSample("カレンダー確認して", "calendar"),
-        EvalSample("天気教えて", None),
+        EvalSample("check the calendar", "calendar"),
+        EvalSample("what's the weather", None),
     ]
 
     def mock_llm(prompt: str) -> str:
-        if "天気" in prompt:
+        if "weather" in prompt:
             return "none"
         return "calendar"
 

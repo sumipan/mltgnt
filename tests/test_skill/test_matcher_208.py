@@ -1,7 +1,7 @@
 """
-tests/test_skill/test_matcher_208.py — Issue #208 ハイブリッドマッチング テスト。
+tests/test_skill/test_matcher_208.py — Issue #208 hybrid matching tests.
 
-受け入れ条件 AC-1〜AC-4 を検証する。Issue #1384 で SkillMatchResult 形式に更新。
+Verifies acceptance criteria AC-1–AC-4. Updated to SkillMatchResult form in Issue #1384.
 """
 from __future__ import annotations
 
@@ -41,12 +41,12 @@ SKILLS_NO_TRIGGERS = {
 }
 
 SKILLS_WITH_TRIGGERS = {
-    "persona": _meta("persona", triggers=["ペルソナを作"]),
-    "review": _meta("review", triggers=["レビュー"]),
+    "persona": _meta("persona", triggers=["make a character profile"]),
+    "review": _meta("review", triggers=["critique this"]),
 }
 
 
-# --- AC-1: スラッシュコマンドの既存動作 ---
+# --- AC-1: existing slash-command behavior ---
 
 @pytest.mark.asyncio
 async def test_ac1_1_slash_persona_allowed():
@@ -75,7 +75,7 @@ async def test_ac1_4_plain_message_falls_through():
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = None
-            result = await match("普通のメッセージ", SKILLS_NO_TRIGGERS, persona_skills=None)
+            result = await match("plain message", SKILLS_NO_TRIGGERS, persona_skills=None)
             assert result.decisive is None
             assert result.rationale == "none"
             mock_llm.assert_called_once()
@@ -83,15 +83,15 @@ async def test_ac1_4_plain_message_falls_through():
         agentic_patcher.stop()
 
 
-# --- AC-2: triggers 部分一致 ---
+# --- AC-2: trigger substring match ---
 
 @pytest.mark.asyncio
 async def test_ac2_1_triggers_partial_match():
-    result = await match("ペルソナを作ってほしい", SKILLS_WITH_TRIGGERS, persona_skills=None)
+    result = await match("please make a character profile", SKILLS_WITH_TRIGGERS, persona_skills=None)
     assert result.decisive is not None
     assert result.decisive.name == "persona"
-    assert result.arguments == "ペルソナを作ってほしい"
-    assert result.rationale == "trigger:ペルソナを作"
+    assert result.arguments == "please make a character profile"
+    assert result.rationale == "trigger:make a character profile"
 
 
 @pytest.mark.asyncio
@@ -100,8 +100,8 @@ async def test_ac2_2_no_trigger_match_falls_to_llm():
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = None
-            skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-            result = await match("今日の天気は？", skills, persona_skills=None)
+            skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+            result = await match("what is the weather today?", skills, persona_skills=None)
             assert result.decisive is None
             mock_llm.assert_called_once()
     finally:
@@ -114,8 +114,8 @@ async def test_ac2_3_trigger_match_but_filtered_by_persona():
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = None
-            skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-            result = await match("ペルソナを作りたい", skills, persona_skills=["review"])
+            skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+            result = await match("I want to make a character profile", skills, persona_skills=["review"])
             assert result.decisive is None
             mock_llm.assert_called_once()
     finally:
@@ -125,15 +125,15 @@ async def test_ac2_3_trigger_match_but_filtered_by_persona():
 @pytest.mark.asyncio
 async def test_ac2_4_multiple_trigger_match_first_wins():
     skills = {
-        "a_skill": _meta("a_skill", triggers=["マッチ"]),
-        "b_skill": _meta("b_skill", triggers=["マッチ"]),
+        "a_skill": _meta("a_skill", triggers=["match"]),
+        "b_skill": _meta("b_skill", triggers=["match"]),
     }
-    result = await match("マッチするメッセージ", skills, persona_skills=None)
+    result = await match("a matching message", skills, persona_skills=None)
     assert result.decisive is not None
     assert result.decisive.name == "a_skill"
 
 
-# --- AC-3: LLM 意図分類 ---
+# --- AC-3: LLM intent classification ---
 
 @pytest.mark.asyncio
 async def test_ac3_1_llm_returns_skill_name():
@@ -141,8 +141,8 @@ async def test_ac3_1_llm_returns_skill_name():
     agentic_patcher = _mock_agentic_unresolved()
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = (skills["review"], "レビューお願い")
-            result = await match("レビューお願い", skills, persona_skills=None)
+            mock_llm.return_value = (skills["review"], "look this over for me")
+            result = await match("look this over for me", skills, persona_skills=None)
             assert result.decisive is not None
             assert result.decisive.name == "review"
             assert result.rationale == "llm:review"
@@ -156,7 +156,7 @@ async def test_ac3_2_llm_returns_none():
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = None
-            result = await match("おはよう", SKILLS_WITH_TRIGGERS, persona_skills=None)
+            result = await match("good morning", SKILLS_WITH_TRIGGERS, persona_skills=None)
             assert result.decisive is None
     finally:
         agentic_patcher.stop()
@@ -164,13 +164,13 @@ async def test_ac3_2_llm_returns_none():
 
 @pytest.mark.asyncio
 async def test_ac3_3_llm_returns_unknown_skill():
-    # "レビュー" が triggers にあるため、triggers にヒットしないスキルセットを使う
-    skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
+    # Use a skill set whose triggers will not hit so LLM path is exercised
+    skills = {"persona": _meta("persona", triggers=["make a character profile"])}
     agentic_patcher = _mock_agentic_unresolved()
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-            mock_llm.return_value = None  # LLM が登録外スキル名を返す場合と同じく None
-            result = await match("レビューして", skills, persona_skills=None)
+            mock_llm.return_value = None  # same as when LLM returns an unregistered skill name → None
+            result = await match("do a review", skills, persona_skills=None)
             assert result.decisive is None
     finally:
         agentic_patcher.stop()
@@ -178,19 +178,19 @@ async def test_ac3_3_llm_returns_unknown_skill():
 
 @pytest.mark.asyncio
 async def test_ac3_4_llm_api_error():
-    # triggers にヒットしないスキルセットで LLM エラー時の動作を確認
-    skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
+    # Confirm behavior on LLM error with a skill set that misses triggers
+    skills = {"persona": _meta("persona", triggers=["make a character profile"])}
     agentic_patcher = _mock_agentic_unresolved()
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = None
-            result = await match("レビューして", skills, persona_skills=None)
+            result = await match("do a review", skills, persona_skills=None)
             assert result.decisive is None
     finally:
         agentic_patcher.stop()
 
 
-# --- AC-4: フォールバック順序 ---
+# --- AC-4: fallback order ---
 
 @pytest.mark.asyncio
 async def test_ac4_1_slash_match_skips_triggers_and_llm():
@@ -211,7 +211,7 @@ async def test_ac4_2_literal_match_skips_triggers_and_llm():
     with patch("mltgnt.skill.matcher._match_by_triggers") as mock_triggers, \
          patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_agentic, \
          patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        result = await match("reviewをお願い", SKILLS_NO_TRIGGERS, persona_skills=None)
+        result = await match("please do a review", SKILLS_NO_TRIGGERS, persona_skills=None)
         assert result.decisive is not None
         assert result.rationale == "literal:review"
         mock_triggers.assert_not_called()
@@ -223,7 +223,7 @@ async def test_ac4_2_literal_match_skips_triggers_and_llm():
 async def test_ac4_3_triggers_match_skips_llm():
     with patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_agentic, \
          patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
-        result = await match("ペルソナを作ってほしい", SKILLS_WITH_TRIGGERS, persona_skills=None)
+        result = await match("please make a character profile", SKILLS_WITH_TRIGGERS, persona_skills=None)
         assert result.decisive is not None
         mock_agentic.assert_not_called()
         mock_llm.assert_not_called()
@@ -235,24 +235,24 @@ async def test_ac4_4_no_match_calls_llm():
     try:
         with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = None
-            skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-            await match("今日の天気は？", skills, persona_skills=None)
+            skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+            await match("what is the weather today?", skills, persona_skills=None)
             mock_llm.assert_called_once()
     finally:
         agentic_patcher.stop()
 
 
-# --- _match_by_triggers 単体テスト ---
+# --- _match_by_triggers unit tests ---
 
 def test_triggers_match_returns_full_input_as_args():
-    skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-    result = _match_by_triggers("ペルソナを作ってほしい", skills, None)
+    skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+    result = _match_by_triggers("please make a character profile", skills, None)
     assert result is not None
     meta, args = result
-    assert args == "ペルソナを作ってほしい"
+    assert args == "please make a character profile"
 
 
 def test_triggers_no_match_returns_none():
-    skills = {"persona": _meta("persona", triggers=["ペルソナを作"])}
-    result = _match_by_triggers("今日の天気は？", skills, None)
+    skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+    result = _match_by_triggers("what is the weather today?", skills, None)
     assert result is None

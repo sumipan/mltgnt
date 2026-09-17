@@ -1,7 +1,7 @@
 {
   "engine": "claude",
   "case": "failure",
-  "raw_body": "queue result draft: 今日の予定を確認しました。",
+  "raw_body": "queue result draft: Checked today's schedule.",
   "llm_body": "",
   "success": false,
   "returncode": 1,

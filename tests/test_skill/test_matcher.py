@@ -1,7 +1,7 @@
 """
-tests/test_skill/test_matcher.py — matcher.match のユニットテスト。
+tests/test_skill/test_matcher.py — unit tests for matcher.match.
 
-設計: Issue #124 §8 AC-3, Issue #1384 U5
+Design: Issue #124 §8 AC-3, Issue #1384 U5
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from mltgnt.skill.models import SkillMeta
 
 
 def _mock_agentic_unresolved():
-    """AgenticSkillDiscoverer を unresolved に固定するパッチ。"""
+    """Patch that forces AgenticSkillDiscoverer to unresolved."""
     patcher = patch("mltgnt.skill.matcher.AgenticSkillDiscoverer")
     mock_cls = patcher.start()
     mock_discoverer = MagicMock()
@@ -45,17 +45,17 @@ SKILLS = {
 class TestMatch:
     @pytest.mark.asyncio
     async def test_match_with_persona_filter(self) -> None:
-        """AC-3-1: /review + persona_skills に review あり → マッチ"""
-        result = await match("/review 日記/2026-04-17.md", SKILLS, persona_skills=["review", "edit"])
+        """AC-3-1: /review + review in persona_skills → match"""
+        result = await match("/review diary/2026-04-17.md", SKILLS, persona_skills=["review", "edit"])
         assert result.decisive is not None
         assert result.decisive.name == "review"
-        assert result.arguments == "日記/2026-04-17.md"
+        assert result.arguments == "diary/2026-04-17.md"
         assert result.rationale == "slash:review"
 
     @pytest.mark.asyncio
     async def test_match_filtered_out_by_persona(self) -> None:
-        """AC-3-2: /review だが persona_skills に review なし → decisive=None"""
-        result = await match("/review 日記/2026-04-17.md", SKILLS, persona_skills=["edit"])
+        """AC-3-2: /review but review not in persona_skills → decisive=None"""
+        result = await match("/review diary/2026-04-17.md", SKILLS, persona_skills=["edit"])
         assert result.decisive is None
         assert result.rationale == "none"
 
@@ -68,12 +68,12 @@ class TestMatch:
 
     @pytest.mark.asyncio
     async def test_plain_message(self) -> None:
-        """AC-3-4: 普通のメッセージ → triggers/LLM フォールバック（LLM をモック）"""
+        """AC-3-4: plain message → triggers/LLM fallback (LLM mocked)"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
             with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
                 mock_llm.return_value = None
-                result = await match("普通のメッセージ", SKILLS, persona_skills=None)
+                result = await match("plain message", SKILLS, persona_skills=None)
                 assert result.decisive is None
                 assert result.rationale == "none"
         finally:
@@ -81,7 +81,7 @@ class TestMatch:
 
     @pytest.mark.asyncio
     async def test_no_arguments(self) -> None:
-        """AC-3-5: /review 引数なし → arguments = "" """
+        """AC-3-5: /review with no args → arguments = "" """
         result = await match("/review", SKILLS, persona_skills=["review"])
         assert result.decisive is not None
         assert result.decisive.name == "review"
@@ -90,7 +90,7 @@ class TestMatch:
 
     @pytest.mark.asyncio
     async def test_multiple_spaces(self) -> None:
-        """AC-3-6: /review  a  b  c（複数スペース）→ arguments = "a  b  c" """
+        """AC-3-6: /review  a  b  c (multiple spaces) → arguments = "a  b  c" """
         result = await match("/review  a  b  c", SKILLS, persona_skills=None)
         assert result.decisive is not None
         assert result.decisive.name == "review"
@@ -98,27 +98,27 @@ class TestMatch:
 
     @pytest.mark.asyncio
     async def test_no_persona_filter(self) -> None:
-        """persona_skills=None ならフィルタなし"""
+        """persona_skills=None means no filter"""
         result = await match("/review args", SKILLS, persona_skills=None)
         assert result.decisive is not None
 
     @pytest.mark.asyncio
     async def test_literal_match(self) -> None:
-        """AC1: リテラル名一致 → rationale=literal:<name>"""
-        result = await match("reviewをお願い", SKILLS, persona_skills=None)
+        """AC1: literal name match → rationale=literal:<name>"""
+        result = await match("please do a review", SKILLS, persona_skills=None)
         assert result.decisive is not None
         assert result.decisive.name == "review"
-        assert result.arguments == "reviewをお願い"
+        assert result.arguments == "please do a review"
         assert result.rationale == "literal:review"
 
     @pytest.mark.asyncio
     async def test_literal_multiple_hits_falls_through(self) -> None:
-        """AC1: 複数リテラルヒット → triggers/LLM にフォールバック"""
+        """AC1: multiple literal hits → fall back to triggers/LLM"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
             with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
                 mock_llm.return_value = None
-                result = await match("reviewとeditの両方", SKILLS, persona_skills=None)
+                result = await match("both review and edit", SKILLS, persona_skills=None)
                 assert result.decisive is None
                 mock_llm.assert_called_once()
         finally:
@@ -128,7 +128,7 @@ class TestMatch:
 class TestMatcherModel:
     @pytest.mark.asyncio
     async def test_model_passed_to_llm(self) -> None:
-        """model 引数が _match_by_llm の LLM 呼び出しに渡される"""
+        """model arg is passed through to the _match_by_llm LLM call"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
             with patch("mltgnt.skill.matcher.llm_call") as mock:
@@ -142,7 +142,7 @@ class TestMatcherModel:
 
     @pytest.mark.asyncio
     async def test_default_model_when_none(self) -> None:
-        """model=None のとき _DEFAULT_MATCHER_MODEL が使われる"""
+        """when model=None, _DEFAULT_MATCHER_MODEL is used"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
             with patch("mltgnt.skill.matcher.llm_call") as mock:
@@ -156,7 +156,7 @@ class TestMatcherModel:
 
     @pytest.mark.asyncio
     async def test_empty_string_model_falls_back_to_default(self) -> None:
-        """model="" の空文字はデフォルトにフォールバックする"""
+        """empty model="" falls back to the default"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
             with patch("mltgnt.skill.matcher.llm_call") as mock:
@@ -170,50 +170,50 @@ class TestMatcherModel:
 
     @pytest.mark.asyncio
     async def test_default_matcher_model_constant(self) -> None:
-        """_DEFAULT_MATCHER_MODEL が期待値を持つ"""
+        """_DEFAULT_MATCHER_MODEL has the expected value"""
         assert _DEFAULT_MATCHER_MODEL == "claude-haiku-4-5-20251001"
 
 
 class TestMatchTriggersOnly:
     def test_match_by_trigger_keyword(self) -> None:
-        """AC1: トリガーキーワードでマッチする"""
-        skills = {"calendar": _meta("calendar", triggers=["予定", "スケジュール"])}
-        assert match_triggers_only("予定を教えて", skills) == "calendar"
+        """AC1: matches on trigger keywords"""
+        skills = {"calendar": _meta("calendar", triggers=["schedule", "calendar"])}
+        assert match_triggers_only("tell me the schedule", skills) == "calendar"
 
     def test_no_match(self) -> None:
-        """AC1: マッチしない入力は None"""
-        skills = {"calendar": _meta("calendar", triggers=["予定", "スケジュール"])}
-        assert match_triggers_only("こんにちは", skills) is None
+        """AC1: non-matching input returns None"""
+        skills = {"calendar": _meta("calendar", triggers=["schedule", "calendar"])}
+        assert match_triggers_only("hello", skills) is None
 
     def test_empty_skills(self) -> None:
-        """AC1: 空 skills dict は None"""
-        assert match_triggers_only("予定", {}) is None
+        """AC1: empty skills dict returns None"""
+        assert match_triggers_only("schedule", {}) is None
 
     def test_empty_triggers_only(self) -> None:
-        """AC1: triggers が空のスキルのみなら None"""
+        """AC1: skills with empty triggers only → None"""
         skills = {"calendar": _meta("calendar", triggers=[])}
-        assert match_triggers_only("予定", skills) is None
+        assert match_triggers_only("schedule", skills) is None
 
     def test_first_match_wins(self) -> None:
-        """AC1: 複数マッチ時は最初の一致を返す"""
+        """AC1: on multiple matches, return the first"""
         skills = {
-            "calendar": _meta("calendar", triggers=["予定"]),
-            "schedule": _meta("schedule", triggers=["予定"]),
+            "calendar": _meta("calendar", triggers=["schedule"]),
+            "schedule": _meta("schedule", triggers=["schedule"]),
         }
-        assert match_triggers_only("予定を教えて", skills) == "calendar"
+        assert match_triggers_only("tell me the schedule", skills) == "calendar"
 
     def test_no_persona_filter_parameter(self) -> None:
-        """AC2: 全エントリを対象にマッチ（ペルソナフィルタなし）"""
+        """AC2: match against all entries (no persona filter)"""
         import inspect
 
         sig = inspect.signature(match_triggers_only)
         assert "persona_skills" not in sig.parameters
 
         skills = {
-            "calendar": _meta("calendar", triggers=["予定"]),
+            "calendar": _meta("calendar", triggers=["schedule"]),
             "other": _meta("other", triggers=["other"]),
         }
-        assert match_triggers_only("予定", skills) == "calendar"
+        assert match_triggers_only("schedule", skills) == "calendar"
 
 
 class TestAgenticDiscover:
@@ -231,7 +231,7 @@ class TestAgenticDiscover:
                 kind="selected", skill=calendar_meta
             )
             mock_cls.return_value = mock_discoverer
-            result = await match("予定を教えて", self.CALENDAR_SKILLS, persona_skills=None)
+            result = await match("tell me the schedule", self.CALENDAR_SKILLS, persona_skills=None)
             assert result.decisive == calendar_meta
             assert result.rationale == "agentic:calendar"
 
@@ -246,7 +246,7 @@ class TestAgenticDiscover:
                 candidates=[(cal, 0.8), (diary, 0.6)],
             )
             mock_cls.return_value = mock_discoverer
-            result = await match("予定を教えて", self.CALENDAR_SKILLS, persona_skills=None)
+            result = await match("tell me the schedule", self.CALENDAR_SKILLS, persona_skills=None)
             assert result.decisive == cal
             assert result.rationale == "agentic-ambiguous:calendar"
 
@@ -258,8 +258,8 @@ class TestAgenticDiscover:
             mock_discoverer = MagicMock()
             mock_discoverer.discover.return_value = DiscoverResult(kind="unresolved")
             mock_cls.return_value = mock_discoverer
-            mock_llm.return_value = (review_meta, "レビューお願い")
-            result = await match("レビューお願い", SKILLS, persona_skills=None)
+            mock_llm.return_value = (review_meta, "look this over for me")
+            result = await match("look this over for me", SKILLS, persona_skills=None)
             mock_llm.assert_called_once()
             assert result.decisive == review_meta
             assert result.rationale == "llm:review"
@@ -338,7 +338,7 @@ class TestMatchPipeline:
 
 
 class TestMatchPipelineComposeIntegration:
-    """Issue #3031: match_pipeline → compose_pipeline 統合。"""
+    """Issue #3031: match_pipeline → compose_pipeline integration."""
 
     @pytest.mark.asyncio
     async def test_two_stage_pipe_builds_dag_chain(self) -> None:

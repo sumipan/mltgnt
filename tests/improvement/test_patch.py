@@ -17,8 +17,8 @@ def _proposal(
     *,
     proposal_id: str = "proposal:test",
     target_type: str = "persona",
-    target_name: str = "タチコマ",
-    description: str = "テスト提案",
+    target_name: str = "persona-a",
+    description: str = "test proposal",
     diff_content: str | None = None,
 ) -> ImprovementProposal:
     return ImprovementProposal(
@@ -154,7 +154,7 @@ def test_apply_proposal_success_applies_patch_and_creates_pr(tmp_path: Path):
 
     proposal = _proposal(
         target_type="persona",
-        description="persona 改善",
+        description="persona improvement",
         diff_content=diff,
     )
     with patch("mltgnt.improvement.patch.subprocess.run", side_effect=fake_run):
@@ -166,7 +166,7 @@ def test_apply_proposal_success_applies_patch_and_creates_pr(tmp_path: Path):
     assert result.reason == ""
     assert target_file.read_text(encoding="utf-8") == "# hello\nadded line\n"
     assert calls[-1][0:3] == ["gh", "pr", "create"]
-    assert calls[-1][calls[-1].index("--title") + 1] == "RSI: persona 改善"
+    assert calls[-1][calls[-1].index("--title") + 1] == "RSI: persona improvement"
 
 
 @pytest.mark.parametrize(

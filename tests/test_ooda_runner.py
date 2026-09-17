@@ -1,4 +1,4 @@
-"""OODARunner のユニットテスト（AC1〜AC7, AC10）。"""
+"""Unit tests for OODARunner (AC1–AC7, AC10)."""
 from __future__ import annotations
 
 import json
