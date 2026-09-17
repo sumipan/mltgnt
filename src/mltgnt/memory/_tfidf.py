@@ -1,4 +1,4 @@
-"""TF-IDF ベースのテキストベクトル化。"""
+"""TF-IDF-based text vectorization."""
 from __future__ import annotations
 
 import numpy as np
@@ -10,19 +10,19 @@ def vectorize(
     query: str,
     entries: list[str],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """クエリと memory エントリ群を TF-IDF ベクトルに変換する。
+    """Convert a query and memory entries to TF-IDF vectors.
 
-    TfidfVectorizer でクエリ + 全エントリを同一コーパスとして学習・変換し、
-    クエリベクトル（1行）とエントリ行列（N行）を返す。
+    Fit/transform query + all entries as one corpus with TfidfVectorizer,
+    returning a query vector (1 row) and entry matrix (N rows).
 
     Args:
-        query: ユーザーの入力テキスト
-        entries: memory エントリ本文のリスト
+        query: User input text
+        entries: List of memory entry bodies
 
     Returns:
         (query_vec, entry_vecs):
-            query_vec — shape (1, D) の TF-IDF ベクトル
-            entry_vecs — shape (N, D) の TF-IDF ベクトル行列
+            query_vec — TF-IDF vector of shape (1, D)
+            entry_vecs — TF-IDF matrix of shape (N, D)
     """
     corpus = [query] + entries
     vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 3))

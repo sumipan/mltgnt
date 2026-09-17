@@ -1,6 +1,6 @@
 """mltgnt.persona.frontmatter
 
-人物像 Markdown 先頭の YAML フロントマター（オプション）を解釈する。
+Parse optional YAML frontmatter at the start of persona Markdown.
 """
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ import yaml
 
 
 def split_yaml_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    """先頭が `---` … `---` の YAML フロントマターなら除去して本文を返す。
+    """If text starts with `---` … `---` YAML frontmatter, strip it and return the body.
 
-    それ以外は meta は空 dict、本文は元テキストのまま。
-    YAML パースに失敗した場合は (None, body) を返す（エラー判定は呼び出し側で行う）。
+    Otherwise meta is {} and body is the original text.
+    On YAML parse failure, return (None, body) (caller decides the error).
     """
     stripped = text.lstrip("\ufeff")
     if not stripped.startswith("---"):
@@ -34,7 +34,7 @@ def split_yaml_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     try:
         meta = yaml.safe_load(yaml_text)
     except yaml.YAMLError:
-        # None を返してエラーを示す（呼び出し側で PersonaValidationError に変換）
+        # Return None to signal error (caller converts to PersonaValidationError)
         return None, body  # type: ignore[return-value]
     if not isinstance(meta, dict):
         return {}, text
@@ -42,7 +42,7 @@ def split_yaml_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 
 
 def slack_post_kwargs_from_meta(meta: dict[str, Any]) -> dict[str, str]:
-    """フロントマターの `slack:` から chat.postMessage 用キーワード引数を作る。"""
+    """Build chat.postMessage kwargs from frontmatter `slack:`."""
     slack = meta.get("slack")
     if not isinstance(slack, dict):
         return {}

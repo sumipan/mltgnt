@@ -1,10 +1,10 @@
 """
-mltgnt.daemon._skill_watcher — skills/ ディレクトリの変更を監視してホットリロードする DaemonComponent。
+mltgnt.daemon._skill_watcher — DaemonComponent that watches skills/ and hot-reloads.
 
-設計方針:
-- 外部ライブラリ不要: os.stat() によるポーリング（デフォルト 5 秒）
-- SkillRegistry.reload() を変更検知時に呼ぶだけ
-- DaemonComponent プロトコル準拠（start/stop/name）
+Design:
+- No external libs: poll with os.stat() (default 5s)
+- On change, only call SkillRegistry.reload()
+- Implements DaemonComponent protocol (start/stop/name)
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ logger = logging.getLogger("mltgnt.daemon.skill_watcher")
 
 
 def _collect_snapshot(paths: list[Path], entry_file: str) -> dict[str, float]:
-    """監視対象パス配下の SKILL.md ファイルの {path_str: mtime} を返す。"""
+    """Return {path_str: mtime} for SKILL.md files under watched paths."""
     snapshot: dict[str, float] = {}
     for base in paths:
         if not base.exists():
@@ -35,11 +35,11 @@ def _collect_snapshot(paths: list[Path], entry_file: str) -> dict[str, float]:
 
 
 class SkillWatcherComponent:
-    """skills/ ディレクトリを監視して変更時に SkillRegistry をリロードする。
+    """Watch the skills/ directory and reload SkillRegistry on change.
 
-    使い方（secretary/components.py など）:
+    Usage (e.g. secretary/components.py):
         registry = SkillRegistry(paths=[REPO_ROOT / "skills"])
-        registry.reload()  # 起動時に初回ロード
+        registry.reload()  # initial load at startup
         watcher = SkillWatcherComponent(registry=registry)
         runner = DaemonRunner(components=[..., watcher])
     """
@@ -66,14 +66,14 @@ class SkillWatcherComponent:
             daemon=True,
         )
         self._thread.start()
-        logger.info("SkillWatcherComponent: 開始（interval=%.1fs）", self._interval)
+        logger.info("SkillWatcherComponent: started (interval=%.1fs)", self._interval)
 
     def stop(self) -> None:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=self._interval + 2)
             self._thread = None
-        logger.info("SkillWatcherComponent: 停止")
+        logger.info("SkillWatcherComponent: stopped")
 
     def _watch_loop(self) -> None:
         registry = self._registry
@@ -91,11 +91,11 @@ class SkillWatcherComponent:
                     if k in prev_snapshot and current_snapshot[k] != prev_snapshot[k]
                 }
                 logger.info(
-                    "SkillWatcherComponent: 変更検知 added=%s removed=%s modified=%s — リロード",
+                    "SkillWatcherComponent: change detected added=%s removed=%s modified=%s — reloading",
                     added, removed, modified,
                 )
                 try:
                     registry.reload()
                 except Exception:
-                    logger.exception("SkillWatcherComponent: リロード失敗")
+                    logger.exception("SkillWatcherComponent: reload failed")
                 prev_snapshot = current_snapshot

@@ -13,7 +13,7 @@ logger = logging.getLogger("mltgnt.daemon")
 
 
 class DaemonRunner:
-    """コンポーネントの起動・停止とシグナルハンドリングを管理する。"""
+    """Manage component start/stop and signal handling."""
 
     def __init__(
         self,
@@ -42,13 +42,13 @@ class DaemonRunner:
 
     def run(self) -> None:
         """
-        メインエントリポイント。
-        1. PIDロック取得（失敗時は DependencyError）
-        2. SIGTERM/SIGINT ハンドラ登録（メインスレッドの場合）
-        3. 全コンポーネントの start() 呼び出し（登録順）
-        4. シグナル受信まで待機
-        5. 全コンポーネントの stop() 呼び出し（逆順）
-        6. PIDロック解放
+        Main entry point.
+        1. Acquire PID lock (DependencyError on failure)
+        2. Register SIGTERM/SIGINT handlers (when on the main thread)
+        3. Call start() on all components (registration order)
+        4. Wait until a signal is received
+        5. Call stop() on all components (reverse order)
+        6. Release PID lock
         """
         if not self._pid_lock.acquire():
             self._logger.error("Another instance is already running.")
@@ -90,5 +90,5 @@ class DaemonRunner:
             self._pid_lock.release()
 
     def stop(self) -> None:
-        """外部から停止を要求する（テスト用）。"""
+        """Request stop from outside (for tests)."""
         self._stop_event.set()

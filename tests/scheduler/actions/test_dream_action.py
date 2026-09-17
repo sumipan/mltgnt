@@ -61,7 +61,7 @@ def test_run_dream_action_success(tmp_path: Path) -> None:
 
     assert ok is True
     # Japanese text intentionally kept for CJK processing test
-    assert "合成しました" in msg
+    assert "synthesized" in msg
     loaded = read_dream(persona_dir)
     assert loaded is not None
     assert loaded.persona == "alice"
@@ -114,7 +114,7 @@ def test_memory_dream_registered_and_fires(tmp_path: Path) -> None:
 
     assert ok is True
     # Japanese text intentionally kept for CJK processing test
-    assert "合成しました" in msg
+    assert "synthesized" in msg
 
 
 def test_persona_scheduler_default_memory_config_unchanged(tmp_path: Path) -> None:

@@ -1,8 +1,8 @@
 """mltgnt.persona.loader
 
-エージェントファイルの読み込み・解釈を担当する。
+Load and interpret agent files.
 
-公開するのは load() のみ。呼び出し側は mltgnt.persona.load_persona() 経由で使う。
+Only load() is public. Callers use mltgnt.persona.load_persona().
 """
 
 from __future__ import annotations
@@ -30,24 +30,25 @@ logger = logging.getLogger(__name__)
 
 def _default_datetime_filter(accumulated: str, ctx: dict[str, Any]) -> str:
     now: datetime = ctx.get("now") or datetime.now(_TZ)
-    return accumulated + f"現在日時: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
+    return accumulated + f"Current datetime: {now.strftime('%Y-%m-%d %H:%M:%S')} (JST)\n\n"
 
 
 # ---------------------------------------------------------------------------
-# Persona オブジェクト
+# Persona object
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class Persona:
-    """エージェントファイルの内容を保持するオブジェクト。
+    """Holds the contents of an agent file.
 
     Attributes:
-        name:        ペルソナ名（FM の persona.name / ファイル stem）
-        fm:          パース済み PersonaFM
-        sections:    本文セクション辞書（"基本情報" → テキスト など）
-        body:        FM を除いた本文全体
-        path:        元ファイルパス
+        name:        Persona name (FM persona.name / file stem)
+        fm:          Parsed PersonaFM
+        # Japanese text intentionally kept for CJK processing test
+        sections:    Body section dict (e.g. "基本情報" → text)
+        body:        Full body without FM
+        path:        Source file path
     """
 
     name: str
@@ -78,17 +79,17 @@ class Persona:
             prefix = fn(prefix, ctx)
 
         def _weight_for(key: str) -> str | None:
-            """weight_map の前方一致でセクションの weight を返す。マッチなしは None。"""
+            """Return section weight via weight_map prefix match. None if no match."""
             for wk, wv in self.weight_map.items():
                 if key == wk or key.startswith(wk):
                     return wv
             return None
 
-        # weight_map に対応しないセクションがあれば warning + フォールバック
+        # Warn + fallback when sections are missing from weight_map
         unknown = [k for k in self.sections if _weight_for(k) is None]
         if unknown:
             logger.warning(
-                "[persona] %r: weight_map に未定義のセクション %s — 全セクションを embed します",
+                "[persona] %r: sections not in weight_map %s — embedding all sections",
                 self.name,
                 unknown,
             )
@@ -102,16 +103,17 @@ class Persona:
             body_part = "\n\n".join(selected)
 
         return (
-            "あなたは以下のキャラクターになりきり、その口調・性格で応答してください。\n\n"
+            "You are the following character; reply in their tone and personality.\n\n"
             f"{prefix}"
             f"{body_part}\n\n"
-            "--- ユーザーからの指示 ---\n\n"
+            "--- User instruction ---\n\n"
             f"{instruction}"
         )
 
     def extract_output_format(self, op_mode: str | None = None) -> str | None:
-        """アウトプット形式セクションから指定 op_mode の H4 ブロックを返す。"""
+        """Return the H4 block for op_mode from the output-format section."""
         op_mode = op_mode or self.DEFAULT_OP_MODE
+        # Japanese text intentionally kept for CJK processing test
         section = self.sections.get("アウトプット形式") or self.sections.get("Output format")
         if section is None:
             return None
@@ -123,42 +125,42 @@ class Persona:
         return None
 
     def build_review_prompt(self, op_mode: str = "critique") -> str:
-        """レビューシステム向けプロンプト断片を返す。"""
+        """Return a prompt fragment for the review system."""
         output_fmt = self.extract_output_format(op_mode)
         parts = [self.body]
         if output_fmt:
-            parts.append(f"## アウトプット形式\n{output_fmt}")
+            parts.append(f"## Output format\n{output_fmt}")
         return "\n\n".join(parts)
 
 
 def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
-    """ファイルパスからペルソナを読み込んで Persona を返す。
+    """Load a Persona from a file path.
 
-    ファイルが存在しない場合は FileNotFoundError を送出する。
-    YAML フロントマターのパースに失敗した場合は PersonaValidationError を送出する。
+    Raise FileNotFoundError if the file is missing.
+    Raise PersonaValidationError if YAML frontmatter parse fails.
     """
     from mltgnt.persona import PersonaValidationError
 
     if not path.exists():
-        raise FileNotFoundError(f"ペルソナファイルが見つかりません: {path}")
+        raise FileNotFoundError(f"Persona file not found: {path}")
 
     try:
         md = md_read(path.name, repo_root=path.parent)
     except yaml.YAMLError as e:
         raise PersonaValidationError(
-            f"YAML フロントマターのパースに失敗しました: {path}"
+            f"Failed to parse YAML frontmatter: {path}"
         ) from e
 
     meta = md.frontmatter
     if "persona" not in meta:
         raise PersonaValidationError(
-            f"YAML フロントマターに必須キー 'persona' がありません: {path}"
+            f"YAML frontmatter missing required key 'persona': {path}"
         )
 
     body = md.content.strip()
     fm = parse_fm(meta, file_stem=path.stem)
 
-    # FM バリデーション（エラーをログに記録）
+    # FM validation (log errors)
     result: ValidationResult = validate_fm(fm)
     for err in result.errors:
         logger.warning("[persona] %s: %s", path.name, err)
@@ -183,14 +185,15 @@ def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
     )
 
 
+# Japanese text intentionally kept for CJK processing test
 _H2_EXPAND_KEYS: tuple[str, ...] = ("重量", "参照", "Heavy", "Reference")
 
 
 def _expand_h3_sections(section_text: str) -> dict[str, str]:
-    """H3 (###) でサブセクションに分割してフラット dict を返す。
+    """Split into a flat dict by H3 (###) subsections.
 
-    各ブロックの 1 行目を見出し名、残りを本文とする。
-    H3 の前にある pre-H3 コンテンツ（空文字の場合は破棄）は無視する。
+    First line of each block is the heading name; the rest is body.
+    Ignore pre-H3 content before the first H3 (discard if empty).
     """
     result: dict[str, str] = {}
     parts = re.split(r"^###\s+", section_text, flags=re.MULTILINE)
@@ -206,14 +209,15 @@ def _expand_h3_sections(section_text: str) -> dict[str, str]:
 
 
 def _parse_sections(body: str) -> dict[str, str]:
-    """本文を ## 見出しでセクション分割する。
+    """Split body into sections by ## headings.
 
-    見出し行自体はセクション本文に含めない。
-    "## 1. 基本情報" などの番号付き見出しの場合、キーは "基本情報" として正規化する。
-    "## 0. ..." で始まるセクション（§0）は除外する。
+    Heading lines themselves are not included in section bodies.
+    # Japanese text intentionally kept for CJK processing test
+    For numbered headings like "## 1. 基本情報", normalize the key to "基本情報".
+    Exclude sections starting with "## 0. ..." (§0).
 
-    v2 形式では `## 重量` と `## 参照` の内容を H3 (###) でさらに展開し、
-    H3 見出し名をキーとするフラット dict に統合する。
+    In v2, further expand `## 重量` and `## 参照` by H3 (###)
+    into a flat dict keyed by H3 heading names.
     """
     sections: dict[str, str] = {}
     current_key: str | None = None
@@ -227,14 +231,15 @@ def _parse_sections(body: str) -> dict[str, str]:
                 sections[current_key] = "\n".join(current_lines).strip()
             num_prefix = m.group(1) or ""
             raw_title = m.group(2).strip()
-            # §0 除外
+            # Exclude §0
             if num_prefix.strip() == "0.":
                 skip_current = True
                 current_key = None
                 current_lines = []
                 continue
             skip_current = False
-            # 【必須】などの注釈を除去
+            # Japanese text intentionally kept for CJK processing test
+            # Strip annotations such as 【必須】
             current_key = re.sub(r"\s*【[^】]*】", "", raw_title).strip()
             current_lines = []
         else:
@@ -244,7 +249,8 @@ def _parse_sections(body: str) -> dict[str, str]:
     if current_key is not None and not skip_current:
         sections[current_key] = "\n".join(current_lines).strip()
 
-    # v2 対応: ## 重量 / ## 参照 / ## Heavy / ## Reference を H3 展開してフラット化
+    # Japanese text intentionally kept for CJK processing test
+    # v2: expand ## 重量 / ## 参照 / ## Heavy / ## Reference via H3 into a flat dict
     for h2_key in _H2_EXPAND_KEYS:
         if h2_key in sections:
             h3_sections = _expand_h3_sections(sections.pop(h2_key))

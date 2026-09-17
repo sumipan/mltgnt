@@ -8,7 +8,7 @@ from mltgnt.exceptions import ConfigError, DependencyError, MltgntError
 
 
 def main(argv: Optional[list[str]] = None) -> None:
-    """CLI エントリポイント。argparse でサブコマンドを dispatch する。"""
+    """CLI entry point. Dispatches subcommands via argparse."""
     parser = argparse.ArgumentParser(
         prog="mltgnt",
         description="mltgnt daemon management",

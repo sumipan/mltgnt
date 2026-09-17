@@ -1,9 +1,9 @@
 """mltgnt.persona.registry
 
-ペルソナディレクトリの一覧取得・名前解決（エイリアス含む）。
+List personas in a directory and resolve names (including aliases).
 
-- 最終ファイル（`<persona_dir>/<名前>.md`）のみを返す
-- サブディレクトリ（`<persona_dir>/<名前>/`）は除外
+- Return only leaf files (`<persona_dir>/<name>.md`)
+- Exclude subdirectories (`<persona_dir>/<name>/`)
 - sample persona stem (CJK via escapes) is excluded via EXCLUDE_STEMS
 """
 
@@ -15,11 +15,11 @@ EXCLUDE_STEMS: frozenset[str] = frozenset({"\u30b5\u30f3\u30d7\u30eb"})
 
 
 def resolve(name: str, persona_dir: Path) -> Path:
-    """ペルソナ名またはファイルパスを受け取り、絶対パスを返す。
+    """Accept a persona name or file path; return an absolute path.
 
-    - 絶対パスまたは `.md` が付いた文字列はそのまま Path に変換
-    - それ以外は `<persona_dir>/<name>.md` に補完する
-    - エイリアス解決は含まない（エイリアス解決は resolve_with_alias を使う）
+    - Absolute paths or strings ending in `.md` become Path as-is
+    - Otherwise complete to `<persona_dir>/<name>.md`
+    - Does not resolve aliases (use resolve_with_alias for that)
     """
     p = Path(name)
     if p.is_absolute():
@@ -30,20 +30,20 @@ def resolve(name: str, persona_dir: Path) -> Path:
 
 
 def resolve_with_alias(name: str, persona_dir: Path) -> Path:
-    """名前またはエイリアスでペルソナファイルのパスを解決する。
+    """Resolve a persona file path by name or alias.
 
-    1. `<persona_dir>/<name>.md` が存在すれば返す
-    2. 存在しなければ全ペルソナの aliases を走査して一致するものを探す
+    1. Return `<persona_dir>/<name>.md` if it exists
+    2. Otherwise scan all persona aliases for a match
 
     Raises:
-        FileNotFoundError: 名前・エイリアスいずれにも一致しないとき
+        FileNotFoundError: When neither name nor alias matches
     """
-    # まず直接名前検索
+    # Direct name lookup first
     direct = resolve(name, persona_dir)
     if direct.exists():
         return direct
 
-    # エイリアス検索（全ファイルの frontmatter を読む）
+    # Alias scan (read frontmatter of all files)
     from mltgnt.bridges.files_adapter import md_read
 
     for p in sorted(persona_dir.iterdir()):
@@ -64,16 +64,16 @@ def resolve_with_alias(name: str, persona_dir: Path) -> Path:
             continue
 
     raise FileNotFoundError(
-        f"ペルソナ '{name}' が見つかりません（名前・エイリアスいずれも不一致）: {persona_dir}"
+        f"Persona '{name}' not found (name/alias mismatch): {persona_dir}"
     )
 
 
 def list_personas(persona_dir: Path) -> list[str]:
-    """有効なペルソナ名の一覧（stem）を返す。
+    """Return valid persona name stems.
 
-    - `<persona_dir>/*.md` のファイルのみ（サブディレクトリ内ファイルは除外）
-    - EXCLUDE_STEMS に含まれる stem は除外
-    - 名前順でソートして返す
+    - Only `<persona_dir>/*.md` (exclude files in subdirs)
+    - Exclude stems in EXCLUDE_STEMS
+    - Return sorted by name
     """
     if not persona_dir.is_dir():
         return []

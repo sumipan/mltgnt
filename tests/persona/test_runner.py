@@ -96,7 +96,7 @@ def test_runner_ok_false_returns_error_string(persona_dir: Path) -> None:
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=False, stderr="engine error")):
         result = run_persona_prompt("persona-a", "test", persona_dir=persona_dir)
 
-    assert "\u30a8\u30e9\u30fc" in result
+    assert "error" in result
 
 
 def test_runner_exception_returns_error_string(persona_dir: Path) -> None:
@@ -106,7 +106,7 @@ def test_runner_exception_returns_error_string(persona_dir: Path) -> None:
     with patch("mltgnt.bridges.llm_adapter.call_llm", side_effect=RuntimeError("connection refused")):
         result = run_persona_prompt("persona-a", "test", persona_dir=persona_dir)
 
-    assert "\u5b9f\u884c\u5931\u6557" in result
+    assert "exec failed" in result
 
 
 def test_run_persona_prompt_rejects_audit_writer_kwarg(persona_dir: Path) -> None:

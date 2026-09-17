@@ -1,4 +1,4 @@
-"""mltgnt.memory.dream — dream.json 合成 API。"""
+"""mltgnt.memory.dream — dream.json synthesis API."""
 from mltgnt.memory.dream._format import DreamSection, DreamSummary
 from mltgnt.memory.dream.api import read_dream, read_global, read_global_summary, write_dream, write_global
 from mltgnt.memory.dream.selector import DreamSelector

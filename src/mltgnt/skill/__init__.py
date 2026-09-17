@@ -1,8 +1,8 @@
 """
-mltgnt.skill — Markdown ベーススキルファイルの読み込み・実行基盤。
+mltgnt.skill — load and run Markdown-based skill files.
 
-設計: Issue #124
-公開 API: discover, load, match, run, estimate_skill, resolve_skill
+Design: Issue #124
+Public API: discover, load, match, run, estimate_skill, resolve_skill
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ __all__ = [
 
 
 def discover_bodies(paths: list[Path]) -> list[str]:
-    """discover + 本文読み込み。memory 層にスキル本文を渡すための便利関数。"""
+    """discover + load body. Convenience for passing skill text to the memory layer."""
     from mltgnt.bridges.files_adapter import md_read
 
     path_list = [Path(p) for p in paths]
@@ -65,19 +65,19 @@ async def resolve_skill(
     matcher_model: str | None = None,
 ) -> "tuple | None":
     """
-    ユーザー入力からスキルを検索・マッチし、(SkillFile, arguments_str) を返す。
+    Search/match a skill from user input; return (SkillFile, arguments_str).
 
-    skill_paths が空または存在しない場合は None を返す（エラーにしない）。
-    スキルがマッチしない場合も None を返す。
+    Return None (not an error) when skill_paths is empty or missing.
+    Also return None when no skill matches.
 
-    引数:
-        user_input: ユーザーのメッセージ文字列
-        skill_paths: スキルディレクトリのリスト（Path または str）
-        persona_skills: ペルソナの skills フィールド（None = フィルタなし）
-        entry_file: スキルエントリファイル名
-        matcher_model: LLM 意図分類に使うモデル（None = デフォルト）
-    戻り値:
-        (SkillFile, arguments_str) または None
+    Args:
+        user_input: User message string
+        skill_paths: List of skill directories (Path or str)
+        persona_skills: Persona skills field (None = no filter)
+        entry_file: Skill entry filename
+        matcher_model: Model for LLM intent classification (None = default)
+    Returns:
+        (SkillFile, arguments_str) or None
     """
     from pathlib import Path as _Path
 

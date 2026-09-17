@@ -1,4 +1,4 @@
-"""mltgnt.agent.action_classifier — ツール副作用レベルの自動分類。"""
+"""mltgnt.agent.action_classifier — auto-classify tool side-effect levels."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 class ActionClass(Enum):
-    """ツール実行の副作用レベル。"""
+    """Side-effect level of a tool execution."""
 
     SAFE = "safe"
     NEEDS_REVIEW = "needs-review"
@@ -23,7 +23,7 @@ class _Rule:
 
 
 class ActionClassifier:
-    """実行履歴とユーザーフィードバックから分類ルールを学習する。"""
+    """Learn classification rules from execution history and user feedback."""
 
     def __init__(self, rules_path: Path, *, threshold: int = 5) -> None:
         self._rules_path = rules_path

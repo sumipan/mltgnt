@@ -92,7 +92,7 @@ class TestSkillMetaParse:
             skills = discover([tmp_path])
         assert skills == {}
         # Japanese text intentionally kept for CJK processing test
-        assert any("パースエラー" in r.message for r in caplog.records)
+        assert any("Parse error" in r.message for r in caplog.records)
 
     def test_invalid_yaml_skipped(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """AC-1-4: invalid YAML is skipped"""
@@ -101,7 +101,7 @@ class TestSkillMetaParse:
             skills = discover([tmp_path])
         assert skills == {}
         # Japanese text intentionally kept for CJK processing test
-        assert any("パースエラー" in r.message for r in caplog.records)
+        assert any("Parse error" in r.message for r in caplog.records)
 
     def test_no_frontmatter_skipped(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """AC-1-5: missing frontmatter is skipped"""
@@ -110,7 +110,7 @@ class TestSkillMetaParse:
             skills = discover([tmp_path])
         assert skills == {}
         # Japanese text intentionally kept for CJK processing test
-        assert any("パースエラー" in r.message for r in caplog.records)
+        assert any("Parse error" in r.message for r in caplog.records)
 
 
 # --- AC-2: discover ---
@@ -134,7 +134,7 @@ class TestDiscover:
             skills = discover([tmp_path / "nonexistent"])
         assert skills == {}
         # Japanese text intentionally kept for CJK processing test
-        assert any("パスが存在しません" in r.message for r in caplog.records)
+        assert any("Path does not exist" in r.message for r in caplog.records)
 
     def test_duplicate_name_first_wins(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """AC-2-4: same skill name on multiple paths → first wins"""
@@ -149,7 +149,7 @@ class TestDiscover:
         assert len(skills) == 1
         assert skills["review"].path.parent.parent == dir_a.resolve()
         # Japanese text intentionally kept for CJK processing test
-        assert any("重複" in r.message for r in caplog.records)
+        assert any("Duplicate" in r.message or "duplicate" in r.message.lower() for r in caplog.records)
 
     def test_ignores_non_skill_files(self, tmp_path: Path) -> None:
         """AC-2-5: non-SKILL.md files are ignored"""

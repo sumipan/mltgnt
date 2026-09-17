@@ -1,6 +1,6 @@
-"""mltgnt.skill.context — knowledge + 記憶から extra_context を組み立てる。
+"""mltgnt.skill.context — build extra_context from knowledge + memory.
 
-設計: Issue #3030 / #3173
+Design: Issue #3030 / #3173
 """
 from __future__ import annotations
 
@@ -19,19 +19,19 @@ def build_extra_context(
     memory_max_bytes: int = 0,
     memory_exclude_source_tags: list[str] | None = None,
 ) -> str | None:
-    """knowledge ファイルと記憶ファイルから extra_context 文字列を組み立てる。
+    """Build an extra_context string from knowledge and memory files.
 
-    引数:
-        skill_meta: SkillMeta.knowledge_paths に index 済みパスが入っていること
-        repo_root: リポジトリルート（memory ファイルの解決に使う）
-        persona_name: ペルソナ名（memory ファイル名に使う）
-        knowledge_count: 末尾から取るパラグラフ数（空行区切り）。既定 0（注入 OFF）
-        memory_max_bytes: 末尾から読む記憶バイト数。既定 0（注入 OFF）
-        memory_exclude_source_tags: 一致する source_tag を持つ JSONL 行を除外（完全一致）
+    Args:
+        skill_meta: SkillMeta.knowledge_paths must hold indexed paths
+        repo_root: Repo root (for resolving memory files)
+        persona_name: Persona name (used in memory filenames)
+        knowledge_count: Paragraphs from the end (blank-line delimited). Default 0 (off)
+        memory_max_bytes: Memory bytes from the end. Default 0 (off)
+        memory_exclude_source_tags: Exclude JSONL rows with matching source_tag (exact)
 
-    戻り値:
-        knowledge と記憶の両方が空なら None（extra_context=None で後方互換）
-        いずれかあれば「### knowledge（直近 N 件）\\n\\n...」形式の文字列
+    Returns:
+        None when both knowledge and memory are empty (extra_context=None compat)
+        Otherwise a string like "### knowledge (last N)\n\n..."
     """
     knowledge_text = _read_knowledge(skill_meta.knowledge_paths, knowledge_count)
     memory_text = _read_memory(
@@ -43,14 +43,14 @@ def build_extra_context(
 
     parts: list[str] = []
     if knowledge_text:
-        parts.append(f"### knowledge（直近 {knowledge_count} 件）\n\n{knowledge_text}")
+        parts.append(f"### knowledge (last {knowledge_count})\n\n{knowledge_text}")
     if memory_text:
-        parts.append(f"### 記憶（末尾）\n\n{memory_text}")
+        parts.append(f"### Memory (tail)\n\n{memory_text}")
     return "\n\n".join(parts) if parts else None
 
 
 def _read_knowledge(knowledge_paths: list[Path], knowledge_count: int) -> str:
-    """knowledge_paths の全ファイルを連結し、末尾 knowledge_count パラグラフを返す。"""
+    """Concatenate knowledge_paths files; return the last knowledge_count paragraphs."""
     if not knowledge_paths or knowledge_count <= 0:
         return ""
     texts: list[str] = []
@@ -69,7 +69,7 @@ def _read_memory(
     *,
     exclude_source_tags: list[str] | None = None,
 ) -> str:
-    """ペルソナ記憶ファイルの末尾 max_bytes を読み、JSONL を箇条書きに整形する。"""
+    """Read the last max_bytes of a persona memory file; format JSONL as bullets."""
     memory_file = repo_root / "chat" / "memory" / f"{persona_name}.jsonl"
     if not memory_file.is_file() or max_bytes <= 0:
         return ""

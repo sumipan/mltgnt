@@ -33,10 +33,10 @@ if TYPE_CHECKING:
 
 class PersonaScheduler(BaseRunner):
     """
-    1 秒周期で tick する想定。main からデーモンスレッドで起動する。
+    Intended to tick every 1 second. Started as a daemon thread from main.
 
-    ペルソナ関連コールバックは __init__ 引数で注入（OSS 分離）。
-    host 固有 action は actions= / register_action() で登録する。
+    Persona-related callbacks are injected via __init__ (OSS split).
+    Host-specific actions are registered via actions= / register_action().
     """
 
     def __init__(
@@ -57,7 +57,7 @@ class PersonaScheduler(BaseRunner):
         actions: Optional[dict[str, "ActionFn"]] = None,
         memory_config: Optional["MemoryConfig"] = None,
     ) -> None:
-        # config が指定された場合、config から設定を取得
+        # When config is provided, take settings from it
         if config is not None:
             self._state_dir = state_dir or config.state_dir
             self._yaml_path = yaml_path or config.schedule_yaml
@@ -116,7 +116,7 @@ class PersonaScheduler(BaseRunner):
             def _memory_dream_action(job: ScheduleJob) -> tuple[bool, str]:
                 persona_stem = job.persona or str(job.action_args.get("persona", "")).strip()
                 if not persona_stem:
-                    return False, f"job {job.id}: persona が未指定です"
+                    return False, f"job {job.id}: persona is not set"
                 target_dir = self.persona_dir / persona_stem
                 return run_dream_action(
                     job,
@@ -135,10 +135,10 @@ class PersonaScheduler(BaseRunner):
         try:
             return [j for j in load_schedule_jobs(self._yaml_path, default_timezone=self._default_tz) if j.enabled]
         except Exception as e:
-            raise ConfigError(f"YAML 読込エラー: {e}") from e
+            raise ConfigError(f"YAML load error: {e}") from e
 
     def _detect_cycles(self, jobs: list[ScheduleJob]) -> list[str]:
-        """循環依存があるジョブIDのリストを返す。"""
+        """Return job IDs that participate in a cycle."""
         dep_map = {j.id: j.depends_on for j in jobs}
 
         def has_cycle(start: str, path: set[str]) -> bool:
@@ -166,7 +166,7 @@ class PersonaScheduler(BaseRunner):
                 return
             cycled = self._detect_cycles(jobs)
             if cycled:
-                _log.warning("循環依存を検知。無効化: %s", cycled)
+                _log.warning("Cycle detected. Disabling: %s", cycled)
                 jobs = [j for j in jobs if j.id not in cycled]
             self._jobs = jobs
 
@@ -187,10 +187,10 @@ class PersonaScheduler(BaseRunner):
         success: bool,
         fired_at: datetime,
     ) -> None:
-        """スケジュールタスクの実行結果をメモリに記録する。
+        """Record schedule-task results into memory.
 
-        条件: job.memory is True AND job.notify が slack_*。
-        例外は warning ログで吸収し、Slack 投稿済みの状態を汚染しない。
+        Condition: job.memory is True AND job.notify is slack_*.
+        Absorb exceptions as warnings so Slack-posted state is not corrupted.
         """
         if not job.memory:
             return
@@ -204,13 +204,13 @@ class PersonaScheduler(BaseRunner):
         ts = fired_at.strftime("%Y-%m-%d %H:%M")
         dedupe_base = f"scheduled:{job.id}:{fired_at.isoformat(timespec='seconds')}"
         content_assistant = ("[FAILED] " if not success else "") + (
-            post_text or ("スケジュールタスクが完了しました" if success else "失敗しました")
+            post_text or ("Schedule task completed" if success else "Failed")
         )
         try:
             self._append_memory_fn(
                 persona_stem,
                 "user",
-                f"[スケジュールタスク: {job.id}]",
+                f"[schedule task: {job.id}]",
                 ts,
                 source_tag="[scheduled]",
                 dedupe_key=f"{dedupe_base}:user",
@@ -224,14 +224,14 @@ class PersonaScheduler(BaseRunner):
                 dedupe_key=f"{dedupe_base}:assistant",
             )
         except Exception as e:
-            _log.warning("メモリ記録失敗 %s: %s", job.id, e)
+            _log.warning("Memory record failed %s: %s", job.id, e)
 
 
     def _post(self, job: ScheduleJob, text: str) -> None:
         if not self._should_notify_slack(job):
             return
         if self.slack is None:
-            _log.warning("Slack 未初期化のため通知スキップ: %s", text)
+            _log.warning("Slack not initialized; skip notify: %s", text)
             return
         if job.persona and self._persona_post_kwargs_resolver is not None:
             try:
@@ -239,7 +239,7 @@ class PersonaScheduler(BaseRunner):
                 if not text and resolved_text:
                     text = resolved_text
             except Exception as e:
-                _log.warning("ペルソナ読込失敗 %s: %s", job.persona, e)
+                _log.warning("Persona load failed %s: %s", job.persona, e)
                 post_kwargs = self._default_slack_post_kwargs() if self._default_slack_post_kwargs else {}
         else:
             post_kwargs = self._default_slack_post_kwargs() if self._default_slack_post_kwargs else {}
@@ -274,7 +274,7 @@ class PersonaScheduler(BaseRunner):
         return self.paths.skipped_path(job.id, d).is_file()
 
     def _read_failed_reason(self, job_id: str, d: date) -> str:
-        """failed マーカーからエラー理由を読み取る。なければ空文字。"""
+        """Read the failure reason from a failed marker. Empty string if none."""
         p = self.paths.failed_path(job_id, d)
         try:
             parts = p.read_text(encoding="utf-8").strip().split("\t", 2)
@@ -304,14 +304,14 @@ class PersonaScheduler(BaseRunner):
         return "ok"
 
     def _chain_failure_text(self, job: ScheduleJob, d: date) -> str:
-        """chain failure 通知用テキスト。依存先の失敗理由があれば含める。"""
+        """Text for chain-failure notify. Include dependency failure reason when present."""
         reasons: list[str] = []
         for dep_id in job.depends_on:
             if self.paths.failed_path(dep_id, d).is_file():
                 r = self._read_failed_reason(dep_id, d)
                 if r:
                     reasons.append(f"{dep_id}: {r[:200]}")
-        text = f"[secretary-schedule] 依存ジョブ失敗のためスキップ: `{job.id}` (chain failure)"
+        text = f"[secretary-schedule] Skipped due to dependency failure: `{job.id}` (chain failure)"
         if reasons:
             detail = "\n".join(reasons)
             text += f"\n```\n{detail}\n```"
@@ -365,7 +365,7 @@ class PersonaScheduler(BaseRunner):
         if job.on_window_missed == "notify":
             self._post(
                 job,
-                f"[secretary-schedule] ウィンドウ内に完了しませんでした（missed）: `{job.id}` {d.isoformat()}",
+                f"[secretary-schedule] Did not finish within window (missed): `{job.id}` {d.isoformat()}",
             )
         elif job.on_window_missed == "silent":
             _log.info("missed (silent): %s %s", job.id, d.isoformat())
@@ -375,7 +375,7 @@ class PersonaScheduler(BaseRunner):
     def build_command(self, job: ScheduleJob) -> list[str]:
         if job.action in ("noop", "skill"):
             return []
-        raise ValueError(f"未対応の action: {job.action}")
+        raise ValueError(f"Unsupported action: {job.action}")
 
     def execute_action(self, job: ScheduleJob) -> tuple[bool, str]:
         if job.action == "noop":
@@ -385,7 +385,7 @@ class PersonaScheduler(BaseRunner):
         if job.action in self._actions:
             return self._actions[job.action](job)
 
-        raise ValueError(f"未対応の action: {job.action}")
+        raise ValueError(f"Unsupported action: {job.action}")
 
     def _spawn_job(self, job: ScheduleJob, d: date, on_finish: Optional[Callable[[], None]] = None) -> None:
         def runner() -> None:
@@ -395,7 +395,7 @@ class PersonaScheduler(BaseRunner):
                 if ok:
                     if job.mode != "interval":
                         self._mark_done(job, d)
-                    _log.info("成功: %s", job.id)
+                    _log.info("success: %s", job.id)
                     if msg:
                         self._post(job, msg)
                     self._record_to_memory(job, msg, True, fired_at)
@@ -407,12 +407,12 @@ class PersonaScheduler(BaseRunner):
                     else:
                         if job.mode != "interval":
                             self._mark_failed(job, d, reason=msg[:400])
-                        _log.error("失敗: %s: %s", job.id, msg)
-                        snippet = msg.strip()[-400:] if msg.strip() else "(詳細なし)"
+                        _log.error("failure: %s: %s", job.id, msg)
+                        snippet = msg.strip()[-400:] if msg.strip() else "(no details)"
                         if len(msg.strip()) > 400:
                             snippet = "…" + snippet
                         fail_text = (
-                            f"[secretary-schedule] ジョブ失敗 `{job.id}`\n"
+                            f"[secretary-schedule] Job failed `{job.id}`\n"
                             f"```\n{snippet}\n```"
                         )
                         self._post(job, fail_text)
@@ -577,7 +577,7 @@ class PersonaScheduler(BaseRunner):
     def loop(self) -> None:
         self.reload_jobs()
         _log.info(
-            "スレッド開始 jobs=%d yaml=%s",
+            "Thread started jobs=%d yaml=%s",
             len(self._jobs),
             self.yaml_path,
         )
@@ -585,7 +585,7 @@ class PersonaScheduler(BaseRunner):
             try:
                 self.tick()
             except Exception:
-                _log.exception("tick 例外")
+                _log.exception("tick exception")
             time.sleep(1.0)
 
     def start_background(self) -> None:

@@ -1,7 +1,7 @@
 """
-mltgnt.skill.models — SkillMeta / SkillFile dataclass 定義。
+mltgnt.skill.models — SkillMeta / SkillFile dataclass definitions.
 
-設計: Issue #124 §6.1, Issue #1382 U1 (SKILL I/O 再設計 Phase 1)
+Design: Issue #124 §6.1, Issue #1382 U1 (SKILL I/O redesign Phase 1)
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class ArtifactSpec:
-    """produces.artifacts の要素。本文外ファイル参照。"""
+    """Element of produces.artifacts. Out-of-body file reference."""
 
     path: str
     role: str = "primary"  # "primary" | "log" | "attachment"
@@ -23,7 +23,7 @@ class ArtifactSpec:
 
 @dataclass
 class ProducesSpec:
-    """スキルの出力契約（skill_io: v1 時）。"""
+    """Skill output contract (when skill_io: v1)."""
 
     content_type: str = "text/markdown"  # "text/markdown" | "text/plain"
     artifacts: list[ArtifactSpec] = field(default_factory=list)
@@ -32,9 +32,9 @@ class ProducesSpec:
 
 @dataclass
 class ConsumesSpec:
-    """パイプ参加時の入力契約。"""
+    """Input contract when participating in a pipe."""
 
-    producer: str  # 上流スキル名（SkillMeta.name）
+    producer: str  # upstream skill name (SkillMeta.name)
     content_type: str = "text/markdown"
 
 
@@ -48,7 +48,7 @@ class ExitStatus:
 
 @dataclass
 class SideEffectsSpec:
-    """スキル実行時の副作用宣言（SKILL.md frontmatter side_effects）。"""
+    """Side-effect declaration for skill runs (SKILL.md frontmatter side_effects)."""
 
     writes: list[str] = field(default_factory=list)
     network: list[str] = field(default_factory=list)
@@ -58,7 +58,7 @@ class SideEffectsSpec:
 
 @dataclass
 class SkillRunResult:
-    """runner.run() の戻り値（pre-execution + post-execution 統合）。"""
+    """Return value of runner.run() (pre-execution + post-execution combined)."""
 
     chat_input: "ChatInput"
     expected_markers: list[str]
@@ -73,7 +73,7 @@ class SkillRunResult:
 
 @dataclass
 class SkillMatchResult:
-    """matcher.match() の戻り値。マッチ経路と候補を含む。"""
+    """Return value of matcher.match(). Includes match path and candidates."""
 
     decisive: SkillMeta | None
     candidates: list[SkillMeta]
@@ -82,12 +82,12 @@ class SkillMatchResult:
 
 
 class SkillLoadError(Exception):
-    """スキルロード・Tool バリデーション失敗時の例外。"""
+    """Raised on skill load / Tool validation failure."""
 
 
 @dataclass
 class SkillMeta:
-    """discover 時にロードされるメタ情報（Progressive Disclosure）。"""
+    """Metadata loaded at discover time (Progressive Disclosure)."""
 
     name: str
     description: str
@@ -106,7 +106,7 @@ class SkillMeta:
 
 @dataclass
 class SkillFile:
-    """実行時にロードされる全文データ。"""
+    """Full-text data loaded at run time."""
 
     meta: SkillMeta
     body: str

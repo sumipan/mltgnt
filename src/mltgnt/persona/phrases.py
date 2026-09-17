@@ -1,6 +1,6 @@
-"""mltgnt.persona.phrases — ops.phrases 読み出し（#3318）。
+"""mltgnt.persona.phrases — read ops.phrases (#3318).
 
-PersonaFM 非対応の拡張キーを raw YAML から読む。保存先は persona_dir 注入。
+Read PersonaFM-unsupported extension keys from raw YAML. Storage via persona_dir injection.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def load_persona_phrases(
     *,
     persona_dir: Path | None = None,
 ) -> dict[str, str]:
-    """agents/<name>.md 相当の ops.phrases dict を返す。見つからなければ {}。"""
+    """Return the ops.phrases dict for agents/<name>.md. {} if not found."""
     if not persona_name or not str(persona_name).strip():
         return {}
     if persona_dir is None:

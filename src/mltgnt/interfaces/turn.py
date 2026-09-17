@@ -1,7 +1,7 @@
-"""会話層の境界データ（くびれ: TurnInput / TurnResult）と TurnHandler Protocol。
+"""Conversation-layer boundary types (neck: TurnInput / TurnResult) and TurnHandler Protocol.
 
-媒体非依存。媒体層の ID・ブロック表現をフィールドに持たない。
-くびれの契約は mltgnt が所有し、媒体層はホストが実装する。
+Media-agnostic. No media-layer IDs or block shapes in fields.
+mltgnt owns the neck contract; the host implements the media layer.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 @dataclass(frozen=True)
 class Attachment:
-    """媒体非依存の添付参照。"""
+    """Media-agnostic attachment reference."""
 
     name: str
     content_type: str | None = None
@@ -21,7 +21,7 @@ class Attachment:
 
 @dataclass(frozen=True)
 class HistoryMessage:
-    """会話履歴の 1 メッセージ。"""
+    """One message in conversation history."""
 
     role: str  # "user" | "assistant" | "system"
     text: str
@@ -30,7 +30,7 @@ class HistoryMessage:
 
 @dataclass(frozen=True)
 class TurnInput:
-    """会話層が内側へ渡すくびれ入力。"""
+    """Neck input from the conversation layer inward."""
 
     conversation_id: str
     text: str
@@ -41,7 +41,7 @@ class TurnInput:
 
 @dataclass(frozen=True)
 class TurnResult:
-    """会話層が外側へ返すくびれ出力。"""
+    """Neck output from the conversation layer outward."""
 
     kind: Literal["reply", "task"]
     text: str = ""
@@ -50,8 +50,8 @@ class TurnResult:
 
 @runtime_checkable
 class TurnHandler(Protocol):
-    """媒体層がくびれを呼ぶための契約。"""
+    """Contract for the media layer to call the neck."""
 
     def handle(self, turn: TurnInput) -> TurnResult:
-        """1 ターンを処理し、返信またはタスク参照を返す。"""
+        """Process one turn; return a reply or task reference."""
         ...

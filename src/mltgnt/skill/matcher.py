@@ -1,7 +1,7 @@
 """
-mltgnt.skill.matcher — スキルマッチング（スラッシュ / literal / triggers / LLM）。
+mltgnt.skill.matcher — skill matching (slash / literal / triggers / LLM).
 
-設計: Issue #124 §6.3, Issue #208, Issue #1384 U5
+Design: Issue #124 §6.3, Issue #208, Issue #1384 U5
 """
 from __future__ import annotations
 
@@ -20,11 +20,11 @@ _SLASH_PATTERN = re.compile(r"^/(\S+)(.*)", re.DOTALL)
 _DEFAULT_MATCHER_MODEL = "claude-haiku-4-5-20251001"
 
 _LLM_SYSTEM_PROMPT = """\
-あなたはスキルマッチャーです。
-ユーザー入力が以下のスキル一覧のどれかに対応するか判定してください。
-対応するスキルがあればそのスキル名のみを返してください。
-どれにも対応しない場合は "none" とだけ返してください。
-余計な説明は不要です。
+You are a skill matcher.
+Decide whether the user input corresponds to one of the skills below.
+If a skill matches, return only that skill name.
+If none match, return only "none".
+No extra explanation.
 """
 
 
@@ -42,9 +42,9 @@ def _match_by_literal(
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None,
 ) -> SkillMatchResult | None:
-    """スキル名のリテラル一致でスキルを検索する。
+    """Find a skill by literal name match.
 
-    単一ヒット時のみ SkillMatchResult を返す。複数ヒット・ヒットなしは None。
+    Return SkillMatchResult only on a single hit. None on multi-hit or miss.
     """
     filtered = _filter_by_persona(skills, persona_skills)
     hits = [meta for meta in filtered.values() if meta.name in user_input]
@@ -64,16 +64,16 @@ def _match_by_triggers(
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None,
 ) -> tuple[SkillMeta, str] | None:
-    """triggers キーワードの部分一致でスキルを検索する。
+    """Find a skill by partial trigger-keyword match.
 
     Args:
-        user_input: ユーザー入力文字列
-        skills: discover() が返すスキル辞書
-        persona_skills: ペルソナに許可されたスキル名リスト（None なら制限なし）
+        user_input: User input string
+        skills: Skill dict from discover()
+        persona_skills: Allowed skill names for the persona (None = unrestricted)
 
     Returns:
-        (SkillMeta, user_input) または None
-        triggers マッチ時は user_input 全文を arguments として渡す
+        (SkillMeta, user_input) or None
+        On trigger match, pass the full user_input as arguments
     """
     filtered = _filter_by_persona(skills, persona_skills)
     for meta in filtered.values():
@@ -84,13 +84,13 @@ def _match_by_triggers(
 
 
 def match_triggers_only(user_input: str, skills: dict[str, SkillMeta]) -> str | None:
-    """トリガーキーワードのみでスキルを検索する（ペルソナフィルタなし）。
+    """Find a skill by trigger keywords only (no persona filter).
 
-    ナレッジ記録経路など、LLM fallback が不要な軽量マッチング用。
-    ペルソナフィルタが必要な場合は呼び出し元で skills を事前フィルタすること。
+    For lightweight matching (e.g. knowledge recording) where LLM fallback is unnecessary.
+    When a persona filter is needed, the caller should pre-filter skills.
 
     Returns:
-        マッチしたスキル名、または None
+        Matched skill name, or None
     """
     for meta in skills.values():
         for trigger in meta.triggers:
@@ -121,16 +121,16 @@ async def _match_by_llm(
     persona_skills: list[str] | None,
     model: str | None = None,
 ) -> tuple[SkillMeta, str] | None:
-    """LLM にスキル一覧と入力を渡し、意図分類する。
+    """Pass the skill list and input to an LLM for intent classification.
 
     Args:
-        user_input: ユーザー入力文字列
-        skills: discover() が返すスキル辞書
-        persona_skills: ペルソナに許可されたスキル名リスト（None なら制限なし）
+        user_input: User input string
+        skills: Skill dict from discover()
+        persona_skills: Allowed skill names for the persona (None = unrestricted)
 
     Returns:
-        (SkillMeta, user_input) または None
-        LLM が「none」を返した場合、または応答が登録スキル名と一致しない場合は None
+        (SkillMeta, user_input) or None
+        None when the LLM returns "none" or a name not in registered skills
     """
     filtered = _filter_by_persona(skills, persona_skills)
     if not filtered:
@@ -139,16 +139,16 @@ async def _match_by_llm(
     skill_list = "\n".join(
         f"- {meta.name}: {meta.description}" for meta in filtered.values()
     )
-    prompt = f"{_LLM_SYSTEM_PROMPT}\n\nスキル一覧:\n{skill_list}\n\nユーザー入力: {user_input}"
+    prompt = f"{_LLM_SYSTEM_PROMPT}\n\nSkill list:\n{skill_list}\n\nUser input: {user_input}"
 
     try:
         result = llm_call(prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30)
         if not result.success:
-            _log.warning("LLM 意図分類エラー: %s", result.stderr)
+            _log.warning("LLM intent classification error: %s", result.stderr)
             return None
         response = result.body.strip().lower()
     except Exception as e:
-        _log.warning("LLM 意図分類エラー: %s", e)
+        _log.warning("LLM intent classification error: %s", e)
         return None
 
     if response == "none" or response not in filtered:
@@ -158,10 +158,10 @@ async def _match_by_llm(
 
 
 def split_pipe_segments(user_input: str) -> list[str]:
-    """ユーザー入力を ' | ' (前後スペース必須) で分割する。
+    """Split user input on ' | ' (spaces required).
 
     Returns:
-        分割後のセグメントリスト。パイプなしの場合は要素 1 のリスト。
+        List of segments. Single-element list when there is no pipe.
     """
     return user_input.split(" | ")
 
@@ -172,10 +172,10 @@ async def match_pipeline(
     persona_skills: list[str] | None = None,
     model: str | None = None,
 ) -> list[SkillMatchResult]:
-    """パイプ入力を分割し、各セグメントを match() に委譲する。
+    """Split pipe input and delegate each segment to match().
 
     Returns:
-        match() の戻り値リスト（入力順）。非パイプ入力は要素 1。
+        List of match() results in input order. Single element when not piped.
     """
     segments = split_pipe_segments(user_input)
     results: list[SkillMatchResult] = []
@@ -192,14 +192,14 @@ async def match(
     model: str | None = None,
 ) -> SkillMatchResult:
     """
-    ユーザー入力からスキルを特定する（5段フォールバック）。
+    Identify a skill from user input (5-stage fallback).
 
-    優先順位: スラッシュコマンド → literal 一致 → triggers 部分一致
-    → AgenticSkillDiscoverer → LLM 意図分類
+    Priority: slash command -> literal match -> trigger substring
+    -> AgenticSkillDiscoverer -> LLM intent classification
 
-    戻り値: SkillMatchResult。マッチしなければ decisive=None, rationale="none"。
+    Returns: SkillMatchResult. decisive=None, rationale="none" when unmatched.
     """
-    # Step 1: スラッシュコマンド
+    # Step 1: slash command
     m = _SLASH_PATTERN.match(user_input)
     if m:
         name = m.group(1)
@@ -227,12 +227,12 @@ async def match(
             arguments=arguments,
         )
 
-    # Step 2: literal 一致
+    # Step 2: literal match
     literal_result = _match_by_literal(user_input, skills, persona_skills)
     if literal_result is not None:
         return literal_result
 
-    # Step 3: triggers 部分一致
+    # Step 3: trigger substring
     trigger_result = _match_by_triggers(user_input, skills, persona_skills)
     if trigger_result is not None:
         meta, arguments = trigger_result
@@ -243,7 +243,7 @@ async def match(
             arguments=arguments,
         )
 
-    # Step 4: AgenticSkillDiscoverer（反復絞り込み）
+    # Step 4: AgenticSkillDiscoverer (iterative narrowing)
     def _llm_for_discover(prompt: str) -> str:
         result = llm_call(
             prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30
@@ -275,7 +275,7 @@ async def match(
             arguments=user_input,
         )
 
-    # Step 5: 既存 LLM 意図分類フォールバック（unresolved 時）
+    # Step 5: existing LLM intent-classification fallback (when unresolved)
     llm_result = await _match_by_llm(user_input, skills, persona_skills, model=model)
     if llm_result is not None:
         meta, arguments = llm_result

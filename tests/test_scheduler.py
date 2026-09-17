@@ -57,7 +57,7 @@ def test_from_dict_valid_scheduled() -> None:
 def test_from_dict_invalid_mode_raises() -> None:
     """`mode` outside scheduled|fuzzy_window|interval|chained → ValueError."""
     # Japanese text intentionally kept for CJK processing test
-    with pytest.raises(ValueError, match="不明な mode"):
+    with pytest.raises(ValueError, match="unknown mode"):
         ScheduleJob.from_dict({
             "id": "bad",
             "mode": "unknown_mode",
@@ -81,7 +81,7 @@ def test_from_dict_invalid_hhmm_raises() -> None:
 def test_overnight_fuzzy_window_raises() -> None:
     """Overnight fuzzy window → ValueError."""
     # Japanese text intentionally kept for CJK processing test
-    with pytest.raises(ValueError, match="日付またぎ"):
+    with pytest.raises(ValueError, match="overnight"):
         ScheduleJob.from_dict({
             "id": "overnight",
             "mode": "fuzzy_window",
@@ -584,7 +584,7 @@ def test_skill_action_skill_not_found(tmp_path: Path) -> None:
 
     assert ok is False
     # Japanese text intentionally kept for CJK processing test
-    assert "スキルが見つかりません" in msg
+    assert "Skill not found" in msg
     assert "nonexistent-skill" in msg
 
 
@@ -599,7 +599,7 @@ def test_skill_action_persona_file_not_found(tmp_path: Path) -> None:
 
     assert ok is False
     # Japanese text intentionally kept for CJK processing test
-    assert "ペルソナファイルが見つかりません" in msg
+    assert "Persona file not found" in msg
 
 
 
@@ -693,9 +693,9 @@ def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
     prompt = mock_enqueue.call_args.kwargs["prompt"]
     # Product prompt template strings (src Englishization is out of scope).
     # Japanese text intentionally kept for CJK processing test
-    assert "あなたは以下のキャラクターになりきり" in prompt
-    assert "--- ユーザーからの指示 ---" in prompt
-    assert "現在日時:" in prompt
+    assert "You are the following character" in prompt
+    assert "--- User instruction ---" in prompt
+    assert "Current datetime:" in prompt
 
 
 def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
@@ -1210,7 +1210,7 @@ def test_load_jobs_invalid_yaml_raises_config_error(tmp_path: Path) -> None:
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", yaml_path=bad_yaml)
 
     # Japanese text intentionally kept for CJK processing test
-    with pytest.raises(ConfigError, match="YAML 読込エラー"):
+    with pytest.raises(ConfigError, match="YAML load error"):
         sch._load_jobs()
 
 

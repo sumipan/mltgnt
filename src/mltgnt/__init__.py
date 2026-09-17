@@ -1,4 +1,4 @@
-"""mltgnt — persona × secretary の型契約とチャット入出力（OSS 向けコア）。"""
+"""mltgnt — type contracts and chat I/O for persona × secretary (OSS core)."""
 
 from importlib.metadata import PackageNotFoundError, version
 

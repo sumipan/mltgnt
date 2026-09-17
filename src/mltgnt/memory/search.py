@@ -1,5 +1,5 @@
 """
-mltgnt.memory.search — 関連度検索・十分性判定・反復検索。
+mltgnt.memory.search — relevance search, sufficiency, iterative retrieval.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _search_and_score(
     *,
     max_entries: int,
 ) -> "list[ScoredEntry]":
-    """JSONL から preferences 以外のエントリをスコアリングして返す。"""
+    """Score non-preferences entries from JSONL."""
     path = _ensure_jsonl(config, persona_stem)
     if not path.exists():
         return []
@@ -40,7 +40,7 @@ def _search_and_score(
     non_prefs = [e for e in entries if e.source_tag != "preferences"]
     if not non_prefs:
         return []
-    # スコアリングは content テキスト単位
+    # Score at content-text granularity
     entry_texts = [
         assemble_entries_text([e], preferences_heading=config.preferences_section_name).strip()
         for e in non_prefs
@@ -63,9 +63,9 @@ def read_memory_by_relevance(
     max_entries: int,
     layers: list[str] | None = None,
 ) -> str:
-    """クエリとの関連度が高いエントリを選択して返す。
+    """Select and return entries highly relevant to the query.
 
-    layers 指定時は layer がリストに含まれるエントリのみをスコアリング対象とする。
+    When layers is set, only score entries whose layer is in the list.
     """
     if not query:
         return read_memory_tail_text(
@@ -136,7 +136,7 @@ def read_memory_with_sufficiency_check(
     max_entries: int,
     llm_call: "Callable[[str], str] | None" = None,
 ) -> str:
-    """十分性判定付き memory 検索。"""
+    """Memory search with sufficiency judgment."""
     if llm_call is None:
         return read_memory_by_relevance(
             config, persona_stem, query, max_bytes=max_bytes, max_entries=max_entries
@@ -219,9 +219,9 @@ def read_memory_with_sufficiency_check(
 
 
 def _make_skill_searcher(skill_paths: list[Path]) -> Callable[[str, int], list]:
-    """skill_paths を閉じ込めた skill 検索コールバックを返す。
+    """Return a skill-search callback that closes over skill_paths.
 
-    mltgnt.skill は importlib でランタイム解決し、import-linter の静的依存に含めない。
+    Resolve mltgnt.skill via importlib at runtime; keep it out of import-linter static deps.
     """
 
     def search_skills(query: str, max_entries: int) -> list:
@@ -252,7 +252,7 @@ def read_memory_iterative(
     skill_paths: "list[Path] | None" = None,
     max_iterations: int = 3,
 ) -> str:
-    """反復検索による情報収集。LLM が十分性を判定し、不足時は source 指定で再検索する。"""
+    """Iterative info gathering. LLM judges sufficiency; re-search by source when insufficient."""
     from mltgnt.memory._iterative import IterativeRetriever
 
     search_skills_fn = _make_skill_searcher(skill_paths) if skill_paths else None

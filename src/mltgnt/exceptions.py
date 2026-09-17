@@ -1,7 +1,7 @@
 """
-mltgnt.exceptions — 共通例外型階層。
+mltgnt.exceptions — shared exception type hierarchy.
 
-設計: diary Issue #1252
+Design: diary Issue #1252
 """
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ __all__ = [
 
 
 class MltgntError(Exception):
-    """mltgnt 共通基底例外。外部コードは except MltgntError で一括捕捉可能。"""
+    """mltgnt common base exception. Callers can catch MltgntError for all."""
 
 
 class ConfigError(MltgntError):
-    """設定ファイル（YAML 等）の読み込み・パースエラー。"""
+    """Config file (YAML etc.) load / parse error."""
 
 
 class DependencyError(MltgntError):
-    """外部依存（callable, subprocess, API）の呼び出し失敗。"""
+    """External dependency (callable, subprocess, API) call failure."""

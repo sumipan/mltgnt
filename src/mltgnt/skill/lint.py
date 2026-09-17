@@ -1,7 +1,7 @@
 """
-mltgnt.skill.lint — SKILL.md フロントマターの構造検証（V1–V14）。
+mltgnt.skill.lint — structural validation of SKILL.md frontmatter (V1–V14).
 
-設計: Issue #1383 U3, Issue #1832 (V10–V12), Issue #1828 V13, Issue #2066 (V14)
+Design: Issue #1383 U3, Issue #1832 (V10–V12), Issue #1828 V13, Issue #2066 (V14)
 """
 from __future__ import annotations
 
@@ -12,22 +12,22 @@ _ALLOWED_MUTATES = frozenset({"config", "env", "git", "github", "process"})
 
 
 def lint_skill_meta(fm: dict, path: Path) -> list[str]:
-    """フロントマター dict を V1–V14 で検証し、エラーメッセージのリストを返す。
+    """Validate a frontmatter dict with V1–V14; return error message list.
 
-    空リスト = 検証通過。warning レベル（V13 等）はメッセージ末尾 ``(warning)`` で区別する。
+    Empty list = pass. Warnings (e.g. V13) end with ``(warning)``.
     """
     errors: list[str] = []
 
-    # V1: description 非空
+    # V1: description non-empty
     if not fm.get("description"):
         errors.append("V1: description is required")
 
-    # V2: triggers が list 型
+    # V2: triggers is a list
     triggers = fm.get("triggers")
     if triggers is not None and not isinstance(triggers, list):
         errors.append("V2: triggers must be a list")
 
-    # V3: name == ディレクトリ名
+    # V3: name == directory name
     name = fm.get("name") or path.parent.name
     if name != path.parent.name:
         errors.append(f"V3: name '{name}' does not match directory '{path.parent.name}'")
@@ -37,11 +37,11 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
     if skill_io not in ("legacy", "v1"):
         errors.append(f"V4: skill_io must be 'legacy' or 'v1', got {skill_io!r}")
 
-    # V5: skill_io: v1 → produces 必須
+    # V5: skill_io: v1 → produces required
     if skill_io == "v1" and not fm.get("produces"):
         errors.append("V5: skill_io=v1 requires produces field")
 
-    # V6–V7: produces 構造
+    # V6–V7: produces structure
     produces = fm.get("produces")
     if produces is not None and isinstance(produces, dict):
         content_type = produces.get("content_type", "text/markdown")
@@ -54,9 +54,9 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
             for i, artifact in enumerate(artifacts):
                 if not isinstance(artifact, dict) or "path" not in artifact or not isinstance(artifact["path"], str):
                     errors.append(f"V7: produces.artifacts[{i}].path is required")
-    # produces が dict 以外の場合は V6/V7 は lint 時点では触れず V5/V4 等に委譲
+    # If produces is not a dict, skip V6/V7 here; defer to V5/V4 etc.
 
-    # V8: consumes[*].producer 非空 str
+    # V8: consumes[*].producer non-empty str
     consumes = fm.get("consumes") or []
     if isinstance(consumes, list):
         for i, item in enumerate(consumes):
@@ -67,13 +67,13 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
                 if not isinstance(producer, str) or not producer:
                     errors.append(f"V8: consumes[{i}].producer must be non-empty str")
 
-    # V9: input_schema が dict（v1 のみ。legacy は list 形式を許容）
+    # V9: input_schema is dict (v1 only; legacy allows list form)
     if skill_io == "v1":
         input_schema = fm.get("input_schema")
         if input_schema is not None and not isinstance(input_schema, dict):
             errors.append(f"V9: input_schema must be dict, got {type(input_schema).__name__}")
 
-    # V10–V12: side_effects（キー存在時のみ検証）
+    # V10–V12: side_effects (validate only when the key exists)
     if "side_effects" in fm:
         side_effects = fm["side_effects"]
         if not isinstance(side_effects, dict):
@@ -104,11 +104,11 @@ def lint_skill_meta(fm: dict, path: Path) -> list[str]:
 
     scripts_dir = path.parent / "scripts"
 
-    # V14: scripts/ あり + side_effects 未宣言 → error
+    # V14: scripts/ present + side_effects undeclared → error
     if scripts_dir.is_dir() and "side_effects" not in fm:
         errors.append("V14: skills with scripts/ must declare side_effects")
 
-    # V13: scripts/ あり + README.md なし → warning
+    # V13: scripts/ present + no README.md → warning
     if scripts_dir.is_dir() and not (path.parent / "README.md").is_file():
         errors.append("V13: skills with scripts/ should have README.md (warning)")
 

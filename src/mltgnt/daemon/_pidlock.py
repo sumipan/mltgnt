@@ -3,13 +3,13 @@ from pathlib import Path
 
 
 class PidLock:
-    """PIDファイルによる単一インスタンス制御。"""
+    """Single-instance control via a PID file."""
 
     def __init__(self, pid_file: Path) -> None:
         self._pid_file = pid_file
 
     def acquire(self) -> bool:
-        """ロック取得。成功時 True、既存プロセス稼働中なら False。"""
+        """Acquire the lock. True on success; False if another process holds it."""
         if self._pid_file.exists():
             try:
                 pid = int(self._pid_file.read_text().strip())
@@ -27,7 +27,7 @@ class PidLock:
         return True
 
     def release(self) -> None:
-        """PIDファイルを削除する。"""
+        """Remove the PID file."""
         try:
             self._pid_file.unlink()
         except FileNotFoundError:

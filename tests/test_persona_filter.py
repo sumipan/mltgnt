@@ -88,7 +88,7 @@ def test_replace_datetime_filter(tachikoma_persona: Persona) -> None:
     result = tachikoma_persona.format_prompt("test")
     assert "REPLACED_DATETIME" in result
     # Japanese text intentionally kept for CJK processing test
-    assert "現在日時:" not in result
+    assert "Current datetime:" not in result
 
 
 @freeze_time("2026-04-23T10:00:00+09:00")
@@ -97,7 +97,7 @@ def test_default_datetime_filter_backward_compat(tachikoma_persona: Persona) -> 
     """Without register_prompt_filter, the existing '現在日時:' line is still present."""
     result = tachikoma_persona.format_prompt("test")
     # Japanese text intentionally kept for CJK processing test
-    assert "現在日時: 2026-04-23 10:00:00 (JST)" in result
+    assert "Current datetime: 2026-04-23 10:00:00 (JST)" in result
 
 
 def test_multiple_filters_ordered_accumulation(tachikoma_persona: Persona) -> None:

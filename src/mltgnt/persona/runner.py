@@ -1,8 +1,8 @@
 """mltgnt.persona.runner
 
-ペルソナのコンテキストを含めてプロンプトを LLM に実行し、応答を返す。
+Run a prompt against an LLM with persona context and return the reply.
 
-公開 API:
+Public API:
     run_persona_prompt(persona_name, prompt, persona_dir, timeout, memory) -> str
 """
 from __future__ import annotations
@@ -20,22 +20,22 @@ def run_persona_prompt(
     timeout: int = 120,
     memory: str | None = None,
 ) -> str:
-    """ペルソナのコンテキストを含めてプロンプトを LLM に実行し、応答を返す。
+    """Run a prompt against an LLM with persona context and return the reply.
 
     Args:
         persona_name: Persona name (e.g. "persona-a") or alias.
-        prompt: LLM に渡す指示テキスト。ペルソナの body + format_prompt() でラップされる。
-        persona_dir: ペルソナファイルのディレクトリ。None の場合は Path("agents")。
-        timeout: LLM 呼び出しのタイムアウト秒数。デフォルト 120 秒。
-        memory: 呼び出し側が読み込んだメモリ文字列（任意）。
-                非 None の場合はプロンプト先頭に付加する。
+        prompt: Instruction text for the LLM, wrapped with persona body + format_prompt().
+        persona_dir: Persona file directory. Path("agents") when None.
+        timeout: LLM call timeout seconds. Default 120.
+        memory: Optional memory string loaded by the caller.
+                When non-None, prepended to the prompt.
 
     Returns:
-        LLM の stdout 出力（strip 済み）。
-        エラー時は "（エラー: ...）" / "（実行失敗: ...）" を返す。
+        LLM stdout (stripped).
+        On error, return "(error: ...)" / "(exec failed: ...)".
 
     Raises:
-        FileNotFoundError: ペルソナファイルが見つからない場合。
+        FileNotFoundError: Persona file not found.
     """
     from mltgnt.bridges.llm_adapter import call_llm
     from mltgnt.persona.loader import load
@@ -59,12 +59,12 @@ def run_persona_prompt(
         result = call_llm(formatted, engine=engine, model=model, timeout=timeout)
     except Exception as e:
         logger.warning("[persona.runner] persona=%r exception: %s", persona_name, e)
-        content = f"（実行失敗: {e}）"
+        content = f"(exec failed: {e})"
     else:
         if not result.success:
             stderr = (result.stderr or "").strip()
             logger.warning("[persona.runner] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
-            content = f"（エラー: {stderr[:200]}）" if stderr else "（エラー）"
+            content = f"(error: {stderr[:200]})" if stderr else "(error)"
         else:
             content = (result.body or "").strip()
 

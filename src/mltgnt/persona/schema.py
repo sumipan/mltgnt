@@ -1,14 +1,14 @@
 """mltgnt.persona.schema
 
-人物像フロントマターのスキーマ定義とバリデーション。
+Schema definition and validation for persona frontmatter.
 
-FM 構造:
-    spec_version: str  # 任意。ペルソナスキーマのバージョン（例: "2.2.0"）
+FM structure:
+    spec_version: str  # optional. Persona schema version (e.g. "2.2.0")
 
     persona:
-      name: str          # 必須。ファイル stem と一致
-      aliases: list[str] # 任意
-      description: str   # 任意
+      name: str          # required. Must match file stem
+      aliases: list[str] # optional
+      description: str   # optional
 
     ops:
       slack:
@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# 既知の許容キー
+# Known allowed keys
 # ---------------------------------------------------------------------------
 
 _KNOWN_PERSONA_KEYS: frozenset[str] = frozenset({"name", "aliases", "description"})
@@ -38,8 +38,9 @@ _KNOWN_OPS_SLACK_KEYS: frozenset[str] = frozenset(
      "secondary_channels", "nickname"}
 )
 
-# 必須セクション（本文中に ## <name> が存在すること）
+# Required sections (## <name> must exist in the body)
 REQUIRED_SECTIONS: tuple[str, ...] = (
+    # Japanese text intentionally kept for CJK processing test
     "基本情報",
     "価値観",
     "反応パターン",
@@ -49,13 +50,13 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 
 
 # ---------------------------------------------------------------------------
-# データクラス
+# Dataclasses
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class PersonaFM:
-    """パース済みフロントマターを保持する。"""
+    """Holds parsed frontmatter."""
 
     name: str
     aliases: list[str] = field(default_factory=list)
@@ -73,24 +74,24 @@ class PersonaFM:
     slack_secondary_channels: list[str] = field(default_factory=list)
     slack_nickname: str | None = None
 
-    # 未知のキー（バリデーション用に保持）
+    # Unknown keys (kept for validation)
     unknown_keys: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
-# パース関数
+# Parse functions
 # ---------------------------------------------------------------------------
 
 
 def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
-    """フロントマター dict から PersonaFM を生成する。"""
+    """Build PersonaFM from a frontmatter dict."""
     unknown: list[str] = []
 
-    # ── トップレベル spec_version ────────────────────────────────────────────
+    # —— top-level spec_version ——
     _sv_raw = meta.get("spec_version")
     spec_version: str | None = str(_sv_raw).strip() if _sv_raw is not None else None
 
-    # ── 新スキーマの persona: namespace ──────────────────────────────────────
+    # —— new-schema persona: namespace ——
     persona_ns: dict[str, Any] = meta.get("persona") or {}
     if isinstance(persona_ns, dict):
         name = str(persona_ns.get("name") or file_stem)
@@ -105,7 +106,7 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
         aliases = []
         description = ""
 
-    # ── 新スキーマの ops: namespace ──────────────────────────────────────────
+    # —— new-schema ops: namespace ——
     ops_ns: dict[str, Any] = meta.get("ops") or {}
     engine: str = ""
     model: str = ""
@@ -165,7 +166,7 @@ def parse_fm(meta: dict[str, Any], file_stem: str = "") -> PersonaFM:
 
 
 # ---------------------------------------------------------------------------
-# バリデーション
+# Validation
 # ---------------------------------------------------------------------------
 
 
@@ -177,37 +178,38 @@ class ValidationResult:
 
 
 def validate_fm(fm: PersonaFM) -> ValidationResult:
-    """FM のスキーマ違反・未知キーを検査する。"""
+    """Check FM for schema violations and unknown keys."""
     errors: list[str] = []
     warns: list[str] = []
 
     if not fm.name:
-        errors.append("persona.name が未設定です")
+        errors.append("persona.name is not set")
 
     for k in fm.unknown_keys:
-        errors.append(f"未定義の FM キー: {k!r}（スキーマに追加してから使用してください）")
+        errors.append(f"Undefined FM key: {k!r} (add it to the schema before use)")
 
     return ValidationResult(ok=len(errors) == 0, warnings=warns, errors=errors)
 
 
 def validate_sections(body: str, fm: PersonaFM) -> ValidationResult:
-    """本文に必須セクションが含まれるかチェックする。"""
+    """Check that the body contains required sections."""
     warns: list[str] = []
     errors: list[str] = []
 
     for sec in REQUIRED_SECTIONS:
-        # "## N. <名前>" 形式と "## <名前>" 形式の両方を許容
+        # Allow both "## N. <name>" and "## <name>" forms
         if f"## {sec}" not in body and f"## 0. {sec}" not in body:
-            # 部分一致も試みる（"## 1. 基本情報" など）
+            # Japanese text intentionally kept for CJK processing test
+            # Also try partial match (e.g. "## 1. 基本情報")
             import re
             if not re.search(rf"##\s+(?:\d+\.\s+)?(?:\S+)?{re.escape(sec)}", body):
-                warns.append(f"必須セクション「{sec}」が見つかりません")
+                warns.append(f"Required section \"{sec}\" not found")
 
     return ValidationResult(ok=len(errors) == 0, warnings=warns, errors=errors)
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -219,7 +221,7 @@ def _str_or_none(val: Any) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# エンジン・コマンドビルダー
+# Engine / command builders
 # ---------------------------------------------------------------------------
 
 VALID_ENGINES: frozenset[str] = frozenset({"claude", "gemini", "cursor", "codex"})

@@ -1,4 +1,4 @@
-"""mltgnt.agent._runner — 汎用エージェントループ。"""
+"""mltgnt.agent._runner — generic agent loop."""
 from __future__ import annotations
 
 import logging
@@ -17,7 +17,7 @@ _logger = logging.getLogger(__name__)
 
 @dataclass
 class AgentResult:
-    """エージェントの実行結果。"""
+    """Result of an agent run."""
     tool: str
     args: dict[str, Any]
     raw_response: str
@@ -27,13 +27,13 @@ class AgentResult:
 
 @dataclass
 class ReflexionVerdict:
-    """Reflexion 評価の判定結果。"""
+    """Verdict from a Reflexion evaluation."""
     should_retry: bool
-    feedback: str  # should_retry=True 時に LLM へ注入するフィードバック
+    feedback: str  # feedback injected into the LLM when should_retry=True
 
 
 class ReflexionEvaluator(Protocol):
-    """ツール実行結果を評価し、再計画の要否を判定する。"""
+    """Evaluate a tool result and decide whether to replan."""
 
     def __call__(
         self,
@@ -47,7 +47,7 @@ class ReflexionEvaluator(Protocol):
 
 @dataclass
 class RetryConfig:
-    """一時的障害に対するリトライ設定。"""
+    """Retry settings for transient failures."""
     max_retries: int = 2
     base_delay_s: float = 1.0
     max_delay_s: float = 30.0
@@ -71,7 +71,7 @@ class ToolExecutor(Protocol):
 
 
 class AgentRunner:
-    """汎用エージェントループ。"""
+    """Generic agent loop."""
 
     def __init__(
         self,

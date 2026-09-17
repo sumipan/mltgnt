@@ -1,7 +1,7 @@
-"""mltgnt.persona.result_format — ペルソナ整形の LLM 呼び出し骨格（#3318）。
+"""mltgnt.persona.result_format — LLM call skeleton for persona formatting (#3318).
 
-プロンプト本文・LLM 呼び出し・媒体向け後処理はホスト注入。
-媒体固有の Markdown 変換はホスト側に残す。
+Prompt body, LLM call, and media post-processing are host-injected.
+Media-specific Markdown conversion stays on the host.
 """
 from __future__ import annotations
 
@@ -37,20 +37,20 @@ def format_result_for_persona(
     input_max_chars: int = DEFAULT_FORMAT_INPUT_MAX_CHARS,
     timeout: int | None = DEFAULT_FORMAT_TIMEOUT_SEC,
 ) -> str | None:
-    """LLM で結果テキストをペルソナスタイルに整形する。失敗時は None。
+    """Format result text into persona style via LLM. None on failure.
 
     Args:
-        raw_body: 整形対象の下書き本文
-        prompt_header: ホストが組み立てたプロンプト先頭（人物像・方針など）
+        raw_body: Draft body to format
+        prompt_header: Host-built prompt prefix (persona, policy, etc.)
         llm_call: ``(prompt, *, stdin_text, engine, model, timeout) -> result``
-        logger: ``warning`` を持つロガー
-        postprocess: 媒体向け後処理（未指定時は strip のみ）
+        logger: Logger with ``warning``
+        postprocess: Media post-process (strip only when omitted)
     """
     s = (raw_body or "").strip()
     if not s:
         return None
     if len(s) > input_max_chars:
-        s = s[:input_max_chars] + "\n\n[入力が長いため途中まで。以降は省略されている]"
+        s = s[:input_max_chars] + "\n\n[Input truncated because it was too long]"
     full_input = (prompt_header or "") + s
 
     effective_engine = (engine or "").strip() or SYSTEM_DEFAULT_ENGINE

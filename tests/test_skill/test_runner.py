@@ -218,10 +218,10 @@ class TestRunExtraContext:
         sys_content = result.chat_input.messages[0]["content"]
         assert "skill body" in sys_content
         # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" in sys_content
+        assert "## Context" in sys_content
         assert "knowledge and memory snippet" in sys_content
         # Context is appended after the skill body
-        assert sys_content.index("skill body") < sys_content.index("## コンテキスト")
+        assert sys_content.index("skill body") < sys_content.index("## Context")
 
     def test_extra_context_none_is_backward_compatible(self) -> None:
         """Without extra_context / None, output matches prior behavior."""
@@ -232,7 +232,7 @@ class TestRunExtraContext:
         with_none = run(skill, persona, "", chat_input, extra_context=None)
         assert without.chat_input.messages[0]["content"] == with_none.chat_input.messages[0]["content"]
         # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" not in without.chat_input.messages[0]["content"]
+        assert "## Context" not in without.chat_input.messages[0]["content"]
 
 
 class TestWriteResultFrontmatter:

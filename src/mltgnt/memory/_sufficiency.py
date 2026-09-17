@@ -1,7 +1,7 @@
 """
-mltgnt.memory._sufficiency — LLM による十分性判定。
+mltgnt.memory._sufficiency — LLM-based sufficiency judgment.
 
-設計: Issue #197 Phase 2/3
+Design: Issue #197 Phase 2/3
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ __all__ = [
 
 @dataclass(frozen=True)
 class SearchAction:
-    """LLM が決定した次の検索アクション"""
+    """Next search action decided by the LLM."""
 
     source: Literal["memory", "skill"]
     query: str
@@ -40,45 +40,45 @@ class SearchAction:
 
 @dataclass(frozen=True)
 class DiscoverVerdict:
-    """スキル発見用の三値判定結果。"""
+    """Three-way verdict for skill discovery."""
 
     kind: Literal["selected", "need_more", "unresolved"]
-    skill_name: str | None = None  # selected のみ非 None
-    next_query: str | None = None  # need_more のみ非 None
-    reason: str | None = None  # unresolved のみ非 None
+    skill_name: str | None = None  # non-None only when selected
+    next_query: str | None = None  # non-None only when need_more
+    reason: str | None = None  # non-None only when unresolved
     top_candidates: list[tuple[str, float]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class SufficiencyResult:
-    """十分性判定の結果"""
+    """Sufficiency judgment result."""
 
     sufficient: bool
-    action: SearchAction | None  # sufficient=True なら None
+    action: SearchAction | None  # None when sufficient=True
 
     @property
     def rewritten_query(self) -> str | None:
-        """Phase 2 互換プロパティ。action.query へ委譲する。"""
+        """Phase 2 compat property. Delegates to action.query."""
         if self.action is None:
             return None
         return self.action.query
 
 
 def _build_prompt(query: str, collected_text: str) -> str:
-    return f"""あなたは情報収集の十分性を判断するアシスタントです。
+    return f"""You are an assistant that judges whether collected information is sufficient.
 
-ユーザーの質問: {query}
+User question: {query}
 
-収集済みの情報:
+Collected information:
 {collected_text}
 
-上記の情報がユーザーの質問に答えるのに十分かどうか判断してください。
+Judge whether the information above is enough to answer the user's question.
 
-十分な場合は1行目に「SUFFICIENT」とだけ出力してください。
-不十分な場合は以下の形式で出力してください:
-1行目: 「INSUFFICIENT」
-2行目: 検索ソース（「MEMORY」または「SKILL」）
-3行目: 不足情報を補うための検索クエリ"""
+If sufficient, output only "SUFFICIENT" on line 1.
+If insufficient, output in this format:
+Line 1: "INSUFFICIENT"
+Line 2: search source ("MEMORY" or "SKILL")
+Line 3: a search query to fill the missing information"""
 
 
 def judge_sufficiency(
@@ -86,15 +86,15 @@ def judge_sufficiency(
     collected_text: str,
     llm_call: Callable[[str], str],
 ) -> SufficiencyResult:
-    """LLM を使って収集済み情報の十分性を判断する。
+    """Judge sufficiency of collected information using an LLM.
 
-    LLM 応答のパースに失敗した場合は sufficient=True として扱う（フェイルセーフ）。
-    LLM 呼び出し自体が例外を投げた場合は、その例外を呼び出し元に伝播させる。
+    On parse failure, treat as sufficient=True (fail-safe).
+    If the LLM call itself raises, propagate to the caller.
 
     Args:
-        query: ユーザーの質問
-        collected_text: 収集済み情報のテキスト
-        llm_call: LLM を呼び出す関数
+        query: User question
+        collected_text: Collected information text
+        llm_call: Function that calls the LLM
 
     Returns:
         SufficiencyResult
@@ -136,7 +136,7 @@ def judge_sufficiency(
             action=SearchAction(source=source, query=requery),
         )
 
-    # 不明なフォーマット → フェイルセーフ
+    # Unknown format → fail-safe
     _log.warning(
         "judge_sufficiency: unexpected response format '%s', treating as SUFFICIENT",
         first,
@@ -150,27 +150,27 @@ def _build_discover_prompt(
     skill_names: list[str],
 ) -> str:
     skills_list = ", ".join(skill_names)
-    return f"""あなたはユーザーの意図に最も合うスキルを1つ選ぶアシスタントです。
+    return f"""You are an assistant that picks the single skill that best matches the user intent.
 
-ユーザーの入力: {query}
+User input: {query}
 
-候補スキル:
+Candidate skills:
 {collected_text}
 
-候補スキル名: {skills_list}
+Candidate skill names: {skills_list}
 
-上記の候補から最も適切なスキルを1つ選ぶか、追加情報が必要か、該当なしと判断してください。
+Choose the best skill, ask for more information, or decide none apply.
 
-1件に絞れた場合:
-1行目: SELECTED
-2行目: スキル名
+When narrowed to one:
+Line 1: SELECTED
+Line 2: skill name
 
-追加検索が必要な場合:
-1行目: NEED_MORE
-2行目: 絞り込み用の検索クエリ
+When more search is needed:
+Line 1: NEED_MORE
+Line 2: a refining search query
 
-該当なしまたは判断不能な場合:
-1行目: UNRESOLVED"""
+When none apply or undecidable:
+Line 1: UNRESOLVED"""
 
 
 def judge_for_discover(
@@ -179,10 +179,10 @@ def judge_for_discover(
     skill_names: list[str],
     llm_call: Callable[[str], str],
 ) -> DiscoverVerdict:
-    """LLM を使ってスキル候補から三値判定を行う。
+    """Three-way verdict over skill candidates using an LLM.
 
-    LLM 応答のパースに失敗した場合は unresolved を返す（安全側）。
-    LLM 呼び出し自体が例外を投げた場合は、その例外を呼び出し元に伝播させる。
+    On parse failure, return unresolved (safe side).
+    If the LLM call itself raises, propagate to the caller.
     """
     prompt = _build_discover_prompt(query, collected_text, skill_names)
     response = llm_call(prompt)

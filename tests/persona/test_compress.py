@@ -376,7 +376,7 @@ class TestValidateV21LightBlock:
 **\u5f15\u3063\u304b\u304b\u308b** — Dislikes baseless claims.
 """
         # Japanese text intentionally kept for CJK processing test
-        with pytest.raises(ValueError, match="\u30ea\u30fc\u30c9\u6587"):
+        with pytest.raises(ValueError, match="lead text"):
             _validate_v21_light_block(no_lead)
 
     def test_error_missing_section_tone(self) -> None:
@@ -467,5 +467,5 @@ class TestRegenerateLightBlockV21Validation:
         bad_response = "**\u53e3\u8abf** — No lead text.\n**\u4fa1\u5024\u89b3** — Efficiency.\n**\u597d\u610f\u7684\u53cd\u5fdc** — OK.\n**\u5f15\u3063\u304b\u304b\u308b** — NG."
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=bad_response)):
             # Japanese text intentionally kept for CJK processing test
-            with pytest.raises(ValueError, match="\u30ea\u30fc\u30c9\u6587"):
+            with pytest.raises(ValueError, match="lead text"):
                 regenerate_light_block(persona_file)

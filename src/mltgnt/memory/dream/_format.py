@@ -1,4 +1,4 @@
-"""mltgnt.memory.dream._format — DreamSection / DreamSummary と JSON 変換。"""
+"""mltgnt.memory.dream._format — DreamSection / DreamSummary and JSON conversion."""
 from __future__ import annotations
 
 import json

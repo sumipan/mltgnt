@@ -1,4 +1,4 @@
-"""mltgnt.bridges.hooks_adapter — AgentRunner.audit_writer 用コールバックファクトリ + DagHooks adapter。"""
+"""mltgnt.bridges.hooks_adapter — audit_writer callback factory for AgentRunner + DagHooks adapter."""
 from __future__ import annotations
 
 import uuid as _uuid_module
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class MltgntHooks:
-    """mltgnt 用 DagHooks 実装。DagHooks Protocol の全 12 メソッドを実装する。"""
+    """DagHooks implementation for mltgnt. Implements all 12 DagHooks Protocol methods."""
 
     def __init__(self, audit_path: Path, *, source: str = "mltgnt-scheduler") -> None:
         self._audit_path = audit_path
@@ -161,11 +161,11 @@ def create_audit_writer(
     source: str = "mltgnt-agent",
     correlation_id: str | None = None,
 ) -> Callable[[str, dict[str, Any], str], None]:
-    """AgentRunner.audit_writer 用コールバックを返す。
+    """Return a callback for AgentRunner.audit_writer.
 
-    ツール実行ごとに write_task_exit_audit() を呼び出し、
-    audit.jsonl に event_type="tool_exec" のレコードを追記する。
-    tool_args の内容はレコードに含めない（機密データ混入防止）。
+    Calls write_task_exit_audit() on each tool execution and appends a
+    record with event_type="tool_exec" to audit.jsonl.
+    tool_args are omitted from the record (avoid leaking secrets).
     """
     def _write(tool_name: str, tool_args: dict[str, Any], tool_result: str) -> None:
         write_task_exit_audit(

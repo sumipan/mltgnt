@@ -118,8 +118,8 @@ def test_synthesize_global_skips_personas_without_dream(chat_dir: Path) -> None:
 
     assert summary.persona == "__global__"
     # Japanese text intentionally kept for CJK processing test
-    assert "【ペルソナ: alice】" in captured_prompts[0]
-    assert "【ペルソナ: bob】" in captured_prompts[0]
+    assert "[Persona: alice]" in captured_prompts[0]
+    assert "[Persona: bob]" in captured_prompts[0]
     assert "【ペルソナ: charlie】" not in captured_prompts[0]
     assert read_dream(chat_dir / "charlie") is None
 
@@ -139,8 +139,8 @@ def test_synthesize_global_respects_exclude_personas(chat_dir: Path) -> None:
     Synthesizer.synthesize_global(config, llm_call=llm)
 
     # Japanese text intentionally kept for CJK processing test
-    assert "【ペルソナ: alice】" not in captured_prompts[0]
-    assert "【ペルソナ: bob】" in captured_prompts[0]
+    assert "[Persona: alice]" not in captured_prompts[0]
+    assert "[Persona: bob]" in captured_prompts[0]
 
 
 def test_synthesize_global_raises_when_no_dreams(chat_dir: Path) -> None:

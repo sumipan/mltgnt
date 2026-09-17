@@ -77,11 +77,11 @@ class TestBuildExtraContext:
 
         assert result is not None
         # Japanese text intentionally kept for CJK processing test
-        assert "### knowledge（直近 2 件）" in result
+        assert "### knowledge (last 2)" in result
         assert "p2" in result and "p3" in result
         assert "p1" not in result
         # Japanese text intentionally kept for CJK processing test
-        assert "### 記憶（末尾）" not in result
+        assert "### Memory (tail)" not in result
 
     def test_memory_only_formatted(self, tmp_path: Path) -> None:
         """AC-2: JSONL is formatted as bullet list and must not include raw JSON."""
@@ -98,7 +98,7 @@ class TestBuildExtraContext:
 
         assert result is not None
         # Japanese text intentionally kept for CJK processing test
-        assert "### 記憶（末尾）" in result
+        assert "### Memory (tail)" in result
         assert "- [2026-04-21 14:25] user: Is persona-b around?" in result
         assert '{"timestamp"' not in result
         assert "### knowledge" not in result
@@ -124,10 +124,10 @@ class TestBuildExtraContext:
 
         assert result is not None
         # Japanese text intentionally kept for CJK processing test
-        assert "### knowledge（直近 1 件）" in result
+        assert "### knowledge (last 1)" in result
         assert "k2" in result and "k1" not in result
         # Japanese text intentionally kept for CJK processing test
-        assert "### 記憶（末尾）" in result
+        assert "### Memory (tail)" in result
         assert "last night's talk" in result
         assert "- [" in result
 

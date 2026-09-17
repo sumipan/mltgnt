@@ -1,7 +1,7 @@
-"""委譲前検査（preflight）の骨格（#3318）。
+"""Preflight skeleton before dispatch (#3318).
 
-メモリ・スキル・プロフィール・注記の実装はホストが注入する。
-プロンプト本文・ポリシーは本モジュールにハードコードしない。
+Memory, skill, profile, and note implementations are host-injected.
+Prompt bodies and policy are not hardcoded in this module.
 """
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def run_preflight(
     own_bot_id: str | None = None,
     logger: logging.Logger | None = None,
 ) -> PreflightContext:
-    """委譲前の並列プリフライトを実行する。ワーカー実装はすべて注入必須。"""
+    """Run parallel preflight before dispatch. All workers must be injected."""
     triage_profile_content = profile_content
     _logger = logger or _log
     try:
@@ -162,7 +162,7 @@ def run_preflight(
     )
 
 
-# テスト・ホスト互換向けに公開
+# Re-export for tests and host compatibility
 utc_now = _utc_now
 build_thread_tail = _build_thread_tail
 SKILL_ESTIMATE_THREAD_TAIL_CHARS = _SKILL_ESTIMATE_THREAD_TAIL_CHARS

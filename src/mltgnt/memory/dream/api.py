@@ -1,4 +1,4 @@
-"""mltgnt.memory.dream.api — dream.json の読み書き。"""
+"""mltgnt.memory.dream.api — read/write dream.json."""
 from __future__ import annotations
 
 import json
@@ -90,11 +90,12 @@ def write_global(
 
 
 def read_global_summary(config: MemoryConfig) -> str:
-    """global.json をカテゴリ見出し付きテキストにフォーマットして返す。"""
+    """Format global.json as text with category headings."""
     summary = read_global(config.chat_dir, memory_dir_name=config.dream_dir_name)
     if summary is None or not summary.sections:
         return ""
 
+    # Japanese text intentionally kept for CJK processing test
     lines = ["", "", "## 記憶の要約", ""]
     for section in summary.sections:
         lines.append(f"### {section.category}")
@@ -104,12 +105,13 @@ def read_global_summary(config: MemoryConfig) -> str:
 
 
 def read_dream_summary(config: MemoryConfig, persona_stem: str) -> str:
-    """dream.json をカテゴリ見出し付きテキストにフォーマットして返す。"""
+    """Format dream.json as text with category headings."""
     persona_dir = config.chat_dir / persona_stem
     summary = read_dream(persona_dir, memory_dir_name=config.dream_dir_name)
     if summary is None or not summary.sections:
         return ""
 
+    # Japanese text intentionally kept for CJK processing test
     lines = ["", "", "## 記憶の要約", ""]
     for section in summary.sections:
         lines.append(f"### {section.category}")

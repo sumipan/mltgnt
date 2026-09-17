@@ -10,5 +10,5 @@ class SlackClientProtocol(Protocol):
         blocks: list[dict] | None = None,
         reply_broadcast: bool = False,
     ) -> bool:
-        """Slack にメッセージを投稿する。失敗時は False を返す（例外を送出しない）。"""
+        """Post a message to Slack. Return False on failure (do not raise)."""
         ...

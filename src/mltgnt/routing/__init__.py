@@ -1,10 +1,10 @@
 """
-mltgnt.routing — space → ペルソナルーティング（媒体非依存）。
+mltgnt.routing — space → persona routing (media-agnostic).
 
-元コード: tools/secretary/config.py の ChannelPersonaEntry と load_channel_persona_map()
-OSS 分離: persona_loader を callable 引数で受け取る。
+Origin: ChannelPersonaEntry and load_channel_persona_map() from tools/secretary/config.py
+OSS split: receive persona_loader as a callable argument.
 
-設計: Issue #118 §3 (T2) / #3285
+Design: Issue #118 §3 (T2) / #3285
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ __all__ = [
 
 @dataclass
 class RoutingRule:
-    """汎用ルーティングルール。detector が True を返したルールが最初に採用される。"""
+    """Generic routing rule. First rule whose detector returns True wins."""
     name: str
     detector: Callable[[str, dict[str, Any]], bool]
     handler: str
@@ -48,16 +48,16 @@ def evaluate(
     instruction: str,
     ctx: dict[str, Any],
 ) -> "RoutingRule | None":
-    """rules を順に走査し、最初に detector が True を返したルールを返す。
-    どのルールにもマッチしなければ None を返す。
+    """Scan rules in order; return the first whose detector returns True.
+    Return None if no rule matches.
 
     Args:
-        rules: 評価するルールのリスト（順序が優先度）
-        instruction: ユーザー発話テキスト
-        ctx: 検出に必要な追加コンテキスト（例: valid_personas, channel_id）
+        rules: Rules to evaluate (order is priority)
+        instruction: User utterance text
+        ctx: Extra context for detection (e.g. valid_personas, channel_id)
 
     Returns:
-        マッチした RoutingRule、またはマッチなしなら None
+        Matching RoutingRule, or None
     """
     for rule in rules:
         if rule.detector(instruction, ctx):
@@ -67,13 +67,13 @@ def evaluate(
 
 @dataclass
 class SpacePersonaEntry:
-    """1 スペース内でのペルソナの役割を表す。"""
+    """Persona role within one space."""
     name: str
     role: Literal["primary", "secondary"]
-    nickname: str  # 呼び出し用（slack_nickname が None の場合は persona.name を使う）
+    nickname: str  # call name (use persona.name when slack_nickname is None)
 
 
-# 後方互換別名
+# Backward-compat alias
 ChannelPersonaEntry = SpacePersonaEntry
 
 
@@ -81,14 +81,14 @@ def load_channel_persona_map(
     persona_loader: Callable[[], list],
 ) -> dict[str, list[SpacePersonaEntry]]:
     """
-    persona_loader が返すペルソナオブジェクトのリストから
-    space マップを構築する。
-    {space_id: list[SpacePersonaEntry]} の dict を返す。
-    space（persona 定義上は ops.slack.channel 等）が未設定のペルソナはマップに含まれない。
-    同一 space に primary が複数ある場合は ConfigError を送出する。
+    Build a space map from the persona objects returned by persona_loader.
+    Return {space_id: list[SpacePersonaEntry]}.
+    Personas without a space (ops.slack.channel etc. in the definition) are omitted.
+    Raise ConfigError when multiple primaries share one space.
 
-    キーは space_id として扱う（routing は媒体固有の意味を知らない）。
-    persona 定義が Slack の channel フィールドを読むのは定義側の都合であり、本関数の署名は変えない。
+
+    Keys are treated as space_id (routing does not know media-specific meaning).
+    That persona defs may read Slack channel fields is a definition-side concern; this signature stays.
 
     persona_loader: () -> list of persona objects with attributes:
         - name: str
@@ -107,7 +107,7 @@ def load_channel_persona_map(
         try:
             nickname = persona.fm.slack_nickname or persona.name
 
-            # primary スペース
+            # primary spaces
             ch = persona.fm.slack_channel
             if ch:
                 if ch not in result:
@@ -118,7 +118,7 @@ def load_channel_persona_map(
                     nickname=nickname,
                 ))
 
-            # secondary スペース群
+            # secondary spaces
             for sec_ch in persona.fm.slack_secondary_channels:
                 if sec_ch not in result:
                     result[sec_ch] = []
@@ -130,12 +130,12 @@ def load_channel_persona_map(
         except Exception as e:
             _log.warning("load_channel_persona_map: skip persona: %s", e)
 
-    # primary 重複チェック
+    # Duplicate primary check
     for ch, entries in result.items():
         primaries = [e.name for e in entries if e.role == "primary"]
         if len(primaries) > 1:
             raise ConfigError(
-                f"チャンネル {ch} に primary が複数設定されています: {primaries}"
+                f"Channel {ch} has multiple primaries configured: {primaries}"
             )
 
     return result

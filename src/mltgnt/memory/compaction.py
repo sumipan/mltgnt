@@ -1,16 +1,16 @@
 """
-mltgnt.memory.compaction — メモリコンパクション（per-section cap 方式）。
+mltgnt.memory.compaction — memory compaction (per-section cap).
 
-設計: Issue #123, #137, #823, #1135
-Issue #1135: diary の高度な圧縮ロジックを upstream。
-- per-section cap（preferences / long_term / mid_term 各 25%）
-- Phase 1: recent → preferences 抽出・マージ
-- ロールアップループ: recent → mid_term チャンク分割 + 1 行要約
-- mid_term → long_term 玉突き昇格
-- インクリメンタル保存（セクション・チャンクごと）
-- ratio guard（[slack-observe] エントリ除外）
+Design: Issue #123, #137, #823, #1135
+Issue #1135: upstream diary's advanced compression logic.
+- per-section cap (preferences / long_term / mid_term at 25% each)
+- Phase 1: recent → preferences extract and merge
+- Rollup loop: recent → mid_term chunk split + one-line summary
+- mid_term → long_term cascade promote
+- Incremental save (per section / chunk)
+- ratio guard (exclude [slack-observe] entries)
 - date coverage post-check
-- entry 再分類（_redistribute_entries）
+- entry reclassification (_redistribute_entries)
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from mltgnt.memory._format import MemoryEntry, parse_jsonl, serialize_entry
 
 _log = logging.getLogger(__name__)
 
-# エントリ見出しのタイムスタンプ抽出用
+# For extracting timestamps from entry headings
 _ENTRY_HEADER_TS_RE = re.compile(
     r"^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) — (?:user|assistant)",
     re.MULTILINE,
@@ -37,23 +37,23 @@ _ENTRY_HEADER_TS_RE = re.compile(
 
 LlmCall = Callable[[str], str]
 
-# per-section cap 割合
+# per-section cap ratios
 PREFS_CAP_RATIO = 0.25
 LONG_TERM_CAP_RATIO = 0.25
 MID_TERM_CAP_RATIO = 0.25
-# preferences / long_term の統合圧縮時の最大圧縮率（これ未満への圧縮は拒否）
+# Max compression ratio for preferences/long_term merge (reject below this)
 PREFS_MAX_RATIO = 0.90
 LONG_TERM_MAX_RATIO = 0.90
-# mid_term → long_term 玉突き昇格の定数
-LONG_TERM_PROMOTE_FLUSH_BYTES = 10 * 1024  # buffer 累積でこの値を超えたら LLM 圧縮を発火
-LONG_TERM_PROMOTE_MAX_ITER = 10  # LLM 呼び出し回数の上限。超過分は次回持ち越し
+# Constants for mid_term → long_term cascade promote
+LONG_TERM_PROMOTE_FLUSH_BYTES = 10 * 1024  # Fire LLM compress when buffer exceeds this
+LONG_TERM_PROMOTE_MAX_ITER = 10  # Max LLM calls; remainder deferred to next run
 
-ROLLUP_CHUNK = 50 * 1024  # 50KB: ロールアップ1回あたりの取り出し上限バイト数
-ROLLUP_FINE_CHUNK = 5 * 1024  # 5KB: 小粒度モードの切り出し上限
-ROLLUP_MIN_KEEP_BYTES = 10 * 1024  # 10KB: recent の最小保持量（この値以下でループ停止）
-ROLLUP_MAX_ITER = 20  # 無限ループ防御の上限回数
-ROLLUP_SUMMARY_TARGET_BYTES = 5 * 1024  # 5KB: LLM圧縮後の1行サマリ目標上限バイト数
-ROLLUP_SUMMARY_MAX_RETRIES = 2  # リトライ上限（初回試行を除く）
+ROLLUP_CHUNK = 50 * 1024  # 50KB: max bytes taken per rollup
+ROLLUP_FINE_CHUNK = 5 * 1024  # 5KB: fine-grain mode cut limit
+ROLLUP_MIN_KEEP_BYTES = 10 * 1024  # 10KB: min recent keep (stop loop at or below)
+ROLLUP_MAX_ITER = 20  # Cap against infinite loops
+ROLLUP_SUMMARY_TARGET_BYTES = 5 * 1024  # 5KB: target max bytes for one-line summary after LLM
+ROLLUP_SUMMARY_MAX_RETRIES = 2  # Max retries (excluding first attempt)
 
 __all__ = [
     "LlmCallError",
@@ -82,7 +82,7 @@ __all__ = [
 
 
 class LlmCallError(RuntimeError):
-    """llm_call の実行中に発生したエラーをラップする例外。"""
+    """Exception wrapping an error raised during llm_call."""
 
 
 @dataclass(frozen=True)
@@ -107,17 +107,17 @@ def extract_promote_candidates(
     *,
     min_recurrence: int = 3,
 ) -> list[PromoteCandidate]:
-    """コンパクション対象のエントリから promote 候補を抽出する。
+    """Extract promote candidates from compaction entries.
 
-    同一 source_tag が min_recurrence 回以上出現するエントリを候補とする。
-    promote の実行判定は呼び出し側に委譲する。
+    Candidates are entries whose source_tag appears at least min_recurrence times.
+    Whether to promote is left to the caller.
 
     Args:
-        entries: コンパクション対象の MemoryEntry リスト
-        min_recurrence: 同一トピックの最小出現回数
+        entries: MemoryEntry list to compact
+        min_recurrence: Minimum occurrences of the same topic
 
     Returns:
-        PromoteCandidate のリスト。
+        List of PromoteCandidate.
     """
     from collections import defaultdict
 
@@ -140,7 +140,7 @@ def extract_promote_candidates(
 
 
 def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
-    """メモリファイルがコンパクション閾値を超えているか判定する。"""
+    """Whether the memory file exceeds the compaction threshold."""
     from mltgnt.memory import memory_file_path
     path = memory_file_path(config, persona_stem)
     if not path.exists():
@@ -149,21 +149,21 @@ def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
 
 
 def _effective_bytes_for_ratio(text: str) -> int:
-    """ratio 計算用の有効バイト数（[slack-observe] ブロックを除外）。
+    """Effective byte count for ratio checks (exclude [slack-observe] blocks).
 
-    ``[slack-observe]`` タグ付きエントリは情報密度が低く、LLM 圧縮後に
-    極端に小さくなるため ratio チェックが誤検知しやすい。
-    このメソッドではそれらを除外したサイズを返すことで、
-    「非 observe コンテンツが 5% 未満に圧縮された」場合だけアボートするようにする。
+    ``[slack-observe]``-tagged entries are low-density and shrink drastically
+    after LLM compression, so ratio checks false-positive easily.
+    Returning size without them aborts only when
+    non-observe content compresses below 5%.
 
-    JSONL 形式（各行が JSON）と Markdown 形式（``\\n---\\n`` 区切り）の両方に対応する。
+    Supports both JSONL (one JSON per line) and Markdown (``\n---\n`` delimited).
     """
     import json as _json
     lines = text.splitlines()
-    # JSONL 形式の判定: 最初の非空行が { で始まる場合
+    # JSONL detection: first non-empty line starts with {
     non_empty = [ln for ln in lines if ln.strip()]
     if non_empty and non_empty[0].strip().startswith('{'):
-        # JSONL 形式: source_tag か content に [slack-observe] を含まない行のみ集計
+        # JSONL: count only lines whose source_tag/content lack [slack-observe]
         kept_lines = []
         for line in lines:
             if not line.strip():
@@ -179,7 +179,7 @@ def _effective_bytes_for_ratio(text: str) -> int:
         cleaned = '\n'.join(kept_lines)
         result = len(cleaned.encode('utf-8'))
     else:
-        # Markdown 形式: \n---\n で区切られる形式
+        # Markdown: delimited by \n---\n
         blocks = re.split(r'\n---\n', text)
         kept = [b for b in blocks if '[slack-observe]' not in b]
         cleaned = '\n---\n'.join(kept)
@@ -188,23 +188,23 @@ def _effective_bytes_for_ratio(text: str) -> int:
 
 
 def _build_section_prompt(section_text: str, target_bytes: int) -> str:
-    """個別セクション用のコンパクションプロンプトを生成する。"""
+    """Build a compaction prompt for a single section."""
     return (
-        "以下の文章を要約・圧縮してください。"
-        "各エントリの日時見出し行（「## YYYY-MM-DD HH:MM — user/assistant」形式）は"
-        "削除・変更せずそのまま保持してください。"
-        "見出し以外の本文を圧縮対象としてください。"
-        f"目標サイズ: {target_bytes}バイト以内。"
-        "出力は要約された本文のみとしてください。"
-        "バイト数・トークン数・サイズ情報・圧縮率などのメタ情報を出力に含めないでください。"
-        "「指示通り圧縮しました」「目標サイズに収めました」等のプロンプト指示への自己言及も禁止です。"
+        "Please summarize and compress the following text."
+        "Keep each entry date heading line (form '## YYYY-MM-DD HH:MM — user/assistant') "
+        "unchanged; do not delete or alter them."
+        "Compress only the body text outside headings."
+        f"Target size: within {target_bytes} bytes."
+        "Output only the summarized body."
+        "Do not include meta such as byte/token counts, size info, or compression ratio."
+        "Do not self-refer to the prompt (e.g. 'compressed as instructed')."
         "\n\n"
         f"{section_text}"
     )
 
 
 def _strip_heading(section_text: str) -> str:
-    """セクションテキストから先頭の ``## ...`` 見出し行を除去して本文だけ返す。"""
+    """Strip a leading ``## ...`` heading line from section text; return body only."""
     return re.sub(r"^##\s+[^\n]*\n*", "", section_text, count=1).strip()
 
 
@@ -216,11 +216,11 @@ def _compact_section(
     *,
     skip_min_ratio: bool = False,
 ) -> tuple[str, str | None]:
-    """1 セクションをコンパクションする。
+    """Compact one section.
 
     Returns:
         (compacted_body, warning_or_none)
-        失敗時は元の本文をそのまま返し、warning に理由を入れる。
+        On failure, return the original body and put the reason in warning.
     """
     body = _strip_heading(section_text)
     if not body:
@@ -268,19 +268,19 @@ def _promote_with_compression(
     max_ratio: float = 0.90,
     skip_min_ratio: bool = False,
 ) -> tuple[str, str | None]:
-    """昇格統合圧縮: existing_body + incoming_body を一括で LLM 圧縮する。
+    """Promote-merge compress: LLM-compress existing_body + incoming_body together.
 
-    preferences / long_term 用。cap 超過時のみ呼ばれる。
-    max_ratio ガード: 圧縮結果が ``existing_body の max_ratio 未満`` なら過剰圧縮として拒否し
-    結合テキストをそのまま返す。
+    For preferences / long_term. Called only when over cap.
+    max_ratio guard: if result is below ``existing_body * max_ratio``, reject as
+    over-compression and return the concatenated text unchanged.
 
     Args:
-        section_name: セクション名（ログ用）
-        existing_body: 既存セクション本文（max_ratio の基準サイズ）
-        incoming_body: 昇格で追加されるテキスト（空文字列可）
-        cap_bytes: 目標バイト数上限
-        llm_call: LLM 呼び出し callable
-        max_ratio: 圧縮率下限（result < existing * max_ratio で拒否）
+        section_name: Section name (for logs)
+        existing_body: Existing section body (baseline size for max_ratio)
+        incoming_body: Text added by promote (may be empty)
+        cap_bytes: Target byte cap
+        llm_call: LLM call callable
+        max_ratio: Min compression ratio (reject if result < existing * max_ratio)
 
     Returns:
         (result_body, warning_or_none)
@@ -294,7 +294,7 @@ def _promote_with_compression(
     if not combined:
         return "", None
 
-    # max_ratio ガードの基準は existing_body のサイズ（存在する場合）
+    # max_ratio guard baseline is existing_body size (when present)
     check_size = len(existing_body.encode("utf-8")) if existing_body else len(combined.encode("utf-8"))
 
     try:
@@ -307,7 +307,7 @@ def _promote_with_compression(
 
     result_size = len(result.encode("utf-8"))
 
-    # max_ratio ガード: existing の max_ratio 未満への過剰圧縮を拒否
+    # max_ratio guard: reject over-compression below existing * max_ratio
     if result_size < check_size * max_ratio:
         if skip_min_ratio:
             warning = (
@@ -338,18 +338,18 @@ def _promote_mid_to_long(
     max_iter: int = LONG_TERM_PROMOTE_MAX_ITER,
     skip_min_ratio: bool = False,
 ) -> list[str]:
-    """mid_term の古いエントリを long_term に玉突き昇格する。
+    """Cascade-promote older mid_term entries into long_term.
 
-    compacted を in-place で変更し、warnings のみ返す。
+    Mutates compacted in place; returns warnings only.
 
-    アルゴリズム:
-    1. mid_term をブロック分割（"\\n\\n---\\n\\n" 区切り）
-    2. 古い順（先頭）に buffer に積む。buffer 累積 > flush_threshold で flush:
+    Algorithm:
+    1. Split mid_term into blocks ("\n\n---\n\n" delimited)
+    2. Accumulate oldest-first into buffer; flush when buffer > flush_threshold:
        - long_term + buffer → _promote_with_compression(long_term_cap, max_ratio=0.90)
-       - LLM 入力上限 = long_term_cap + flush_threshold（構造的に固定）
-    3. mid_term_size <= mid_term_cap になったら停止
-    4. max_iter 回の LLM 呼び出しで打ち切り、残りは次回持ち越し
-    5. ループ終了後、buffer に余りがあれば最終 flush（この flush も iter_count にカウントする）
+       - LLM input cap = long_term_cap + flush_threshold (structurally fixed)
+    3. Stop when mid_term_size <= mid_term_cap
+    4. Stop after max_iter LLM calls; defer remainder to next run
+    5. After the loop, final-flush leftover buffer (also counts toward iter_count)
     """
     SEP = "\n\n---\n\n"
     blocks = compacted["mid_term"].split(SEP)
@@ -384,7 +384,7 @@ def _promote_mid_to_long(
             buffer = []
             iter_count += 1
 
-    # buffer に余りがあり、かつ iter_count < max_iter なら最終 flush
+    # Final flush if buffer remains and iter_count < max_iter
     if buffer and iter_count < max_iter:
         incoming = SEP.join(buffer)
         new_long_term, warning = _promote_with_compression(
@@ -402,7 +402,7 @@ def _promote_mid_to_long(
         buffer = []
         iter_count += 1
 
-    # mid_term を残りブロック + 未消化 buffer で再構成
+    # Rebuild mid_term from remaining blocks + undigested buffer
     remaining_blocks = buffer + blocks
     compacted["mid_term"] = SEP.join(remaining_blocks) if remaining_blocks else ""
 
@@ -417,43 +417,44 @@ def _promote_mid_to_long(
 
 
 _PHASE1_PROMPT_TEMPLATE = """\
-以下の2つのテキストを処理してください。
+Please process the following two texts.
 
-【タスク】
-1. 「最近の記録」からユーザーの好み・傾向・習慣・パターンを抽出してください。
-   - 一時的な状態（「今日は疲れた」等）は除外し、繰り返し現れる傾向のみを対象としてください。
-2. 抽出した内容を「既存の好み・傾向」とマージしてください。
-   - 重複する項目は統合してください。
-   - 矛盾する項目は新しい方（最近の記録側）を優先してください。
-3. 出力は好み・傾向の箇条書きのみとしてください。
-   目標サイズ: {target_bytes}バイト以内。
+[Task]
+1. From "Recent records", extract user preferences, tendencies, habits, and patterns.
+   - Exclude transient states (e.g. "tired today"); keep only recurring tendencies.
+2. Merge the extracted content with "Existing preferences/tendencies".
+   - Unify duplicate items.
+   - On conflict, prefer the newer side (recent records).
+3. Output only a bullet list of preferences/tendencies.
+   Target size: within {target_bytes} bytes.
 
-出力規則（厳守）:
-- 箇条書き本文のみ出力。前置き・後書き・見出し行・サイズ情報を含めるな
-- 「承知しました」「分析します」等の自己言及文を含めるな
-- 対話的な応答（質問・確認・提案）を含めるな
-- 入力が空または「(なし)」の場合は空文字列を返せ（説明不要）
+Output rules (strict):
+- Bullet body only. No preamble, postscript, headings, or size info
+- No self-referential lines such as "Understood" / "Analyzing"
+- No interactive replies (questions, confirmations, suggestions)
+- If input is empty or "(none)", return an empty string (no explanation)
 
-【既存の好み・傾向】
+[Existing preferences/tendencies]
 {existing_prefs}
 
-【最近の記録】
+[Recent records]
 {recent_text}"""
 
 
 def _sanitize_phase1_output(text: str) -> str:
-    """Phase 1 LLM の生出力からメタ発話・見出し・メタ行を除去する。
+    """Strip meta-speech, headings, and meta lines from Phase 1 LLM raw output.
 
-    除去対象:
-    - 先頭が「承知」「分析」「了解」「以下」で始まる行
-    - ``## `` で始まる見出し行
-    - ``**サイズ**``、``**統計**``、``**分析**`` を含む行
+    Strip targets:
+    - Lines starting with acknowledgment/analysis meta tokens
+    - Heading lines starting with ``## ``
+    - Lines containing size/stats/analysis bold markers
     """
     if not text:
         return text
     kept: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
+        # Japanese text intentionally kept for CJK processing test
         if stripped.startswith(("承知", "分析", "了解", "以下")):
             continue
         if stripped.startswith("## "):
@@ -472,25 +473,25 @@ def _extract_and_merge_preferences(
     *,
     skip_min_ratio: bool = False,
 ) -> tuple[str, str | None]:
-    """recent テキストから好み・傾向を抽出し、既存 preferences とマージした結果を返す。
+    """Extract preferences/tendencies from recent text and merge with existing preferences.
 
     Args:
-        existing_prefs: 現在の preferences セクション本文（heading 除去済み）
-        recent_text: recent セクション本文（heading 除去済み）
-        target_bytes: preferences の cap バイト数
-        llm_call: LLM 呼び出し callable
+        existing_prefs: Current preferences section body (heading stripped)
+        recent_text: Recent section body (heading stripped)
+        target_bytes: Preferences cap in bytes
+        llm_call: LLM call callable
 
     Returns:
         (merged_prefs, warning)
-        - merged_prefs: マージ後の preferences 本文
-        - warning: 異常時の警告メッセージ（正常時は None）
+        - merged_prefs: Merged preferences body
+        - warning: Warning message on anomaly (None when OK)
     """
     if not recent_text:
         return existing_prefs, None
 
     prompt = _PHASE1_PROMPT_TEMPLATE.format(
         target_bytes=target_bytes,
-        existing_prefs=existing_prefs if existing_prefs else "（既存の好み・傾向は未登録。recent からの抽出のみで初期化してよい）",
+        existing_prefs=existing_prefs if existing_prefs else "(No existing preferences/tendencies. Initialize from recent extraction only.)",
         recent_text=recent_text,
     )
 
@@ -508,8 +509,8 @@ def _extract_and_merge_preferences(
 
     result = _sanitize_phase1_output(result).strip()
 
-    # 過剰圧縮ガード: 既存 preferences が存在する場合、
-    # LLM 出力が既存の PREFS_MAX_RATIO 未満なら拒否
+    # Over-compression guard: when existing preferences are present,
+    # reject LLM output below existing * PREFS_MAX_RATIO
     existing_bytes = len(existing_prefs.encode("utf-8"))
     if existing_bytes > 0:
         result_bytes = len(result.encode("utf-8"))
@@ -534,9 +535,9 @@ def _extract_and_merge_preferences(
 
 
 def _strip_observe_entries(body: str) -> str:
-    """recent セクション本文から ``[slack-observe]`` を含むエントリブロックを除去する。
+    """Remove entry blocks containing ``[slack-observe]`` from recent section body.
 
-    ``\\n---\\n`` で split し、``[slack-observe]`` を含まないブロックのみ再結合する。
+    Split on ``\n---\n`` and rejoin only blocks without ``[slack-observe]``.
     """
     if not body:
         return body
@@ -546,26 +547,26 @@ def _strip_observe_entries(body: str) -> str:
 
 
 def _rollup_recent_chunk(recent_body: str, rollup_chunk: int) -> tuple[str, str]:
-    """recent 本文から古い順にエントリ単位で rollup_chunk バイト分を取り出す。
+    """Take up to rollup_chunk bytes of oldest entries from recent body.
 
     Args:
-        recent_body: recent セクション本文
-        rollup_chunk: 取り出し上限バイト数
+        recent_body: Recent section body
+        rollup_chunk: Max bytes to take
 
     Returns:
         (remaining_body, promoted_body)
-        - remaining_body: recent に残すテキスト
-        - promoted_body: mid_term に昇格するテキスト（生エントリ）
+        - remaining_body: Text left in recent
+        - promoted_body: Text promoted to mid_term (raw entries)
 
-    境界条件:
-    - エントリが0個: (recent_body, "") を返す
-    - エントリが1個で rollup_chunk 超: その1個を丸ごと昇格
+    Edge cases:
+    - 0 entries: return (recent_body, "")
+    - 1 entry over rollup_chunk: promote that one whole
     """
     if not recent_body:
         return recent_body, ""
 
     blocks = re.split(r'\n---\n', recent_body)
-    blocks = [b for b in blocks if b]  # 空ブロック除去
+    blocks = [b for b in blocks if b]  # drop empty blocks
     if not blocks:
         return recent_body, ""
 
@@ -575,19 +576,19 @@ def _rollup_recent_chunk(recent_body: str, rollup_chunk: int) -> tuple[str, str]
     for i, block in enumerate(blocks):
         block_bytes = len(block.encode("utf-8"))
         if acc_bytes + block_bytes > rollup_chunk and accumulated:
-            # 既に rollup_chunk を超える → 確定
+            # Already over rollup_chunk → finalize
             break
         accumulated.append(block)
         acc_bytes += block_bytes
         if acc_bytes > rollup_chunk:
-            # 1エントリ単独で超過: 丸ごと昇格
+            # Single entry alone exceeds: promote whole
             break
 
     if not accumulated:
-        # 1エントリも取り出せなかった場合（通常ありえないが安全弁）
+        # Could not take even one entry (should be rare; safety valve)
         return recent_body, ""
 
-    # インデックスベースで分割（重複エントリ対策）
+    # Index-based split (handles duplicate entries)
     promoted_blocks = blocks[:len(accumulated)]
     remaining_blocks = blocks[len(accumulated):]
 
@@ -597,14 +598,14 @@ def _rollup_recent_chunk(recent_body: str, rollup_chunk: int) -> tuple[str, str]
 
 
 def _extract_chunk_date_range(promoted: str) -> tuple[str, str] | None:
-    """チャンクテキストから先頭・末尾エントリの日付を抽出する。
+    """Extract start/end entry dates from chunk text.
 
     Args:
-        promoted: _rollup_recent_chunk が返した promoted テキスト
+        promoted: Promoted text returned by _rollup_recent_chunk
 
     Returns:
-        成功時: (start_date, end_date) — 各要素は "YYYY-MM-DD" 形式
-        失敗時（日付が1つも抽出できない）: None
+        On success: (start_date, end_date) — each "YYYY-MM-DD"
+        On failure (no dates found): None
     """
     import warnings
     matches = _ENTRY_HEADER_TS_RE.findall(promoted)
@@ -624,15 +625,15 @@ def _check_date_coverage(
     observed_ranges: list[tuple[str, str]],
     final_text: str,
 ) -> list[tuple[str, str]]:
-    """observed_ranges のうち、final_text にどちらの日付も出現しないものを返す。
+    """Return observed_ranges whose neither date appears in final_text.
 
     Args:
-        observed_ranges: ロールアップで取り出した (start_date, end_date) のリスト。
-                         各日付は "YYYY-MM-DD" 形式の文字列。
-        final_text: assemble_memory() の出力全文。
+        observed_ranges: (start_date, end_date) list from rollup.
+                         Each date is a "YYYY-MM-DD" string.
+        final_text: Full assemble_memory() output.
 
     Returns:
-        欠落しているレンジのリスト（空なら全レンジが少なくとも片端で出現）。
+        List of missing ranges (empty if every range appears on at least one end).
     """
     missed = []
     for start, end in observed_ranges:
@@ -642,11 +643,11 @@ def _check_date_coverage(
 
 
 _ROLLUP_SUMMARY_PROMPT = """\
-以下の会話ログを1行で要約してください。
-- 出力は1行のみ（改行禁止）
-- {target}バイト以内に収めること
-- 日付は含めないこと（呼び出し元で付与する）
-- 主要なトピック・決定事項・成果物を簡潔に列挙すること
+Please summarize the following conversation log in one line.
+- Output exactly one line (no newlines)
+- Stay within {target} bytes
+- Do not include dates (caller will attach them)
+- Briefly list key topics, decisions, and artifacts
 
 ---
 {chunk}"""
@@ -659,17 +660,17 @@ def _compress_rollup_chunk(
     target: int = ROLLUP_SUMMARY_TARGET_BYTES,
     max_retries: int = ROLLUP_SUMMARY_MAX_RETRIES,
 ) -> str:
-    """チャンクテキストをLLMで1行サマリに圧縮する。
+    """Compress chunk text to a one-line summary via LLM.
 
     Args:
-        promoted: 圧縮対象のチャンクテキスト
-        llm_call: LLM呼び出し関数
-        target: 圧縮後の目標バイト数（デフォルト: 5KB）
-        max_retries: リトライ上限（デフォルト: 2）
+        promoted: Chunk text to compress
+        llm_call: LLM call function
+        target: Target bytes after compression (default: 5KB)
+        max_retries: Max retries (default: 2)
 
     Returns:
-        要約テキスト（改行なし、日付プレフィックスなし）。
-        全リトライ失敗時は promoted をそのまま返す。
+        Summary text (no newlines, no date prefix).
+        On all retries failing, return promoted unchanged.
     """
     import warnings
     prompt = _ROLLUP_SUMMARY_PROMPT.format(target=target, chunk=promoted)
@@ -681,9 +682,9 @@ def _compress_rollup_chunk(
             if attempt < max_retries:
                 continue
             break
-        # 改行を機械的に全削除
+        # Mechanically strip all newlines
         output = output.replace("\n", " ").strip()
-        # 出力長チェック: target * 3 超ならリトライ
+        # Length check: retry if over target * 3
         if len(output.encode("utf-8")) > target * 3:
             _log.warning(
                 "_compress_rollup_chunk: output too long (%dB > %dB), retrying (attempt %d/%d)",
@@ -712,10 +713,10 @@ def _redistribute_entries(
     *,
     raw_days_override: int | None = None,
 ) -> list["MemoryEntry"]:
-    """エントリの age に基づき layer を再分類する（純粋関数）。
+    """Reclassify entry layers by age (pure function).
 
-    protected / preferences エントリはそのまま保持。
-    config.timezone を使用して age を計算する（diary 固有の依存なし）。
+    Keep protected / preferences entries as-is.
+    Compute age with config.timezone (no diary-specific dependency).
     """
     tz = ZoneInfo(config.timezone)
     effective_raw_days = raw_days_override if raw_days_override is not None else config.raw_days
@@ -760,21 +761,21 @@ def _redistribute_entries(
 
 
 def _entry_to_block(e: "MemoryEntry") -> str:
-    """MemoryEntry をテキストブロック形式に変換する（rollup 処理用）。
+    """Convert a MemoryEntry to text-block form (for rollup).
 
-    タイムスタンプは YYYY-MM-DD HH:MM 形式（_ENTRY_HEADER_TS_RE 互換）に正規化する。
-    ISO 8601 形式（2026-04-20T10:00:00+09:00 等）も変換する。
+    Normalize timestamps to YYYY-MM-DD HH:MM (_ENTRY_HEADER_TS_RE compatible).
+    Also convert ISO 8601 (e.g. 2026-04-20T10:00:00+09:00).
     """
     ts = e.timestamp
-    # ISO 8601 の 'T' を空白に、末尾のタイムゾーン・秒を除去
+    # Replace ISO 8601 'T' with space; strip trailing timezone/seconds
     if "T" in ts:
         ts = ts.replace("T", " ")
-    # タイムゾーン (+09:00 等) を除去
+    # Strip timezone (+09:00 etc.)
     if "+" in ts:
         ts = ts[:ts.index("+")]
     elif ts.endswith("Z"):
         ts = ts[:-1]
-    # 秒部分 (:SS) を除去: HH:MM:SS → HH:MM
+    # Strip seconds (:SS): HH:MM:SS → HH:MM
     parts = ts.split(":")
     if len(parts) >= 3:
         ts = ":".join(parts[:2])
@@ -782,7 +783,7 @@ def _entry_to_block(e: "MemoryEntry") -> str:
 
 
 def _entries_to_body(entries: list["MemoryEntry"]) -> str:
-    """MemoryEntry リストをテキスト本文に変換する（rollup 処理用）。"""
+    """Convert a MemoryEntry list to text body (for rollup)."""
     if not entries:
         return ""
     return "\n---\n".join(_entry_to_block(e) for e in entries)
@@ -797,31 +798,31 @@ def compact(
     max_retries: int = 3,
     skip_min_ratio: bool = False,
 ) -> CompactionResult:
-    """メモリファイルをコンパクションする（per-section cap 方式）。
+    """Compact a memory file (per-section cap).
 
-    llm_call はプロンプト文字列を受け取り、コンパクション後のテキストを返す callable。
-    ホスト側で日時やトレース情報を注入したい場合は、llm_call をラップして前処理を適用できる。
+    llm_call takes a prompt string and returns compacted text.
+    Hosts can wrap llm_call to inject timestamps or trace info.
 
-    例:
+    Example:
         def wrapped_llm_call(prompt: str) -> str:
             enriched = f"[date-context]\\n{prompt}"
             return base_llm_call(enriched)
 
         compact(config, persona_stem, llm_call=wrapped_llm_call)
 
-    dry_run=True のときはファイル書き込みを行わない。
+    When dry_run=True, do not write the file.
 
-    **per-section cap 方式**:
-    - preferences: cap 超過時のみ統合圧縮（重複削除のみ、max_ratio=0.90）
-    - long_term: cap 超過時のみ統合圧縮（max_ratio=0.90）
-    - mid_term: recent からの昇格を受ける通過バッファ。cap 超過時は _promote_mid_to_long で long_term へ玉突き昇格。昇格後も超過なら LLM 圧縮
-    - recent: cap 超過時のみチャンク分割 LLM 圧縮。圧縮後も cap 超過なら raw_days 短縮で早期昇格
+    **per-section cap**:
+    - preferences: merge-compress only when over cap (dedupe only, max_ratio=0.90)
+    - long_term: merge-compress only when over cap (max_ratio=0.90)
+    - mid_term: pass-through buffer receiving promotes from recent; when over cap, cascade to long_term via _promote_mid_to_long; LLM-compress if still over
+    - recent: chunked LLM compress only when over cap; if still over, shorten raw_days for early promote
 
-    **インクリメンタル保存**: long_term・mid_term 各処理後と、recent のチャンクごとに
-    ファイルを書き込む。大きなファイルでも少しずつ縮小され、中断時もそこまでの圧縮結果が保持される。
+    **Incremental save**: write after each long_term/mid_term step and each recent chunk.
+    Large files shrink gradually; partial progress survives interruption.
 
-    新パラメータ max_retries / skip_min_ratio はすべてデフォルト値付きのため、
-    既存の compact(config, stem, llm_call=fn) 呼び出しは変更不要（後方互換）。
+    New params max_retries / skip_min_ratio all have defaults, so
+    existing compact(config, stem, llm_call=fn) calls need no change (backward compatible).
     """
     from mltgnt.memory import memory_file_path, persona_memory_lock
 
@@ -859,7 +860,7 @@ def compact(
             mid_term_body = _entries_to_body(mid_entries)
             recent_body = _entries_to_body(recent_entries)
 
-            # --- per-section cap 計算 ---
+            # --- per-section cap calculation ---
             compact_target = config.compact_target_bytes
             prefs_cap = int(compact_target * PREFS_CAP_RATIO)
             long_term_cap = int(compact_target * LONG_TERM_CAP_RATIO)
@@ -869,8 +870,8 @@ def compact(
             long_term_size = len(long_term_body.encode("utf-8"))
             recent_size = len(recent_body.encode("utf-8"))
 
-            # recent の目標: compact_target から他3セクションの実サイズ（cap 以下）と
-            # mid_term の cap を差し引いた残り
+            # recent target: compact_target minus other 3 sections actual size (capped)
+            # and mid_term cap
             prefs_budget = min(prefs_size, prefs_cap)
             long_term_budget = min(long_term_size, long_term_cap)
             recent_target = max(
@@ -878,14 +879,14 @@ def compact(
                 ROLLUP_MIN_KEEP_BYTES,
             )
 
-            # compacted 辞書: 処理済みセクションを追跡。未処理は原文を保持。
+            # compacted dict: track processed sections; keep original for unprocessed
             compacted: dict[str, str] = {
                 "long_term": long_term_body,
                 "mid_term": mid_term_body,
                 "recent": recent_body,
             }
 
-            # [slack-observe] エントリは容量に関わらず先に除去する
+            # Always strip [slack-observe] entries first regardless of capacity
             stripped = _strip_observe_entries(recent_body)
             if stripped != recent_body:
                 recent_body = stripped
@@ -897,10 +898,10 @@ def compact(
                     recent_size / 1024,
                 )
 
-            # --- recent 容量超過時のロールアップ ---
-            # ① ロールアップループ → ② Phase 1 を1回
+            # --- rollup when recent is over capacity ---
+            # (1) rollup loop → (2) Phase 1 once
             if recent_size > recent_target:
-                # ロールアップループ（observe 削除後もまだ超過の場合）
+                # Rollup loop (still over after observe removal)
                 promoted_text_parts: list[str] = []
                 if recent_size > recent_target:
                     for _iter in range(ROLLUP_MAX_ITER):
@@ -911,11 +912,11 @@ def compact(
                         if current_recent_size <= recent_target:
                             break
 
-                        # 最小保持量ガード
+                        # Min-keep guard
                         if current_recent_size <= ROLLUP_MIN_KEEP_BYTES:
                             break
 
-                        # chunk_size の動的決定
+                        # Dynamic chunk_size
                         if current_recent_size <= ROLLUP_CHUNK:
                             chunk_size = min(ROLLUP_FINE_CHUNK,
                                              current_recent_size - ROLLUP_MIN_KEEP_BYTES)
@@ -928,7 +929,7 @@ def compact(
                         if not promoted:
                             break
 
-                        # 日付抽出
+                        # Date extract
                         dates = _extract_chunk_date_range(promoted)
                         if dates is None:
                             _log.warning(
@@ -948,14 +949,14 @@ def compact(
 
                         observed_date_ranges.append(dates)
 
-                        # LLM圧縮
+                        # LLM compress
                         summary = _compress_rollup_chunk(promoted, llm_call,
                                                           target=ROLLUP_SUMMARY_TARGET_BYTES,
                                                           max_retries=ROLLUP_SUMMARY_MAX_RETRIES)
 
-                        # フォーマット
+                        # Format
                         if summary is promoted:
-                            # LLM 圧縮フォールバック: Phase 1 入力には積まない（過大入力を防ぐ）
+                            # LLM compress fallback: do not feed into Phase 1 (avoid oversized input)
                             final = promoted
                             warnings_list.append(
                                 f"rollup chunk LLM compression failed for "
@@ -964,9 +965,9 @@ def compact(
                             )
                         else:
                             final = f"{dates[0]} - {dates[1]} {summary}"
-                            promoted_text_parts.append(final)  # 整形済み1行サマリのみ積む
+                            promoted_text_parts.append(final)  # only formatted one-line summaries
 
-                        # mid_term に append
+                        # Append to mid_term
                         existing_mid = compacted["mid_term"]
                         if existing_mid:
                             compacted["mid_term"] = existing_mid + "\n---\n" + final
@@ -986,7 +987,7 @@ def compact(
                             remaining_kb,
                         )
 
-                # ③ ロールアップ完了後、累積昇格テキスト全体で Phase 1 を1回だけ実行
+                # (3) After rollup, run Phase 1 once on all accumulated promote text
                 if promoted_text_parts:
                     all_promoted = "\n---\n".join(promoted_text_parts)
                     _log.info(
@@ -1006,7 +1007,7 @@ def compact(
                         prefs_size / 1024,
                     )
 
-            # --- [B] mid_term → long_term 玉突き昇格 ---
+            # --- [B] mid_term → long_term cascade promote ---
             mid_term_size_now = len(compacted["mid_term"].encode("utf-8"))
             if mid_term_size_now > mid_term_cap:
                 promote_warnings = _promote_mid_to_long(
@@ -1016,7 +1017,7 @@ def compact(
                 for w in promote_warnings:
                     warnings_list.append(f"[attempt {attempt + 1}] {w}")
 
-            # --- [C] preferences cap 超過時の統合圧縮（重複削除、max_ratio=0.90）---
+            # --- [C] preferences merge-compress when over cap (dedupe, max_ratio=0.90) ---
             if prefs_size > prefs_cap:
                 body, warning = _promote_with_compression(
                     "preferences", prefs_body, "", prefs_cap, llm_call,
@@ -1027,7 +1028,7 @@ def compact(
                     warnings_list.append(f"[attempt {attempt + 1}] {warning}")
                 prefs_body = body
 
-            # --- [D] long_term（保険: B の max_iter 打ち切り時に long_term が cap 超過の場合）---
+            # --- [D] long_term (insurance: long_term over cap after B max_iter stop) ---
             long_term_size_now = len(compacted["long_term"].encode("utf-8"))
             if long_term_size_now > long_term_cap:
                 body, warning = _promote_with_compression(
@@ -1039,7 +1040,7 @@ def compact(
                     warnings_list.append(f"[attempt {attempt + 1}] {warning}")
                 compacted["long_term"] = body
 
-            # --- [E] mid_term フォールバック（B が max_iter 打ち切り後もまだ cap 超過の場合）---
+            # --- [E] mid_term fallback (still over cap after B max_iter stop) ---
             mid_term_size_now = len(compacted["mid_term"].encode("utf-8"))
             if mid_term_size_now > mid_term_cap:
                 body, warning = _compact_section(
@@ -1053,7 +1054,7 @@ def compact(
                     warnings_list.append(f"[attempt {attempt + 1}] {warning}")
                 compacted["mid_term"] = body
 
-            # JSONL 形式でエントリを組み立て
+            # Assemble entries in JSONL form
             now_ts = datetime.now(tz).strftime("%Y-%m-%d %H:%M")
             _recent_by_key = {(e.timestamp, e.role): e for e in recent_entries}
 
@@ -1093,13 +1094,13 @@ def compact(
                 after_bytes,
                 int(config.compact_target_bytes * 1.3),
             )
-            # JSONL 形式では parse_jsonl がファイルから読むため、リトライ前に書き込む
+            # JSONL: parse_jsonl reads from file, so write before retry
             if not dry_run:
                 path.write_text(new_text, encoding="utf-8")
 
         after_bytes = len(new_text.encode("utf-8"))
 
-        # サイズ下限チェック: [slack-observe] を除いた元サイズの 5% 未満は異常
+        # Min-size check: under 5% of original (excl. [slack-observe]) is abnormal
         MIN_RATIO = 0.05
         effective_before = _effective_bytes_for_ratio(original_text)
         ratio = after_bytes / effective_before if effective_before > 0 else 1.0
@@ -1111,7 +1112,7 @@ def compact(
                         persona_stem,
                         ratio,
                     )
-                # ガード解除: 通常パスを継続（書き込みへ）
+                # Lift guard: continue normal path (to write)
             else:
                 if not dry_run:
                     path.write_text(original_text, encoding="utf-8")
@@ -1133,7 +1134,7 @@ def compact(
                     f"— aborting to prevent data loss"
                 )
 
-        # 日付カバレッジ事後検知
+        # Date coverage post-check
         if observed_date_ranges:
             missed = _check_date_coverage(observed_date_ranges, new_text)
             if missed:

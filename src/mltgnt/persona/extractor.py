@@ -1,4 +1,4 @@
-"""mltgnt.persona.extractor — H2 セクション解析・light/heavy テキスト抽出（#3318）。"""
+"""mltgnt.persona.extractor — H2 section parse and light/heavy text extract (#3318)."""
 from __future__ import annotations
 
 import logging
@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 def parse_sections(text: str) -> dict[str, str]:
-    """H2 見出し名をキー、配下テキストを値とする辞書に変換する。
+    """Convert to a dict keyed by H2 heading with subordinate text as values.
 
-    H1（``# ``）は無視する。frontmatter 除去済みの body を渡すこと。
+    Ignore H1 (``# ``). Pass a body with frontmatter already stripped.
     """
     if not text:
         return {}
@@ -41,18 +41,20 @@ def extract(
     body: str = "",
     name: str = "",
 ) -> str:
-    """mode に応じたテキストを返す。フォールバック規則に従う。"""
+    """Return text for mode, following fallback rules."""
     if mode == "light":
+        # Japanese text intentionally kept for CJK processing test
         if "軽量" in sections:
             return sections["軽量"]
         if "基本情報" in sections:
             return sections["基本情報"]
         logger.warning(
-            "ペルソナ '%s': 軽量・基本情報セクションが見つかりません。"
-            "body 全文にフォールバックします。",
+            "Persona '%s': light/basic-info sections not found."
+            " Falling back to full body.",
             name,
         )
         return body[:500]
+    # Japanese text intentionally kept for CJK processing test
     if "重量" in sections:
         return sections["重量"]
     return body

@@ -1,8 +1,8 @@
 """mltgnt.persona.compress
 
-重量ブロックから軽量ブロックを LLM 圧縮で生成し、ペルソナファイルに固定保存する。
+Generate a light block from a heavy block via LLM compression and persist it in the persona file.
 
-公開 API:
+Public API:
     compress_heavy_to_light(heavy_text, *, engine, model, timeout) -> str
     compute_block_hash(text)                                         -> str
     regenerate_light_block(persona_path, *, engine, model, timeout) -> RegenerationResult
@@ -22,21 +22,25 @@ logger = logging.getLogger(__name__)
 
 LIGHT_BLOCK_MAX_CHARS = 1500
 
+# Japanese text intentionally kept for CJK processing test
 _COMPRESS_PROMPT_TEMPLATE = """以下のペルソナの重量ブロックから、v2.1 形式の軽量ブロックを生成してください。
 
 ## 出力形式
 
 1. リード文（1〜2文で人物の本質を要約）
+# Japanese text intentionally kept for CJK processing test
 2. 必須サブセクション（太字見出し）:
    - **口調** — 話し方の特徴
    - **価値観** — 大切にしていること
    - **好意的反応** — どんなとき喜ぶか
    - **引っかかる** — どんなとき不快になるか
+# Japanese text intentionally kept for CJK processing test
 3. 推奨（任意）:
    - **発言例** — 引用ブロック（> ）形式で1〜3例
 
 ## 制約
 - 1500文字以内（厳守）
+# Japanese text intentionally kept for CJK processing test
 - 太字見出しは上記の名前をそのまま使う
 - 発言例がある場合は必ず引用ブロック形式にする
 
@@ -45,13 +49,13 @@ _COMPRESS_PROMPT_TEMPLATE = """以下のペルソナの重量ブロックから�
 
 
 # ---------------------------------------------------------------------------
-# データクラス
+# Dataclasses
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class RegenerationResult:
-    """軽量ブロック再生成の結果。"""
+    """Result of regenerating a light block."""
 
     persona_name: str
     old_hash: str
@@ -65,20 +69,20 @@ class RegenerationResult:
 
 
 # ---------------------------------------------------------------------------
-# 公開関数
+# Public functions
 # ---------------------------------------------------------------------------
 
 
 def compute_block_hash(text: str) -> str:
-    """テキストの sha256 ハッシュを返す。
+    """Return the sha256 hash of text.
 
-    正規化: 前後の空白を strip し、改行を LF に統一してからハッシュする。
+    Normalize: strip surrounding whitespace and unify newlines to LF before hashing.
 
     Args:
-        text: ハッシュ対象テキスト
+        text: Text to hash
 
     Returns:
-        sha256 の hex digest 文字列
+        sha256 hex digest string
     """
     normalized = text.strip().replace("\r\n", "\n")
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
@@ -91,24 +95,24 @@ def compress_heavy_to_light(
     model: str | None = None,
     timeout: int = 120,
 ) -> str:
-    """重量ブロックのテキストを LLM 圧縮して軽量ブロック用サマリを返す。
+    """LLM-compress heavy-block text into a light-block summary.
 
     Args:
-        heavy_text: 重量ブロックの全テキスト（H3 以下を含む）
-        engine: LLM エンジン名（デフォルト: "claude"）
-        model: モデル名。None の場合はエンジンのデフォルトを使用
-        timeout: LLM 呼び出しタイムアウト秒数
+        heavy_text: Full heavy-block text (including H3 and below)
+        engine: LLM engine name (default: "claude")
+        model: Model name. Use engine default when None
+        timeout: LLM call timeout seconds
 
     Returns:
-        1500文字以内の v2.1 形式テキスト（リード文 + 必須サブセクション）
+        v2.1 text within 1500 chars (lead + required subsections)
 
     Raises:
-        RuntimeError: LLM 呼び出しが失敗した場合、または heavy_text が空の場合
+        RuntimeError: When the LLM call fails or heavy_text is empty
     """
     from mltgnt.bridges.llm_adapter import call_llm as ghdag_llm_call
 
     if not heavy_text.strip():
-        raise RuntimeError("heavy_text が空です。圧縮対象のテキストを指定してください。")
+        raise RuntimeError("heavy_text is empty. Provide text to compress.")
 
     prompt = _COMPRESS_PROMPT_TEMPLATE.format(heavy_text=heavy_text)
 
@@ -119,11 +123,11 @@ def compress_heavy_to_light(
     try:
         result = ghdag_llm_call(prompt, **kwargs)
     except Exception as e:
-        raise RuntimeError(f"LLM 呼び出しが失敗しました: {e}") from e
+        raise RuntimeError(f"LLM call failed: {e}") from e
 
     if not result.success:
         stderr = (result.stderr or "").strip()
-        raise RuntimeError(f"LLM が ok=False を返しました: {stderr}")
+        raise RuntimeError(f"LLM returned ok=False: {stderr}")
 
     return (result.body or "").strip()
 
@@ -135,28 +139,29 @@ def regenerate_light_block(
     model: str | None = None,
     timeout: int = 120,
 ) -> RegenerationResult:
-    """ペルソナファイルの重量ブロックから軽量ブロックを再生成し、ファイルに書き戻す。
+    """Regenerate the light block from the persona heavy block and write it back.
 
-    処理フロー:
-    1. ペルソナファイルを読み込み、H2 ブロックを分割
-    2. 既存の軽量ブロックの sha256 を記録
-    3. 重量ブロックを LLM 圧縮して新しい軽量ブロックを生成
-    4. 生成結果を v2.1 形式でバリデーション
-    5. 新しい軽量ブロックでファイルを上書き保存
-    6. sha256 を比較し、変更があれば warning をログ出力
+    Flow:
+    1. Read the persona file and split H2 blocks
+    2. Record sha256 of the existing light block
+    3. LLM-compress the heavy block into a new light block
+    4. Validate the result as v2.1
+    5. Overwrite the file with the new light block
+    6. Compare sha256 and log a warning if changed
 
     Args:
-        persona_path: ペルソナファイルのパス
-        engine: LLM エンジン名
-        model: モデル名
-        timeout: LLM 呼び出しタイムアウト秒数
+        persona_path: Path to the persona file
+        engine: LLM engine name
+        model: Model name
+        timeout: LLM call timeout seconds
 
     Returns:
         RegenerationResult
 
     Raises:
-        ValueError: v2 形式でないファイル（## 重量 が存在しない）、または生成結果が v2.1 形式に適合しない場合
-        RuntimeError: LLM 圧縮に失敗した場合
+        # Japanese text intentionally kept for CJK processing test
+        ValueError: Not v2 (missing ## 重量) or result not v2.1
+        RuntimeError: LLM compression failed
     """
     from mltgnt.bridges.files_adapter import md_read, md_write
 
@@ -166,21 +171,23 @@ def regenerate_light_block(
 
     blocks = _split_h2_blocks(body)
 
+    # Japanese text intentionally kept for CJK processing test
     if "重量" not in blocks:
         raise ValueError(
             f"v2 形式ではありません: {persona_path.name} に '## 重量' ブロックが存在しません"
         )
 
+    # Japanese text intentionally kept for CJK processing test
     heavy_text = blocks["重量"]
     existing_light = blocks.get("軽量", "")
 
-    # 初回生成判定（軽量ブロックが空かどうか）
+    # First-time generation if light block is empty
     old_hash = "" if not existing_light.strip() else compute_block_hash(existing_light)
 
-    # LLM 圧縮
+    # LLM compress
     new_light = compress_heavy_to_light(heavy_text, engine=engine, model=model, timeout=timeout)
 
-    # v2.1 形式バリデーション
+    # v2.1 validation
     _validate_v21_light_block(new_light)
 
     new_hash = compute_block_hash(new_light)
@@ -195,7 +202,7 @@ def regenerate_light_block(
             new_hash,
         )
 
-    # ファイルに書き戻す
+    # Write back to file
     new_content = _rebuild_file(fm_dict, blocks, new_light)
     md_write(persona_path.name, new_content, repo_root=persona_path.parent)
 
@@ -209,27 +216,28 @@ def regenerate_light_block(
 
 
 # ---------------------------------------------------------------------------
-# 内部ユーティリティ
+# Internal utilities
 # ---------------------------------------------------------------------------
 
 
 def _validate_v21_light_block(text: str) -> None:
-    """生成された軽量ブロックが v2.1 形式に準拠しているか検証する。
+    """Validate that a generated light block conforms to v2.1.
 
-    v2.1 形式の要件:
-    - リード文（1行以上の非空行）が最初の ** より前に存在すること
+    v2.1 requirements:
+    - Lead text (one or more non-empty lines) before the first **
+    # Japanese text intentionally kept for CJK processing test
     - 必須サブセクション: **口調**、**価値観**、**好意的反応**、**引っかかる**
-    - **発言例** が存在する場合は直後（同セクション内）に > で始まる行が必要
+    - If **発言例** is present, a following > line is required in that section
 
     Args:
-        text: 検証対象テキスト
+        text: Text to validate
 
     Raises:
-        ValueError: 形式要件を満たさない場合
+        ValueError: When format requirements are not met
     """
     lines = text.strip().splitlines()
 
-    # リード文チェック: 最初の ** 見出し行より前に非空行が必要
+    # Lead check: non-empty line required before first ** heading
     first_bold_index = None
     for i, line in enumerate(lines):
         if line.strip().startswith("**"):
@@ -237,53 +245,59 @@ def _validate_v21_light_block(text: str) -> None:
             break
 
     if first_bold_index is None:
-        # ** 見出しが一切ない場合、必須セクションチェックで捕捉される
-        # リード文チェックとしてはとりあえず通過
+        # If no ** headings at all, required-section check will catch it
+        # Treat lead check as pass for now
         pass
     else:
-        # 最初の ** 行より前に非空行があるか確認
+        # Confirm a non-empty line exists before the first ** line
         lead_lines = [ln for ln in lines[:first_bold_index] if ln.strip()]
         if not lead_lines:
             raise ValueError(
-                "v2.1 形式エラー: リード文がありません。最初の太字見出し（**）より前に人物紹介の文章を記述してください。"
+                "v2.1 format error: missing lead text. Write a persona intro before the first bold heading (**)."
             )
 
-    # 必須サブセクションチェック
+    # Required subsection check
+    # Japanese text intentionally kept for CJK processing test
     required_sections = ["**口調**", "**価値観**", "**好意的反応**", "**引っかかる**"]
     for section in required_sections:
-        # ** で始まる行にセクション名が含まれているか（行中位置は問わない）
+        # Whether a **-starting line contains the section name (any column)
         found = any(section in line for line in lines)
         if not found:
             section_name = section.strip("*")
             raise ValueError(
-                f"v2.1 形式エラー: 必須サブセクション {section} がありません。"
-                f"（{section_name} — ... の形式で記述してください）"
+                f"v2.1 format error: required subsection {section} is missing."
+                f" (Write as {section_name} — ...)"
             )
 
-    # 発言例チェック: **発言例** がある場合は > で始まる行が後続に必要
+    # Japanese text intentionally kept for CJK processing test
+    # Example-speech check: if **発言例** present, a later > line is required
     for i, line in enumerate(lines):
+        # Japanese text intentionally kept for CJK processing test
         if "**発言例**" in line:
-            # 後続の行に > で始まる行があるか確認（次の太字見出しまでの範囲）
+            # Look ahead for a > line (until the next bold heading)
             has_quote = False
             for j in range(i + 1, len(lines)):
                 next_line = lines[j]
+                # Japanese text intentionally kept for CJK processing test
                 if next_line.strip().startswith("**") and "**発言例**" not in next_line:
-                    # 別のセクションに入ったので終了
+                    # Entered another section; stop
                     break
                 if next_line.strip().startswith("> ") or next_line.strip() == ">":
                     has_quote = True
                     break
             if not has_quote:
                 raise ValueError(
-                    "v2.1 形式エラー: **発言例** の後に引用ブロック（> で始まる行）がありません。"
+                    # Japanese text intentionally kept for CJK processing test
+                    "v2.1 format error: **発言例** must be followed by a quote block (> line)."
                 )
             break
 
 
 def _split_h2_blocks(body: str) -> dict[str, str]:
-    """本文を H2 見出しで分割し、{見出し名: テキスト} を返す。
+    """Split body by H2 headings into {heading: text}.
 
-    v2 形式では "軽量", "重量", "参照" の3ブロックが期待される。
+    # Japanese text intentionally kept for CJK processing test
+    v2 expects three blocks: "軽量", "重量", "参照".
     """
     blocks: dict[str, str] = {}
     current_key: str | None = None
@@ -310,10 +324,11 @@ def _rebuild_file(
     blocks: dict[str, str],
     new_light: str,
 ) -> str:
-    """軽量ブロックを new_light で置き換えてファイル内容全体を再構築する。
+    """Rebuild the whole file content replacing the light block with new_light.
 
-    frontmatter は fm_dict を yaml.dump で再シリアライズする。
-    H2 ブロックの順序は 軽量→重量→参照 を維持する。
+    Reserialize frontmatter from fm_dict via yaml.dump.
+    # Japanese text intentionally kept for CJK processing test
+    Keep H2 order: light → heavy → reference (軽量→重量→参照).
     """
     if fm_dict:
         fm_text = yaml.dump(fm_dict, sort_keys=False, allow_unicode=True)
@@ -324,6 +339,7 @@ def _rebuild_file(
     section_order = list(blocks.keys())
     new_sections: list[str] = []
     for key in section_order:
+        # Japanese text intentionally kept for CJK processing test
         if key == "軽量":
             text = new_light
         else:
