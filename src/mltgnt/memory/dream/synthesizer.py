@@ -15,7 +15,7 @@ from mltgnt.memory.dream.api import read_dream, read_global
 LlmCall = Callable[[str], str]
 
 # persona.registry と同じ除外規則（レイヤー境界のためローカル定義）
-_EXCLUDE_PERSONA_STEMS = frozenset({"サンプル"})
+_EXCLUDE_PERSONA_STEMS = frozenset({"\u30b5\u30f3\u30d7\u30eb"})
 
 _DEFAULT_CATEGORIES = ("行動パターン", "好み・傾向")
 

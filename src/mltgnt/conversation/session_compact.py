@@ -101,7 +101,7 @@ def _build_prompt(turns_to_compact: list[dict], existing_compacted: list[dict]) 
     formatted = _format_turns_for_prompt(turns_to_compact, existing_compacted)
     return (
         "以下のセッション会話ログを簡潔に要約してください。\n\n"
-        "- 各発言者のペルソナ名（タチコマ、フチコマ等）を必ず含めること\n"
+        "- Include each speaker persona name (e.g. persona-a, persona-b) in the summary\n"
         "- 主要なトピック・決定事項・依頼内容を漏らさないこと\n"
         "- 出力は1段落のプレーンテキストのみ（見出し・箇条書き・メタ情報は禁止）\n\n"
         f"{formatted}"
