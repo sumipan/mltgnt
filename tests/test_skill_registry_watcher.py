@@ -24,7 +24,7 @@ def _write_skill(base: Path, skill_name: str, description: str = "A test skill")
         description: {description}
         ---
         # {skill_name}
-        本文。
+        Body.
     """).lstrip(), encoding="utf-8")
     return skill_file
 
@@ -114,7 +114,7 @@ class TestSkillWatcherComponent:
 
         time.sleep(0.05)
         _write_skill(tmp_path, "skill-new")
-        time.sleep(0.5)  # 少なくとも 1 ポーリングサイクル待つ
+        time.sleep(0.5)  # wait at least one polling cycle
 
         watcher.stop()
         assert "skill-new" in registry.get()
@@ -140,4 +140,4 @@ class TestSkillWatcherComponent:
         watcher = SkillWatcherComponent(registry=registry, interval=0.1)
         watcher.start()
         watcher.stop()
-        watcher.stop()  # 二度呼んでもエラーにならない
+        watcher.stop()  # calling twice must not error

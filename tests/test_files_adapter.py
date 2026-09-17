@@ -1,7 +1,7 @@
 """tests/test_files_adapter.py
 
-mltgnt.bridges.files_adapter の単体テスト。
-md_read / md_write が ghdag.files へ正しく委譲し、repo_root が伝搬することを mock で検証する。
+Unit tests for mltgnt.bridges.files_adapter.
+Verify via mocks that md_read / md_write delegate to ghdag.files and propagate repo_root.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for interfaces/types.py — L1 DTO Protocol 適合テスト (issue-1106)."""
+"""Tests for interfaces/types.py — L1 DTO Protocol conformance (issue-1106)."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,29 +13,29 @@ from mltgnt.interfaces.types import ChatInputBase, ChatOutputBase, Message, Pers
 
 
 class _ConformsPersonaFMBase:
-    """PersonaFMBase を満たす最小実装。"""
+    """Minimal implementation of PersonaFMBase."""
 
     name: str = "test-persona"
 
 
 class _MissingName:
-    """name 属性を持たない — Protocol を満たさない。"""
+    """No name attribute — does not satisfy Protocol."""
 
     pass
 
 
 def test_persona_fm_base_conforming() -> None:
-    """name: str を持つオブジェクトは PersonaFMBase を満たす。"""
+    """Objects with name: str satisfy PersonaFMBase."""
     assert isinstance(_ConformsPersonaFMBase(), PersonaFMBase)
 
 
 def test_persona_fm_base_missing_name_fails() -> None:
-    """name を持たないオブジェクトは PersonaFMBase を満たさない。"""
+    """Objects without name do not satisfy PersonaFMBase."""
     assert not isinstance(_MissingName(), PersonaFMBase)
 
 
 def test_real_persona_fm_conforms() -> None:
-    """persona.schema.PersonaFM が PersonaFMBase を満たす（structural subtyping）。"""
+    """persona.schema.PersonaFM satisfies PersonaFMBase (structural subtyping)."""
     from mltgnt.persona.schema import PersonaFM
 
     fm = PersonaFM(name="real-persona")
@@ -48,7 +48,7 @@ def test_real_persona_fm_conforms() -> None:
 
 
 def test_message_typed_dict_structure() -> None:
-    """Message TypedDict が role / content キーを持つ。"""
+    """Message TypedDict has role / content keys."""
     msg: Message = {"role": "user", "content": "hello"}
     assert msg["role"] == "user"
     assert msg["content"] == "hello"
@@ -60,7 +60,7 @@ def test_message_typed_dict_structure() -> None:
 
 
 class _ConformsChatInputBase:
-    """ChatInputBase を満たす最小実装。"""
+    """Minimal implementation of ChatInputBase."""
 
     source: str = "slack"
     session_key: str = "sess-1"
@@ -69,7 +69,7 @@ class _ConformsChatInputBase:
 
 
 class _MissingSessionKey:
-    """session_key を欠く — Protocol を満たさない。"""
+    """Missing session_key — does not satisfy Protocol."""
 
     source: str = "slack"
     messages: list[Message] = []
@@ -77,17 +77,17 @@ class _MissingSessionKey:
 
 
 def test_chat_input_base_conforming() -> None:
-    """必須属性を持つオブジェクトは ChatInputBase を満たす。"""
+    """Objects with required attributes satisfy ChatInputBase."""
     assert isinstance(_ConformsChatInputBase(), ChatInputBase)
 
 
 def test_chat_input_base_missing_session_key_fails() -> None:
-    """session_key を持たないオブジェクトは ChatInputBase を満たさない。"""
+    """Objects without session_key do not satisfy ChatInputBase."""
     assert not isinstance(_MissingSessionKey(), ChatInputBase)
 
 
 def test_real_chat_input_conforms() -> None:
-    """interfaces.types.ChatInput が ChatInputBase を満たす（structural subtyping）。"""
+    """interfaces.types.ChatInput satisfies ChatInputBase (structural subtyping)."""
     from mltgnt.interfaces.types import ChatInput
 
     inp = ChatInput(source="slack", session_key="sess-1", messages=[], persona_name="test")
@@ -100,7 +100,7 @@ def test_real_chat_input_conforms() -> None:
 
 
 class _ConformsChatOutputBase:
-    """ChatOutputBase を満たす最小実装。"""
+    """Minimal implementation of ChatOutputBase."""
 
     content: str = "reply"
     persona_name: str = "test"
@@ -109,7 +109,7 @@ class _ConformsChatOutputBase:
 
 
 class _MissingTimestamp:
-    """timestamp を欠く — Protocol を満たさない。"""
+    """Missing timestamp — does not satisfy Protocol."""
 
     content: str = "reply"
     persona_name: str = "test"
@@ -117,17 +117,17 @@ class _MissingTimestamp:
 
 
 def test_chat_output_base_conforming() -> None:
-    """必須属性を持つオブジェクトは ChatOutputBase を満たす。"""
+    """Objects with required attributes satisfy ChatOutputBase."""
     assert isinstance(_ConformsChatOutputBase(), ChatOutputBase)
 
 
 def test_chat_output_base_missing_timestamp_fails() -> None:
-    """timestamp を持たないオブジェクトは ChatOutputBase を満たさない。"""
+    """Objects without timestamp do not satisfy ChatOutputBase."""
     assert not isinstance(_MissingTimestamp(), ChatOutputBase)
 
 
 def test_real_chat_output_conforms() -> None:
-    """interfaces.types.ChatOutput が ChatOutputBase を満たす（structural subtyping）。"""
+    """interfaces.types.ChatOutput satisfies ChatOutputBase (structural subtyping)."""
     from mltgnt.interfaces.types import ChatOutput
 
     out = ChatOutput(

@@ -1,4 +1,4 @@
-"""tests/agent/test_runner_reflexion.py — Reflexion / 動的 max_iterations / リトライ (#2085)"""
+"""tests/agent/test_runner_reflexion.py — Reflexion / dynamic max_iterations / retry (#2085)"""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -13,7 +13,7 @@ from mltgnt.agent._runner import (
 # ---- helpers ----
 
 def make_llm(responses: list):
-    """呼び出されるたびに responses から順に返す llm_call モック。"""
+    """llm_call mock that returns responses in order."""
     calls = iter(responses)
 
     def llm_call(prompt: str, *, tool_result: str | None = None) -> str | None:
@@ -23,7 +23,7 @@ def make_llm(responses: list):
 
 
 def make_tracking_llm(responses: list):
-    """tool_result 引数も記録する llm_call モック。"""
+    """llm_call mock that also records tool_result."""
     calls = iter(responses)
     received: list[str | None] = []
 
@@ -42,10 +42,10 @@ def make_executor(results: dict):
     return executor
 
 
-# ---- Reflexion: evaluator 未設定 ----
+# ---- Reflexion: evaluator unset ----
 
 def test_no_evaluator_backward_compat():
-    """evaluator 未設定時は従来動作（Reflexion 未発動）。"""
+    """Without evaluator, legacy behavior (no Reflexion)."""
     llm = make_tracking_llm([
         '{"tool": "search", "args": {"q": "x"}}',
         '{"tool": "done", "args": {}}',
@@ -64,7 +64,7 @@ def test_no_evaluator_backward_compat():
 # ---- Reflexion: should_retry=False ----
 
 def test_evaluator_no_retry():
-    """evaluator + should_retry=False: ツール結果がそのまま渡される。"""
+    """evaluator + should_retry=False: tool result passed through."""
     llm = make_tracking_llm([
         '{"tool": "search", "args": {"q": "x"}}',
         '{"tool": "done", "args": {}}',
@@ -88,7 +88,7 @@ def test_evaluator_no_retry():
 # ---- Reflexion: should_retry=True ----
 
 def test_evaluator_retry_injects_feedback():
-    """evaluator + should_retry=True: [REFLEXION] プレフィックス付きフィードバック注入。"""
+    """evaluator + should_retry=True: inject feedback with [REFLEXION] prefix."""
     llm = make_tracking_llm([
         '{"tool": "search", "args": {"q": "x"}}',
         '{"tool": "done", "args": {}}',
@@ -110,7 +110,7 @@ def test_evaluator_retry_injects_feedback():
 
 
 def test_reflexion_count_multiple():
-    """reflexion_count が複数回の Reflexion 発動を正確に記録する。"""
+    """reflexion_count accurately records multiple Reflexion triggers."""
     llm = make_tracking_llm([
         '{"tool": "search", "args": {"q": "a"}}',
         '{"tool": "search", "args": {"q": "b"}}',
@@ -137,10 +137,10 @@ def test_reflexion_count_multiple():
     assert result.reflexion_count == 2
 
 
-# ---- 動的 max_iterations ----
+# ---- dynamic max_iterations ----
 
 def test_max_iterations_fn_used():
-    """max_iterations_fn 設定時: プロンプトに応じた上限を使用。"""
+    """With max_iterations_fn: use prompt-dependent limit."""
     fn_calls: list[str] = []
 
     def max_fn(prompt: str) -> int:
@@ -174,7 +174,7 @@ def test_max_iterations_fn_used():
 
 
 def test_max_iterations_fn_none_uses_default():
-    """max_iterations_fn 未設定時: self._max_iterations を使用。"""
+    """Without max_iterations_fn: use self._max_iterations."""
     runner = AgentRunner(
         llm_call=make_llm([
             '{"tool": "search", "args": {"q": "a"}}',
@@ -188,12 +188,12 @@ def test_max_iterations_fn_none_uses_default():
     assert runner.run("prompt") is None
 
 
-# ---- 指数バックオフ付きリトライ ----
+# ---- exponential backoff retry ----
 
 @patch("mltgnt.agent._runner.time.sleep")
 @patch("mltgnt.agent._runner.random.uniform", return_value=0.25)
 def test_retry_llm_none(mock_uniform, mock_sleep):
-    """retry_config 設定時・LLM が None: max_retries 回までリトライ。"""
+    """With retry_config and LLM None: retry up to max_retries."""
     call_count = 0
 
     def llm_call(prompt: str, *, tool_result: str | None = None) -> str | None:
@@ -220,7 +220,7 @@ def test_retry_llm_none(mock_uniform, mock_sleep):
 @patch("mltgnt.agent._runner.time.sleep")
 @patch("mltgnt.agent._runner.random.uniform", return_value=0.0)
 def test_retry_llm_none_all_fail(mock_uniform, mock_sleep):
-    """retry_config 設定時・LLM が None 連続: すべて失敗で None。"""
+    """With retry_config and continuous LLM None: return None."""
     runner = AgentRunner(
         llm_call=make_llm([None, None, None]),
         tool_executor=make_executor({}),
@@ -234,7 +234,7 @@ def test_retry_llm_none_all_fail(mock_uniform, mock_sleep):
 @patch("mltgnt.agent._runner.time.sleep")
 @patch("mltgnt.agent._runner.random.uniform", return_value=0.0)
 def test_retry_parse_failure(mock_uniform, mock_sleep):
-    """retry_config 設定時・パース失敗: max_retries 回までリトライ。"""
+    """With retry_config and parse failure: retry up to max_retries."""
     call_count = 0
 
     def llm_call(prompt: str, *, tool_result: str | None = None) -> str | None:
@@ -257,7 +257,7 @@ def test_retry_parse_failure(mock_uniform, mock_sleep):
 
 
 def test_retry_no_retry_on_tool_executor_exception():
-    """retry_config 設定時・tool_executor 例外: リトライせず即 None。"""
+    """With retry_config and tool_executor exception: return None without retry."""
 
     def failing_executor(tool_name: str, tool_args: dict) -> str:
         raise RuntimeError("network error")
@@ -282,7 +282,7 @@ def test_retry_no_retry_on_tool_executor_exception():
 
 
 def test_no_retry_without_config():
-    """retry_config 未設定時: リトライなし（従来動作）。"""
+    """Without retry_config: no retry (legacy behavior)."""
     call_count = 0
 
     def llm_call(prompt: str, *, tool_result: str | None = None) -> str | None:
@@ -304,7 +304,7 @@ def test_no_retry_without_config():
 @patch("mltgnt.agent._runner.time.sleep")
 @patch("mltgnt.agent._runner.random.uniform", return_value=0.0)
 def test_backoff_capped_at_max_delay(mock_uniform, mock_sleep):
-    """バックオフ遅延が max_delay_s を超えない。"""
+    """Backoff delay does not exceed max_delay_s."""
     runner = AgentRunner(
         llm_call=make_llm([None, None, None]),
         tool_executor=make_executor({}),

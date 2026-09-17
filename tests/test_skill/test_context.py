@@ -1,4 +1,4 @@
-"""tests/test_skill/test_context.py — build_extra_context のユニットテスト（Issue #3030 / #3173）。"""
+"""tests/test_skill/test_context.py — unit tests for build_extra_context (Issue #3030 / #3173)."""
 from __future__ import annotations
 
 import json
@@ -52,20 +52,20 @@ def _jsonl_line(
 class TestBuildExtraContext:
     def test_neither_returns_none(self, tmp_path: Path) -> None:
         meta = _meta(tmp_path)
-        assert build_extra_context(meta, tmp_path, "タチコマ") is None
+        assert build_extra_context(meta, tmp_path, "persona-a") is None
 
     def test_defaults_are_zero_even_if_files_exist(self, tmp_path: Path) -> None:
-        """AC-1: 既定 knowledge_count/memory_max_bytes は 0 で注入しない。"""
+        """AC-1: default knowledge_count/memory_max_bytes are 0 and inject nothing."""
         knowledge = tmp_path / "skills" / "demo" / "knowledge.md"
         knowledge.parent.mkdir(parents=True, exist_ok=True)
         knowledge.write_text("p1\n\np2", encoding="utf-8")
         meta = _meta(tmp_path, knowledge_paths=[knowledge])
         _write_memory(
             tmp_path,
-            "タチコマ",
-            _jsonl_line(content="昨夜の話") + "\n",
+            "persona-a",
+            _jsonl_line(content="last night's talk") + "\n",
         )
-        assert build_extra_context(meta, tmp_path, "タチコマ") is None
+        assert build_extra_context(meta, tmp_path, "persona-a") is None
 
     def test_knowledge_only(self, tmp_path: Path) -> None:
         knowledge = tmp_path / "skills" / "demo" / "knowledge.md"
@@ -73,16 +73,18 @@ class TestBuildExtraContext:
         knowledge.write_text("p1\n\np2\n\np3", encoding="utf-8")
         meta = _meta(tmp_path, knowledge_paths=[knowledge])
 
-        result = build_extra_context(meta, tmp_path, "タチコマ", knowledge_count=2)
+        result = build_extra_context(meta, tmp_path, "persona-a", knowledge_count=2)
 
         assert result is not None
+        # Japanese text intentionally kept for CJK processing test
         assert "### knowledge（直近 2 件）" in result
         assert "p2" in result and "p3" in result
         assert "p1" not in result
+        # Japanese text intentionally kept for CJK processing test
         assert "### 記憶（末尾）" not in result
 
     def test_memory_only_formatted(self, tmp_path: Path) -> None:
-        """AC-2: JSONL は箇条書きに整形され、生 JSON を含まない。"""
+        """AC-2: JSONL is formatted as bullet list and must not include raw JSON."""
         meta = _meta(tmp_path)
         line = _jsonl_line(
             timestamp="2026-04-21 14:25",
@@ -90,11 +92,12 @@ class TestBuildExtraContext:
             content="Is persona-b around?",
             source_tag="slack",
         )
-        _write_memory(tmp_path, "タチコマ", line + "\n")
+        _write_memory(tmp_path, "persona-a", line + "\n")
 
-        result = build_extra_context(meta, tmp_path, "タチコマ", memory_max_bytes=4096)
+        result = build_extra_context(meta, tmp_path, "persona-a", memory_max_bytes=4096)
 
         assert result is not None
+        # Japanese text intentionally kept for CJK processing test
         assert "### 記憶（末尾）" in result
         assert "- [2026-04-21 14:25] user: Is persona-b around?" in result
         assert '{"timestamp"' not in result
@@ -103,27 +106,29 @@ class TestBuildExtraContext:
     def test_both(self, tmp_path: Path) -> None:
         knowledge = tmp_path / "skills" / "demo" / "knowledge.md"
         knowledge.parent.mkdir(parents=True, exist_ok=True)
-        knowledge.write_text("知1\n\n知2", encoding="utf-8")
+        knowledge.write_text("k1\n\nk2", encoding="utf-8")
         meta = _meta(tmp_path, knowledge_paths=[knowledge])
         _write_memory(
             tmp_path,
-            "タチコマ",
-            _jsonl_line(content="昨夜の話") + "\n",
+            "persona-a",
+            _jsonl_line(content="last night's talk") + "\n",
         )
 
         result = build_extra_context(
             meta,
             tmp_path,
-            "タチコマ",
+            "persona-a",
             knowledge_count=1,
             memory_max_bytes=4096,
         )
 
         assert result is not None
+        # Japanese text intentionally kept for CJK processing test
         assert "### knowledge（直近 1 件）" in result
-        assert "知2" in result and "知1" not in result
+        assert "k2" in result and "k1" not in result
+        # Japanese text intentionally kept for CJK processing test
         assert "### 記憶（末尾）" in result
-        assert "昨夜の話" in result
+        assert "last night's talk" in result
         assert "- [" in result
 
     def test_knowledge_subdir_files(self, tmp_path: Path) -> None:
@@ -135,7 +140,7 @@ class TestBuildExtraContext:
         b.write_text("from-b", encoding="utf-8")
         meta = _meta(tmp_path, knowledge_paths=sorted([a, b]))
 
-        result = build_extra_context(meta, tmp_path, "タチコマ", knowledge_count=2)
+        result = build_extra_context(meta, tmp_path, "persona-a", knowledge_count=2)
 
         assert result is not None
         assert "mid-a" in result
@@ -143,7 +148,7 @@ class TestBuildExtraContext:
         assert "from-a" not in result
 
     def test_memory_exclude_source_tags(self, tmp_path: Path) -> None:
-        """AC-3: memory_exclude_source_tags で一致する source_tag を除外する。"""
+        """AC-3: memory_exclude_source_tags excludes matching source_tag entries."""
         meta = _meta(tmp_path)
         lines = "\n".join(
             [
@@ -153,12 +158,12 @@ class TestBuildExtraContext:
                 _jsonl_line(content="keep-none"),
             ]
         )
-        _write_memory(tmp_path, "タチコマ", lines + "\n")
+        _write_memory(tmp_path, "persona-a", lines + "\n")
 
         result = build_extra_context(
             meta,
             tmp_path,
-            "タチコマ",
+            "persona-a",
             memory_max_bytes=8192,
             memory_exclude_source_tags=["slack-observe"],
         )
@@ -178,9 +183,9 @@ class TestBuildExtraContext:
                 _jsonl_line(content="valid"),
             ]
         )
-        _write_memory(tmp_path, "タチコマ", lines + "\n")
+        _write_memory(tmp_path, "persona-a", lines + "\n")
 
-        result = build_extra_context(meta, tmp_path, "タチコマ", memory_max_bytes=4096)
+        result = build_extra_context(meta, tmp_path, "persona-a", memory_max_bytes=4096)
 
         assert result is not None
         assert "valid" in result

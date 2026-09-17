@@ -1,4 +1,4 @@
-"""tests/memory/dream/test_synthesizer.py — Synthesizer / dream api のテスト。"""
+"""tests/memory/dream/test_synthesizer.py — tests for Synthesizer / dream api."""
 from __future__ import annotations
 
 import json
@@ -16,7 +16,7 @@ from mltgnt.memory.dream import (
 )
 
 
-def _entry(content: str = "メモリ内容") -> MemoryEntry:
+def _entry(content: str = "memory content") -> MemoryEntry:
     return MemoryEntry(
         timestamp="2026-06-01 10:00",
         role="user",
@@ -27,10 +27,10 @@ def _entry(content: str = "メモリ内容") -> MemoryEntry:
 
 def _llm_response() -> str:
     return (
-        "## 行動パターン\n"
-        "朝型で作業を始める。\n\n"
-        "## 好み・傾向\n"
-        "簡潔な説明を好む。"
+        "## Behavior patterns\n"
+        "Starts work early in the morning.\n\n"
+        "## Preferences\n"
+        "Prefers concise explanations."
     )
 
 
@@ -43,7 +43,7 @@ def test_synthesize_creates_dream_summary_with_mock_llm() -> None:
     )
     assert summary.persona == "alice"
     assert len(summary.sections) == 2
-    assert summary.sections[0].category == "行動パターン"
+    assert summary.sections[0].category == "Behavior patterns"
     assert summary.sections[0].source_entries == 1
     assert summary.updated_at.endswith("+09:00") or "T" in summary.updated_at
 
@@ -52,25 +52,25 @@ def test_synthesize_merges_existing_sections() -> None:
     existing = DreamSummary(
         persona="alice",
         sections=[
-            DreamSection(category="行動パターン", content="旧パターン", source_entries=2),
-            DreamSection(category="保留カテゴリ", content="残す", source_entries=1),
+            DreamSection(category="Behavior patterns", content="old pattern", source_entries=2),
+            DreamSection(category="retained category", content="keep", source_entries=1),
         ],
         updated_at="2026-01-01T00:00:00+09:00",
     )
 
     def llm(_prompt: str) -> str:
-        return "## 行動パターン\n新パターン\n\n## 好み・傾向\n新しい好み"
+        return "## Behavior patterns\nnew pattern\n\n## Preferences\nnew preference"
 
     summary = Synthesizer.synthesize(
-        [_entry("更新後")],
+        [_entry("after update")],
         existing,
         persona="alice",
         llm_call=llm,
     )
     by_cat = {s.category: s.content for s in summary.sections}
-    assert by_cat["行動パターン"] == "新パターン"
-    assert by_cat["好み・傾向"] == "新しい好み"
-    assert by_cat["保留カテゴリ"] == "残す"
+    assert by_cat["Behavior patterns"] == "new pattern"
+    assert by_cat["Preferences"] == "new preference"
+    assert by_cat["retained category"] == "keep"
 
 
 def test_synthesize_raises_on_llm_failure() -> None:
@@ -90,7 +90,7 @@ def test_read_write_dream_roundtrip(tmp_path: Path) -> None:
     persona_dir = tmp_path / "alice"
     original = DreamSummary(
         persona="alice",
-        sections=[DreamSection(category="行動パターン", content="text", source_entries=3)],
+        sections=[DreamSection(category="Behavior patterns", content="text", source_entries=3)],
         updated_at="2026-06-07T12:00:00+09:00",
     )
     write_dream(persona_dir, original)
@@ -102,7 +102,7 @@ def test_write_dream_uses_atomic_replace(tmp_path: Path) -> None:
     persona_dir = tmp_path / "alice"
     summary = DreamSummary(
         persona="alice",
-        sections=[DreamSection(category="行動パターン", content="a", source_entries=1)],
+        sections=[DreamSection(category="Behavior patterns", content="a", source_entries=1)],
         updated_at="2026-06-07T12:00:00+09:00",
     )
     write_dream(persona_dir, summary)

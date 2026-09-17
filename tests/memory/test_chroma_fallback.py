@@ -1,4 +1,4 @@
-"""Chroma 不可時の TF-IDF フォールバックテスト。"""
+"""TF-IDF fallback tests when Chroma is unavailable."""
 from __future__ import annotations
 
 import logging
@@ -13,12 +13,12 @@ from mltgnt.memory.api import append_memory_entry, memory_file_path
 
 
 def test_score_entries_without_chromadb_uses_tfidf() -> None:
-    """chromadb 未インストール相当（collection=None）で TF-IDF が動作する。"""
+    """TF-IDF works when chromadb is effectively missing (collection=None)."""
     entries = [
-        "Python のデコレータについて調べた。",
-        "今日の天気は晴れだった。",
+        "I researched Python decorators.",
+        "The weather was sunny today.",
     ]
-    scored = score_entries("Python デコレータ", entries, chroma_collection=None)
+    scored = score_entries("Python decorators", entries, chroma_collection=None)
 
     assert len(scored) == 2
     assert all(isinstance(item, ScoredEntry) for item in scored)
@@ -27,7 +27,7 @@ def test_score_entries_without_chromadb_uses_tfidf() -> None:
 
 
 def test_get_collection_init_failure_returns_none(tmp_path: Path, caplog) -> None:
-    """Chroma 初期化失敗時に warning を出して None を返す。"""
+    """On Chroma init failure, emit a warning and return None."""
     with patch("mltgnt.memory._chroma._import_chromadb") as mock_import:
         mock_chromadb = MagicMock()
         mock_chromadb.PersistentClient.side_effect = RuntimeError("init failed")
@@ -43,9 +43,9 @@ def test_get_collection_init_failure_returns_none(tmp_path: Path, caplog) -> Non
 
 
 def test_score_entries_chroma_query_failure_falls_back_to_tfidf(caplog) -> None:
-    """Chroma クエリ例外時に TF-IDF へフォールバックする。"""
+    """On Chroma query exception, fall back to TF-IDF."""
     mock_collection = MagicMock()
-    entries = ["Python のデコレータ", "天気の話"]
+    entries = ["Python decorators", "weather talk"]
 
     with patch("mltgnt.memory._chroma.query_similar", side_effect=RuntimeError("query failed")):
         with caplog.at_level(logging.WARNING, logger="mltgnt.memory._scoring"):
@@ -58,7 +58,7 @@ def test_score_entries_chroma_query_failure_falls_back_to_tfidf(caplog) -> None:
 def test_append_memory_entry_chroma_upsert_failure_still_writes_jsonl(
     tmp_path: Path, caplog
 ) -> None:
-    """Chroma upsert 失敗時も JSONL 書き込みは成功し warning のみ。"""
+    """On Chroma upsert failure, JSONL write still succeeds with only a warning."""
     config = MemoryConfig(
         chat_dir=tmp_path,
         chat_memory_dir=tmp_path / "memory",
@@ -74,7 +74,7 @@ def test_append_memory_entry_chroma_upsert_failure_still_writes_jsonl(
                 config,
                 "persona",
                 "user",
-                "テスト内容",
+                "test content",
                 "2026-06-14T00:00:00+09:00",
                 source_tag="file",
                 under_lock=True,
@@ -90,7 +90,7 @@ def test_append_memory_entry_chroma_upsert_failure_still_writes_jsonl(
     ["tests/test_memory_relevance.py"],
 )
 def test_existing_relevance_tests_pass_without_chroma(test_module: str) -> None:
-    """chromadb 未使用でも既存 relevance テストが通る（import 確認）。"""
+    """Existing relevance tests still import without chromadb."""
     import importlib
 
     mod = importlib.import_module(test_module.replace("/", ".").replace(".py", ""))

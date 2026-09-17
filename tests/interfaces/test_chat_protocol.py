@@ -10,29 +10,29 @@ from mltgnt.interfaces.types import ChatInputBase, ChatOutputBase
 
 
 class _ConformsChatPipeline:
-    """ChatPipelineProtocol を満たす最小実装。"""
+    """Minimal implementation of ChatPipelineProtocol."""
 
     def run(self, inp: ChatInputBase, repo_root: Path) -> ChatOutputBase: ...
 
 
 class _MissingRun:
-    """run メソッドを持たない — Protocol を満たさない。"""
+    """No run method — does not satisfy Protocol."""
 
     pass
 
 
 def test_chat_pipeline_protocol_conforming() -> None:
-    """run メソッドを持つオブジェクトは ChatPipelineProtocol を満たす。"""
+    """Objects with run satisfy ChatPipelineProtocol."""
     assert isinstance(_ConformsChatPipeline(), ChatPipelineProtocol)
 
 
 def test_chat_pipeline_missing_run_fails() -> None:
-    """run を持たないオブジェクトは ChatPipelineProtocol を満たさない。"""
+    """Objects without run do not satisfy ChatPipelineProtocol."""
     assert not isinstance(_MissingRun(), ChatPipelineProtocol)
 
 
 def test_chat_pipeline_protocol_uses_base_types() -> None:
-    """ChatPipelineProtocol.run のシグネチャが ChatInputBase / ChatOutputBase を参照する。"""
+    """ChatPipelineProtocol.run signature references ChatInputBase / ChatOutputBase."""
 
     hints = ChatPipelineProtocol.run.__annotations__
     assert hints.get("inp") is ChatInputBase or "ChatInputBase" in str(hints.get("inp"))
@@ -40,7 +40,7 @@ def test_chat_pipeline_protocol_uses_base_types() -> None:
 
 
 def test_chat_input_structurally_satisfies_chat_input_base() -> None:
-    """ChatInput が ChatInputBase のすべての属性を持つ（構造的サブタイピング）。"""
+    """ChatInput has all ChatInputBase attributes (structural subtyping)."""
     inp = ChatInput(
         source="slack",
         session_key="sess-1",
@@ -51,7 +51,7 @@ def test_chat_input_structurally_satisfies_chat_input_base() -> None:
 
 
 def test_chat_output_structurally_satisfies_chat_output_base() -> None:
-    """ChatOutput が ChatOutputBase のすべての属性を持つ（構造的サブタイピング）。"""
+    """ChatOutput has all ChatOutputBase attributes (structural subtyping)."""
     out = ChatOutput(
         content="reply",
         persona_name="test-persona",

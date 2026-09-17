@@ -1,4 +1,4 @@
-"""tests/test_fanout_integration.py — fanout 経路の統合テスト (#1036)"""
+"""tests/test_fanout_integration.py — integration tests for the fanout path (#1036)"""
 import pytest
 
 from ghdag.dag.fanout import (
@@ -11,10 +11,10 @@ from mltgnt.scheduler import _FANOUT_PROMPT_SUFFIX
 
 class TestParseFanoutSpec:
     def test_parses_fanout_yaml_from_result_file(self, tmp_path):
-        """AC: fanout YAML を含む result ファイルが FanOutSpec としてパースされる。"""
+        """AC: a result file containing fanout YAML parses as FanOutSpec."""
         result_file = tmp_path / "result.md"
         result_file.write_text(
-            "ペルソナの通常出力\n"
+            "Normal persona output\n"
             "\n"
             "---\n"
             "ghdag_fanout:\n"
@@ -32,16 +32,16 @@ class TestParseFanoutSpec:
         assert spec.children[0].id == "child-1"
 
     def test_no_fanout_returns_none(self, tmp_path):
-        """AC: --- セパレータや ghdag_fanout を含まない result ファイル → None。"""
+        """AC: result file without --- separator or ghdag_fanout → None."""
         result_file = tmp_path / "result.md"
         result_file.write_text(
-            "通常の出力\nfanout なし\n普通のテキストのみ\n",
+            "Normal output\nno fanout\nplain text only\n",
             encoding="utf-8",
         )
         assert parse_fanout_spec(str(result_file)) is None
 
     def test_separator_without_fanout_key_returns_none(self, tmp_path):
-        """--- セパレータがあっても ghdag_fanout キーがなければ None。"""
+        """--- separator without a ghdag_fanout key → None."""
         result_file = tmp_path / "result.md"
         result_file.write_text(
             "output\n---\nsome_other_key: value\n",
@@ -50,7 +50,7 @@ class TestParseFanoutSpec:
         assert parse_fanout_spec(str(result_file)) is None
 
     def test_duplicate_child_ids_raise_value_error(self, tmp_path):
-        """AC: id が重複する child を含む result → ValueError。"""
+        """AC: result with duplicate child ids → ValueError."""
         result_file = tmp_path / "result.md"
         result_file.write_text(
             "output\n"
@@ -67,23 +67,23 @@ class TestParseFanoutSpec:
             parse_fanout_spec(str(result_file))
 
     def test_none_path_returns_none(self):
-        """result_path が None のとき None を返す。"""
+        """result_path=None returns None."""
         assert parse_fanout_spec(None) is None
 
     def test_nonexistent_file_returns_none(self, tmp_path):
-        """存在しないファイルパスは None を返す。"""
+        """Nonexistent file path returns None."""
         assert parse_fanout_spec(str(tmp_path / "missing.md")) is None
 
 
 class TestBuildChildJsonlRecord:
     def test_format_matches_expected(self):
-        """AC: build_child_jsonl_record の出力が exec.jsonl 形式の JSON 行。"""
+        """AC: build_child_jsonl_record output is an exec.jsonl-style JSON line."""
         import json
         result = build_child_jsonl_record("abc-uuid", "claude -p 'test'")
         assert json.loads(result) == {"uuid": "abc-uuid", "command": "claude -p 'test'"}
 
     def test_format_with_complex_command(self):
-        """複雑なコマンドでも JSON レコード形式が維持される。"""
+        """JSON record shape is preserved for complex commands."""
         import json
         cmd = "agent -p --force < /path/to/order.md"
         result = build_child_jsonl_record("some-uuid-1234", cmd)
@@ -92,14 +92,14 @@ class TestBuildChildJsonlRecord:
 
 class TestFanoutPromptSuffix:
     def test_suffix_contains_ghdag_fanout_key(self):
-        """_FANOUT_PROMPT_SUFFIX に ghdag_fanout が含まれる。"""
+        """_FANOUT_PROMPT_SUFFIX contains ghdag_fanout."""
         assert "ghdag_fanout" in _FANOUT_PROMPT_SUFFIX
 
     def test_suffix_output_is_parseable(self, tmp_path):
-        """_FANOUT_PROMPT_SUFFIX のサンプル YAML が parse_fanout_spec でパースできる。"""
+        """Sample YAML in _FANOUT_PROMPT_SUFFIX is parseable by parse_fanout_spec."""
         result_file = tmp_path / "result.md"
         result_file.write_text(
-            "ペルソナの出力\n"
+            "Persona output\n"
             "---\n"
             "ghdag_fanout:\n"
             "  children:\n"

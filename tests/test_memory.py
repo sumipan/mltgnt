@@ -1,7 +1,7 @@
 """
-tests/test_memory.py — mltgnt.memory のユニットテスト
+tests/test_memory.py — mltgnt.memory Unit Test
 
-設計: Issue #118 §7 AC-1, Issue #823 (JSONL 対応)
+Design: Issue #118 §7 AC-1, Issue #823 (JSONL Contact Us)
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def make_config(tmp_path: Path) -> MemoryConfig:
 
 
 def _ts_ago(days: float = 0, weeks: float = 0) -> str:
-    """現在から指定期間前のタイムスタンプ（ISO 8601, JST）。"""
+    """Time stamp before the specified period from now()ISO 8601, JST）。"""
     delta = datetime.timedelta(days=days, weeks=weeks)
     dt = datetime.datetime.now(datetime.timezone.utc) - delta
     jst = datetime.timezone(datetime.timedelta(hours=9))
@@ -56,15 +56,15 @@ def _write_jsonl(path: Path, entries: list[MemoryEntry]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# JSONL ラウンドトリップ
+# JSONL Round Trip
 # ---------------------------------------------------------------------------
 
 def test_jsonl_roundtrip() -> None:
-    """MemoryEntry → serialize → parse のラウンドトリップで全フィールド一致。"""
+    """MemoryEntry → serialize → parse All fields matched on the round trip."""
     entry = MemoryEntry(
         timestamp="2030-05-09T17:00:00+09:00",
         role="user",
-        content="テスト",
+        content="test",
         source_tag="file",
         layer=None,
         dedupe_key=None,
@@ -80,11 +80,11 @@ def test_jsonl_roundtrip() -> None:
 
 
 def test_jsonl_roundtrip_with_layer() -> None:
-    """layer 付きエントリのラウンドトリップ。"""
+    """layer Round trip of entry with."""
     entry = MemoryEntry(
         timestamp="2030-05-09T17:00:00+09:00",
         role="assistant",
-        content="絶対に再デプロイ順を逆にしない",
+        content="Never reverse redepro  order",
         source_tag="manual",
         layer="caveat",
     )
@@ -94,7 +94,7 @@ def test_jsonl_roundtrip_with_layer() -> None:
 
 
 def test_parse_jsonl_null_layer(tmp_path: Path) -> None:
-    """`layer` が null の JSON 行を読み込むと MemoryEntry.layer is None。"""
+    """`layer` Home null Home JSON When reading a line MemoryEntry.layer is None。"""
     path = tmp_path / "test.jsonl"
     path.write_text(
         '{"timestamp":"2030-01-01T00:00:00+09:00","role":"user","content":"hi","source_tag":"file","layer":null}\n',
@@ -106,7 +106,7 @@ def test_parse_jsonl_null_layer(tmp_path: Path) -> None:
 
 
 def test_parse_jsonl_skips_invalid_lines(tmp_path: Path) -> None:
-    """不正 JSON 行はスキップされ、他エントリの読み込みに影響しない。"""
+    """Unauthorized JSON The line is skipped and does not allow to read other entries."""
     path = tmp_path / "test.jsonl"
     path.write_text(
         '{"timestamp":"2030-01-01T00:00:00+09:00","role":"user","content":"ok","source_tag":"file"}\n'
@@ -121,11 +121,11 @@ def test_parse_jsonl_skips_invalid_lines(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# append_memory_entry — JSONL 形式
+# append_memory_entry — JSONL Type
 # ---------------------------------------------------------------------------
 
 def test_append_memory_entry_creates_file(tmp_path: Path) -> None:
-    """append_memory_entry が JSONL 形式でエントリを追記する。"""
+    """append_memory_entry Home JSONL Add entry in format."""
     config = make_config(tmp_path)
     result = append_memory_entry(
         config, "test_persona", "user", "hello", "2026-04-17T10:00:00+09:00",
@@ -144,10 +144,10 @@ def test_append_memory_entry_creates_file(tmp_path: Path) -> None:
 
 
 def test_append_memory_entry_with_layer(tmp_path: Path) -> None:
-    """`layer="caveat"` を指定すると JSONL 行に layer フィールドが含まれる。"""
+    """`layer="caveat"` If JSONL  layer fields."""
     config = make_config(tmp_path)
     append_memory_entry(
-        config, "persona", "assistant", "デプロイ順を間違えないこと",
+        config, "persona", "assistant", "No prior order",
         "2030-05-09T17:00:00+09:00",
         source_tag="manual",
         layer="caveat",
@@ -158,7 +158,7 @@ def test_append_memory_entry_with_layer(tmp_path: Path) -> None:
 
 
 def test_append_memory_entry_format(tmp_path: Path) -> None:
-    """追記エントリが有効な JSON 1行として書き込まれる。"""
+    """Added entry is valid JSON 1Write as a line."""
     config = make_config(tmp_path)
     append_memory_entry(
         config, "test_persona", "user", "hello", "2026-04-17T10:00:00+09:00",
@@ -166,7 +166,7 @@ def test_append_memory_entry_format(tmp_path: Path) -> None:
     )
     mp = memory_file_path(config, "test_persona")
     text = mp.read_text(encoding="utf-8")
-    # 1行の JSON として parse できる
+    # 1Line JSON as parse can
     data = json.loads(text.strip())
     assert data["timestamp"] == "2026-04-17T10:00:00+09:00"
     assert data["role"] == "user"
@@ -174,11 +174,11 @@ def test_append_memory_entry_format(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# サイズガード: 破損ファイルへの追記を拒否
+# Size Guard: Addition to corrupted files
 # ---------------------------------------------------------------------------
 
 def test_append_rejects_corrupted_file(tmp_path: Path) -> None:
-    """既存 JSONL ファイルが閾値以下の場合、追記を拒否して False を返す。"""
+    """Existing JSONL If the file is less than the threshold, specify the following False """
     config = make_config(tmp_path)
     mp = memory_file_path(config, "broken")
     mp.write_text("\n", encoding="utf-8")
@@ -217,7 +217,7 @@ def test_append_allows_healthy_file(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# read_memory_tail_text — JSONL + layers フィルタ
+# read_memory_tail_text — JSONL + layers Filter
 # ---------------------------------------------------------------------------
 
 def test_read_memory_tail_text_returns_entries(tmp_path: Path) -> None:
@@ -250,33 +250,33 @@ def test_read_memory_tail_text_max_bytes_zero(tmp_path: Path) -> None:
 
 
 def test_read_memory_tail_text_layers_filter(tmp_path: Path) -> None:
-    """`layers=["caveat"]` 指定時、caveat のエントリのみ返す。"""
+    """`layers=["caveat"]` When specified,caveat The entry is limited."""
     config = make_config(tmp_path)
     mp = memory_file_path(config, "persona")
     entries = [
-        MemoryEntry("2030-01-01T00:00:00+09:00", "user", "通常エントリ", "file"),
-        MemoryEntry("2030-01-02T00:00:00+09:00", "assistant", "caveatエントリ", "manual", layer="caveat"),
-        MemoryEntry("2030-01-03T00:00:00+09:00", "user", "通常エントリ2", "file"),
+        MemoryEntry("2030-01-01T00:00:00+09:00", "user", "Normal entry", "file"),
+        MemoryEntry("2030-01-02T00:00:00+09:00", "assistant", "caveat", "manual", layer="caveat"),
+        MemoryEntry("2030-01-03T00:00:00+09:00", "user", "Normal entry2", "file"),
     ]
     _write_jsonl(mp, entries)
 
     result = read_memory_tail_text(config, "persona", max_bytes=4096, max_entries=10, layers=["caveat"])
-    assert "caveatエントリ" in result
-    assert "通常エントリ" not in result
+    assert "caveat" in result
+    assert "Normal entry" not in result
 
 
 def test_read_memory_tail_text_layers_none_returns_all(tmp_path: Path) -> None:
-    """`layers=None` は全エントリを返す（デフォルト動作）。"""
+    """`layers=None` returns all entries (default)."""
     config = make_config(tmp_path)
     mp = memory_file_path(config, "persona")
     entries = [
-        MemoryEntry("2030-01-01T00:00:00+09:00", "user", "通常", "file"),
+        MemoryEntry("2030-01-01T00:00:00+09:00", "user", "Normal", "file"),
         MemoryEntry("2030-01-02T00:00:00+09:00", "assistant", "caveat", "manual", layer="caveat"),
     ]
     _write_jsonl(mp, entries)
 
     result = read_memory_tail_text(config, "persona", max_bytes=4096, max_entries=10, layers=None)
-    assert "通常" in result
+    assert "Normal" in result
     assert "caveat" in result
 
 
@@ -285,16 +285,18 @@ def test_read_memory_tail_text_layers_none_returns_all(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_read_memory_preferences_extracts_section(tmp_path: Path) -> None:
+    # Japanese text intentionally kept for CJK processing test
     """source_tag="preferences" エントリを `## ユーザーの好み・傾向` 見出しで返す。"""
     config = make_config(tmp_path)
     mp = memory_file_path(config, "test_persona")
     _write_jsonl(mp, [
-        MemoryEntry("1970-01-01T00:00:00+00:00", "system", "好みのテキストです。", "preferences"),
-        MemoryEntry("2026-04-17T10:00:00+09:00", "user", "エントリです。", "file"),
+        MemoryEntry("1970-01-01T00:00:00+00:00", "system", "This is the text of your choice.", "preferences"),
+        MemoryEntry("2026-04-17T10:00:00+09:00", "user", "Entry.", "file"),
     ])
     result = read_memory_preferences(config, "test_persona")
+    # Japanese text intentionally kept for CJK processing test
     assert "ユーザーの好み・傾向" in result
-    assert "好みのテキストです。" in result
+    assert "This is the text of your choice." in result
 
 
 def test_read_memory_preferences_nonexistent(tmp_path: Path) -> None:
@@ -304,18 +306,18 @@ def test_read_memory_preferences_nonexistent(tmp_path: Path) -> None:
 
 
 def test_read_memory_preferences_no_section(tmp_path: Path) -> None:
-    """preferences エントリがないファイルは空文字列を返す。"""
+    """preferences Files without entries can be returned with an empty string."""
     config = make_config(tmp_path)
     mp = memory_file_path(config, "test_persona")
     _write_jsonl(mp, [
-        MemoryEntry("2026-04-17T10:00:00+09:00", "user", "エントリ", "file"),
+        MemoryEntry("2026-04-17T10:00:00+09:00", "user", "", "file"),
     ])
     result = read_memory_preferences(config, "test_persona")
     assert result == ""
 
 
 # ---------------------------------------------------------------------------
-# 重複排除
+# Deduplication
 # ---------------------------------------------------------------------------
 
 def test_dedupe_key_prevents_second_write(tmp_path: Path) -> None:
@@ -346,7 +348,7 @@ def test_no_dedupe_key_allows_duplicate(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ロック
+# Lock
 # ---------------------------------------------------------------------------
 
 def test_persona_memory_lock_blocks_second_acquire(tmp_path: Path) -> None:
@@ -368,7 +370,7 @@ def test_persona_memory_lock_blocks_second_acquire(tmp_path: Path) -> None:
 
 
 def test_persona_memory_lock_removes_stale_lock(tmp_path: Path) -> None:
-    """閾値より古い空の lock ファイルは自動削除されてロック取得が成功する。"""
+    """empty older than threshold lock The file is automatically deleted and locked successfully."""
     config = make_config(tmp_path)
     config.chat_dir.mkdir(parents=True, exist_ok=True)
     lock_path = config.chat_dir / ".lock-memory-stale_test"
@@ -381,7 +383,7 @@ def test_persona_memory_lock_removes_stale_lock(tmp_path: Path) -> None:
 
 
 def test_persona_memory_lock_keeps_fresh_lock(tmp_path: Path) -> None:
-    """閾値未満の lock ファイルは削除されず、タイムアウトする。"""
+    """Less than threshold lock File is not deleted and timeout."""
     config = make_config(tmp_path)
     config.chat_dir.mkdir(parents=True, exist_ok=True)
     lock_path = config.chat_dir / ".lock-memory-fresh_test"
@@ -419,6 +421,7 @@ def test_memory_config_new_fields() -> None:
     assert config.mid_weeks == 3
     assert config.compact_threshold_bytes == 40_960
     assert config.compact_target_bytes == 25_600
+    # Japanese text intentionally kept for CJK processing test
     assert config.preferences_section_name == "ユーザーの好み・傾向"
     assert config.protected_layers == ("caveat",)
 
@@ -442,20 +445,21 @@ def test_memory_config_new_fields_custom() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 旧 API パブリックインタフェース除去の確認
+# Old API public interface removal
 # ---------------------------------------------------------------------------
 
 def test_old_api_symbols_not_in_all() -> None:
-    """MemorySections, parse_memory, format_memory, assemble_memory, migrate_markdown_to_jsonl が __all__ に含まれない。"""
+    """MemorySections, parse_memory, format_memory, assemble_memory, migrate_markdown_to_jsonl Home __all__ Not included."""
     import mltgnt.memory._format as fmt
     for symbol in ("MemorySections", "parse_memory", "format_memory", "assemble_memory", "migrate_markdown_to_jsonl"):
         assert symbol not in fmt.__all__, f"{symbol} should not be in __all__"
 
 
 def test_ensure_jsonl_no_md_fallback(tmp_path: Path) -> None:
-    """.jsonl なし・.md ありの場合、自動マイグレーションせず .jsonl パスをそのまま返す（空文字列）。"""
+    """.jsonl HOME.md Without automatic migration .jsonl Return the path as it is (empty string)."""
     config = make_config(tmp_path)
     md_path = memory_file_path(config, "persona").with_suffix(".md")
+    # Japanese text intentionally kept for CJK processing test
     md_path.write_text("## ユーザーの好み・傾向\n\n好みの内容\n", encoding="utf-8")
 
     result = read_memory_tail_text(config, "persona", max_bytes=4096, max_entries=20)
@@ -464,7 +468,7 @@ def test_ensure_jsonl_no_md_fallback(tmp_path: Path) -> None:
 
 
 def test_old_api_functions_not_accessible() -> None:
-    """parse_memory, format_memory, assemble_memory, MemorySections がモジュール属性として存在しない。"""
+    """parse_memory, format_memory, assemble_memory, MemorySections does not exist as a module attribute."""
     import mltgnt.memory._format as fmt
     for symbol in ("parse_memory", "format_memory", "assemble_memory", "MemorySections"):
         assert not hasattr(fmt, symbol), f"{symbol} should not be a public attribute"
@@ -475,27 +479,29 @@ def test_old_api_functions_not_accessible() -> None:
 # ---------------------------------------------------------------------------
 
 def test_assemble_entries_text_preferences_heading() -> None:
+    # Japanese text intentionally kept for CJK processing test
     """preferences エントリは '## ユーザーの好み・傾向' 見出しで出力される。"""
     entries = [
-        MemoryEntry("1970-01-01T00:00:00+00:00", "system", "好みの内容", "preferences"),
+        MemoryEntry("1970-01-01T00:00:00+00:00", "system", "Like content", "preferences"),
     ]
     result = assemble_entries_text(entries)
+    # Japanese text intentionally kept for CJK processing test
     assert "## ユーザーの好み・傾向" in result
-    assert "好みの内容" in result
+    assert "Like content" in result
 
 
 def test_assemble_entries_text_regular_entry() -> None:
-    """通常エントリは `## timestamp — role` 形式で出力される。"""
+    """Normal entries `## timestamp — role` output in format."""
     entries = [
-        MemoryEntry("2030-05-09T17:00:00+09:00", "user", "コンテンツ", "file"),
+        MemoryEntry("2030-05-09T17:00:00+09:00", "user", "Content", "file"),
     ]
     result = assemble_entries_text(entries)
     assert "## 2030-05-09T17:00:00+09:00 — user" in result
-    assert "コンテンツ" in result
+    assert "Content" in result
 
 
 def test_assemble_entries_text_separator() -> None:
-    """複数エントリが --- で区切られる。"""
+    """Multiple entries --- separated by."""
     entries = [
         MemoryEntry("2030-01-01T00:00:00+09:00", "user", "A", "file"),
         MemoryEntry("2030-01-02T00:00:00+09:00", "user", "B", "file"),
@@ -538,7 +544,7 @@ def test_needs_compaction_true_when_above_threshold(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# compact — JSONL ベース + protected_layers
+# compact — JSONL  + protected_layers
 # ---------------------------------------------------------------------------
 
 
@@ -547,16 +553,16 @@ def _make_compact_entries(
     *,
     compact_threshold: int = 10,
 ) -> tuple[MemoryConfig, str]:
-    """compact テスト用の JSONL ファイルを作成して (config, persona) を返す。
+    """compact Test JSONL Contact Us (config, persona) 
 
-    per-section cap 方式（Issue #1135）に合わせ、長期セクションが cap を超えるサイズの
-    エントリを生成する。compact_target_bytes=4096、long_term_cap=1024（25%）。
+    per-section cap ContactIssue #1135long-term section cap Oversize
+    rate entries.compact_target_bytes=4096、long_term_cap=1024（25%）。
     """
     config = MemoryConfig(
         chat_dir=tmp_path,
         chat_memory_dir=tmp_path / "memory",
         compact_threshold_bytes=compact_threshold,
-        compact_target_bytes=4_096,  # 小さな target: cap = 4096 * 0.25 = 1024 bytes
+        compact_target_bytes=4_096,  # Small target: cap = 4096 * 0.25 = 1024 bytes
         raw_days=7,
         mid_weeks=3,
     )
@@ -564,13 +570,13 @@ def _make_compact_entries(
     mp = memory_file_path(config, "persona")
 
     entries = [
-        MemoryEntry("1970-01-01T00:00:00+00:00", "system", "好みの内容", "preferences"),
-        # 長期エントリ (> 3週間前) — cap(1024B) を超えるサイズ
-        MemoryEntry(_ts_ago(days=60), "user", "長期ログの内容 " + "x" * 1100, "file", layer="long_term"),
-        # 中期エントリ (7日〜3週間前) — cap(1024B) を超えるサイズ
-        MemoryEntry(_ts_ago(days=14), "user", "中期ログの内容 " + "y" * 1100, "file", layer="mid_term"),
-        # 直近エントリ (7日以内)
-        MemoryEntry(_ts_ago(days=2), "user", "直近ログの内容", "file", layer="recent"),
+        MemoryEntry("1970-01-01T00:00:00+00:00", "system", "Like content", "preferences"),
+        # Long-term entry (> 31 year ago) — cap(1024B) Oversize
+        MemoryEntry(_ts_ago(days=60), "user", "Long-term log content " + "x" * 1100, "file", layer="long_term"),
+        # Mid-Term Entry (7Day31 year ago) — cap(1024B) Oversize
+        MemoryEntry(_ts_ago(days=14), "user", "Contents of Medium-Term Log " + "y" * 1100, "file", layer="mid_term"),
+        # Recent Posts (7Within day)
+        MemoryEntry(_ts_ago(days=2), "user", "Recent Posts", "file", layer="recent"),
     ]
     _write_jsonl(mp, entries)
     return config, "persona"
@@ -582,9 +588,9 @@ def _identity_llm(prompt: str) -> str:
 
 
 def test_compact_calls_llm_per_group_and_writes_result(tmp_path: Path) -> None:
-    """compact が cap 超過のセクションに対して llm_call を呼び出し、結果を JSONL に書き込む。
+    """compact Home cap Excess section llm_call call results JSONL Write to
 
-    per-section cap 方式（Issue #1135）: long_term / mid_term が cap 超過の場合に LLM が呼ばれる。
+    per-section cap ContactIssue #1135）: long_term / mid_term Home cap Excessive LLM is called.
     """
     config, persona = _make_compact_entries(tmp_path)
 
@@ -592,12 +598,12 @@ def test_compact_calls_llm_per_group_and_writes_result(tmp_path: Path) -> None:
 
     def mock_llm(prompt: str) -> str:
         calls.append(prompt)
-        # cap 内に収まるコンパクト結果を返す（90% 程度のサイズ）
-        return "（コンパクト）圧縮済み内容 " + "z" * 800
+        # cap Returns compact results that fit inside90% size)
+        return "()act)Compressed content " + "z" * 800
 
     result = compact(config, persona, llm_call=mock_llm)
 
-    # per-section cap 超過セクションに対して LLM が呼ばれる（1回以上）
+    # per-section cap Excess section LLM is called1More
     assert len(calls) >= 1
     assert isinstance(result, CompactionResult)
     assert result.before_bytes > 0
@@ -605,8 +611,8 @@ def test_compact_calls_llm_per_group_and_writes_result(tmp_path: Path) -> None:
 
     entries = parse_jsonl(memory_file_path(config, "persona"))
     contents = [e.content for e in entries]
-    assert any("好みの内容" in c for c in contents)
-    assert any("直近ログの内容" in c for c in contents)
+    assert any("Like content" in c for c in contents)
+    assert any("Recent Posts" in c for c in contents)
 
 
 def test_compact_dry_run_does_not_write(tmp_path: Path) -> None:
@@ -619,10 +625,10 @@ def test_compact_dry_run_does_not_write(tmp_path: Path) -> None:
 
 
 def test_compact_all_llm_failures_fallback(tmp_path: Path) -> None:
-    """全 LLM 呼び出しが失敗しても元テキストにフォールバックして書き込みが行われる。
+    """All LLM If the call fails, it falls back to the original text and writes.
 
-    per-section cap 方式（Issue #1135）: cap 超過セクションに対して LLM が試みられ、
-    失敗時は元テキストを保持して warning に記録する。
+    per-section cap ContactIssue #1135）: cap Excess section LLM and
+    If it fails, hold the original text. warning Register
     """
     config, persona = _make_compact_entries(tmp_path)
     call_count = 0
@@ -634,7 +640,7 @@ def test_compact_all_llm_failures_fallback(tmp_path: Path) -> None:
 
     result = compact(config, persona, llm_call=failing_llm)
 
-    # cap 超過セクションに対して LLM が試みられる（1回以上）
+    # cap Excess section LLM is attempted1More
     assert call_count >= 1
     assert len(result.warnings) >= 1
     assert result.after_bytes > 0
@@ -647,26 +653,26 @@ def test_compact_raises_file_not_found(tmp_path: Path) -> None:
 
 
 def test_compact_preserves_preferences(tmp_path: Path) -> None:
-    """compact 後も preferences エントリが保持される。"""
+    """compact Close preferences The entry is retained."""
     config, persona = _make_compact_entries(tmp_path)
     compact(config, persona, llm_call=_identity_llm)
 
     entries = parse_jsonl(memory_file_path(config, persona))
     prefs = [e for e in entries if e.source_tag == "preferences"]
     assert prefs
-    assert "好みの内容" in prefs[0].content
+    assert "Like content" in prefs[0].content
 
 
 def test_compact_preserves_protected_layers(tmp_path: Path) -> None:
-    """compact 後、`layer="caveat"` のエントリが JSONL に残存する。"""
+    """compact Close`layer="caveat"` the entry JSONL """
     config, persona = _make_compact_entries(tmp_path)
     mp = memory_file_path(config, persona)
 
-    # caveat エントリを追加
+    # caveat Add entry
     caveat_entry = MemoryEntry(
         _ts_ago(days=90),
         "assistant",
-        "絶対に再デプロイ順を逆にしない",
+        "Never reverse redepro  order",
         "manual",
         layer="caveat",
     )
@@ -678,14 +684,14 @@ def test_compact_preserves_protected_layers(tmp_path: Path) -> None:
     entries = parse_jsonl(mp)
     caveat_entries = [e for e in entries if e.layer == "caveat"]
     assert caveat_entries
-    assert "絶対に再デプロイ順を逆にしない" in caveat_entries[0].content
+    assert "Never reverse redepro  order" in caveat_entries[0].content
 
 
 def test_compact_protected_layer_content_unchanged(tmp_path: Path) -> None:
-    """compact 後、caveat エントリの content が変更されていない。"""
+    """compact Closecaveat Entry content Not supported."""
     config, persona = _make_compact_entries(tmp_path)
     mp = memory_file_path(config, persona)
-    original_caveat_content = "この内容は変更されてはならない"
+    original_caveat_content = "This content is not changed"
     caveat_entry = MemoryEntry(
         _ts_ago(days=90),
         "assistant",
@@ -704,10 +710,10 @@ def test_compact_protected_layer_content_unchanged(tmp_path: Path) -> None:
 
 
 def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
-    """`protected_layers=()` のとき caveat エントリもコンパクション対象になる。
+    """`protected_layers=()` Home caveat Entry is also included.
 
-    per-section cap 方式（Issue #1135）: protected_layers=() の場合、caveat エントリも
-    通常の layer 分類（long_term/mid_term/recent）に従い、cap 超過時に LLM 圧縮対象となる。
+    per-section cap ContactIssue #1135）: protected_layers=() Forcaveat Contact Us
+    Normal layer Classificationlong_term/mid_term/recent) Followcap Overtime LLM Compressed.
     """
     config = MemoryConfig(
         chat_dir=tmp_path,
@@ -721,9 +727,9 @@ def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
     (tmp_path / "memory").mkdir(exist_ok=True)
     mp = memory_file_path(config, "persona")
     entries = [
-        # caveat エントリ（long_term layer、cap 超過サイズ）
-        MemoryEntry(_ts_ago(days=90), "assistant", "caveat内容 " + "c" * 1100, "manual", layer="long_term"),
-        MemoryEntry(_ts_ago(days=2), "user", "直近内容", "file", layer="recent"),
+        # caveat Entrieslong_term layer、cap Oversize)
+        MemoryEntry(_ts_ago(days=90), "assistant", "caveatcontent " + "c" * 1100, "manual", layer="long_term"),
+        MemoryEntry(_ts_ago(days=2), "user", "Recent Posts", "file", layer="recent"),
     ]
     _write_jsonl(mp, entries)
 
@@ -731,33 +737,33 @@ def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
 
     def track_llm(prompt: str) -> str:
         calls.append(prompt)
-        # max_ratio(0.90) ガードを通過する圧縮結果を返す（existing の 95% 程度）
-        # existing は ~1110 bytes → 結果は ~1050 bytes 以上必要
-        return "圧縮済みデータ " + "z" * 1080
+        # max_ratio(0.90) Returns compression result passing the guard (existing Home 95% )
+        # existing Home ~1110 bytes → Result ~1050 bytes More
+        return "Compressed Data " + "z" * 1080
 
     compact(config, "persona", llm_call=track_llm)
 
-    # cap 超過の long_term に対して LLM が呼ばれる
+    # cap Excess long_term Home LLM is called
     assert len(calls) >= 1
     result_entries = parse_jsonl(mp)
-    # LLM 圧縮が実行されたので元のロングコンテンツは残らない
+    # LLM The original long content is not left because the compression was executed
     original_content_entries = [e for e in result_entries if "c" * 100 in e.content]
-    assert len(original_content_entries) == 0  # LLM が圧縮したので元の "ccc..." コンテンツはない
+    assert len(original_content_entries) == 0  # LLM compressed "ccc..." No content
 
 
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# extract_and_append 削除確認 (Issue #915)
+# extract_and_append  (Issue #915)
 # ---------------------------------------------------------------------------
 
 def test_extract_and_append_not_in_all() -> None:
-    """extract_and_append が __all__ に含まれていないことを確認。"""
+    """extract_and_append Home __all__ Check that you are not affected."""
     import mltgnt.memory as m
     assert "extract_and_append" not in m.__all__
 
 
 def test_extract_and_append_not_importable() -> None:
-    """`from mltgnt.memory import extract_and_append` が ImportError を返す。"""
+    """`from mltgnt.memory import extract_and_append` Home ImportError """
     with pytest.raises(ImportError):
         from mltgnt.memory import extract_and_append  # noqa: F401

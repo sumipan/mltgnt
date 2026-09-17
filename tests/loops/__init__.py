@@ -1,1 +1,1 @@
-"""tests/loops — loops テストパッケージ。"""
+"""tests/loops — loops test package."""

@@ -1,5 +1,5 @@
 """
-tests/test_skill/test_tool_validation.py — Issue #2090: tools フロントマターと Tool バリデーション。
+tests/test_skill/test_tool_validation.py — Issue #2090: tools frontmatter and Tool validation.
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ class TestToolsFrontmatterParse:
         assert meta.tools == ["existing_tool"]
 
     def test_tools_missing(self, tmp_path: Path) -> None:
-        """tools キー未指定 -> SkillMeta.tools == []"""
+        """missing tools key -> SkillMeta.tools == []"""
         meta = _fm_and_meta("name: test\ndescription: desc\n", tmp_path)
         assert meta.tools == []
 
@@ -54,7 +54,7 @@ class TestToolsFrontmatterParse:
 
 class TestValidateToolRefs:
     def test_unknown_tool_raises(self, tmp_path: Path) -> None:
-        """未知 Tool 参照で SkillLoadError（スキル名と Tool 名を含む）"""
+        """unknown Tool reference raises SkillLoadError (includes skill and Tool names)"""
         skills = {"bad-skill": _meta("bad-skill", ["nonexistent_tool"])}
         mock_result = MagicMock(returncode=0, stdout=json.dumps({"tools": []}), stderr="")
         with patch("mltgnt.skill.loader.subprocess.run", return_value=mock_result):
@@ -65,14 +65,14 @@ class TestValidateToolRefs:
         assert "nonexistent_tool" in msg
 
     def test_empty_tools_skipped(self, tmp_path: Path) -> None:
-        """tools が空のスキルはバリデーションをスキップ"""
+        """skills with empty tools skip validation"""
         skills = {"no-tools": _meta("no-tools", [])}
         with patch("mltgnt.skill.loader.subprocess.run") as mock_run:
             validate_tool_refs(skills, tmp_path)
             mock_run.assert_not_called()
 
     def test_existing_tool_passes(self, tmp_path: Path) -> None:
-        """既知 Tool 参照はエラーなし"""
+        """known Tool references do not error"""
         skills = {"good-skill": _meta("good-skill", ["existing_tool"])}
         mock_result = MagicMock(
             returncode=0,
@@ -83,7 +83,7 @@ class TestValidateToolRefs:
             validate_tool_refs(skills, tmp_path)
 
     def test_ghdag_failure_raises(self, tmp_path: Path) -> None:
-        """ghdag tools list 失敗時に stderr を含む SkillLoadError"""
+        """SkillLoadError includes stderr when ghdag tools list fails"""
         skills = {"any": _meta("any", ["tool-a"])}
         mock_result = MagicMock(returncode=1, stdout="", stderr="command failed: not found")
         with patch("mltgnt.skill.loader.subprocess.run", return_value=mock_result):
@@ -92,7 +92,7 @@ class TestValidateToolRefs:
         assert "command failed: not found" in str(exc_info.value)
 
     def test_multiple_unknown_tools_aggregated(self, tmp_path: Path) -> None:
-        """複数スキルの未知 Tool を 1 つの SkillLoadError に集約"""
+        """aggregate unknown Tools from multiple skills into one SkillLoadError"""
         skills = {
             "skill-a": _meta("skill-a", ["unknown-a"]),
             "skill-b": _meta("skill-b", ["unknown-b", "unknown-c"]),

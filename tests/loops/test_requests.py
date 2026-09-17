@@ -1,4 +1,4 @@
-"""tests/loops/test_requests.py — request JSON の検証・列挙・隔離・consume。"""
+"""tests/loops/test_requests.py — request JSON validate / list / quarantine / consume."""
 from __future__ import annotations
 
 import json

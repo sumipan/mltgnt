@@ -1,4 +1,4 @@
-"""CLI 終了コード 0/1/2/3 の検証（Issue #1254）。"""
+"""CLI exit code 0/1/2/3 checks (Issue #1254)."""
 import os
 from unittest.mock import MagicMock, patch
 

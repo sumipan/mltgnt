@@ -1,4 +1,4 @@
-"""tests/tools/mltgnt_fugu/test_types.py — StrategyInput / StrategyResult テスト (AC-A2)"""
+"""tests/tools/mltgnt_fugu/test_types.py — StrategyInput / StrategyResult tests (AC-A2)"""
 from __future__ import annotations
 
 import pytest

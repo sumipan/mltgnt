@@ -1,4 +1,4 @@
-"""tests/test_exceptions.py — 例外型階層のユニットテスト（Issue #1252 AC-2）。"""
+"""tests/test_exceptions.py — exception hierarchy unit tests (Issue #1252 AC-2)."""
 from __future__ import annotations
 
 from mltgnt.exceptions import ConfigError, DependencyError, MltgntError

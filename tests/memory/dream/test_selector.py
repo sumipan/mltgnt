@@ -1,4 +1,4 @@
-"""tests/memory/dream/test_selector.py — DreamSelector のテスト。"""
+"""tests/memory/dream/test_selector.py — tests for DreamSelector."""
 from __future__ import annotations
 
 import os
@@ -18,7 +18,7 @@ def _write_jsonl(path: Path, content: str = '{"timestamp":"2026-06-01 10:00","ro
 def _write_dream(persona_dir: Path, updated_at: str) -> None:
     summary = DreamSummary(
         persona=persona_dir.name,
-        sections=[DreamSection(category="行動パターン", content="old", source_entries=1)],
+        sections=[DreamSection(category="Behavior patterns", content="old", source_entries=1)],
         updated_at=updated_at,
     )
     write_dream(persona_dir, summary)

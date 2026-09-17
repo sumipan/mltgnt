@@ -1,8 +1,8 @@
-VERSION_BUMP_REASON: 該当する破壊的変更なし
+VERSION_BUMP_REASON: no applicable breaking changes
 
-### コミット
+### Commit
 
-`feat/issue-1793-7271cc69` ブランチに `7f5cde5` をコミット済み。
+Committed `7f5cde5` on branch `feat/issue-1793-7271cc69`.
 
 ```
 PIPELINE_STATUS: IMPL_DONE

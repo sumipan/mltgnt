@@ -1,4 +1,4 @@
-"""KPI R1 メトリクス（memory_recall_rate / task_completion_time_ms）のユニットテスト。"""
+"""Unit tests for KPI R1 metrics (memory_recall_rate / task_completion_time_ms)."""
 from __future__ import annotations
 
 import json

@@ -1,4 +1,4 @@
-"""tests/loops/test_budget.py — JST 日次共有 LLM 予算。"""
+"""tests/loops/test_budget.py — JST daily shared LLM budget."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -101,7 +101,7 @@ def test_date_rollover_uses_new_counter(tmp_path: Path):
 
 
 def test_lock_serializes_concurrent_reserves(tmp_path: Path):
-    """同一ファイルへの連続予約が原子的に増えること。"""
+    """Consecutive reserves on the same file increase atomically."""
     state_dir = tmp_path / "state"
     now = datetime(2026, 8, 23, 12, 0, tzinfo=_TZ)
     counts = []

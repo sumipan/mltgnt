@@ -1,4 +1,4 @@
-"""tests/loops/test_objective.py — Objective 入力契約テスト。"""
+"""tests/loops/test_objective.py — Objective input contract tests."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -89,12 +89,12 @@ def test_ensure_frontmatter_completes_missing_keys(tmp_path):
 
 
 def test_ensure_frontmatter_title_strips_heading_markers(tmp_path):
-    path = _write_objective(tmp_path, "h2.md", "## 試し\n\nbody\n")
+    path = _write_objective(tmp_path, "h2.md", "## Trial\n\nbody\n")
     assert ensure_frontmatter(path, default_max_iterations=5) is True
     text = path.read_text(encoding="utf-8")
-    assert "title: 試し" in text
-    assert "'## 試し'" not in text
-    assert "\n## 試し" in text  # 本文の見出しはそのまま
+    assert "title: Trial" in text
+    assert "'## Trial'" not in text
+    assert "\n## Trial" in text  # body heading stays as-is
 
 
 def test_ensure_frontmatter_title_deep_heading_and_no_space(tmp_path):
@@ -102,7 +102,7 @@ def test_ensure_frontmatter_title_deep_heading_and_no_space(tmp_path):
     assert ensure_frontmatter(path, default_max_iterations=5) is True
     assert "title: Deep" in path.read_text(encoding="utf-8")
 
-    # `#` 直後に空白がない行は ATX 見出しではないのでそのまま
+    # A `#` with no following space is not an ATX heading, leave as-is
     path2 = _write_objective(tmp_path, "tag.md", "#hashtag line\n")
     assert ensure_frontmatter(path2, default_max_iterations=5) is True
     assert "title: '#hashtag line'" in path2.read_text(encoding="utf-8")
@@ -118,6 +118,7 @@ def test_ensure_frontmatter_noop_when_complete(tmp_path):
 
 
 def test_ensure_frontmatter_non_ascii_stem_hashes(tmp_path):
+    # Japanese text intentionally kept for CJK processing test
     path = _write_objective(tmp_path, "日本語.md", "plain title\n")
     assert ensure_frontmatter(path, default_max_iterations=5) is True
     text = path.read_text(encoding="utf-8")

@@ -1,19 +1,19 @@
 """
-tests/test_memory_relevance.py — read_memory_by_relevance() の結合テスト
+tests/test_memory_relevance.py — integration tests for read_memory_by_relevance()
 
-TC1: スコア順選択
-TC2: preferences 常時包含
-TC3: max_entries 制限
-TC4: max_bytes 制限
-TC5: 日本語テキスト対応
-TC6: スコアリングエラーフォールバック
-TC7: 空 memory
-TC8: preferences のみ
-TC9: 空クエリ
-TC10: エントリが1件のみ
+TC1: score-ordered selection
+TC2: preferences always included
+TC3: max_entries limit
+TC4: max_bytes limit
+TC5: Japanese text support
+TC6: scoring-error fallback
+TC7: empty memory
+TC8: preferences only
+TC9: empty query
+TC10: single entry
 
-Note: Issue #198 で embedding ベースから TF-IDF ベースに変更。
-embedding_call パラメータを削除し、TF-IDF をローカルで使用する。
+Note: Issue #198 switched from embedding-based to TF-IDF-based scoring.
+The embedding_call parameter was removed; TF-IDF is used locally.
 """
 from __future__ import annotations
 
@@ -36,17 +36,18 @@ def make_config(tmp_path: Path) -> MemoryConfig:
 
 
 def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
-    # JSONL 形式で .jsonl に書き込む。
+    # Write JSONL to the .jsonl path.
     jsonl_path = memory_file_path(config, persona)
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     jsonl_path.write_text(content, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
-# TC1: スコア順選択
+# TC1: score-ordered selection
 # ---------------------------------------------------------------------------
 
 
+# Japanese text intentionally kept for CJK processing test
 MEMORY_THREE_ENTRIES = (
     '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"料理のレシピについて話した。おいしいパスタの作り方を学んだ。","source_tag":"file"}\n'
     '{"timestamp":"2026-01-02T10:00:00+09:00","role":"user","content":"Python のデコレータについて調べた。コードの再利用性が高まる。","source_tag":"file"}\n'
@@ -55,10 +56,11 @@ MEMORY_THREE_ENTRIES = (
 
 
 def test_tc1_score_ordering(tmp_path: Path) -> None:
-    """TC1: Python クエリに対し、プログラミングエントリが最上位で返る。"""
+    """TC1: for a Python query, the programming entry ranks first."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
+    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
@@ -67,7 +69,8 @@ def test_tc1_score_ordering(tmp_path: Path) -> None:
         max_entries=3,
     )
 
-    # プログラミングエントリが料理・天気より先に来ていること
+    # Programming entry must appear before cooking/weather
+    # Japanese text intentionally kept for CJK processing test
     prog_idx = result.find("Python のデコレータ")
     cook_idx = result.find("料理のレシピ")
     assert prog_idx != -1
@@ -76,10 +79,11 @@ def test_tc1_score_ordering(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC2: preferences 常時包含
+# TC2: preferences always included
 # ---------------------------------------------------------------------------
 
 
+# Japanese text intentionally kept for CJK processing test
 MEMORY_WITH_PREFERENCES = (
     '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"プログラミングが得意。Python を主に使う。","source_tag":"preferences"}\n'
     '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"料理のレシピについて話した。","source_tag":"file"}\n'
@@ -88,10 +92,11 @@ MEMORY_WITH_PREFERENCES = (
 
 
 def test_tc2_preferences_always_included(tmp_path: Path) -> None:
-    """TC2: preferences セクションはスコアリング結果に関わらず出力に含まれる。"""
+    """TC2: preferences section is included regardless of scoring."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_WITH_PREFERENCES)
 
+    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
@@ -100,12 +105,13 @@ def test_tc2_preferences_always_included(tmp_path: Path) -> None:
         max_entries=1,
     )
 
+    # Japanese text intentionally kept for CJK processing test
     assert "ユーザーの好み・傾向" in result
     assert "Python を主に使う" in result
 
 
 # ---------------------------------------------------------------------------
-# TC3: max_entries 制限
+# TC3: max_entries limit
 # ---------------------------------------------------------------------------
 
 
@@ -123,7 +129,7 @@ def _make_10_entries_memory() -> str:
 
 
 def test_tc3_max_entries_limit(tmp_path: Path) -> None:
-    """TC3: 10 件エントリに max_entries=3 → 3 件のみ返る。"""
+    """TC3: 10 entries with max_entries=3 → at most 3 returned."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", _make_10_entries_memory())
 
@@ -135,18 +141,18 @@ def test_tc3_max_entries_limit(tmp_path: Path) -> None:
         max_entries=3,
     )
 
-    # "entry N" の出現回数 ≤ 3
+    # Occurrences of "entry N" ≤ 3
     entry_count = sum(1 for i in range(10) if f"entry {i}" in result)
     assert entry_count <= 3
 
 
 # ---------------------------------------------------------------------------
-# TC4: max_bytes 制限
+# TC4: max_bytes limit
 # ---------------------------------------------------------------------------
 
 
 def test_tc4_max_bytes_limit(tmp_path: Path) -> None:
-    """TC4: 上位エントリの合計が max_bytes を超える場合、バイト数以内に収まる。"""
+    """TC4: when top entries exceed max_bytes, output stays within the byte budget."""
     import json
     config = make_config(tmp_path)
     lines = [
@@ -174,35 +180,37 @@ def test_tc4_max_bytes_limit(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC5: 日本語テキスト対応
+# TC5: Japanese text support
 # ---------------------------------------------------------------------------
 
 
 def test_tc5_japanese_text(tmp_path: Path) -> None:
-    """TC5: 日本語テキストに対して TF-IDF ベクトル化が正常に動作し、スコアが返る。"""
+    """TC5: TF-IDF vectorization works on Japanese text and returns scores."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
+    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
-        "Python デコレータ コード",
+        "Python decorator code",
         max_bytes=4096,
         max_entries=3,
     )
 
-    # 結果が空でなく、エントリが含まれること
+    # Result must be non-empty and include an entry
+    # Japanese text intentionally kept for CJK processing test
     assert result
     assert "Python のデコレータ" in result
 
 
 # ---------------------------------------------------------------------------
-# TC6: スコアリングエラーフォールバック
+# TC6: scoring-error fallback
 # ---------------------------------------------------------------------------
 
 
 def test_tc6_scoring_error_fallback(tmp_path: Path, caplog) -> None:
-    """TC6: score_entries() が例外を送出 → read_memory_tail_text() と同等の結果が返る。"""
+    """TC6: if score_entries() raises, return the same as read_memory_tail_text()."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
@@ -215,7 +223,7 @@ def test_tc6_scoring_error_fallback(tmp_path: Path, caplog) -> None:
             result = read_memory_by_relevance(
                 config,
                 "persona",
-                "何か",
+                "something",
                 max_bytes=4096,
                 max_entries=5,
             )
@@ -231,18 +239,18 @@ def test_tc6_scoring_error_fallback(tmp_path: Path, caplog) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC7: 空 memory
+# TC7: empty memory
 # ---------------------------------------------------------------------------
 
 
 def test_tc7_empty_memory(tmp_path: Path) -> None:
-    """TC7: memory ファイルが存在しない場合、空文字列が返る。"""
+    """TC7: missing memory file returns an empty string."""
     config = make_config(tmp_path)
 
     result = read_memory_by_relevance(
         config,
         "nonexistent",
-        "何か質問",
+        "some question",
         max_bytes=4096,
         max_entries=5,
     )
@@ -251,20 +259,22 @@ def test_tc7_empty_memory(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC8: preferences のみ
+# TC8: preferences only
 # ---------------------------------------------------------------------------
 
 
+# Japanese text intentionally kept for CJK processing test
 MEMORY_PREFERENCES_ONLY = (
     '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"プログラミングが好き。","source_tag":"preferences"}\n'
 )
 
 
 def test_tc8_preferences_only(tmp_path: Path) -> None:
-    """TC8: preferences のみの memory → preferences のみ返る。"""
+    """TC8: preferences-only memory → preferences-only output."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PREFERENCES_ONLY)
 
+    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
@@ -273,17 +283,18 @@ def test_tc8_preferences_only(tmp_path: Path) -> None:
         max_entries=5,
     )
 
+    # Japanese text intentionally kept for CJK processing test
     assert "ユーザーの好み・傾向" in result
     assert "プログラミングが好き" in result
 
 
 # ---------------------------------------------------------------------------
-# TC9: 空クエリ
+# TC9: empty query
 # ---------------------------------------------------------------------------
 
 
 def test_tc9_empty_query_fallback(tmp_path: Path) -> None:
-    """TC9: クエリが空文字列 → read_memory_tail_text() にフォールバック。"""
+    """TC9: empty query falls back to read_memory_tail_text()."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
@@ -303,17 +314,18 @@ def test_tc9_empty_query_fallback(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC10: エントリが1件のみ
+# TC10: single entry
 # ---------------------------------------------------------------------------
 
 
+# Japanese text intentionally kept for CJK processing test
 MEMORY_SINGLE_ENTRY = (
     '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"Python のデコレータについて調べた。","source_tag":"file"}\n'
 )
 
 
 def test_tc10_single_entry(tmp_path: Path) -> None:
-    """TC10: エントリが1件のみでも TF-IDF が正常に動作する。"""
+    """TC10: TF-IDF works with a single entry."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SINGLE_ENTRY)
 
@@ -325,6 +337,7 @@ def test_tc10_single_entry(tmp_path: Path) -> None:
         max_entries=5,
     )
 
+    # Japanese text intentionally kept for CJK processing test
     assert "Python のデコレータ" in result
 
 
@@ -340,10 +353,11 @@ def test_tc10_single_entry(tmp_path: Path) -> None:
 
 
 def test_suf_tc1_sufficient_same_as_relevance(tmp_path: Path) -> None:
-    """TC1: llm_call が SUFFICIENT を返す → read_memory_by_relevance と同一結果。"""
+    """TC1: llm_call returns SUFFICIENT → same as read_memory_by_relevance."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
+    # Japanese text intentionally kept for CJK processing test
     expected = read_memory_by_relevance(
         config, "persona", "Python デコレータ", max_bytes=4096, max_entries=3
     )
@@ -351,6 +365,7 @@ def test_suf_tc1_sufficient_same_as_relevance(tmp_path: Path) -> None:
     result = read_memory_with_sufficiency_check(
         config,
         "persona",
+        # Japanese text intentionally kept for CJK processing test
         "Python デコレータ",
         max_bytes=4096,
         max_entries=3,
@@ -366,14 +381,14 @@ def test_suf_tc1_sufficient_same_as_relevance(tmp_path: Path) -> None:
 
 
 def test_suf_tc2_insufficient_merges_results(tmp_path: Path) -> None:
-    """TC2: INSUFFICIENT → 再検索し3エントリすべてが結果に含まれる。"""
+    """TC2: INSUFFICIENT → re-search; all three entries appear in the result."""
     config = make_config(tmp_path)
-    # memory ファイルを作成しておく（preferences 読み込みのため）
+    # Create the memory file (needed for preferences loading)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
-    entry_a = ScoredEntry("エントリA: プロジェクト進捗", 0.9)
-    entry_b = ScoredEntry("エントリB: DB接続設定", 0.8)
-    entry_c = ScoredEntry("エントリC: 料理", 0.3)
+    entry_a = ScoredEntry("entry-A: project progress", 0.9)
+    entry_b = ScoredEntry("entry-B: DB connection settings", 0.8)
+    entry_c = ScoredEntry("entry-C: cooking", 0.3)
 
     call_count = [0]
 
@@ -388,15 +403,15 @@ def test_suf_tc2_insufficient_merges_results(tmp_path: Path) -> None:
         result = read_memory_with_sufficiency_check(
             config,
             "persona",
-            "プロジェクト",
+            "project",
             max_bytes=4096,
             max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\nMEMORY\nDB接続の詳細設定",
+            llm_call=lambda p: "INSUFFICIENT\nMEMORY\nDB connection details",
         )
 
-    assert "エントリA" in result
-    assert "エントリB" in result
-    assert "エントリC" in result
+    assert "entry-A" in result
+    assert "entry-B" in result
+    assert "entry-C" in result
     assert call_count[0] == 2
 
 
@@ -406,28 +421,28 @@ def test_suf_tc2_insufficient_merges_results(tmp_path: Path) -> None:
 
 
 def test_suf_tc3_deduplication(tmp_path: Path) -> None:
-    """TC3: 初回と再検索が同一エントリを返す → 重複なし。"""
+    """TC3: first and re-search return the same entries → no duplicates."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
     entries = [
-        ScoredEntry("エントリA", 0.9),
-        ScoredEntry("エントリB", 0.8),
+        ScoredEntry("entry-A", 0.9),
+        ScoredEntry("entry-B", 0.8),
     ]
 
     with patch("mltgnt.memory._search_and_score", return_value=entries):
         result = read_memory_with_sufficiency_check(
             config,
             "persona",
-            "テスト",
+            "test",
             max_bytes=4096,
             max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\nMEMORY\n追加クエリ",
+            llm_call=lambda p: "INSUFFICIENT\nMEMORY\nextra query",
         )
 
-    # エントリAが2回以上現れないことを確認
-    assert result.count("エントリA") == 1
-    assert result.count("エントリB") == 1
+    # entry-A must not appear more than once
+    assert result.count("entry-A") == 1
+    assert result.count("entry-B") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -436,12 +451,12 @@ def test_suf_tc3_deduplication(tmp_path: Path) -> None:
 
 
 def test_suf_tc4_max_entries_after_merge(tmp_path: Path) -> None:
-    """TC4: マージ後も max_entries を超えない。"""
+    """TC4: after merge, result still respects max_entries."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
-    first_entries = [ScoredEntry(f"エントリ{i}", float(10 - i) / 10) for i in range(8)]
-    second_entries = [ScoredEntry(f"エントリ{i}", float(10 - i) / 10) for i in range(4, 10)]
+    first_entries = [ScoredEntry(f"entry-{i}", float(10 - i) / 10) for i in range(8)]
+    second_entries = [ScoredEntry(f"entry-{i}", float(10 - i) / 10) for i in range(4, 10)]
 
     call_count = [0]
 
@@ -456,14 +471,14 @@ def test_suf_tc4_max_entries_after_merge(tmp_path: Path) -> None:
         result = read_memory_with_sufficiency_check(
             config,
             "persona",
-            "テスト",
+            "test",
             max_bytes=65536,
             max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\nMEMORY\n追加クエリ",
+            llm_call=lambda p: "INSUFFICIENT\nMEMORY\nextra query",
         )
 
-    # 結果に含まれるエントリ数を数える（エントリ0〜エントリ9）
-    entry_count = sum(1 for i in range(10) if f"エントリ{i}" in result)
+    # Count entries present in the result (entry-0 … entry-9)
+    entry_count = sum(1 for i in range(10) if f"entry-{i}" in result)
     assert entry_count <= 10
 
 
@@ -473,18 +488,19 @@ def test_suf_tc4_max_entries_after_merge(tmp_path: Path) -> None:
 
 
 def test_suf_tc5_no_llm_call_same_as_relevance(tmp_path: Path) -> None:
-    """TC5: llm_call=None → read_memory_by_relevance() と同一結果。"""
+    """TC5: llm_call=None → same as read_memory_by_relevance()."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
+    # Japanese text intentionally kept for CJK processing test
     expected = read_memory_by_relevance(
-        config, "persona", "Python デコレータ", max_bytes=4096, max_entries=3
+        config, "persona", "Python", max_bytes=4096, max_entries=3
     )
 
     result = read_memory_with_sufficiency_check(
         config,
         "persona",
-        "Python デコレータ",
+        "Python",
         max_bytes=4096,
         max_entries=3,
         llm_call=None,
@@ -499,10 +515,11 @@ def test_suf_tc5_no_llm_call_same_as_relevance(tmp_path: Path) -> None:
 
 
 def test_suf_tc7_llm_raises_returns_initial(tmp_path: Path, caplog) -> None:
-    """TC7 統合: judge_sufficiency が例外 → 初回結果を返してログに警告。"""
+    """TC7 integration: judge_sufficiency raises → return initial result and warn."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
+    # Japanese text intentionally kept for CJK processing test
     initial_entries = [ScoredEntry("Python のデコレータについて調べた。コードの再利用性が高まる。", 0.9)]
 
     def mock_search(cfg, persona, q, *, max_entries):
@@ -520,6 +537,7 @@ def test_suf_tc7_llm_raises_returns_initial(tmp_path: Path, caplog) -> None:
                     llm_call=lambda p: "SUFFICIENT",
                 )
 
+    # Japanese text intentionally kept for CJK processing test
     assert "Python のデコレータ" in result
     assert any(
         "sufficiency" in r.message.lower() or "error" in r.message.lower()
@@ -528,30 +546,30 @@ def test_suf_tc7_llm_raises_returns_initial(tmp_path: Path, caplog) -> None:
 
 
 # ---------------------------------------------------------------------------
-# layers フィルタ: read_memory_by_relevance
+# layers filter: read_memory_by_relevance
 # ---------------------------------------------------------------------------
 
 
 def test_read_memory_by_relevance_layers_filter(tmp_path: Path) -> None:
-    """`layers=["learning"]` 指定時、layer="learning" のエントリのみ返す。"""
+    """With layers=["learning"], only layer="learning" entries are returned."""
     from mltgnt.memory._format import MemoryEntry, serialize_entry
 
     config = make_config(tmp_path)
     mp = memory_file_path(config, "persona")
     mp.parent.mkdir(parents=True, exist_ok=True)
     entries = [
-        MemoryEntry("2030-01-01T00:00:00+09:00", "user", "学びエントリ", "file", layer="learning"),
-        MemoryEntry("2030-01-02T00:00:00+09:00", "user", "caveatエントリ", "file", layer="caveat"),
-        MemoryEntry("2030-01-03T00:00:00+09:00", "user", "通常エントリ", "file"),
+        MemoryEntry("2030-01-01T00:00:00+09:00", "user", "learning entry", "file", layer="learning"),
+        MemoryEntry("2030-01-02T00:00:00+09:00", "user", "caveat entry", "file", layer="caveat"),
+        MemoryEntry("2030-01-03T00:00:00+09:00", "user", "normal entry", "file"),
     ]
     with mp.open("w", encoding="utf-8") as f:
         for e in entries:
             f.write(serialize_entry(e) + "\n")
 
     result = read_memory_by_relevance(
-        config, "persona", "学び",
+        config, "persona", "learning",
         max_bytes=4096, max_entries=10, layers=["learning"],
     )
-    assert "学びエントリ" in result
-    assert "caveatエントリ" not in result
-    assert "通常エントリ" not in result
+    assert "learning entry" in result
+    assert "caveat entry" not in result
+    assert "normal entry" not in result

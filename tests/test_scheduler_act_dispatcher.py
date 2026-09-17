@@ -1,4 +1,4 @@
-"""PersonaScheduler ディスパッチ統一テスト。"""
+"""PersonaScheduler Disp  Unified Test."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,13 +22,13 @@ def _make_job(action: str, **kwargs: Any) -> ScheduleJob:
 
 
 def test_skill_action_dispatched_via_actions_dict(tmp_path):
-    """skill アクションが _actions 辞書経由でディスパッチされること。"""
+    """skill Action _actions Dispatching via ."""
     sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
     assert "skill" in sched._actions
 
 
 def test_skill_action_registered_on_init(tmp_path):
-    """__init__ 時点で skill が _actions に登録済みであること。"""
+    """__init__ At the time skill Home _actions Must be registered."""
     sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
     skill_fn = sched._actions.get("skill")
     assert skill_fn is not None
@@ -36,7 +36,7 @@ def test_skill_action_registered_on_init(tmp_path):
 
 
 def test_execute_action_skill_calls_registered_handler(tmp_path):
-    """execute_action('skill') が _actions['skill'] 経由で呼ばれること。"""
+    """execute_action('skill') Home _actions['skill'] Called via"""
     sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
     mock_fn = MagicMock(return_value=(True, "skill_ok"))
     sched.register_action("skill", mock_fn)
@@ -49,7 +49,7 @@ def test_execute_action_skill_calls_registered_handler(tmp_path):
 
 
 def test_execute_action_noop_returns_immediately(tmp_path):
-    """noop は _actions 辞書を経由せず即座に (True, '') を返すこと。"""
+    """noop returns (True, '') immediately without using the actions dict."""
     sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
     job = _make_job("noop")
     ok, msg = sched.execute_action(job)
@@ -58,15 +58,16 @@ def test_execute_action_noop_returns_immediately(tmp_path):
 
 
 def test_execute_action_unknown_raises(tmp_path):
-    """未登録アクションは ValueError を送出すること。"""
+    """Unregistered actions ValueError Send"""
     sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
     job = _make_job("unknown_action_xyz")
+    # Japanese text intentionally kept for CJK processing test
     with pytest.raises(ValueError, match="未対応"):
         sched.execute_action(job)
 
 
 def test_execute_action_custom_action_dispatched(tmp_path):
-    """カスタムアクションも _actions 辞書経由でディスパッチされること。"""
+    """Custom Actions _actions Dispatching via ."""
     sched = PersonaScheduler(slack=None, state_dir=tmp_path / "state")
     called = []
 
@@ -83,12 +84,12 @@ def test_execute_action_custom_action_dispatched(tmp_path):
 
 
 def test_run_skill_action_not_called_directly_in_execute_action(tmp_path):
-    """execute_action() が run_skill_action を直接呼ばず _actions 経由であること。"""
+    """execute_action() Home run_skill_action Contact Us _actions Contact Us"""
     import inspect
     import mltgnt.scheduler.runner as runner_mod
 
     src = inspect.getsource(PersonaScheduler.execute_action)
     assert "run_skill_action" not in src, (
-        "execute_action() が run_skill_action() を直接呼び出しています。"
-        "_actions 辞書経由に統一してください。"
+        "execute_action() Home run_skill_action() call directly."
+        "_actions Unify via ."
     )

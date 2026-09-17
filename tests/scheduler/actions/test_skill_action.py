@@ -1,4 +1,4 @@
-"""run_skill_action / _determine_exit_code のユニットテスト（Issue #2076）。"""
+"""Unit tests for run_skill_action / _determine_exit_code (Issue #2076)."""
 from __future__ import annotations
 
 import json
@@ -21,7 +21,7 @@ _ENQUEUE = "mltgnt.bridges.ghdag_bridge.enqueue_and_wait"
 _ENQUEUE_DAG = "mltgnt.bridges.ghdag_bridge.enqueue_dag"
 
 _FANOUT_RESPONSE = (
-    "通常の応答テキスト\n"
+    "normal response text\n"
     "---\n"
     "ghdag_fanout:\n"
     "  children:\n"
@@ -55,7 +55,7 @@ def _make_skill_meta(
             content_type="text/plain", status_markers=list(status_markers)
         )
     skill_file.write_text(
-        "---\n" + "\n".join(fm_lines) + "\n---\n\nスキル本文",
+        "---\n" + "\n".join(fm_lines) + "\n---\n\nskill body",
         encoding="utf-8",
     )
     return SkillMeta(
@@ -72,7 +72,7 @@ def _make_skill_meta(
 
 def _make_persona(
     tmp_path: Path,
-    name: str = "タチコマ",
+    name: str = "persona-a",
     engine: str = "claude",
     model: str = "claude-sonnet-4-6",
 ) -> Path:
@@ -83,7 +83,7 @@ def _make_persona(
         "---\n"
         f"persona:\n  name: {name}\n"
         f"ops:\n  engine: {engine}\n  model: {model}\n"
-        "---\n\n## 基本情報\n\nペルソナ本文",
+        "---\n\n## Basic info\n\npersona body",
         encoding="utf-8",
     )
     return persona_dir
@@ -98,7 +98,7 @@ def _skill_job(**overrides) -> ScheduleJob:
         every_day_at="10:00",
         action_args={
             "skill": "test-skill",
-            "persona": "タチコマ",
+            "persona": "persona-a",
         },
     )
     defaults.update(overrides)
@@ -115,7 +115,7 @@ def _run_skill(
     persona_dir = _make_persona(tmp_path)
     meta = _make_skill_meta("test-skill", tmp_path)
     if job is None:
-        action_args = {"skill": "test-skill", "persona": "タチコマ"}
+        action_args = {"skill": "test-skill", "persona": "persona-a"}
         if enable_fanout:
             action_args["enable_fanout"] = True
         job = _skill_job(action_args=action_args)
@@ -141,7 +141,7 @@ class TestExitStatus:
 
 class TestDetermineExitCode:
     def test_success(self) -> None:
-        assert _determine_exit_code(True, "応答テキスト") == ExitStatus.SUCCESS
+        assert _determine_exit_code(True, "response text") == ExitStatus.SUCCESS
 
     def test_already_applied(self) -> None:
         msg = "done\nPIPELINE_STATUS: ALREADY_APPLIED"
@@ -155,22 +155,22 @@ class TestDetermineExitCode:
         assert _determine_exit_code(False, "generic error") == ExitStatus.USAGE_ERROR
 
 
-_NEXUS_MARKERS = ["ACCEPTED", "ACCEPTED:NO_ACTION", "REJECTED:引数不足"]
+_NEXUS_MARKERS = ["ACCEPTED", "ACCEPTED:NO_ACTION", "REJECTED:missing_args"]
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "marker_response"
 
 
 class TestResolveExitCode:
-    """Issue #3040 / #3172: expected_markers 突合と diagnostics。"""
+    """Issue #3040 / #3172: expected_markers matching and diagnostics."""
 
     def test_marker_matches_expected(self) -> None:
         code, diagnostics = _resolve_exit_code(
-            True, "PIPELINE_STATUS: DONE\n詳細テキスト", ["DONE"]
+            True, "PIPELINE_STATUS: DONE\ndetail text", ["DONE"]
         )
         assert code == ExitStatus.SUCCESS
         assert isinstance(diagnostics, list)
 
     def test_marker_undeclared(self) -> None:
-        # #3172: enforce=False（既定）では exit は _determine_exit_code に従う
+        # #3172: with enforce=False (default), exit follows _determine_exit_code
         code, diagnostics = _resolve_exit_code(
             True, "PIPELINE_STATUS: BRUSHUP_DONE\n...", ["DONE"]
         )
@@ -179,8 +179,8 @@ class TestResolveExitCode:
         assert "violated_marker=BRUSHUP_DONE" in diagnostics
 
     def test_marker_absent(self) -> None:
-        # #3172: enforce=False（既定）では欠落でも CONTRACT_VIOLATION にしない
-        code, diagnostics = _resolve_exit_code(True, "処理済み", ["DONE"])
+        # #3172: with enforce=False (default), missing marker does not become CONTRACT_VIOLATION
+        code, diagnostics = _resolve_exit_code(True, "processed", ["DONE"])
         assert code == ExitStatus.SUCCESS
         assert "contract_violation: PIPELINE_STATUS marker missing" in diagnostics
         assert "marker=<absent>" in diagnostics
@@ -201,17 +201,17 @@ class TestResolveExitCode:
 
     def test_bare_marker_accepted_with_note(self) -> None:
         code, diagnostics = _resolve_exit_code(
-            True, "本文\n\nACCEPTED\nnote: x", _NEXUS_MARKERS
+            True, "body\n\nACCEPTED\nnote: x", _NEXUS_MARKERS
         )
         assert code == ExitStatus.SUCCESS
         assert "marker=ACCEPTED" in diagnostics
 
     def test_bare_marker_rejected_usage_error(self) -> None:
         code, diagnostics = _resolve_exit_code(
-            False, "REJECTED:引数不足", _NEXUS_MARKERS
+            False, "REJECTED:missing_args", _NEXUS_MARKERS
         )
         assert code == ExitStatus.USAGE_ERROR
-        assert "marker=REJECTED:引数不足" in diagnostics
+        assert "marker=REJECTED:missing_args" in diagnostics
 
     def test_prefix_match_rejected(self) -> None:
         assert _matches_expected("REJECTED:FILE_NOT_FOUND", ["REJECTED:"]) is True
@@ -221,7 +221,7 @@ class TestResolveExitCode:
         )
 
     def test_absent_observe_vs_enforce(self) -> None:
-        msg = "処理済み"
+        msg = "processed"
         expected = ["DONE"]
         code_obs, diag_obs = _resolve_exit_code(True, msg, expected, enforce=False)
         assert code_obs == ExitStatus.SUCCESS
@@ -277,12 +277,12 @@ class TestResolveExitCode:
 
 
 class TestSkillResultDiagnosticsAndAudit:
-    """Issue #3040: run_output.diagnostics と fanout skill_result audit。"""
+    """Issue #3040: run_output.diagnostics and fanout skill_result audit."""
 
     def test_diagnostics_populated_in_run_output(self, tmp_path: Path) -> None:
         persona_dir = _make_persona(tmp_path)
         meta = _make_skill_meta("test-skill", tmp_path, status_markers=["DONE"])
-        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
         (tmp_path / "jobs").mkdir(exist_ok=True)
         captured: dict = {}
 
@@ -329,7 +329,7 @@ class TestSkillResultDiagnosticsAndAudit:
         job = _skill_job(
             action_args={
                 "skill": "test-skill",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "enable_fanout": True,
             }
         )
@@ -366,10 +366,10 @@ class TestSkillResultDiagnosticsAndAudit:
 
 class TestRunSkillActionPermissionPassthrough:
     def test_permission_none_when_not_in_action_args(self, tmp_path: Path) -> None:
-        """action_args に permission キーがない場合、enqueue_and_wait に permission=None が渡される。"""
+        """When action_args has no permission key, enqueue_and_wait gets permission=None."""
         persona_dir = _make_persona(tmp_path)
         meta = _make_skill_meta("test-skill", tmp_path)
-        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
         captured_kwargs: dict = {}
 
         def capture_enqueue(**kwargs):
@@ -388,12 +388,12 @@ class TestRunSkillActionPermissionPassthrough:
         assert captured_kwargs.get("permission") is None
 
     def test_permission_passed_from_action_args(self, tmp_path: Path) -> None:
-        """action_args.permission='dangerous_full_access' が enqueue_and_wait に渡される。"""
+        """action_args.permission='dangerous_full_access' is passed to enqueue_and_wait."""
         persona_dir = _make_persona(tmp_path)
         meta = _make_skill_meta("test-skill", tmp_path)
         job = _skill_job(action_args={
             "skill": "test-skill",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "permission": "dangerous_full_access",
         })
         captured_kwargs: dict = {}
@@ -415,13 +415,13 @@ class TestRunSkillActionPermissionPassthrough:
 
 
 class TestResultFrontmatterOptIn:
-    """Issue #3179 AC-4: result_frontmatter は action_args の opt-in。"""
+    """Issue #3179 AC-4: result_frontmatter is opt-in via action_args."""
 
     def test_default_passes_run_result_none(self, tmp_path: Path) -> None:
-        """result_frontmatter キーなし → enqueue_and_wait に run_result=None"""
+        """No result_frontmatter key → enqueue_and_wait gets run_result=None"""
         persona_dir = _make_persona(tmp_path)
         meta = _make_skill_meta("test-skill", tmp_path, status_markers=["DONE"])
-        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
         (tmp_path / "jobs").mkdir(exist_ok=True)
         captured_kwargs: dict = {}
 
@@ -442,13 +442,13 @@ class TestResultFrontmatterOptIn:
         assert captured_kwargs["run_result"] is None
 
     def test_true_passes_run_output(self, tmp_path: Path) -> None:
-        """result_frontmatter: true → enqueue_and_wait に run_output が渡る"""
+        """result_frontmatter: true → enqueue_and_wait receives run_output"""
         persona_dir = _make_persona(tmp_path)
         meta = _make_skill_meta("test-skill", tmp_path, status_markers=["DONE"])
         job = _skill_job(
             action_args={
                 "skill": "test-skill",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "result_frontmatter": True,
             }
         )
@@ -474,9 +474,9 @@ class TestResultFrontmatterOptIn:
 
 class TestRunSkillActionExitCodeBranch:
     def test_success_returns_original_msg(self, tmp_path: Path) -> None:
-        ok, msg = _run_skill(tmp_path, enqueue_return=(True, "応答テキスト"))
+        ok, msg = _run_skill(tmp_path, enqueue_return=(True, "response text"))
         assert ok is True
-        assert msg == "応答テキスト"
+        assert msg == "response text"
 
     def test_already_applied_returns_idempotent_success(self, tmp_path: Path) -> None:
         ok, msg = _run_skill(
@@ -504,7 +504,7 @@ class TestRunSkillActionExitCodeBranch:
         meta = _make_skill_meta("test-skill", tmp_path)
         job = _skill_job(action_args={
             "skill": "test-skill",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "enable_fanout": True,
         })
 
@@ -523,7 +523,7 @@ class TestRunSkillActionExitCodeBranch:
 
 
 class TestEnablePipeline:
-    """Issue #3031: enable_pipeline 経路。"""
+    """Issue #3031: enable_pipeline path."""
 
     def test_enable_pipeline_calls_compose_and_enqueue_dag(self, tmp_path: Path) -> None:
         from unittest.mock import AsyncMock
@@ -543,7 +543,7 @@ class TestEnablePipeline:
         job = _skill_job(
             action_args={
                 "skill": "skill-a",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "argv": ["/skill-a", "foo", "|", "/skill-b"],
                 "enable_pipeline": True,
             }
@@ -603,7 +603,7 @@ class TestEnablePipeline:
         job = _skill_job(
             action_args={
                 "skill": "test-skill",
-                "persona": "タチコマ",
+                "persona": "persona-a",
                 "argv": ["/test-skill", "x"],
                 "enable_pipeline": True,
                 "enable_fanout": True,
@@ -691,7 +691,7 @@ class TestSideEffectAuditIntegration:
     ) -> tuple[bool, str]:
         persona_dir = _make_persona(tmp_path)
         meta = _make_skill_meta("test-skill", tmp_path, side_effects=side_effects)
-        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
         jobs_dir = tmp_path / "jobs"
         jobs_dir.mkdir(exist_ok=True)
 
@@ -716,7 +716,7 @@ class TestSideEffectAuditIntegration:
         audit_path = jobs_dir / "audit.jsonl"
 
         meta = _make_skill_meta("test-skill", tmp_path, side_effects=se)
-        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
         persona_dir = _make_persona(tmp_path)
 
         def fake_enqueue(**kwargs):
@@ -784,7 +784,7 @@ class TestSideEffectAuditIntegration:
         audit_path = jobs_dir / "audit.jsonl"
 
         meta = _make_skill_meta("test-skill", tmp_path, side_effects=se)
-        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
         persona_dir = _make_persona(tmp_path)
 
         def fake_enqueue(**kwargs):
@@ -818,7 +818,7 @@ class TestSideEffectAuditIntegration:
         audit_path.chmod(0o444)
 
         meta = _make_skill_meta("test-skill", tmp_path, side_effects=se)
-        job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+        job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
         persona_dir = _make_persona(tmp_path)
 
         with patch(_ENQUEUE, return_value=(True, "ok")):
@@ -857,7 +857,7 @@ def _context_injection_records(audit_path: Path) -> list[dict]:
 
 
 class TestContextInjection:
-    """Issue #3021 / #3173: knowledge.md × 記憶ファイルの 4 組み合わせと audit。"""
+    """Issue #3021 / #3173: four combinations of knowledge.md × memory file plus audit."""
 
     def _capture_prompt(
         self,
@@ -875,20 +875,20 @@ class TestContextInjection:
         if with_knowledge:
             _write_knowledge(
                 meta,
-                "知1\n\n知2\n\n知3\n\n知4\n\n知5\n\n知6",
+                "k1\n\nk2\n\nk3\n\nk4\n\nk5\n\nk6",
             )
         if with_memory:
             mem = (
                 '{"timestamp":"2026-09-09 10:00","role":"user",'
-                '"content":"昨夜の話","source_tag":"slack"}\n'
+                '"content":"last night\'s talk","source_tag":"slack"}\n'
                 '{"timestamp":"2026-09-09 10:01","role":"assistant",'
                 '"content":"observe-only","source_tag":"slack-observe"}\n'
             )
-            _write_memory(tmp_path, "タチコマ", mem)
+            _write_memory(tmp_path, "persona-a", mem)
         (tmp_path / "jobs").mkdir(exist_ok=True)
         action_args: dict = {
             "skill": "test-skill",
-            "persona": "タチコマ",
+            "persona": "persona-a",
         }
         if not omit_injection_args:
             if knowledge_count is not None:
@@ -917,13 +917,14 @@ class TestContextInjection:
         return captured["prompt"], records
 
     def test_defaults_skip_injection_and_audit(self, tmp_path: Path) -> None:
-        """AC-1 / AC-5: action_args 未指定は注入せず audit も書かない。"""
+        """AC-1 / AC-5: unset action_args injects nothing and writes no audit."""
         prompt, records = self._capture_prompt(
             tmp_path,
             with_knowledge=True,
             with_memory=True,
             omit_injection_args=True,
         )
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" not in prompt
         assert records == []
 
@@ -931,18 +932,20 @@ class TestContextInjection:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=False, with_memory=False
         )
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" not in prompt
-        # 明示指定しても実データが空なら audit スキップ（#3173）
+        # Even when explicitly set, skip audit if real data is empty (#3173)
         assert records == []
 
     def test_knowledge_only(self, tmp_path: Path) -> None:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=True, with_memory=False, knowledge_count=3
         )
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" in prompt
         assert "### knowledge（直近 3 件）" in prompt
-        assert "知4" in prompt and "知5" in prompt and "知6" in prompt
-        assert "知3" not in prompt
+        assert "k4" in prompt and "k5" in prompt and "k6" in prompt
+        assert "k3" not in prompt
         assert "### 記憶（末尾）" not in prompt
         assert len(records) == 1
         assert records[0]["knowledge_count"] == 3
@@ -952,10 +955,11 @@ class TestContextInjection:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=False, with_memory=True
         )
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" in prompt
         assert "### knowledge" not in prompt
         assert "### 記憶（末尾）" in prompt
-        assert "- [2026-09-09 10:00] user: 昨夜の話" in prompt
+        assert "- [2026-09-09 10:00] user: last night's talk" in prompt
         assert '{"timestamp"' not in prompt
         assert len(records) == 1
         assert records[0]["knowledge_count"] == 0
@@ -965,11 +969,12 @@ class TestContextInjection:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=True, with_memory=True, knowledge_count=2
         )
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" in prompt
         assert "### knowledge（直近 2 件）" in prompt
         assert "### 記憶（末尾）" in prompt
-        assert "知5" in prompt and "知6" in prompt
-        assert "昨夜の話" in prompt
+        assert "k5" in prompt and "k6" in prompt
+        assert "last night's talk" in prompt
         assert records[0]["event_type"] == "context_injection"
         assert records[0]["skill_name"] == "test-skill"
         assert records[0]["job_id"] == "skill_job"
@@ -985,8 +990,9 @@ class TestContextInjection:
             with_memory=True,
             memory_exclude_source_tags=["slack-observe"],
         )
+        # Japanese text intentionally kept for CJK processing test
         assert "## コンテキスト" in prompt
-        assert "昨夜の話" in prompt
+        assert "last night's talk" in prompt
         assert "observe-only" not in prompt
         assert len(records) == 1
         assert records[0]["memory_bytes"] > 0

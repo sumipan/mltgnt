@@ -1,6 +1,6 @@
-"""会話 ID ベースの thread_queue テスト（#3317）。
+"""Conversation-id-based thread_queue tests (#3317).
 
-drain は TurnInput を返すだけ。起動（dispatch）は行わない。
+drain only returns TurnInput. It does not dispatch.
 """
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def test_drain_to_turn_input_returns_turn_input(queue_root: Path):
     assert turn.persona_id == "p1"
     assert "second" in turn.text
     assert "third" in turn.text
-    assert "処理中に以下の発言がありました" in turn.text
+    assert "処理中に以下の発言がありました" in turn.text  # Japanese text intentionally kept for CJK processing test
 
 
 def test_drain_to_turn_input_empty_returns_none(queue_root: Path):

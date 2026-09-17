@@ -1,4 +1,4 @@
-"""tests/memory/dream/test_global_synthesis.py — global.json 横断合成のテスト。"""
+"""tests/memory/dream/test_global_synthesis.py — tests for global.json cross-persona synthesis."""
 from __future__ import annotations
 
 import json
@@ -39,17 +39,17 @@ def _write_persona_dream(
 
 def _two_category_sections(prefix: str) -> list[DreamSection]:
     return [
-        DreamSection(category="行動パターン", content=f"{prefix}の行動", source_entries=1),
-        DreamSection(category="好み・傾向", content=f"{prefix}の好み", source_entries=1),
+        DreamSection(category="Behavior patterns", content=f"{prefix} behavior", source_entries=1),
+        DreamSection(category="Preferences", content=f"{prefix} preference", source_entries=1),
     ]
 
 
 def _global_llm_response() -> str:
     return (
-        "## 行動パターン\n"
-        "統合された行動パターン。\n\n"
-        "## 好み・傾向\n"
-        "統合された好み・傾向。"
+        "## Behavior patterns\n"
+        "Merged behavior patterns.\n\n"
+        "## Preferences\n"
+        "Merged preferences."
     )
 
 
@@ -77,7 +77,7 @@ def test_synthesize_global_three_personas(chat_dir: Path) -> None:
 
     assert summary.persona == "__global__"
     assert len(summary.sections) == 2
-    assert summary.sections[0].category == "行動パターン"
+    assert summary.sections[0].category == "Behavior patterns"
     assert summary.updated_at.endswith("+09:00") or "T" in summary.updated_at
 
     write_global(chat_dir, summary)
@@ -117,6 +117,7 @@ def test_synthesize_global_skips_personas_without_dream(chat_dir: Path) -> None:
     summary = Synthesizer.synthesize_global(config, llm_call=llm)
 
     assert summary.persona == "__global__"
+    # Japanese text intentionally kept for CJK processing test
     assert "【ペルソナ: alice】" in captured_prompts[0]
     assert "【ペルソナ: bob】" in captured_prompts[0]
     assert "【ペルソナ: charlie】" not in captured_prompts[0]
@@ -137,6 +138,7 @@ def test_synthesize_global_respects_exclude_personas(chat_dir: Path) -> None:
     config = _memory_config(chat_dir, global_dream_exclude_personas=("alice",))
     Synthesizer.synthesize_global(config, llm_call=llm)
 
+    # Japanese text intentionally kept for CJK processing test
     assert "【ペルソナ: alice】" not in captured_prompts[0]
     assert "【ペルソナ: bob】" in captured_prompts[0]
 
@@ -177,23 +179,23 @@ def test_synthesize_global_merges_existing_global(chat_dir: Path) -> None:
     existing = DreamSummary(
         persona="__global__",
         sections=[
-            DreamSection(category="行動パターン", content="旧global行動", source_entries=1),
-            DreamSection(category="保留カテゴリ", content="残す", source_entries=1),
+            DreamSection(category="Behavior patterns", content="old global behavior", source_entries=1),
+            DreamSection(category="retained category", content="keep", source_entries=1),
         ],
         updated_at="2026-01-01T00:00:00+09:00",
     )
     write_global(chat_dir, existing)
 
     def llm(_prompt: str) -> str:
-        return "## 行動パターン\n新global行動\n\n## 好み・傾向\n新global好み"
+        return "## Behavior patterns\nnew global behavior\n\n## Preferences\nnew global preference"
 
     config = _memory_config(chat_dir)
     summary = Synthesizer.synthesize_global(config, llm_call=llm)
 
     by_cat = {s.category: s.content for s in summary.sections}
-    assert by_cat["行動パターン"] == "新global行動"
-    assert by_cat["好み・傾向"] == "新global好み"
-    assert by_cat["保留カテゴリ"] == "残す"
+    assert by_cat["Behavior patterns"] == "new global behavior"
+    assert by_cat["Preferences"] == "new global preference"
+    assert by_cat["retained category"] == "keep"
 
 
 def test_read_global_summary_formats_like_read_dream_summary(chat_dir: Path) -> None:
@@ -201,8 +203,8 @@ def test_read_global_summary_formats_like_read_dream_summary(chat_dir: Path) -> 
     summary = DreamSummary(
         persona="__global__",
         sections=[
-            DreamSection(category="行動パターン", content="統合行動", source_entries=2),
-            DreamSection(category="好み・傾向", content="統合好み", source_entries=1),
+            DreamSection(category="Behavior patterns", content="merged behavior", source_entries=2),
+            DreamSection(category="Preferences", content="merged preference", source_entries=1),
         ],
         updated_at="2026-06-07T12:00:00+09:00",
     )
@@ -211,9 +213,10 @@ def test_read_global_summary_formats_like_read_dream_summary(chat_dir: Path) -> 
     config = _memory_config(chat_dir)
     result = read_global_summary(config)
 
+    # Japanese text intentionally kept for CJK processing test
     assert result.startswith("\n\n## 記憶の要約\n\n")
-    assert "### 行動パターン\n統合行動" in result
-    assert "### 好み・傾向\n統合好み" in result
+    assert "### Behavior patterns\nmerged behavior" in result
+    assert "### Preferences\nmerged preference" in result
 
 
 def test_read_global_summary_returns_empty_when_missing(chat_dir: Path) -> None:
@@ -224,7 +227,7 @@ def test_read_global_summary_returns_empty_when_missing(chat_dir: Path) -> None:
 def test_write_global_uses_atomic_replace(chat_dir: Path) -> None:
     summary = DreamSummary(
         persona="__global__",
-        sections=[DreamSection(category="行動パターン", content="a", source_entries=1)],
+        sections=[DreamSection(category="Behavior patterns", content="a", source_entries=1)],
         updated_at="2026-06-07T12:00:00+09:00",
     )
     write_global(chat_dir, summary)

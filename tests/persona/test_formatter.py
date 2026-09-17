@@ -1,4 +1,4 @@
-"""mltgnt.persona.formatter — 口調整形（#3318）。"""
+"""mltgnt.persona.formatter — tone formatting (#3318)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +11,7 @@ from mltgnt.persona.formatter import (
 
 
 def test_extract_persona_block_after_meta_headers() -> None:
+    # Japanese text intentionally kept for CJK processing test
     raw = (
         "前置き\n\n"
         "persona-aとしての応答（標準出力相当）\n\n"
@@ -18,27 +19,32 @@ def test_extract_persona_block_after_meta_headers() -> None:
         "---\n\n（以上）\n"
     )
     out = extract_persona_block_after_meta_headers(raw)
+    # Japanese text intentionally kept for CJK processing test
     assert out.startswith("んー、わかるかも。")
     assert "としての応答" not in out
     assert "（以上）" not in out
 
 
 def test_dedupe_persona_prefix_keeps_last_opener() -> None:
+    # Japanese text intentionally kept for CJK processing test
     body = (
         "今週（3/24〜3/28）の計画、最初の要約。\n\n"
         "今週（3/24〜3/28）の計画、本当の本文だけ残す。"
     )
     out = dedupe_persona_prefix(body)
+    # Japanese text intentionally kept for CJK processing test
     assert out.startswith("今週（3/24〜3/28）の計画、本当の本文")
     assert out.count("今週（") == 1
 
 
 def test_dedupe_persona_prefix_noop_when_single() -> None:
+    # Japanese text intentionally kept for CJK processing test
     body = "今週（3/24〜3/28）の計画、これだけ。"
     assert dedupe_persona_prefix(body) == body
 
 
 def test_format_persona_body_composes_extract_and_dedupe() -> None:
+    # Japanese text intentionally kept for CJK processing test
     raw = (
         "メタ\n\n"
         "persona-aとしての応答（標準出力相当）\n\n"
@@ -46,6 +52,7 @@ def test_format_persona_body_composes_extract_and_dedupe() -> None:
         "今週（3/24〜3/28）の計画、二回目だけ残す。"
     )
     out = format_persona_body(raw)
+    # Japanese text intentionally kept for CJK processing test
     assert "としての応答" not in out
     assert out.count("今週（") == 1
     assert "二回目だけ残す" in out
@@ -53,6 +60,7 @@ def test_format_persona_body_composes_extract_and_dedupe() -> None:
 
 def test_format_persona_body_cuts_generic_tone_marker() -> None:
     """Cut marker must match any persona token, not a host-specific name (#3337)."""
+    # Japanese text intentionally kept for CJK processing test
     raw = "本文です。\n\npersona-a口調の本文はここに続く説明"
     assert format_persona_body(raw) == "本文です。"
 

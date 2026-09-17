@@ -1,14 +1,14 @@
 """
-tests/scheduler/test_on_exit.py — on_exit ポリシーと skip 伝播の単体テスト (Issue #2380)
+tests/scheduler/test_on_exit.py — unit tests for on_exit policy and skip propagation (Issue #2380)
 
-7 ケース:
-  1. on_exit 未指定 + ok=True  → done_path のみ書かれる
-  2. on_exit 未指定 + ok=False → failed_path のみ書かれる
-  3. on_exit.nonzero=skip + ok=False → skipped_path のみ書かれる、_post/_record_to_memory は呼ばれない
-  4. on_exit.nonzero=fail + ok=False → failed_path のみ書かれる（未指定と同一）
-  5. chained 依存先が skipped → 自身も skipped_path、execute_action は呼ばれない
-  6. scheduled 依存先が skipped → 自身も skipped_path、execute_action は呼ばれない
-  7. fuzzy_window 依存先が skipped → 自身も skipped_path、execute_action は呼ばれない
+7 cases:
+  1. on_exit unset + ok=True  → only done_path is written
+  2. on_exit unset + ok=False → only failed_path is written
+  3. on_exit.nonzero=skip + ok=False → only skipped_path; _post/_record_to_memory not called
+  4. on_exit.nonzero=fail + ok=False → only failed_path (same as unset)
+  5. chained dependency skipped → self also skipped_path; execute_action not called
+  6. scheduled dependency skipped → self also skipped_path; execute_action not called
+  7. fuzzy_window dependency skipped → self also skipped_path; execute_action not called
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
 
 
 def wait_idle(sch: PersonaScheduler, timeout: float = 2.0) -> None:
-    """全ジョブスレッドが完了するまで待機。"""
+    """Wait until all job threads have finished."""
     import time
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -46,11 +46,11 @@ def wait_idle(sch: PersonaScheduler, timeout: float = 2.0) -> None:
             if not sch._running:
                 return
         time.sleep(0.05)
-    raise TimeoutError("_running が空にならなかった")
+    raise TimeoutError("_running did not become empty")
 
 
 # ---------------------------------------------------------------------------
-# ケース 1: on_exit 未指定 + ok=True → done_path のみ書かれる
+# Case 1: on_exit unset + ok=True → only done_path is written
 # ---------------------------------------------------------------------------
 
 def test_no_on_exit_ok_true_writes_done(tmp_path: Path) -> None:
@@ -75,7 +75,7 @@ def test_no_on_exit_ok_true_writes_done(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ケース 2: on_exit 未指定 + ok=False → failed_path のみ書かれる
+# Case 2: on_exit unset + ok=False → only failed_path is written
 # ---------------------------------------------------------------------------
 
 def test_no_on_exit_ok_false_writes_failed(tmp_path: Path) -> None:
@@ -99,8 +99,8 @@ def test_no_on_exit_ok_false_writes_failed(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ケース 3: on_exit.nonzero=skip + ok=False → skipped_path のみ書かれる
-#            _post / _record_to_memory は呼ばれない
+# Case 3: on_exit.nonzero=skip + ok=False → only skipped_path is written
+#            _post / _record_to_memory are not called
 # ---------------------------------------------------------------------------
 
 def test_on_exit_skip_ok_false_writes_skipped(tmp_path: Path) -> None:
@@ -132,7 +132,7 @@ def test_on_exit_skip_ok_false_writes_skipped(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ケース 4: on_exit.nonzero=fail + ok=False → failed_path のみ書かれる（未指定と同一）
+# Case 4: on_exit.nonzero=fail + ok=False → only failed_path (same as unset)
 # ---------------------------------------------------------------------------
 
 def test_on_exit_fail_ok_false_writes_failed(tmp_path: Path) -> None:
@@ -157,7 +157,7 @@ def test_on_exit_fail_ok_false_writes_failed(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ケース 5: chained 依存先が skipped → 自身も skipped_path、execute_action は呼ばれない
+# Case 5: chained dependency skipped → self also skipped_path; execute_action not called
 # ---------------------------------------------------------------------------
 
 def test_chained_dep_skipped_propagates_skip(tmp_path: Path) -> None:
@@ -178,7 +178,7 @@ def test_chained_dep_skipped_propagates_skip(tmp_path: Path) -> None:
     sch = make_scheduler(tmp_path, [dep, child])
     d = date(2026, 7, 21)
 
-    # 依存先を skipped としてマーク
+    # Mark dependency as skipped
     sch._mark_skipped(dep, d)
 
     now = dt_jst(2026, 7, 21, 10, 0)
@@ -192,7 +192,7 @@ def test_chained_dep_skipped_propagates_skip(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ケース 6: scheduled 依存先が skipped → 自身も skipped_path、execute_action は呼ばれない
+# Case 6: scheduled dependency skipped → self also skipped_path; execute_action not called
 # ---------------------------------------------------------------------------
 
 def test_scheduled_dep_skipped_propagates_skip(tmp_path: Path) -> None:
@@ -227,7 +227,7 @@ def test_scheduled_dep_skipped_propagates_skip(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ケース 7: fuzzy_window 依存先が skipped → 自身も skipped_path、execute_action は呼ばれない
+# Case 7: fuzzy_window dependency skipped → self also skipped_path; execute_action not called
 # ---------------------------------------------------------------------------
 
 def test_fuzzy_window_dep_skipped_propagates_skip(tmp_path: Path) -> None:
@@ -253,7 +253,7 @@ def test_fuzzy_window_dep_skipped_propagates_skip(tmp_path: Path) -> None:
 
     sch._mark_skipped(dep, d)
 
-    # hash で決まる run_minute が 10:00 より前に来るように planned を書き込む
+    # Write planned so the hash-chosen run_minute comes before 10:00
     sch._write_planned_minute(child, d, 9 * 60)  # 09:00
 
     now = dt_jst(2026, 7, 21, 10, 0)

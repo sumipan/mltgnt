@@ -1,4 +1,4 @@
-"""tests/loops/test_conditions.py — path_exists / path_changed の決定論評価。"""
+"""tests/loops/test_conditions.py — deterministic path_exists / path_changed evaluation."""
 from __future__ import annotations
 
 from pathlib import Path

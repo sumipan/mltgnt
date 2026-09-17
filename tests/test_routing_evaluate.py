@@ -1,4 +1,4 @@
-"""tests/test_routing_evaluate.py — mltgnt.routing.evaluate() の単体テスト"""
+"""tests/test_routing_evaluate.py — mltgnt.routing.evaluate()  unit tests"""
 import pytest
 from mltgnt.routing import RoutingRule, evaluate
 
@@ -12,7 +12,7 @@ def _make_rule(name: str, always: bool) -> RoutingRule:
 
 
 def test_returns_first_matching_rule():
-    """最初にマッチしたルールを返す"""
+    """First matched rule returns"""
     rule_a = _make_rule("a", True)
     rule_b = _make_rule("b", True)
     result = evaluate([rule_a, rule_b], "test", {})
@@ -20,20 +20,20 @@ def test_returns_first_matching_rule():
 
 
 def test_returns_none_when_no_match():
-    """マッチなしで None を返す"""
+    """None Returns"""
     rule_a = _make_rule("a", False)
     result = evaluate([rule_a], "test", {})
     assert result is None
 
 
 def test_returns_none_for_empty_rules():
-    """空ルールリストで None を返す"""
+    """None Returns"""
     result = evaluate([], "test", {})
     assert result is None
 
 
 def test_ctx_passed_to_detector():
-    """ctx が detector に渡される"""
+    """ctx is passed"""
     received_ctx = {}
 
     def detector(instruction, ctx):
@@ -46,7 +46,7 @@ def test_ctx_passed_to_detector():
 
 
 def test_returns_second_rule_when_first_does_not_match():
-    """2番目のルールにマッチ"""
+    """Match the second rule"""
     rule_a = _make_rule("a", False)
     rule_b = _make_rule("b", True)
     result = evaluate([rule_a, rule_b], "test", {})
@@ -54,7 +54,7 @@ def test_returns_second_rule_when_first_does_not_match():
 
 
 def test_instruction_passed_to_detector():
-    """instruction が detector に渡される"""
+    """Instruction is passed"""
     received = {}
 
     def detector(instruction, ctx):
@@ -67,7 +67,7 @@ def test_instruction_passed_to_detector():
 
 
 def test_exception_propagates_from_detector():
-    """detector の例外は呼び出し元に伝播する（silent fail しない）"""
+    """The detector exception issilagated to the caller (not silent fail)"""
     def bad_detector(instruction, ctx):
         raise ValueError("detector error")
 

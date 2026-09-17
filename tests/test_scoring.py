@@ -1,11 +1,11 @@
 """
-tests/test_scoring.py — mltgnt.memory._scoring のユニットテスト
+tests/test_scoring.py — unit tests for mltgnt.memory._scoring
 
-cosine_similarity_matrix の単体テスト、score_entries のソート検証
+Unit tests for cosine_similarity_matrix and sort verification for score_entries.
 
-Note: Issue #198 で embedding ベースから TF-IDF ベースに変更。
-旧 cosine_similarity(list, list) / score_entries(query_emb, entry_embs, entries) は
-TF-IDF ベースの新インタフェースに置き換えた。
+Note: Issue #198 switched from embedding-based to TF-IDF-based scoring.
+The old cosine_similarity(list, list) / score_entries(query_emb, entry_embs, entries)
+interfaces were replaced with the TF-IDF-based API.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from mltgnt.memory._scoring import ScoredEntry, cosine_similarity_matrix, score_
 
 
 def test_cosine_similarity_matrix_identical_vector() -> None:
-    """クエリと同一エントリの cosine similarity は 1.0。"""
+    """Cosine similarity of a query with an identical entry is 1.0."""
     query_vec = np.array([[1.0, 0.0, 0.0]])
     entry_vecs = np.array([[1.0, 0.0, 0.0]])
     result = cosine_similarity_matrix(query_vec, entry_vecs)
@@ -29,7 +29,7 @@ def test_cosine_similarity_matrix_identical_vector() -> None:
 
 
 def test_cosine_similarity_matrix_orthogonal_vectors() -> None:
-    """直交ベクトルの cosine similarity は 0.0。"""
+    """Cosine similarity of orthogonal vectors is 0.0."""
     query_vec = np.array([[1.0, 0.0]])
     entry_vecs = np.array([[0.0, 1.0]])
     result = cosine_similarity_matrix(query_vec, entry_vecs)
@@ -37,7 +37,7 @@ def test_cosine_similarity_matrix_orthogonal_vectors() -> None:
 
 
 def test_cosine_similarity_matrix_multiple_entries() -> None:
-    """複数エントリに対して shape (N,) の配列を返す。"""
+    """Returns a shape-(N,) array for multiple entries."""
     query_vec = np.array([[1.0, 0.0, 0.0]])
     entry_vecs = np.array([
         [1.0, 0.0, 0.0],  # sim=1.0
@@ -52,7 +52,7 @@ def test_cosine_similarity_matrix_multiple_entries() -> None:
 
 
 def test_cosine_similarity_matrix_zero_query_vec() -> None:
-    """クエリがゼロベクトルの場合は 0.0 を返す。"""
+    """A zero query vector yields 0.0."""
     query_vec = np.array([[0.0, 0.0]])
     entry_vecs = np.array([[1.0, 2.0]])
     result = cosine_similarity_matrix(query_vec, entry_vecs)
@@ -60,7 +60,7 @@ def test_cosine_similarity_matrix_zero_query_vec() -> None:
 
 
 def test_cosine_similarity_matrix_nonnegative_for_tfidf() -> None:
-    """TF-IDF ベクトル（非負値）に対する cosine similarity は 0.0 以上。"""
+    """Cosine similarity over non-negative TF-IDF vectors is >= 0.0."""
     query_vec = np.array([[0.5, 0.3, 0.0]])
     entry_vecs = np.array([
         [0.4, 0.0, 0.6],
@@ -76,22 +76,22 @@ def test_cosine_similarity_matrix_nonnegative_for_tfidf() -> None:
 
 
 def test_score_entries_returns_descending_order() -> None:
-    """score_entries がスコア降順でソートされたリストを返す。"""
+    """score_entries returns a list sorted by score descending."""
     entries = [
-        "python decorator code programming",  # プログラミング
-        "cooking recipe pasta delicious",     # 料理
-        "weather sunny temperature today",    # 天気
+        "python decorator code programming",  # programming
+        "cooking recipe pasta delicious",     # cooking
+        "weather sunny temperature today",    # weather
     ]
     result = score_entries("python programming decorator", entries)
 
     assert isinstance(result[0], ScoredEntry)
     assert result[0].score >= result[1].score >= result[2].score
-    # プログラミングエントリが最上位
+    # Programming entry should rank first
     assert result[0].text == entries[0]
 
 
 def test_score_entries_returns_all_entries() -> None:
-    """全エントリがスコア付きで返る。"""
+    """All entries are returned with scores."""
     entries = ["entry-A text foo", "entry-B text bar", "entry-C text baz"]
     result = score_entries("query text", entries)
     assert len(result) == 3
@@ -100,7 +100,7 @@ def test_score_entries_returns_all_entries() -> None:
 
 
 def test_score_entries_single_entry() -> None:
-    """TC10: 1 エントリでも正常に動作する。"""
+    """TC10: works with a single entry."""
     result = score_entries("hello world", ["hello world example"])
     assert len(result) == 1
     assert isinstance(result[0], ScoredEntry)
@@ -108,15 +108,15 @@ def test_score_entries_single_entry() -> None:
 
 
 def test_score_entries_score_range() -> None:
-    """TF-IDF ベースのスコアは 0.0 以上 1.0 以下。"""
+    """TF-IDF-based scores are in [0.0, 1.0]."""
     entries = ["foo bar", "baz qux", "hello world"]
     result = score_entries("foo", entries)
     for s in result:
-        assert 0.0 <= s.score <= 1.0 + 1e-9  # float 誤差を許容
+        assert 0.0 <= s.score <= 1.0 + 1e-9  # allow float error
 
 
 def test_scored_entry_is_frozen() -> None:
-    """ScoredEntry は frozen dataclass（イミュータブル）。"""
+    """ScoredEntry is a frozen (immutable) dataclass."""
     entry = ScoredEntry(text="test", score=0.9)
     with pytest.raises(Exception):
         entry.score = 0.5  # type: ignore[misc]

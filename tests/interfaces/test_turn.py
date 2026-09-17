@@ -9,7 +9,7 @@ from typing import get_args, get_type_hints
 
 import pytest
 
-# フィールド名に含めてはいけない Slack 固有語（AC-6 / nexus test_layer_boundaries 相当）
+# Slack-specific terms that must not appear in field names (AC-6 / nexus layer boundaries)
 _SLACK_FIELD_NAMES = frozenset(
     {
         "channel",
@@ -23,7 +23,7 @@ _SLACK_FIELD_NAMES = frozenset(
     }
 )
 
-# ソース検査は role コメントの "user" を誤検知しないよう、nexus と同集合
+# Source scan uses the same allow-set as nexus so role comment "user" is not a false positive
 _SLACK_SOURCE_NAMES = frozenset(
     {
         "channel",
@@ -125,14 +125,14 @@ def test_no_slack_specific_field_names_on_types() -> None:
     for cls in (Attachment, HistoryMessage, TurnInput, TurnResult):
         names = {f.name for f in dataclasses.fields(cls)}
         leaked = names & _SLACK_FIELD_NAMES
-        assert not leaked, f"{cls.__name__} に Slack 固有フィールド: {sorted(leaked)}"
+        assert not leaked, f"{cls.__name__} has Slack-specific fields: {sorted(leaked)}"
 
 
 def test_turn_module_source_has_no_slack_field_names() -> None:
     src = _TURN_MODULE.read_text(encoding="utf-8")
     for name in _SLACK_SOURCE_NAMES:
         assert not re.search(rf"\b{re.escape(name)}\b", src), (
-            f"turn.py に Slack 固有語 {name!r} がある"
+            f"turn.py contains Slack-specific term {name!r}"
         )
 
 

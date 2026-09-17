@@ -14,15 +14,15 @@ from mltgnt.memory.dream.api import read_dream_summary
 PERSONA_CONTENT = textwrap.dedent("""\
     ---
     persona:
-      name: タチコマ
+      name: persona-a
     ops:
       engine: claude
       model: claude-sonnet-4-6
     ---
 
-    ## 基本情報
+    ## \u57fa\u672c\u60c5\u5831
 
-    タチコマはGHSの多脚戦車型AIロボット。
+    persona-a is a multi-legged tank-type AI robot from GHS.
 """)
 
 
@@ -30,7 +30,7 @@ PERSONA_CONTENT = textwrap.dedent("""\
 def chat_dir(tmp_path: Path) -> Path:
     agents = tmp_path / "agents"
     agents.mkdir()
-    (agents / "タチコマ.md").write_text(PERSONA_CONTENT, encoding="utf-8")
+    (agents / "persona-a.md").write_text(PERSONA_CONTENT, encoding="utf-8")
     return agents
 
 
@@ -50,30 +50,31 @@ def _write_dream(chat_dir: Path, persona: str, sections: list[DreamSection]) -> 
 def test_read_dream_summary_formats_multiple_sections(chat_dir: Path) -> None:
     _write_dream(
         chat_dir,
-        "タチコマ",
+        "persona-a",
         [
-            DreamSection(category="行動パターン", content="朝型で作業を始める。", source_entries=2),
-            DreamSection(category="好み・傾向", content="簡潔な説明を好む。", source_entries=1),
+            DreamSection(category="behavior patterns", content="Starts work as a morning person.", source_entries=2),
+            DreamSection(category="preferences", content="Prefers concise explanations.", source_entries=1),
         ],
     )
     config = _memory_config(chat_dir)
 
-    result = read_dream_summary(config, "タチコマ")
+    result = read_dream_summary(config, "persona-a")
 
-    assert result.startswith("\n\n## 記憶の要約\n\n")
-    assert "### 行動パターン\n朝型で作業を始める。" in result
-    assert "### 好み・傾向\n簡潔な説明を好む。" in result
+    # Japanese text intentionally kept for CJK processing test
+    assert result.startswith("\n\n## \u8a18\u61b6\u306e\u8981\u7d04\n\n")
+    assert "### behavior patterns\nStarts work as a morning person." in result
+    assert "### preferences\nPrefers concise explanations." in result
 
 
 def test_read_dream_summary_returns_empty_when_no_dream_json(chat_dir: Path) -> None:
     config = _memory_config(chat_dir)
-    assert read_dream_summary(config, "タチコマ") == ""
+    assert read_dream_summary(config, "persona-a") == ""
 
 
 def test_read_dream_summary_returns_empty_when_sections_empty(chat_dir: Path) -> None:
-    _write_dream(chat_dir, "タチコマ", [])
+    _write_dream(chat_dir, "persona-a", [])
     config = _memory_config(chat_dir)
-    assert read_dream_summary(config, "タチコマ") == ""
+    assert read_dream_summary(config, "persona-a") == ""
 
 
 def test_run_pipeline_injects_dream_summary(chat_dir: Path) -> None:
@@ -84,22 +85,23 @@ def test_run_pipeline_injects_dream_summary(chat_dir: Path) -> None:
 
     _write_dream(
         chat_dir,
-        "タチコマ",
-        [DreamSection(category="行動パターン", content="dream注入テスト", source_entries=1)],
+        "persona-a",
+        [DreamSection(category="behavior patterns", content="dream injection test", source_entries=1)],
     )
     config = _memory_config(chat_dir)
-    dream_text = read_dream_summary(config, "タチコマ")
+    dream_text = read_dream_summary(config, "persona-a")
 
-    path = resolve_with_alias("タチコマ", chat_dir)
+    path = resolve_with_alias("persona-a", chat_dir)
     persona = load(path)
     engine = persona.fm.engine or SYSTEM_DEFAULT_ENGINE
     model = persona.fm.model or SYSTEM_DEFAULT_MODEL
 
-    mock_result = type("R", (), {"success": True, "body": "応答", "stderr": ""})()
+    mock_result = type("R", (), {"success": True, "body": "response", "stderr": ""})()
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=mock_result) as mock_call:
-        run_pipeline("テスト", persona, engine=engine, model=model, memory=dream_text)
+        run_pipeline("test", persona, engine=engine, model=model, memory=dream_text)
 
     called_prompt: str = mock_call.call_args[0][0]
-    assert "## 記憶の要約" in called_prompt
-    assert "dream注入テスト" in called_prompt
-    assert f"{dream_text}\n\nテスト" in called_prompt
+    # Japanese text intentionally kept for CJK processing test
+    assert "## \u8a18\u61b6\u306e\u8981\u7d04" in called_prompt
+    assert "dream injection test" in called_prompt
+    assert f"{dream_text}\n\ntest" in called_prompt

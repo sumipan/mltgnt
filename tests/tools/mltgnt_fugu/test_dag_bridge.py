@@ -1,4 +1,4 @@
-"""tests/tools/mltgnt_fugu/test_dag_bridge.py — DagBridge + Strategy基底ヘルパ テスト (AC-A1, AC-A3)"""
+"""tests/tools/mltgnt_fugu/test_dag_bridge.py — DagBridge + Strategy base helper tests (AC-A1, AC-A3)"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,7 +16,7 @@ from tools.mltgnt_fugu.types import PlanState, StrategyInput, StrategyResult
 
 
 # ---------------------------------------------------------------------------
-# AC-A1: FakeDagBridge 単体テスト
+# AC-A1: FakeDagBridge unit tests
 # ---------------------------------------------------------------------------
 
 
@@ -86,12 +86,12 @@ def test_fake_bridge_uid_increments() -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-A3: Strategy 基底ヘルパ テスト
+# AC-A3: Strategy base helper tests
 # ---------------------------------------------------------------------------
 
 
 class _ConcreteStrategy(Strategy):
-    """テスト用の最小具体化"""
+    """Minimal concrete subclass for tests"""
 
     def execute(self, inp: StrategyInput) -> StrategyResult:
         return StrategyResult(

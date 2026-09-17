@@ -1,4 +1,4 @@
-"""tests/loops/test_executor.py — GhdagSubtaskExecutor テスト。"""
+"""tests/loops/test_executor.py — GhdagSubtaskExecutor tests."""
 from __future__ import annotations
 
 from pathlib import Path

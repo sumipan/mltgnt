@@ -1,4 +1,4 @@
-"""v0.10.0 破壊的変更の受け入れ条件テスト（Issue #1251）。"""
+"""Acceptance tests for v0.10.0 breaking changes (Issue #1251)."""
 from __future__ import annotations
 
 import pytest

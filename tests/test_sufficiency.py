@@ -1,16 +1,16 @@
 """
-tests/test_sufficiency.py — _sufficiency.py のユニットテスト
+tests/test_sufficiency.py — _sufficiency.py  unit tests
 
-TC1: SUFFICIENT 応答のパース
-TC2: INSUFFICIENT + MEMORY 応答のパース
-TC3: INSUFFICIENT + SKILL 応答のパース
-TC4: INSUFFICIENT + 行不足（フェイルセーフ）
-TC5: 空応答（フェイルセーフ）
-TC6: 不明ソース（フェイルセーフ）
-TC7: 不明フォーマット（フェイルセーフ）
-TC8: LLM 例外の伝播
-TC9: rewritten_query 互換プロパティ（INSUFFICIENT/MEMORY）
-TC10: rewritten_query 互換プロパティ（SUFFICIENT）
+TC1: SUFFICIENT Response
+TC2: INSUFFICIENT + MEMORY Response
+TC3: INSUFFICIENT +ILLILL Response
+TC4: INSUFFICIENT + too few lines (fail-safe)
+TC5: empty response (fail-safe)
+TC6: unknown source (fail-safe)
+TC7: unknown format (fail-safe)
+TC8: LLM exception propagation
+TC9: rewritten_query compat property（INSUFFICIENT/MEMORY）
+TC10: rewritten_query compat property（SUFFICIENT）
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from mltgnt.memory._sufficiency import (
 
 
 def _llm(response: str):
-    """固定応答を返す llm_call ファクトリ"""
+    """llm_call factory that returns a fixed response"""
     def call(_prompt: str) -> str:
         return response
     return call
@@ -35,7 +35,7 @@ def _llm(response: str):
 
 
 def test_tc1_sufficient():
-    result = judge_sufficiency("質問", "情報", _llm("SUFFICIENT"))
+    result = judge_sufficiency("question", "info", _llm("SUFFICIENT"))
     assert result.sufficient is True
     assert result.action is None
 
@@ -46,12 +46,12 @@ def test_tc1_sufficient():
 
 
 def test_tc2_insufficient_memory():
-    response = "INSUFFICIENT\nMEMORY\nプロジェクト進捗"
-    result = judge_sufficiency("質問", "情報", _llm(response))
+    response = "INSUFFICIENT\nMEMORY\nproject progress"
+    result = judge_sufficiency("question", "info", _llm(response))
     assert result.sufficient is False
     assert result.action is not None
     assert result.action.source == "memory"
-    assert result.action.query == "プロジェクト進捗"
+    assert result.action.query == "project progress"
 
 
 # ---------------------------------------------------------------------------
@@ -60,66 +60,66 @@ def test_tc2_insufficient_memory():
 
 
 def test_tc3_insufficient_skill():
-    response = "INSUFFICIENT\nSKILL\nデプロイ手順"
-    result = judge_sufficiency("質問", "情報", _llm(response))
+    response = "INSUFFICIENT\nSKILL\ndeploy steps"
+    result = judge_sufficiency("question", "info", _llm(response))
     assert result.sufficient is False
     assert result.action is not None
     assert result.action.source == "skill"
-    assert result.action.query == "デプロイ手順"
+    assert result.action.query == "deploy steps"
 
 
 # ---------------------------------------------------------------------------
-# TC4: INSUFFICIENT + 行不足（フェイルセーフ）
+# TC4: INSUFFICIENT + too few lines (fail-safe)
 # ---------------------------------------------------------------------------
 
 
 def test_tc4_insufficient_missing_lines(caplog):
     with caplog.at_level(logging.WARNING, logger="mltgnt.memory._sufficiency"):
-        result = judge_sufficiency("質問", "情報", _llm("INSUFFICIENT\nMEMORY"))
+        result = judge_sufficiency("question", "info", _llm("INSUFFICIENT\nMEMORY"))
     assert result.sufficient is True
     assert result.action is None
     assert any("missing" in r.message or "SUFFICIENT" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
-# TC5: 空応答（フェイルセーフ）
+# TC5: empty response (fail-safe)
 # ---------------------------------------------------------------------------
 
 
 def test_tc5_empty_response(caplog):
     with caplog.at_level(logging.WARNING, logger="mltgnt.memory._sufficiency"):
-        result = judge_sufficiency("質問", "情報", _llm(""))
+        result = judge_sufficiency("question", "info", _llm(""))
     assert result.sufficient is True
     assert result.action is None
 
 
 # ---------------------------------------------------------------------------
-# TC6: 不明ソース（フェイルセーフ）
+# TC6: unknown source (fail-safe)
 # ---------------------------------------------------------------------------
 
 
 def test_tc6_unknown_source(caplog):
-    response = "INSUFFICIENT\nWEB\n検索クエリ"
+    response = "INSUFFICIENT\nWEB\nsearch query"
     with caplog.at_level(logging.WARNING, logger="mltgnt.memory._sufficiency"):
-        result = judge_sufficiency("質問", "情報", _llm(response))
+        result = judge_sufficiency("question", "info", _llm(response))
     assert result.sufficient is True
     assert result.action is None
 
 
 # ---------------------------------------------------------------------------
-# TC7: 不明フォーマット（フェイルセーフ）
+# TC7: unknown format (fail-safe)
 # ---------------------------------------------------------------------------
 
 
 def test_tc7_unexpected_format(caplog):
     with caplog.at_level(logging.WARNING, logger="mltgnt.memory._sufficiency"):
-        result = judge_sufficiency("質問", "情報", _llm("MAYBE"))
+        result = judge_sufficiency("question", "info", _llm("MAYBE"))
     assert result.sufficient is True
     assert result.action is None
 
 
 # ---------------------------------------------------------------------------
-# TC8: LLM 例外の伝播
+# TC8: LLM exception propagation
 # ---------------------------------------------------------------------------
 
 
@@ -128,27 +128,27 @@ def test_tc8_llm_exception():
         raise RuntimeError("API error")
 
     with pytest.raises(RuntimeError, match="API error"):
-        judge_sufficiency("質問", "情報", failing_llm)
+        judge_sufficiency("question", "info", failing_llm)
 
 
 # ---------------------------------------------------------------------------
-# TC9: rewritten_query 互換プロパティ（INSUFFICIENT/MEMORY）
+# TC9: rewritten_query compat property（INSUFFICIENT/MEMORY）
 # ---------------------------------------------------------------------------
 
 
 def test_tc9_rewritten_query_insufficient():
-    response = "INSUFFICIENT\nMEMORY\n先週の進捗"
-    result = judge_sufficiency("質問", "情報", _llm(response))
-    assert result.rewritten_query == "先週の進捗"
+    response = "INSUFFICIENT\nMEMORY\nlast week progress"
+    result = judge_sufficiency("question", "info", _llm(response))
+    assert result.rewritten_query == "last week progress"
 
 
 # ---------------------------------------------------------------------------
-# TC10: rewritten_query 互換プロパティ（SUFFICIENT）
+# TC10: rewritten_query compat property（SUFFICIENT）
 # ---------------------------------------------------------------------------
 
 
 def test_tc10_rewritten_query_sufficient():
-    result = judge_sufficiency("質問", "情報", _llm("SUFFICIENT"))
+    result = judge_sufficiency("question", "info", _llm("SUFFICIENT"))
     assert result.rewritten_query is None
 
 
@@ -160,8 +160,8 @@ def test_tc10_rewritten_query_sufficient():
 def test_judge_for_discover_selected():
     response = "SELECTED\ncalendar"
     result = judge_for_discover(
-        "カレンダー確認",
-        "calendar: 予定確認 (score: 0.85)",
+        "calendar check",
+        "calendar: schedule check (score: 0.85)",
         ["calendar", "diary-draft", "review"],
         _llm(response),
     )
@@ -171,22 +171,22 @@ def test_judge_for_discover_selected():
 
 
 def test_judge_for_discover_need_more():
-    response = "NEED_MORE\n予定 スケジュール"
+    response = "NEED_MORE\nschedule schedule"
     result = judge_for_discover(
-        "予定",
-        "calendar: 予定確認 (score: 0.50)",
+        "schedule",
+        "calendar: schedule check (score: 0.50)",
         ["calendar", "diary-draft"],
         _llm(response),
     )
     assert result.kind == "need_more"
-    assert result.next_query == "予定 スケジュール"
+    assert result.next_query == "schedule schedule"
     assert result.skill_name is None
 
 
 def test_judge_for_discover_unresolved():
     result = judge_for_discover(
-        "質問",
-        "候補情報",
+        "question",
+        "candidate info",
         ["calendar", "review"],
         _llm("UNRESOLVED"),
     )
@@ -197,8 +197,8 @@ def test_judge_for_discover_unresolved():
 def test_judge_for_discover_parse_error(caplog):
     with caplog.at_level(logging.WARNING, logger="mltgnt.memory._sufficiency"):
         result = judge_for_discover(
-            "質問",
-            "候補情報",
+            "question",
+            "candidate info",
             ["calendar"],
             _llm("INVALID"),
         )
@@ -212,4 +212,4 @@ def test_judge_for_discover_llm_exception():
         raise RuntimeError("API error")
 
     with pytest.raises(RuntimeError, match="API error"):
-        judge_for_discover("質問", "候補", ["calendar"], failing_llm)
+        judge_for_discover("question", "candidate", ["calendar"], failing_llm)

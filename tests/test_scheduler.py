@@ -1,7 +1,7 @@
 """
-tests/test_mltgnt_scheduler.py — mltgnt.scheduler のユニットテスト（AC-3）
+tests/test_mltgnt_scheduler.py — mltgnt.scheduler Unit Test()AC-3）
 
-設計: Issue #118 §7 AC-3
+Design: Issue #118 §7 AC-3
 """
 from __future__ import annotations
 
@@ -34,11 +34,11 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
 
 
 # ---------------------------------------------------------------------------
-# AC-3: YAML パース
+# AC-3: YAML 
 # ---------------------------------------------------------------------------
 
 def test_from_dict_valid_scheduled() -> None:
-    """有効な scheduled ジョブのフィールドが正しく設定される。"""
+    """Valid scheduled Job fields are set correctly."""
     job = ScheduleJob.from_dict({
         "id": "test_job",
         "mode": "scheduled",
@@ -55,7 +55,8 @@ def test_from_dict_valid_scheduled() -> None:
 
 
 def test_from_dict_invalid_mode_raises() -> None:
-    """`mode` が scheduled|fuzzy_window|interval|chained 以外 → ValueError。"""
+    """`mode` outside scheduled|fuzzy_window|interval|chained → ValueError."""
+    # Japanese text intentionally kept for CJK processing test
     with pytest.raises(ValueError, match="不明な mode"):
         ScheduleJob.from_dict({
             "id": "bad",
@@ -66,7 +67,7 @@ def test_from_dict_invalid_mode_raises() -> None:
 
 
 def test_from_dict_invalid_hhmm_raises() -> None:
-    """`every_day_at` が HH:MM 形式でない → ValueError。"""
+    """`every_day_at` not HH:MM → ValueError."""
     with pytest.raises(ValueError):
         ScheduleJob.from_dict({
             "id": "bad_time",
@@ -78,7 +79,8 @@ def test_from_dict_invalid_hhmm_raises() -> None:
 
 
 def test_overnight_fuzzy_window_raises() -> None:
-    """深夜をまたぐ fuzzy window → ValueError。"""
+    """Overnight fuzzy window → ValueError."""
+    # Japanese text intentionally kept for CJK processing test
     with pytest.raises(ValueError, match="日付またぎ"):
         ScheduleJob.from_dict({
             "id": "overnight",
@@ -91,7 +93,7 @@ def test_overnight_fuzzy_window_raises() -> None:
 
 
 def test_load_schedule_jobs_from_yaml(tmp_path: Path) -> None:
-    """有効な schedule.yaml をパースできる。"""
+    """Valid schedule.yaml can parse."""
     yaml_file = tmp_path / "schedule.yaml"
     yaml_file.write_text(
         "jobs:\n"
@@ -110,11 +112,11 @@ def test_load_schedule_jobs_from_yaml(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-3: ジョブ実行
+# AC-3: Job execution
 # ---------------------------------------------------------------------------
 
 def test_scheduled_fires_at_target_time(tmp_path: Path) -> None:
-    """mode=scheduled, every_day_at="10:00" のジョブが 10:00 の tick で発火する。"""
+    """mode=scheduled, every_day_at="10:00" Jobs 10:00 Home tick ignition."""
     j = ScheduleJob.from_dict({
         "id": "fire_test",
         "mode": "scheduled",
@@ -129,7 +131,7 @@ def test_scheduled_fires_at_target_time(tmp_path: Path) -> None:
 
 
 def test_scheduled_does_not_refire_same_day(tmp_path: Path) -> None:
-    """同日に2回 tick しても2回目は発火しない（done ファイルで制御）。"""
+    """Same Day2 tick Home2does not firedone control by file)."""
     j = ScheduleJob.from_dict({
         "id": "once_test",
         "mode": "scheduled",
@@ -150,7 +152,7 @@ def test_scheduled_does_not_refire_same_day(tmp_path: Path) -> None:
 
 
 def test_interval_fires_multiple_times(tmp_path: Path) -> None:
-    """mode=interval のジョブが前回実行から十分な時間経過後に再発火する。"""
+    """mode=interval reigns after enough time after the previous run."""
     j = ScheduleJob.from_dict({
         "id": "interval_test",
         "mode": "interval",
@@ -166,7 +168,7 @@ def test_interval_fires_multiple_times(tmp_path: Path) -> None:
 
 
 def test_interval_persists_last_fired_across_restart(tmp_path: Path) -> None:
-    """interval の last_fired がディスクに永続化され、再起動後も復元される。"""
+    """interval Home last_fired will be permanently restored after restarting."""
     j = ScheduleJob.from_dict({
         "id": "persist_test",
         "mode": "interval",
@@ -194,11 +196,11 @@ def test_interval_persists_last_fired_across_restart(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-3: 依存チェーン
+# AC-3: Dependent Chain
 # ---------------------------------------------------------------------------
 
 def test_depends_on_waits_for_dependency(tmp_path: Path) -> None:
-    """`depends_on: [job_a]` のジョブが job_a の done ファイルが存在しない間は発火しない。"""
+    """`depends_on: [job_a]` Jobs job_a Home done Do not ignite while the file does not exist."""
     job_a = ScheduleJob.from_dict({
         "id": "job_a",
         "mode": "scheduled",
@@ -224,7 +226,7 @@ def test_depends_on_waits_for_dependency(tmp_path: Path) -> None:
 
 
 def test_cycle_detection_raises(tmp_path: Path) -> None:
-    """循環依存（job_a → job_b → job_a）を _detect_cycles() が検出し ValueError を投げる。"""
+    """Cir ating Dependenciesjob_a → job_b → job_a _detect_cycles()  ValueError throw."""
     job_a = ScheduleJob.from_dict({
         "id": "job_a_cycle",
         "mode": "scheduled",
@@ -247,11 +249,11 @@ def test_cycle_detection_raises(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-3: SchedulerConfig 連携
+# AC-3: SchedulerConfig Contact Us
 # ---------------------------------------------------------------------------
 
 def test_scheduler_config_integration(tmp_path: Path) -> None:
-    """SchedulerConfig を使ってスケジューラが正常に動作する。"""
+    """SchedulerConfig Use the scheduler to work properly."""
     yaml_file = tmp_path / "schedule.yaml"
     yaml_file.write_text(
         "jobs:\n"
@@ -286,7 +288,7 @@ def _make_skill_meta(name: str, tmp_path: Path) -> SkillMeta:
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_file = skill_dir / "SKILL.md"
     skill_file.write_text(
-        "---\nname: {}\ndescription: test skill\n---\n\nスキル本文".format(name),
+        "---\nname: {}\ndescription: test skill\n---\n\nskill body".format(name),
         encoding="utf-8",
     )
     return SkillMeta(
@@ -306,7 +308,8 @@ def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str 
         "---\n"
         f"persona:\n  name: {name}\n"
         f"ops:\n  engine: {engine}\n  model: {model}\n"
-        "---\n\n## 基本情報\n\nペルソナ本文",
+        # Japanese text intentionally kept for CJK processing test
+        "---\n\n## 基本情報\n\npersona body",
         encoding="utf-8",
     )
     return p
@@ -328,7 +331,7 @@ def _skill_job(**overrides) -> ScheduleJob:
         every_day_at="10:00",
         action_args={
             "skill": "test-skill",
-            "persona": "タチコマ",
+            "persona": "persona-a",
         },
     )
     defaults.update(overrides)
@@ -339,39 +342,39 @@ _ENQUEUE = "mltgnt.bridges.ghdag_bridge.enqueue_and_wait"
 
 
 def test_skill_action_success(tmp_path: Path) -> None:
-    """skill action: enqueue_and_wait が (True, stdout) → (True, stdout) を返す。"""
+    """skill action: enqueue_and_wait Home (True, stdout) → (True, stdout) """
     sch, meta = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "応答テキスト")) as mock_enqueue:
+    with patch(_ENQUEUE, return_value=(True, "Response text")) as mock_enqueue:
         ok, msg = sch.execute_action(job)
 
     assert ok is True
-    assert msg == "応答テキスト"
+    assert msg == "Response text"
     mock_enqueue.assert_called_once()
 
 
 def test_skill_action_persona_in_prompt(tmp_path: Path) -> None:
-    """ペルソナ内容がプロンプト先頭に含まれること。"""
+    """Persona body appears in the prompt before the skill body."""
     sch, meta = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
     prompt = mock_enqueue.call_args.kwargs["prompt"]
-    assert "ペルソナ本文" in prompt
-    assert "スキル本文" in prompt
-    assert prompt.index("ペルソナ本文") < prompt.index("スキル本文")
+    assert "persona body" in prompt
+    assert "skill body" in prompt
+    assert prompt.index("persona body") < prompt.index("skill body")
 
 
 def test_skill_action_engine_explicit(tmp_path: Path) -> None:
-    """action_args.engine 指定時は enqueue_and_wait に正しい engine が渡される。"""
+    """action_args.engine When specified enqueue_and_wait correct engine is passed."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "engine": "gemini"})
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "engine": "gemini"})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
@@ -380,10 +383,10 @@ def test_skill_action_engine_explicit(tmp_path: Path) -> None:
 
 
 def test_skill_action_model_explicit(tmp_path: Path) -> None:
-    """action_args.model 指定時は enqueue_and_wait に正しい model が渡される。"""
+    """action_args.model When specified enqueue_and_wait correct model is passed."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "claude-opus-4-6"})
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "model": "claude-opus-4-6"})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
@@ -392,10 +395,10 @@ def test_skill_action_model_explicit(tmp_path: Path) -> None:
 
 
 def test_skill_action_engine_fallback_to_persona(tmp_path: Path) -> None:
-    """engine 未指定時はペルソナの engine フィールドを使用する。"""
+    """engine Persona when not specified engine Use the field."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="gemini", model="gemini-2.5-flash")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+    _make_persona(tmp_path, "persona-a", engine="gemini", model="gemini-2.5-flash")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
@@ -404,10 +407,10 @@ def test_skill_action_engine_fallback_to_persona(tmp_path: Path) -> None:
 
 
 def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
-    """model 未指定時はペルソナの model フィールドを使用する。"""
+    """model Persona when not specified model Use the field."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="gemini", model="gemini-2.5-pro")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+    _make_persona(tmp_path, "persona-a", engine="gemini", model="gemini-2.5-pro")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
@@ -416,37 +419,37 @@ def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
 
 
 def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
-    """argv 指定時に $ARGUMENTS がスキル本文内で展開されること。"""
+    """argv When specified $ARGUMENTS will be deployed in the skill body."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS を処理")
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS Processing")
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "argv": ["morning"]})
+    _make_persona(tmp_path, "persona-a")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "argv": ["morning"]})
 
-    with patch(_ENQUEUE, return_value=(True, "結果")) as mock_enqueue:
+    with patch(_ENQUEUE, return_value=(True, "Result")) as mock_enqueue:
         ok, msg = sch.execute_action(job)
 
     assert ok is True
-    assert msg == "結果"
-    assert "morning を処理" in mock_enqueue.call_args.kwargs["prompt"]
+    assert msg == "Result"
+    assert "morning Processing" in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_no_argv(tmp_path: Path) -> None:
-    """argv 未指定時はプロンプトに '引数:' が含まれない。"""
+    """argv If not specified, it will be prompted 'Argument:' not included."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ"})
+    _make_persona(tmp_path, "persona-a")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert "引数:" not in mock_enqueue.call_args.kwargs["prompt"]
+    assert "Argument:" not in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_engine_error(tmp_path: Path) -> None:
-    """enqueue_and_wait が (False, ...) → execute_action も (False, ...) を返す。"""
+    """enqueue_and_wait Home (False, ...) → execute_action Home (False, ...) """
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(False, "engine error detail")):
@@ -457,9 +460,9 @@ def test_skill_action_engine_error(tmp_path: Path) -> None:
 
 
 def test_skill_action_timeout(tmp_path: Path) -> None:
-    """enqueue_and_wait が timeout を返したとき execute_action も (False, "timeout ...") を返す。"""
+    """enqueue_and_wait Home timeout return execute_action Home (False, "timeout ...") """
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(False, "timeout (120s)")):
@@ -470,9 +473,9 @@ def test_skill_action_timeout(tmp_path: Path) -> None:
 
 
 def test_skill_action_rejected(tmp_path: Path) -> None:
-    """REJECTED ステータス時は (False, 'rejected: REJECTED') を返す。"""
+    """REJECTED Status (False, 'rejected: REJECTED') """
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(False, "rejected: REJECTED")):
@@ -483,9 +486,9 @@ def test_skill_action_rejected(tmp_path: Path) -> None:
 
 
 def test_skill_action_empty_result(tmp_path: Path) -> None:
-    """EMPTY_RESULT ステータス時は (False, 'empty_result: EMPTY_RESULT') を返す。"""
+    """EMPTY_RESULT Status (False, 'empty_result: EMPTY_RESULT') """
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(False, "empty_result: EMPTY_RESULT")):
@@ -496,9 +499,9 @@ def test_skill_action_empty_result(tmp_path: Path) -> None:
 
 
 def test_skill_action_idempotency_key_format(tmp_path: Path) -> None:
-    """enqueue_and_wait に渡される idempotency_key が 'scheduler:{job.id}:...' 形式であること。"""
+    """enqueue_and_wait Passed to idempotency_key Home 'scheduler:{job.id}:...' format."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
@@ -514,11 +517,11 @@ _UUID_V4_RE = (
 
 
 def test_skill_action_request_id_uuid_v4(tmp_path: Path) -> None:
-    """run_skill_action が生成する request_id が UUID v4 形式であること。"""
+    """run_skill_action generate request_id Home UUID v4 format."""
     import re
 
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
@@ -529,12 +532,12 @@ def test_skill_action_request_id_uuid_v4(tmp_path: Path) -> None:
 
 
 def test_skill_action_request_id_shared_with_fanout(tmp_path: Path) -> None:
-    """fanout 時に enqueue_and_wait と enqueue_dag が同一 request_id を受け取ること。"""
+    """fanout Home enqueue_and_wait Home enqueue_dag Same request_id to receive."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={
         "skill": "test-skill",
-        "persona": "タチコマ",
+        "persona": "persona-a",
         "enable_fanout": True,
     })
 
@@ -549,9 +552,9 @@ def test_skill_action_request_id_shared_with_fanout(tmp_path: Path) -> None:
 
 
 def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
-    """action_args.skill 未指定 → (False, エラーメッセージ)。"""
+    """action_args.skill Not specified → (False, Error message)。"""
     sch, _ = _make_skill_scheduler(tmp_path)
-    job = _skill_job(action_args={"persona": "タチコマ"})
+    job = _skill_job(action_args={"persona": "persona-a"})
 
     ok, msg = sch.execute_action(job)
 
@@ -560,7 +563,7 @@ def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
 
 
 def test_skill_action_missing_persona(tmp_path: Path) -> None:
-    """action_args.persona 未指定 → (False, エラーメッセージ)。"""
+    """action_args.persona Not specified → (False, Error message)。"""
     sch, _ = _make_skill_scheduler(tmp_path)
     job = _skill_job(action_args={"skill": "test-skill"})
 
@@ -571,33 +574,37 @@ def test_skill_action_missing_persona(tmp_path: Path) -> None:
 
 
 def test_skill_action_skill_not_found(tmp_path: Path) -> None:
+    # Japanese text intentionally kept for CJK processing test
     """スキルレジストリにない名前 → (False, 'スキルが見つかりません')。"""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ")
-    job = _skill_job(action_args={"skill": "nonexistent-skill", "persona": "タチコマ"})
+    _make_persona(tmp_path, "persona-a")
+    job = _skill_job(action_args={"skill": "nonexistent-skill", "persona": "persona-a"})
 
     ok, msg = sch.execute_action(job)
 
     assert ok is False
+    # Japanese text intentionally kept for CJK processing test
     assert "スキルが見つかりません" in msg
     assert "nonexistent-skill" in msg
 
 
 def test_skill_action_persona_file_not_found(tmp_path: Path) -> None:
+    # Japanese text intentionally kept for CJK processing test
     """ペルソナファイル不在 → (False, 'ペルソナファイルが見つかりません')。"""
     sch, _ = _make_skill_scheduler(tmp_path)
-    # ペルソナファイルを作らない
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "存在しない"})
+    # Don't make a persona file
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "Not Found"})
 
     ok, msg = sch.execute_action(job)
 
     assert ok is False
+    # Japanese text intentionally kept for CJK processing test
     assert "ペルソナファイルが見つかりません" in msg
 
 
 
 def _make_skill_meta_with_body(name: str, tmp_path: Path, body: str, model: str | None = None) -> SkillMeta:
-    """body と model を指定できる SkillMeta ヘルパー。"""
+    """body Home model Contact Us SkillMeta """
     skill_dir = tmp_path / "skills" / name
     skill_dir.mkdir(parents=True, exist_ok=True)
     skill_file = skill_dir / "SKILL.md"
@@ -610,33 +617,33 @@ def _make_skill_meta_with_body(name: str, tmp_path: Path, body: str, model: str 
 
 
 # ---------------------------------------------------------------------------
-# Issue #270: runner.run() 経由での変数置換（AC1〜AC4）
+# Issue #270: runner.run() Variable subst tion viaAC1〜AC4）
 # ---------------------------------------------------------------------------
 
 
 def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
-    """$SKILL_DIR がスキルファイルの親ディレクトリに展開されること（AC1）。"""
+    """$SKILL_DIR to be deployed in the parent directory of the skill file.AC1）。"""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$SKILL_DIR/scripts/run.py を実行")
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$SKILL_DIR/scripts/run.py Run")
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
     skill_dir_path = (tmp_path / "skills" / "test-skill").resolve()
-    expected = str(skill_dir_path) + "/scripts/run.py を実行"
+    expected = str(skill_dir_path) + "/scripts/run.py Run"
     assert expected in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
-    """$ARGUMENTS と $0, $1 が展開されること（AC2）。"""
+    """$ARGUMENTS Home $0, $1 to expandAC2）。"""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS → $0 $1")
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "argv": ["hello", "world"]})
+    _make_persona(tmp_path, "persona-a")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "argv": ["hello", "world"]})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
@@ -645,57 +652,59 @@ def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
 
 
 def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
-    """$PERSONA が persona.name に展開されること（AC5）。"""
+    """$PERSONA Home persona.name to expandAC5）。"""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "担当: $PERSONA")
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "Assignee: $PERSONA")
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert "担当: タチコマ" in mock_enqueue.call_args.kwargs["prompt"]
+    assert "Assignee: persona-a" in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
-    """argv 未指定時に $ARGUMENTS は空文字に展開される（AC2）。"""
+    """argv Unspecified $ARGUMENTS is expanded to emptyAC2）。"""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "引数: [$ARGUMENTS]")
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "Argument: [$ARGUMENTS]")
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
-    assert "引数: []" in mock_enqueue.call_args.kwargs["prompt"]
+    assert "Argument: []" in mock_enqueue.call_args.kwargs["prompt"]
 
 
 def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
-    """persona.format_prompt() 経由のプロンプト構造であること（AC3）。"""
+    """persona.format_prompt() Prompt structure viaAC3）。"""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文")
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "")
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
 
     prompt = mock_enqueue.call_args.kwargs["prompt"]
+    # Product prompt template strings (src Englishization is out of scope).
+    # Japanese text intentionally kept for CJK processing test
     assert "あなたは以下のキャラクターになりきり" in prompt
     assert "--- ユーザーからの指示 ---" in prompt
     assert "現在日時:" in prompt
 
 
 def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
-    """skill.meta.model が action_args.model より優先されること（AC4）。"""
+    """skill.meta.model Home action_args.model More priorityAC4）。"""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文", model="sonnet")
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "", model="sonnet")
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "opus"})
+    _make_persona(tmp_path, "persona-a")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "model": "opus"})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
@@ -704,12 +713,12 @@ def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
 
 
 def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> None:
-    """skill.meta.model が None のとき action_args.model にフォールバック（AC4）。"""
+    """skill.meta.model Home None Home action_args.model fallback toAC4）。"""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "スキル本文", model=None)
+    meta = _make_skill_meta_with_body("test-skill", tmp_path, "", model=None)
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "タチコマ", "model": "opus"})
+    _make_persona(tmp_path, "persona-a")
+    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "model": "opus"})
 
     with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
         sch.execute_action(job)
@@ -717,7 +726,7 @@ def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> 
     assert mock_enqueue.call_args.kwargs["model"] == "opus"
 
 # ---------------------------------------------------------------------------
-# Issue #242: skill 成功時の _post() 呼び出し / _post() テキスト上書き防止
+# Issue #242: skill Success _post() Call / _post() Text Overwrite Prevention
 # ---------------------------------------------------------------------------
 
 
@@ -741,31 +750,31 @@ def _command_job(**overrides) -> ScheduleJob:
 
 
 def test_ac1_spawn_job_skill_success_calls_post(tmp_path: Path) -> None:
-    """AC-1: _spawn_job() の skill 成功パスで _post() が呼ばれ Slack に投稿される。"""
+    """AC-1: _spawn_job() Home skill With success path _post() is called Slack Posted in"""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary")
     sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     meta = _make_skill_meta("test-skill", tmp_path)
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     sch.reload_jobs()
 
-    with patch(_ENQUEUE, return_value=(True, "こんにちは")):
+    with patch(_ENQUEUE, return_value=(True, "hello")):
         with patch.object(sch, "_post", wraps=sch._post) as mock_post:
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
 
-    mock_post.assert_called_once_with(job, "こんにちは")
+    mock_post.assert_called_once_with(job, "hello")
 
 
 def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
-    """AC-2: skill 成功で msg が空の場合 _post() は呼ばれない。"""
+    """AC-2: skill Success msg empty _post() not called."""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary")
     sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     meta = _make_skill_meta("test-skill", tmp_path)
     sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "タチコマ")
+    _make_persona(tmp_path, "persona-a")
     sch.reload_jobs()
 
     with patch(_ENQUEUE, return_value=(True, "")):
@@ -777,13 +786,13 @@ def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
 
 
 def test_ac3_command_success_posts_when_msg_present(tmp_path: Path) -> None:
-    """AC-3: command 成功時も msg があれば _post() を呼ぶ（PR #15 で仕様変更）。"""
+    """AC-3: command Success msg If you have _post() Contact UsPR #15 ification)."""
     slack = _make_slack_mock()
     job = _command_job(notify="slack_secretary")
     sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     sch.reload_jobs()
 
-    # ベースクラスは command アクションを未実装なので execute_action をモックする
+    # Base class command Since the action is not implemented execute_action 
     with patch.object(sch, "execute_action", return_value=(True, "stdout output")):
         with patch.object(sch, "_post", wraps=sch._post) as mock_post:
             sch._spawn_job(job, date(2026, 4, 23))
@@ -793,12 +802,12 @@ def test_ac3_command_success_posts_when_msg_present(tmp_path: Path) -> None:
 
 
 def test_ac4_post_resolver_does_not_overwrite_text(tmp_path: Path) -> None:
-    """AC-4: _post() で resolver の text はスキル生成テキストを上書きしない。"""
+    """AC-4: _post() Home resolver Home text does not override the skill generation text."""
     slack = _make_slack_mock()
-    job = _skill_job(notify="slack_secretary", persona="タチコマ")
+    job = _skill_job(notify="slack_secretary", persona="persona-a")
 
     def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
-        return {"icon_emoji": ":robot:"}, "resolver テキスト"
+        return {"icon_emoji": ":robot:"}, "resolver Text"
 
     sch = PersonaScheduler(
         slack=slack,
@@ -809,21 +818,21 @@ def test_ac4_post_resolver_does_not_overwrite_text(tmp_path: Path) -> None:
     )
     sch.reload_jobs()
 
-    sch._post(job, "スキル生成テキスト")
+    sch._post(job, "skill generation text")
 
     slack.post_message.assert_called_once()
     args, kwargs = slack.post_message.call_args
-    assert args[0] == "スキル生成テキスト"
+    assert args[0] == "skill generation text"
     assert kwargs.get("icon_emoji") == ":robot:"
 
 
 def test_ac5_post_empty_text_uses_resolver_fallback(tmp_path: Path) -> None:
-    """AC-5: text が空かつ resolver が text を返す場合はフォールバック使用。"""
+    """AC-5: text empty resolver Home text Use fallback when applying."""
     slack = _make_slack_mock()
-    job = _skill_job(notify="slack_secretary", persona="タチコマ")
+    job = _skill_job(notify="slack_secretary", persona="persona-a")
 
     def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
-        return {"icon_emoji": ":robot:"}, "fallback テキスト"
+        return {"icon_emoji": ":robot:"}, "fallback Text"
 
     sch = PersonaScheduler(
         slack=slack,
@@ -838,13 +847,13 @@ def test_ac5_post_empty_text_uses_resolver_fallback(tmp_path: Path) -> None:
 
     slack.post_message.assert_called_once()
     args, kwargs = slack.post_message.call_args
-    assert args[0] == "fallback テキスト"
+    assert args[0] == "fallback Text"
 
 
 def test_ac6_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
-    """AC-6: resolver が例外を送出したとき default_slack_post_kwargs を使い text は変わらない。"""
+    """AC-6: resolver when an exception is sent default_slack_post_kwargs Use text not changed."""
     slack = _make_slack_mock()
-    job = _skill_job(notify="slack_secretary", persona="タチコマ")
+    job = _skill_job(notify="slack_secretary", persona="persona-a")
 
     def resolver(persona_name: str, repo_root: Path) -> tuple[dict, str]:
         raise RuntimeError("resolver error")
@@ -862,40 +871,40 @@ def test_ac6_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
     )
     sch.reload_jobs()
 
-    sch._post(job, "元のテキスト")
+    sch._post(job, "Original text")
 
     slack.post_message.assert_called_once()
     args, kwargs = slack.post_message.call_args
-    assert args[0] == "元のテキスト"
+    assert args[0] == "Original text"
     assert kwargs.get("icon_emoji") == ":default:"
 
 
 # ---------------------------------------------------------------------------
-# Issue #906: PersonaScheduler / SchedulePaths リネーム + register_action
+# Issue #906: PersonaScheduler / SchedulePaths Rename + register_action
 # ---------------------------------------------------------------------------
 
 
 def test_secretary_scheduler_not_importable() -> None:
-    """SecretaryScheduler が mltgnt.scheduler から import できないこと（後方互換エイリアスなし）。"""
+    """SecretaryScheduler Home mltgnt.scheduler Home import No backward aliases."""
     import mltgnt.scheduler as sched
     assert not hasattr(sched, "SecretaryScheduler"), (
-        "SecretaryScheduler は後方互換エイリアスなしで削除されていること"
+        "SecretaryScheduler can be removed without backward compatible aliases"
     )
 
 
 def test_secretary_schedule_paths_not_importable() -> None:
-    """SecretarySchedulePaths が mltgnt.scheduler から import できないこと。"""
+    """SecretarySchedulePaths Home mltgnt.scheduler Home import Not possible."""
     import mltgnt.scheduler as sched
     assert not hasattr(sched, "SecretarySchedulePaths")
 
 
 def test_schedule_paths_importable() -> None:
-    """SchedulePaths が import できること。"""
+    """SchedulePaths Home import What you can do"""
     from mltgnt.scheduler import SchedulePaths  # noqa: F401 (import check)
 
 
 def test_noop_action_returns_true(tmp_path: Path) -> None:
-    """job.action='noop' → execute_action が (True, '') を返す。"""
+    """job.action='noop' → execute_action Home (True, '') """
     job = ScheduleJob.from_dict({
         "id": "noop_job",
         "mode": "scheduled",
@@ -910,7 +919,7 @@ def test_noop_action_returns_true(tmp_path: Path) -> None:
 
 
 def test_unknown_action_raises_value_error(tmp_path: Path) -> None:
-    """未登録 action → execute_action が ValueError を raise する。"""
+    """Unregistered action → execute_action Home ValueError Home raise """
     job = ScheduleJob.from_dict({
         "id": "unknown_job",
         "mode": "scheduled",
@@ -924,7 +933,7 @@ def test_unknown_action_raises_value_error(tmp_path: Path) -> None:
 
 
 def test_register_action_is_called(tmp_path: Path) -> None:
-    """register_action で登録した callback が execute_action 経由で呼ばれる。"""
+    """register_action Register callback Home execute_action Called via"""
     job = ScheduleJob.from_dict({
         "id": "custom_job",
         "mode": "scheduled",
@@ -940,7 +949,7 @@ def test_register_action_is_called(tmp_path: Path) -> None:
 
 
 def test_actions_kwarg_in_init(tmp_path: Path) -> None:
-    """__init__ の actions= kwarg で渡した callback も execute_action 経由で呼ばれる。"""
+    """__init__ Home actions= kwarg Contact Us callback Home execute_action Called via"""
     job = ScheduleJob.from_dict({
         "id": "init_action_job",
         "mode": "scheduled",
@@ -960,7 +969,7 @@ def test_actions_kwarg_in_init(tmp_path: Path) -> None:
 
 
 def test_registered_action_failure(tmp_path: Path) -> None:
-    """登録 action が (False, 'err') → execute_action が (False, 'err') を返す。"""
+    """Register action Home (False, 'err') → execute_action Home (False, 'err') """
     job = ScheduleJob.from_dict({
         "id": "fail_job",
         "mode": "scheduled",
@@ -976,7 +985,7 @@ def test_registered_action_failure(tmp_path: Path) -> None:
 
 
 def test_registered_action_failure_creates_failed_marker(tmp_path: Path) -> None:
-    """登録 action 失敗時に _spawn_job が failed マーカーを生成する。"""
+    """On register_action failure, _spawn_job writes failed markers."""
     job = ScheduleJob.from_dict({
         "id": "fail_marker_job",
         "mode": "scheduled",
@@ -994,7 +1003,7 @@ def test_registered_action_failure_creates_failed_marker(tmp_path: Path) -> None
 
 
 def test_slack_none_post_does_not_raise(tmp_path: Path) -> None:
-    """slack=None で PersonaScheduler を生成し _post() を呼んでも例外が出ない。"""
+    """slack=None Home PersonaScheduler rate _post() There is no exception."""
     job = ScheduleJob.from_dict({
         "id": "notify_job",
         "mode": "scheduled",
@@ -1007,23 +1016,23 @@ def test_slack_none_post_does_not_raise(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Issue #923: SlackClientProtocol **kwargs 除去 / SkillLoaderProtocol 削除
+# Issue #923: SlackClientProtocol **kwargs  / SkillLoaderProtocol 
 # ---------------------------------------------------------------------------
 
 def test_slack_client_protocol_import() -> None:
-    """SlackClientProtocol が interfaces から import できる。"""
+    """SlackClientProtocol Home interfaces Home import Yes."""
     from mltgnt.interfaces import SlackClientProtocol
     assert SlackClientProtocol is not None
 
 
 def test_skill_loader_protocol_deleted() -> None:
-    """SkillLoaderProtocol が削除されていること（ImportError）。"""
+    """SkillLoaderProtocol not deletedImportError）。"""
     with pytest.raises(ImportError):
         from mltgnt.interfaces import SkillLoaderProtocol  # noqa: F401
 
 
 def test_slack_protocol_no_kwargs() -> None:
-    """SlackClientProtocol.post_message に **kwargs がないこと（シグネチャ閉鎖）。"""
+    """SlackClientProtocol.post_message Home **kwargs There is no signature closure."""
     import inspect
     from mltgnt.interfaces import SlackClientProtocol
     sig = inspect.signature(SlackClientProtocol.post_message)
@@ -1035,7 +1044,7 @@ def test_slack_protocol_no_kwargs() -> None:
 
 
 def test_slack_protocol_conforming_impl_basic() -> None:
-    """SlackClientProtocol を満たす実装が post_message(text, channel) のみで呼び出せる。"""
+    """SlackClientProtocol Meet implementation post_message(text, channel) Call only."""
     from mltgnt.interfaces import SlackClientProtocol
 
     class ConcreteSlack:
@@ -1054,7 +1063,7 @@ def test_slack_protocol_conforming_impl_basic() -> None:
 
 
 def test_slack_protocol_conforming_impl_full_kwargs() -> None:
-    """SlackClientProtocol を満たす実装が全 optional 引数付きで呼び出せる。"""
+    """SlackClientProtocol Complete implementation to meet optional Call with arguments."""
     from mltgnt.interfaces import SlackClientProtocol
 
     class ConcreteSlack:
@@ -1078,13 +1087,13 @@ def test_slack_protocol_conforming_impl_full_kwargs() -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-4: enable_fanout + enqueue_dag 配線 (#1128)
+# AC-4: enable_fanout + enqueue_dag  (#1128)
 # ---------------------------------------------------------------------------
 
 _ENQUEUE_DAG = "mltgnt.bridges.ghdag_bridge.enqueue_dag"
 
 _FANOUT_RESPONSE = (
-    "通常の応答テキスト\n"
+    "Normal response text\n"
     "---\n"
     "ghdag_fanout:\n"
     "  children:\n"
@@ -1096,12 +1105,12 @@ _FANOUT_RESPONSE = (
 
 
 def test_fanout_calls_enqueue_dag_when_block_present(tmp_path: Path) -> None:
-    """AC-4: enable_fanout=true かつ LLM 応答に ghdag_fanout ブロックがある → enqueue_dag が呼ばれる。"""
+    """AC-4: enable_fanout=true Home LLM Contact Us ghdag_fanout Block → enqueue_dag is called."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={
         "skill": "test-skill",
-        "persona": "タチコマ",
+        "persona": "persona-a",
         "enable_fanout": True,
     })
 
@@ -1118,12 +1127,12 @@ def test_fanout_calls_enqueue_dag_when_block_present(tmp_path: Path) -> None:
 
 
 def test_fanout_success_message_contains_step_count(tmp_path: Path) -> None:
-    """AC-4: fanout 全成功 → (True, 'fanout: N steps completed') を返す。"""
+    """AC-4: fanout Success → (True, 'fanout: N steps completed') """
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={
         "skill": "test-skill",
-        "persona": "タチコマ",
+        "persona": "persona-a",
         "enable_fanout": True,
     })
 
@@ -1136,12 +1145,12 @@ def test_fanout_success_message_contains_step_count(tmp_path: Path) -> None:
 
 
 def test_fanout_failure_returns_false_with_step_id(tmp_path: Path) -> None:
-    """AC-4: fanout でいずれかのステップが失敗 → (False, 'fanout: step X failed: ...') を返す。"""
+    """AC-4: fanout Any step fails → (False, 'fanout: step X failed: ...') """
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={
         "skill": "test-skill",
-        "persona": "タチコマ",
+        "persona": "persona-a",
         "enable_fanout": True,
     })
 
@@ -1155,31 +1164,31 @@ def test_fanout_failure_returns_false_with_step_id(tmp_path: Path) -> None:
 
 
 def test_fanout_no_block_returns_initial_result(tmp_path: Path) -> None:
-    """AC-4: enable_fanout=true でも ghdag_fanout ブロックがない → enqueue_and_wait 結果をそのまま返す。"""
+    """AC-4: enable_fanout=true But ghdag_fanout No block → enqueue_and_wait You can check the result as it is."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={
         "skill": "test-skill",
-        "persona": "タチコマ",
+        "persona": "persona-a",
         "enable_fanout": True,
     })
 
-    with patch(_ENQUEUE, return_value=(True, "fanout なしの通常応答")), \
+    with patch(_ENQUEUE, return_value=(True, "fanout Normal response without")), \
          patch(_ENQUEUE_DAG) as mock_dag:
         ok, msg = sch.execute_action(job)
 
     assert ok is True
-    assert msg == "fanout なしの通常応答"
+    assert msg == "fanout Normal response without"
     mock_dag.assert_not_called()
 
 
 def test_fanout_disabled_does_not_call_enqueue_dag(tmp_path: Path) -> None:
-    """AC-4: enable_fanout=false のジョブでは enqueue_dag は呼ばれない。"""
+    """AC-4: enable_fanout=false In the job enqueue_dag not called."""
     sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "タチコマ", engine="claude", model="claude-sonnet-4-6")
+    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={
         "skill": "test-skill",
-        "persona": "タチコマ",
+        "persona": "persona-a",
     })
 
     with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
@@ -1195,17 +1204,18 @@ def test_fanout_disabled_does_not_call_enqueue_dag(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_load_jobs_invalid_yaml_raises_config_error(tmp_path: Path) -> None:
-    """破損 YAML は ConfigError を送出する。"""
+    """Breakdown YAML Home ConfigError Send"""
     bad_yaml = tmp_path / "schedule.yaml"
     bad_yaml.write_text("jobs:\n  - id: [unclosed\n", encoding="utf-8")
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", yaml_path=bad_yaml)
 
+    # Japanese text intentionally kept for CJK processing test
     with pytest.raises(ConfigError, match="YAML 読込エラー"):
         sch._load_jobs()
 
 
 def test_reload_jobs_keeps_previous_jobs_on_config_error(tmp_path: Path) -> None:
-    """reload_jobs は YAML 破損時に既存 jobs を維持する。"""
+    """reload_jobs Home YAML Existing when damaged jobs keep."""
     good_yaml = tmp_path / "schedule.yaml"
     good_yaml.write_text(
         "jobs:\n"
@@ -1229,7 +1239,7 @@ def test_reload_jobs_keeps_previous_jobs_on_config_error(tmp_path: Path) -> None
 
 
 # ---------------------------------------------------------------------------
-# Issue #2379: OnExitPolicy パース + SchedulePaths.skipped_path
+# Issue #2379: OnExitPolicy  + SchedulePaths.skipped_path
 # ---------------------------------------------------------------------------
 
 from mltgnt.scheduler.models import OnExitPolicy  # noqa: E402
@@ -1263,7 +1273,7 @@ def test_from_dict_on_exit_fail_explicit() -> None:
 
 
 def test_from_dict_on_exit_none() -> None:
-    """`on_exit` 未指定 → `job.on_exit is None`。"""
+    """`on_exit` Not specified → `job.on_exit is None`。"""
     job = ScheduleJob.from_dict({
         "id": "j",
         "mode": "scheduled",
@@ -1288,7 +1298,7 @@ def test_from_dict_on_exit_invalid_value() -> None:
 
 
 def test_from_dict_on_exit_empty_dict() -> None:
-    """`on_exit: {}` (空辞書) → `ValueError`。"""
+    """`on_exit: {}` (English) → `ValueError`。"""
     with pytest.raises(ValueError, match="nonzero"):
         ScheduleJob.from_dict({
             "id": "j",
@@ -1301,7 +1311,7 @@ def test_from_dict_on_exit_empty_dict() -> None:
 
 
 def test_from_dict_on_exit_not_dict() -> None:
-    """`on_exit: "skip"` (文字列) → `ValueError`。"""
+    """`on_exit: "skip"` () → `ValueError`。"""
     with pytest.raises(ValueError, match="dict"):
         ScheduleJob.from_dict({
             "id": "j",

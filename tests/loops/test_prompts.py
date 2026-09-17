@@ -1,4 +1,4 @@
-"""tests/loops/test_prompts.py — JSON 抽出・契約検証テスト。"""
+"""tests/loops/test_prompts.py — JSON extraction and contract validation."""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -328,7 +328,7 @@ _COMMENT_CLASSIFY_OK = (
     '{"intent": "question", "reason": "ask", "reasoning": "r", "uncertain_flag": false}'
 )
 _COMMENT_REPLY_OK = (
-    '{"reply": "はい、進んでいます", "reasoning": "r", "uncertain_flag": false}'
+    '{"reply": "Yes, making progress", "reasoning": "r", "uncertain_flag": false}'
 )
 
 
@@ -370,7 +370,7 @@ def test_run_reply_comment_parses_llm_result():
         return_value=make_llm_result(stdout=_COMMENT_REPLY_OK),
     ):
         resp, _trace = prompts.run_reply_comment("p", engine="claude", model="m")
-    assert "進んで" in resp.reply
+    assert "progress" in resp.reply
 
 
 _ACTION_SCHEMAS = {

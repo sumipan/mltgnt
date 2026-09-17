@@ -1,4 +1,4 @@
-"""ExecAppenderDispatcher のユニットテスト。"""
+"""Unit tests for ExecAppenderDispatcher."""
 from __future__ import annotations
 
 import json

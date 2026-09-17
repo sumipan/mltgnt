@@ -1,4 +1,4 @@
-"""tests/loops/test_clarify_limit.py — clarify 上限到達時は decomposing へ進む。"""
+"""tests/loops/test_clarify_limit.py — on clarify limit, advance to decomposing."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,7 +38,7 @@ def _engine(tmp_path, channel=None) -> LoopsEngine:
 
 
 def _limit_state(*, clarification_context: list[str] | None = None) -> LoopState:
-    """3 ラウンド回答済み（clarify_round == max）の clarifying 状態。"""
+    """clarifying state after 3 answered rounds (clarify_round == max)."""
     ctx = clarification_context or [
         "Q: q1\nA: a1",
         "Q: q2\nA: a2",
@@ -82,6 +82,7 @@ def test_clarify_limit_transitions_to_decomposing(mock_persona, tmp_path):
     assert state.status == "decomposing"
     assert state.consecutive_errors == 0
     assert len(channel.notifies) == 1
+    # Japanese text intentionally kept for CJK processing test
     assert "仮定" in channel.notifies[0]["text"]
 
     events = store.read_events(_config(tmp_path).state_dir, "loop1")
@@ -93,7 +94,7 @@ def test_clarify_limit_transitions_to_decomposing(mock_persona, tmp_path):
 @patch("mltgnt.loops.engine.load_persona")
 @patch("mltgnt.loops.engine.prompts.run_decompose")
 def test_clarify_limit_notify_and_event_are_idempotent(mock_decompose, mock_persona, tmp_path):
-    """decomposing 遷移後に tick を回しても notify / clarify_limit は増えない。"""
+    """After transitioning to decomposing, further ticks do not add notify / clarify_limit."""
     persona = MagicMock()
     persona.format_prompt.side_effect = lambda x, **_: x
     mock_persona.return_value = persona
@@ -152,12 +153,12 @@ def test_clarify_limit_preserves_clarification_context_for_decompose(
 
     engine.tick()
     assert mock_decompose.called
-    # build_decompose_instruction 経由で context がプロンプトに入る
+    # context enters the prompt via build_decompose_instruction
     prompt_arg = mock_decompose.call_args.args[0] if mock_decompose.call_args.args else (
         mock_decompose.call_args.kwargs.get("prompt")
         or mock_decompose.call_args[0][0]
     )
-    # run_decompose の第1引数は persona 整形後プロンプト
+    # first arg to run_decompose is the persona-formatted prompt
     assert "q1" in prompt_arg and "a3" in prompt_arg
     state = store.load_state(_config(tmp_path).state_dir, "loop1")
     assert state is not None
@@ -167,7 +168,7 @@ def test_clarify_limit_preserves_clarification_context_for_decompose(
 @patch("mltgnt.loops.engine.load_persona")
 @patch("mltgnt.loops.engine.prompts.run_clarify")
 def test_clarify_under_limit_still_asks(mock_clarify, mock_persona, tmp_path):
-    """上限未満では従来どおり質問する（回帰）。"""
+    """Below the limit, still ask questions as before (regression)."""
     persona = MagicMock()
     persona.format_prompt.side_effect = lambda x, **_: x
     mock_persona.return_value = persona
@@ -211,7 +212,7 @@ def test_clarify_under_limit_still_asks(mock_clarify, mock_persona, tmp_path):
 def test_clarify_limit_does_not_increment_consecutive_errors_on_event_failure(
     mock_persona, tmp_path
 ):
-    """clarify_limit のイベント記録失敗でも consecutive_errors は増えない。"""
+    """Failed clarify_limit event recording must not bump consecutive_errors."""
     persona = MagicMock()
     persona.format_prompt.side_effect = lambda x, **_: x
     mock_persona.return_value = persona

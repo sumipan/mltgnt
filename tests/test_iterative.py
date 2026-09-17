@@ -1,28 +1,28 @@
 """
-tests/test_iterative.py — IterativeRetriever と read_memory_iterative() のユニットテスト
+tests/test_iterative.py — IterativeRetriever Home read_memory_iterative() Unit Test
 
-TC1: memory のみで十分な場合、ループ 0 回で結果を返す
-TC2: memory 不十分 → memory 再検索で十分になる場合
-TC3: memory 不十分 → skill 検索で十分になる場合
-TC4: 複数回ループ後に十分になる場合
-TC5: preferences セクションが常に結果に含まれる
-TC6: max_bytes 制限が守られる
-TC7: ループが max_iterations に達した場合、収集済みで打ち切る
-TC8: LLM 呼び出しが例外を投げた場合、初回検索結果にフォールバック
-TC9: skill_paths が空リストの場合
-TC10: LLM 応答のパースに失敗した場合（不正な形式）
-TC11: memory ファイルが空の場合
+TC1: memory Loop only if enough 0 Return results at times
+TC2: memory Close → memory If re-search is sufficient
+TC3: memory Close → skill When searching is sufficient
+TC4: When the loop is sufficient after multiple loops
+TC5: preferences sections are always included in the result
+TC6: max_bytes Restrictions
+TC7: loop max_iterations Collected and punched when reached
+TC8: LLM If the call throws an exception, fallback to the first search result
+TC9: skill_paths empty list
+TC10: LLM If the response fails to parse (invalid format)
+TC11: memory If the file is empty
 
-AC1: read_memory_iterative が動作する
-AC3: from mltgnt.memory._iterative import IterativeRetriever が成功する
-AC4: judge_sufficiency SUFFICIENT → 即座に返る（TC1 で検証済み）
-AC5: INSUFFICIENT → MEMORY 再検索 → SUFFICIENT（TC2 で検証済み）
-AC6: from mltgnt.memory._agentic import AgenticRetriever が ImportError
-AC7: llm_call 例外時に初回検索結果が返る（TC8 で検証済み）
-AC8: JSONL ファイルが空 → 空文字列（TC11 で検証済み）
-AC1 (issue): _iterative.py が mltgnt.skill を直接インポートしない
-AC4 (issue): search_skills コールバック注入で skill 検索が動作する
-AC5 (issue): search_skills=None で SKILL ソース指定時もエラーにならない
+AC1: read_memory_iterative works
+AC3: from mltgnt.memory._iterative import IterativeRetriever 
+AC4: judge_sufficiency SUFFICIENT → Instantly returnTC1 Verified)
+AC5: INSUFFICIENT → MEMORY Search → SUFFICIENT（TC2 Verified)
+AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError
+AC7: llm_call Returns the first search result at an exceptionTC8 Verified)
+AC8: JSONL File empty → empty stringTC11 Verified)
+AC1 (issue): _iterative.py Home mltgnt.skill Do not import directly
+AC4 (issue): search_skills In callback injection skill Search works
+AC5 (issue): search_skills=None Home SKILL Error when specifying source
 """
 from __future__ import annotations
 
@@ -54,18 +54,18 @@ def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
 
 
 MEMORY_SUSHI = (
-    json.dumps({"timestamp": "2026-01-01T00:00:00+09:00", "role": "user", "content": "食べ物の好みを持つユーザー。", "source_tag": "preferences"}, ensure_ascii=False) + "\n"
-    + json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "寿司が好き。特にサーモンとマグロが好きだと言っていた。", "source_tag": "file"}, ensure_ascii=False) + "\n"
+    json.dumps({"timestamp": "2026-01-01T00:00:00+09:00", "role": "user", "content": "A user with food preferences.", "source_tag": "preferences"}, ensure_ascii=False) + "\n"
+    + json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "I like sushi. I like salmon and tuna.", "source_tag": "file"}, ensure_ascii=False) + "\n"
 )
 
 MEMORY_PROJECT = (
-    json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "フロントエンドのバグ修正を完了した。", "source_tag": "file"}, ensure_ascii=False) + "\n"
-    + json.dumps({"timestamp": "2026-01-02T10:00:00+09:00", "role": "user", "content": "バックエンドの API 設計を始めた。先週のプロジェクト進捗について議論した。", "source_tag": "file"}, ensure_ascii=False) + "\n"
+    json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "Finished fixing a frontend bug.", "source_tag": "file"}, ensure_ascii=False) + "\n"
+    + json.dumps({"timestamp": "2026-01-02T10:00:00+09:00", "role": "user", "content": "Backend API Started design. I discussed the project progress last week.", "source_tag": "file"}, ensure_ascii=False) + "\n"
 )
 
 
 def _make_llm_responses(*responses: str):
-    """順に応答を返す llm_call を作成する"""
+    """Returns a response in order llm_call Create"""
     it = iter(responses)
     def llm_call(_prompt: str) -> str:
         return next(it)
@@ -73,17 +73,17 @@ def _make_llm_responses(*responses: str):
 
 
 # ---------------------------------------------------------------------------
-# AC3: IterativeRetriever の import 確認
+# AC3: IterativeRetriever Home import ation
 # ---------------------------------------------------------------------------
 
 
 def test_ac3_import_iterative_retriever() -> None:
-    """AC3: from mltgnt.memory._iterative import IterativeRetriever が成功する。"""
+    """AC3: from mltgnt.memory._iterative import IterativeRetriever success."""
     assert IterativeRetriever is not None
 
 
 def test_issue_ac1_no_skill_import_in_iterative() -> None:
-    """AC1: _iterative.py が mltgnt.skill を直接インポートしない。"""
+    """AC1: _iterative.py Home mltgnt.skill Do not import directly."""
     import mltgnt.memory._iterative as iterative_mod
 
     source_path = Path(iterative_mod.__file__)
@@ -93,7 +93,7 @@ def test_issue_ac1_no_skill_import_in_iterative() -> None:
 
 
 def test_issue_ac4_callback_injection(tmp_path: Path) -> None:
-    """AC4: search_skills コールバック経由で skill 検索結果がマージされる。"""
+    """AC4: search_skills via callback skill Search results are merged."""
     config = make_config(tmp_path)
     _write_memory(
         config,
@@ -102,7 +102,7 @@ def test_issue_ac4_callback_injection(tmp_path: Path) -> None:
             {
                 "timestamp": "2026-01-01T10:00:00+09:00",
                 "role": "user",
-                "content": "一般情報のみ。",
+                "content": "General info only.",
                 "source_tag": "file",
             },
             ensure_ascii=False,
@@ -111,29 +111,29 @@ def test_issue_ac4_callback_injection(tmp_path: Path) -> None:
     )
 
     def search_skills(_query: str, _max_entries: int) -> list[ScoredEntry]:
-        return [ScoredEntry(text="デプロイ手順", score=1.0)]
+        return [ScoredEntry(text="deploy procedure", score=1.0)]
 
     retriever = IterativeRetriever(
         config=config,
         persona_stem="persona",
         llm_call=_make_llm_responses(
-            "INSUFFICIENT\nSKILL\nデプロイ",
+            "INSUFFICIENT\nSKILL\ndeploy",
             "SUFFICIENT",
         ),
         search_skills=search_skills,
     )
 
     result = retriever.retrieve(
-        "デプロイ手順を教えて",
+        "Tell me the deployment procedure",
         max_bytes=4096,
         max_entries=5,
     )
 
-    assert "デプロイ" in result
+    assert "deploy" in result
 
 
 def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
-    """AC5: search_skills=None、LLM が SKILL ソース指定 → 空リストでループ継続。"""
+    """AC5: search_skills=None、LLM Home SKILL Source specification → Loop co ation in empty list."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
@@ -141,14 +141,14 @@ def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
         config=config,
         persona_stem="persona",
         llm_call=_make_llm_responses(
-            "INSUFFICIENT\nSKILL\nデプロイ",
+            "INSUFFICIENT\nSKILL\ndeploy",
             "SUFFICIENT",
         ),
         search_skills=None,
     )
 
     result = retriever.retrieve(
-        "デプロイ手順",
+        "deploy procedure",
         max_bytes=4096,
         max_entries=5,
     )
@@ -157,23 +157,23 @@ def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC6: AgenticRetriever が存在しない（ImportError）
+# AC6: AgenticRetriever NoneImportError）
 # ---------------------------------------------------------------------------
 
 
 def test_ac6_agentic_retriever_import_error() -> None:
-    """AC6: from mltgnt.memory._agentic import AgenticRetriever が ImportError。"""
+    """AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError。"""
     with pytest.raises(ImportError):
         from mltgnt.memory._agentic import AgenticRetriever  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
-# TC1: memory のみで十分な場合
+# TC1: memory Only enough
 # ---------------------------------------------------------------------------
 
 
 def test_tc1_memory_sufficient(tmp_path: Path) -> None:
-    """TC1: LLM が SUFFICIENT を返す場合、ループ 0 回で結果を返す。"""
+    """TC1: LLM Home SUFFICIENT loop if 0 Returns results at times."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
@@ -187,154 +187,155 @@ def test_tc1_memory_sufficient(tmp_path: Path) -> None:
     result = read_memory_iterative(
         config,
         "persona",
-        "好きな食べ物は？",
+        "What food do you like?",
         max_bytes=4096,
         max_entries=5,
         llm_call=llm_call,
     )
 
-    assert "寿司が好き" in result
-    assert call_count == 1  # 1回判定されたら終了
+    assert "I like sushi" in result
+    assert call_count == 1  # 1Ends once it is determined
 
 
 # ---------------------------------------------------------------------------
-# TC2: memory 不十分 → memory 再検索で十分になる場合
+# TC2: memory Close → memory If re-search is sufficient
 # ---------------------------------------------------------------------------
 
 
 def test_tc2_memory_requery(tmp_path: Path) -> None:
-    """TC2: INSUFFICIENT→MEMORY→再検索クエリ、2回目 SUFFICIENT。"""
+    """TC2: INSUFFICIENT→MEMORY→re-search query,2 SUFFICIENT。"""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
     llm_call = _make_llm_responses(
-        "INSUFFICIENT\nMEMORY\n先週のプロジェクト進捗",
+        "INSUFFICIENT\nMEMORY\nLast week's project progress",
         "SUFFICIENT",
     )
 
     result = read_memory_iterative(
         config,
         "persona",
-        "先週のプロジェクト進捗は？",
+        "What is the project progress last week?",
         max_bytes=4096,
         max_entries=5,
         llm_call=llm_call,
     )
 
-    # 両方のエントリが含まれる（重複なし）
-    assert "フロントエンド" in result or "バックエンド" in result
+    # Both entries included (no duplicates)
+    assert "Front End" in result or "Backend" in result
 
 
 # ---------------------------------------------------------------------------
-# TC3: memory 不十分 → skill 検索で十分になる場合
+# TC3: memory Close → skill When searching is sufficient
 # ---------------------------------------------------------------------------
 
 
 def test_tc3_skill_search(tmp_path: Path) -> None:
-    """TC3: INSUFFICIENT→SKILL→skill 本文がマージされる。"""
+    """TC3: INSUFFICIENT→SKILL→skill The body is merged."""
     config = make_config(tmp_path)
-    _write_memory(config, "persona", json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "一般情報のみ。", "source_tag": "file"}, ensure_ascii=False) + "\n")
+    _write_memory(config, "persona", json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "General info only.", "source_tag": "file"}, ensure_ascii=False) + "\n")
 
-    # skill ディレクトリと SKILL.md を作成
+    # skill directory SKILL.md Create
     skill_dir = tmp_path / "skills"
     deploy_skill = skill_dir / "deploy"
     deploy_skill.mkdir(parents=True)
     (deploy_skill / "SKILL.md").write_text(
         textwrap.dedent("""            ---
             name: deploy
-            description: デプロイ手順を実行するスキル
+            description: Steps to perform the deployment procedure
             ---
-            デプロイ手順: git push → CI/CD → 本番適用
+            deploy procedure: git push → CI/CD → Application
         """),
         encoding="utf-8",
     )
 
     llm_call = _make_llm_responses(
-        "INSUFFICIENT\nSKILL\nデプロイ",
+        "INSUFFICIENT\nSKILL\ndeploy",
         "SUFFICIENT",
     )
 
     result = read_memory_iterative(
         config,
         "persona",
-        "デプロイ手順を教えて",
+        "Tell me the deployment procedure",
         max_bytes=4096,
         max_entries=5,
         llm_call=llm_call,
         skill_paths=[skill_dir],
     )
 
-    assert "デプロイ" in result
+    assert "deploy" in result
 
 
 # ---------------------------------------------------------------------------
-# TC4: 複数回ループ後に十分になる場合
+# TC4: When the loop is sufficient after multiple loops
 # ---------------------------------------------------------------------------
 
 
 def test_tc4_multi_loop(tmp_path: Path) -> None:
-    """TC4: 2回ループ後 SUFFICIENT、各エントリがマージされている。"""
+    """TC4: 2After looping SUFFICIENTEach entry is merged."""
     config = make_config(tmp_path)
     _write_memory(
         config,
         "persona",
-        json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "エントリA: 最初の情報。", "source_tag": "file"}, ensure_ascii=False) + "\n"
-        + json.dumps({"timestamp": "2026-01-02T10:00:00+09:00", "role": "user", "content": "エントリB: 追加の情報。", "source_tag": "file"}, ensure_ascii=False) + "\n"
-        + json.dumps({"timestamp": "2026-01-03T10:00:00+09:00", "role": "user", "content": "エントリC: さらなる情報。", "source_tag": "file"}, ensure_ascii=False) + "\n",
+        json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "A: First information.", "source_tag": "file"}, ensure_ascii=False) + "\n"
+        + json.dumps({"timestamp": "2026-01-02T10:00:00+09:00", "role": "user", "content": "B: Additional information.", "source_tag": "file"}, ensure_ascii=False) + "\n"
+        + json.dumps({"timestamp": "2026-01-03T10:00:00+09:00", "role": "user", "content": "C: More information.", "source_tag": "file"}, ensure_ascii=False) + "\n",
     )
 
     llm_call = _make_llm_responses(
-        "INSUFFICIENT\nMEMORY\n追加の情報",
-        "INSUFFICIENT\nMEMORY\nさらなる情報",
+        "INSUFFICIENT\nMEMORY\nAdditional information",
+        "INSUFFICIENT\nMEMORY\nMore information",
         "SUFFICIENT",
     )
 
     result = read_memory_iterative(
         config,
         "persona",
-        "複合的な質問",
+        "Questions",
         max_bytes=4096,
         max_entries=5,
         llm_call=llm_call,
         max_iterations=3,
     )
 
-    assert result  # 何らかの結果が返る
+    assert result  # Returns some results
 
 
 # ---------------------------------------------------------------------------
-# TC5: preferences セクションが常に結果に含まれる
+# TC5: preferences sections are always included in the result
 # ---------------------------------------------------------------------------
 
 
 def test_tc5_preferences_always_included(tmp_path: Path) -> None:
-    """TC5: 任意の query で preferences セクションが先頭に含まれる。"""
+    """TC5: Any query Home preferences The section is included at the top."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
     result = read_memory_iterative(
         config,
         "persona",
-        "何でも",
+        "All",
         max_bytes=4096,
         max_entries=5,
         llm_call=lambda _: "SUFFICIENT",
     )
 
+    # Japanese text intentionally kept for CJK processing test
     assert "ユーザーの好み・傾向" in result
-    assert "食べ物の好みを持つユーザー" in result
+    assert "A user with food preferences" in result
 
 
 # ---------------------------------------------------------------------------
-# TC6: max_bytes 制限が守られる
+# TC6: max_bytes Restrictions
 # ---------------------------------------------------------------------------
 
 
 def test_tc6_max_bytes_limit(tmp_path: Path) -> None:
-    """TC6: 返却テキストが max_bytes 以内。"""
+    """TC6: Return text max_bytes Contact Us"""
     config = make_config(tmp_path)
     big_memory = "".join(
-        json.dumps({"timestamp": f"2026-01-{i+1:02d}T10:00:00+09:00", "role": "user", "content": "あ" * 200, "source_tag": "file"}, ensure_ascii=False) + "\n"
+        json.dumps({"timestamp": f"2026-01-{i+1:02d}T10:00:00+09:00", "role": "user", "content": "a" * 200, "source_tag": "file"}, ensure_ascii=False) + "\n"
         for i in range(10)
     )
     _write_memory(config, "persona", big_memory)
@@ -343,7 +344,7 @@ def test_tc6_max_bytes_limit(tmp_path: Path) -> None:
     result = read_memory_iterative(
         config,
         "persona",
-        "テスト",
+        "test",
         max_bytes=max_bytes,
         max_entries=10,
         llm_call=lambda _: "SUFFICIENT",
@@ -353,12 +354,12 @@ def test_tc6_max_bytes_limit(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC7: max_iterations に達した場合
+# TC7: max_iterations When reaches
 # ---------------------------------------------------------------------------
 
 
 def test_tc7_max_iterations_reached(tmp_path: Path) -> None:
-    """TC7: LLM が常に INSUFFICIENT を返す場合、max_iterations 後に打ち切ってエラーにならない。"""
+    """TC7: LLM always INSUFFICIENT ifmax_iterations Then, the error occurred."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
@@ -367,29 +368,29 @@ def test_tc7_max_iterations_reached(tmp_path: Path) -> None:
     def always_insufficient(_prompt: str) -> str:
         nonlocal call_count
         call_count += 1
-        return "INSUFFICIENT\nMEMORY\n追加クエリ"
+        return "INSUFFICIENT\nMEMORY\nAdditional queries"
 
     result = read_memory_iterative(
         config,
         "persona",
-        "テスト",
+        "test",
         max_bytes=4096,
         max_entries=5,
         llm_call=always_insufficient,
         max_iterations=3,
     )
 
-    assert call_count == 3  # max_iterations 回呼ばれて打ち切り
-    assert isinstance(result, str)  # エラーにならない
+    assert call_count == 3  # max_iterations called round
+    assert isinstance(result, str)  # Error
 
 
 # ---------------------------------------------------------------------------
-# TC8: LLM 例外の場合、初回検索結果にフォールバック
+# TC8: LLM In the case of an exception, fallback to the first search result
 # ---------------------------------------------------------------------------
 
 
 def test_tc8_llm_exception_fallback(tmp_path: Path, caplog) -> None:
-    """TC8: llm_call が RuntimeError を raise → warning ログ、初回結果が返る。"""
+    """TC8: llm_call Home RuntimeError Home raise → warning Logs and initial results are returned."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
@@ -400,7 +401,7 @@ def test_tc8_llm_exception_fallback(tmp_path: Path, caplog) -> None:
         result = read_memory_iterative(
             config,
             "persona",
-            "好きな食べ物は？",
+            "What food do you like?",
             max_bytes=4096,
             max_entries=5,
             llm_call=failing_llm,
@@ -408,30 +409,30 @@ def test_tc8_llm_exception_fallback(tmp_path: Path, caplog) -> None:
 
     assert isinstance(result, str)
     assert any("failed" in r.message.lower() or "llm" in r.message.lower() for r in caplog.records)
-    # 初回 memory 検索の結果が返る
-    assert "寿司が好き" in result
+    # First time memory Returns search results
+    assert "I like sushi" in result
 
 
 # ---------------------------------------------------------------------------
-# TC9: skill_paths が空リストの場合
+# TC9: skill_paths empty list
 # ---------------------------------------------------------------------------
 
 
 def test_tc9_empty_skill_paths(tmp_path: Path) -> None:
-    """TC9: skill_paths=[], LLM が SKILL ソースを指定 → skill 検索結果が空、ループ継続。"""
+    """TC9: skill_paths=[], LLM Home SKILL Sauce → skill Search result is empty and loop continues."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
     llm_call = _make_llm_responses(
-        "INSUFFICIENT\nSKILL\nデプロイ",
+        "INSUFFICIENT\nSKILL\ndeploy",
         "SUFFICIENT",
     )
 
-    # エラーにならず結果が返ること
+    # Returns results without errors
     result = read_memory_iterative(
         config,
         "persona",
-        "デプロイ手順",
+        "deploy procedure",
         max_bytes=4096,
         max_entries=5,
         llm_call=llm_call,
@@ -442,12 +443,12 @@ def test_tc9_empty_skill_paths(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC10: LLM 応答のパースに失敗した場合
+# TC10: LLM Failed to parse the response
 # ---------------------------------------------------------------------------
 
 
 def test_tc10_parse_failure(tmp_path: Path, caplog) -> None:
-    """TC10: LLM が想定外の形式を返す → sufficient=True として扱い、収集済みエントリを返す。"""
+    """TC10: LLM returns an unexpected format → sufficient=True Handles and returns collected entries."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
@@ -455,7 +456,7 @@ def test_tc10_parse_failure(tmp_path: Path, caplog) -> None:
         result = read_memory_iterative(
             config,
             "persona",
-            "テスト",
+            "test",
             max_bytes=4096,
             max_entries=5,
             llm_call=lambda _: "INVALID_FORMAT_XYZ",
@@ -469,26 +470,26 @@ def test_tc10_parse_failure(tmp_path: Path, caplog) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC11: memory ファイルが空の場合
+# TC11: memory If the file is empty
 # ---------------------------------------------------------------------------
 
 
 def test_tc11_empty_memory(tmp_path: Path) -> None:
-    """TC11: memory ファイルが存在しない → 空文字列 or preferences のみ、エラーにならない。"""
+    """TC11: memory No files → empty string or preferences error only."""
     config = make_config(tmp_path)
-    # memory ファイルを作成しない
+    # memory Not
 
     result = read_memory_iterative(
         config,
         "nonexistent",
-        "テスト",
+        "test",
         max_bytes=4096,
         max_entries=5,
         llm_call=lambda _: "SUFFICIENT",
     )
 
     assert isinstance(result, str)
-    # エラーにならない
+    # Error
 
 
 # ---------------------------------------------------------------------------
@@ -497,7 +498,7 @@ def test_tc11_empty_memory(tmp_path: Path) -> None:
 
 
 def test_retrieve_skills_calls_callback(tmp_path: Path) -> None:
-    """retrieve_skills は search_skills コールバックのみ呼び出す。"""
+    """retrieve_skills Home search_skills Callback only."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
@@ -505,7 +506,7 @@ def test_retrieve_skills_calls_callback(tmp_path: Path) -> None:
 
     def search_skills(query: str, max_entries: int) -> list[ScoredEntry]:
         calls.append((query, max_entries))
-        return [ScoredEntry(text="日記を書く手順", score=0.9)]
+        return [ScoredEntry(text="how to write a diary", score=0.9)]
 
     retriever = IterativeRetriever(
         config=config,
@@ -514,16 +515,16 @@ def test_retrieve_skills_calls_callback(tmp_path: Path) -> None:
         search_skills=search_skills,
     )
 
-    result = retriever.retrieve_skills("日記を書く", max_entries=5)
+    result = retriever.retrieve_skills("write a diary", max_entries=5)
 
     assert len(calls) == 1
-    assert calls[0] == ("日記を書く", 5)
+    assert calls[0] == ("write a diary", 5)
     assert len(result) == 1
-    assert result[0].text == "日記を書く手順"
+    assert result[0].text == "how to write a diary"
 
 
 def test_retrieve_skills_none_returns_empty(tmp_path: Path) -> None:
-    """search_skills=None の場合、retrieve_skills は空リストを返す。"""
+    """search_skills=None Forretrieve_skills empty list."""
     config = make_config(tmp_path)
     retriever = IterativeRetriever(
         config=config,
@@ -532,13 +533,13 @@ def test_retrieve_skills_none_returns_empty(tmp_path: Path) -> None:
         search_skills=None,
     )
 
-    result = retriever.retrieve_skills("日記を書く", max_entries=5)
+    result = retriever.retrieve_skills("write a diary", max_entries=5)
 
     assert result == []
 
 
 def test_retrieve_skills_does_not_search_memory(tmp_path: Path) -> None:
-    """retrieve_skills は memory ソースを検索しない。"""
+    """retrieve_skills Home memory Do not search the source."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
@@ -559,7 +560,7 @@ def test_retrieve_skills_does_not_search_memory(tmp_path: Path) -> None:
     )
 
     with patch.object(IterativeRetriever, "_search_memory", tracking_search_memory):
-        result = retriever.retrieve_skills("寿司", max_entries=5)
+        result = retriever.retrieve_skills("sushi", max_entries=5)
 
     assert memory_searched is False
     assert result[0].text == "skill only"

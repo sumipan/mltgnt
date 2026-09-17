@@ -52,19 +52,19 @@ def test_analyze_failures_classifies_and_aggregates_patterns(tmp_path):
             "event_type": "task_failed",
             "correlation_id": "agent:skill-1",
             "skill": "system-improve-agents",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "timestamp": "2026-05-24T09:00:00+09:00",
         },
         {
             "event_type": "task_failed",
             "correlation_id": "agent:quality-1",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "timestamp": "2026-05-25T09:00:00+09:00",
         },
         {
             "event_type": "task_failed",
             "correlation_id": "agent:quality-1",
-            "persona": "タチコマ",
+            "persona": "persona-a",
             "timestamp": "2026-05-25T09:10:00+09:00",
         },
     ]

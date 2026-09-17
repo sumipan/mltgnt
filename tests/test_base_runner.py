@@ -1,4 +1,4 @@
-"""BaseRunner ABC の単体テスト。"""
+"""Unit tests for the BaseRunner ABC."""
 from __future__ import annotations
 
 import pytest

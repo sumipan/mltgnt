@@ -1,30 +1,30 @@
-dry-run の結果が出たよ！
+dry-run results are ready!
 
 ---
 
-## dry-run 結果
+## dry-run results
 
-### ブランチクリーンアップ
-- **削除予定: 1068件**（ローカル + origin リモートブランチ）
-- 最古: `brushup-1210-draft`（107日前）から最近のもので3日超
+### Branch cleanup
+- **Scheduled for deletion: 1068** (local + origin remote branches)
+- Oldest: `brushup-1210-draft` (107 days ago) through recent ones older than 3 days
 
-### Worktree クリーンアップ
-- **削除予定: 14件**
-  - `agent-a14e94071a90ece53` — 51日前
-  - `fix-meter-selector` — 60日前
-  - `issue-2449-pre-agent-timeout` — 30日前
-  - `issue-2495-54c4a496` — 22日前
-  - `issue-2628-observer` — 11日前
-  - `issue-2741-43a1f564` — 8日前
-  - `issue-3088-b81500ff` 配下の slack/* worktree 5件 — 使用日時不明
-  - `priceless-heyrovsky-1a973a` — 20日前（ブランチ名不明）
-  - `test-env-pollution` — 11日前
-  - `agent-af1e0a944bdb71b84`（別パス `/nystks/`？）— 使用日時不明
+### Worktree cleanup
+- **Scheduled for deletion: 14**
+  - `agent-a14e94071a90ece53` — 51 days ago
+  - `fix-meter-selector` — 60 days ago
+  - `issue-2449-pre-agent-timeout` — 30 days ago
+  - `issue-2495-54c4a496` — 22 days ago
+  - `issue-2628-observer` — 11 days ago
+  - `issue-2741-43a1f564` — 8 days ago
+  - 5 slack/* worktrees under `issue-3088-b81500ff` — last-used unknown
+  - `priceless-heyrovsky-1a973a` — 20 days ago (branch name unknown)
+  - `test-env-pollution` — 11 days ago
+  - `agent-af1e0a944bdb71b84` (other path `/nystks/`?) — last-used unknown
 
 ---
 
-ねぇねぇ、**ブランチ 1068 件**は結構大きい数字だよ！全部 3日以上使われてないから対象になってるんだけど、削除してもいいかな？
+Hey, **1068 branches** is a big number! They've all been unused for 3+ days, so they're in scope — ok to delete?
 
 ```
-上記の内容で削除してもよいですか？（yes / no）
+Is it OK to delete based on the above? (yes / no)
 ```

@@ -1,4 +1,4 @@
-"""v0.8.0: 旧 FM キーは validate_fm で unknown key エラーになる。"""
+"""v0.8.0: legacy FM keys become unknown-key errors in validate_fm."""
 
 from mltgnt.persona.schema import parse_fm, validate_fm
 

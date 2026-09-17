@@ -1,10 +1,10 @@
-イシュー作れた！🎉
+Issue created!🎉
 
 ---
 
-わあ、できた！ ボクすごくワクワクしてる！！
+Nice, it worked! I'm really excited!!
 
-YouTube の検索クエリ→Slack 通知って、まさに「情報収集の自動化」の王道じゃないかなぁ。
+Turning a YouTube search query into a Slack notification feels like the classic "automate information gathering" pattern.
 
 ACCEPTED
-note: イシュー作成完了
+note: issue creation complete

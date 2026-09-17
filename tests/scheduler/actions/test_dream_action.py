@@ -1,4 +1,4 @@
-"""tests/scheduler/actions/test_dream_action.py — memory_dream アクションのテスト。"""
+"""tests/scheduler/actions/test_dream_action.py — memory_dream action tests."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,7 +43,7 @@ def _setup_persona_with_jsonl(agents_dir: Path, persona: str) -> Path:
 
 
 def _text_result(body: str):
-    """ghdag.llm.TextResult 相当（body のみ参照される）。"""
+    """Stand-in for ghdag.llm.TextResult (only body is read)."""
     return type("R", (), {"body": body, "success": True, "stderr": "", "returncode": 0})()
 
 
@@ -53,12 +53,14 @@ def test_run_dream_action_success(tmp_path: Path) -> None:
     config = _memory_config(tmp_path)
     job = _dream_job()
 
-    llm_response = _text_result("## 行動パターン\n朝型\n\n## 好み・傾向\n簡潔")
+    # Japanese text intentionally kept for CJK processing test
+    llm_response = _text_result("## 行動パターン\nmorning person\n\n## 好み・傾向\nconcise")
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=llm_response):
         ok, msg = run_dream_action(job, persona_dir=persona_dir, memory_config=config)
 
     assert ok is True
+    # Japanese text intentionally kept for CJK processing test
     assert "合成しました" in msg
     loaded = read_dream(persona_dir)
     assert loaded is not None
@@ -104,12 +106,14 @@ def test_memory_dream_registered_and_fires(tmp_path: Path) -> None:
         memory_config=config,
     )
     job = _dream_job()
+    # Japanese text intentionally kept for CJK processing test
     llm_response = _text_result("## 行動パターン\npattern\n\n## 好み・傾向\npref")
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=llm_response):
         ok, msg = sch.execute_action(job)
 
     assert ok is True
+    # Japanese text intentionally kept for CJK processing test
     assert "合成しました" in msg
 
 

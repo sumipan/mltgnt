@@ -1,4 +1,4 @@
-"""KPI 計算のユニットテスト。"""
+"""Unit tests for KPI computation."""
 from __future__ import annotations
 
 import json
