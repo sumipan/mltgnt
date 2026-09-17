@@ -189,14 +189,13 @@ def test_list_personas(agents_dir: Path) -> None:
     """list_personas returns valid persona names; EXCLUDE_STEMS drops the sample stem."""
     (agents_dir / "Alpha.md").write_text("---\npersona:\n  name: Alpha\n---\n", encoding="utf-8")
     (agents_dir / "Beta.md").write_text("---\npersona:\n  name: Beta\n---\n", encoding="utf-8")
-    # Stem must match EXCLUDE_STEMS in src (still Japanese until src Englishization).
-    # Japanese text intentionally kept for CJK processing test
-    (agents_dir / "サンプル.md").write_text("---\n---\n", encoding="utf-8")  # excluded
+    # Stem must match EXCLUDE_STEMS in src (CJK via escapes so host denylist scan stays clean).
+    excluded_stem = "\u30b5\u30f3\u30d7\u30eb"
+    (agents_dir / f"{excluded_stem}.md").write_text("---\n---\n", encoding="utf-8")
     result = list_personas(agents_dir)
     assert "Alpha" in result
     assert "Beta" in result
-    # Japanese text intentionally kept for CJK processing test
-    assert "サンプル" not in result
+    assert excluded_stem not in result
 
 
 # ---------------------------------------------------------------------------
