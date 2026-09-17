@@ -5,6 +5,7 @@
 
 ### Removed
 
+- `tools/`（`mltgnt_fugu` 試作パッケージ）と `tests/tools/` を削除。`tools/lint-boundary.sh` は `scripts/lint-boundary.sh` へ移動（CI の boundary policy lint は維持）
 - `docs/`（日本語ドキュメント `MLTGNT.md` / `improvement_hub.md`）を削除。設計文書は nexus 側 `docs/MLTGNT.md` に一本化
 - **未使用モジュール削除**（#3321 / #3301 サブ6）: `mltgnt.loops` / `mltgnt.ooda` / `mltgnt.improvement` / `mltgnt.kpi` / `mltgnt.chat` / `mltgnt.execution` を削除。併せて `mltgnt.interfaces.loops` / `ooda` / `chat`（および ooda 専用の `dispatch`）と `LoopsConfig` / `ChatConfig` / トップレベル `run_pipeline` を削除。`BaseRunner` は `mltgnt.scheduler.base_runner` へ移設。loops 専用の `enqueue_step` / `poll_step` も撤去
 
