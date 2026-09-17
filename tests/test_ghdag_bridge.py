@@ -4,7 +4,7 @@ Coverage:
   - _extract_result_filename(): JSON Type / Text format / Fallback
   - _order_to_result_filename(): Standard text exec line
   - enqueue_and_wait() : exec.jsonl All lines to write valid JSON
-  - enqueue_and_wait() Read results: ghdag.files.md_read via result 
+  - enqueue_and_wait() Read results: ghdag.files.md_read via result
 """
 from __future__ import annotations
 
@@ -786,7 +786,7 @@ class TestEnqueueDag:
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         assert len(lines) == 2, f"line count grew after idempotency check: {len(lines)} lines"
 
-        # 2calls [(True, ""), (True, "")] 
+        # 2calls [(True, ""), (True, "")]
         with patch(_WAIT, return_value=("success", "")):
             second_result = enqueue_dag(
                 steps=steps,

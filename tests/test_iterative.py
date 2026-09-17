@@ -14,7 +14,7 @@ TC10: LLM If the response fails to parse (invalid format)
 TC11: memory If the file is empty
 
 AC1: read_memory_iterative works
-AC3: from mltgnt.memory._iterative import IterativeRetriever 
+AC3: from mltgnt.memory._iterative import IterativeRetriever
 AC4: judge_sufficiency SUFFICIENT → Instantly returnTC1 Verified)
 AC5: INSUFFICIENT → MEMORY Search → SUFFICIENT（TC2 Verified)
 AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError

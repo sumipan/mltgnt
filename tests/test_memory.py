@@ -553,7 +553,7 @@ def _make_compact_entries(
     *,
     compact_threshold: int = 10,
 ) -> tuple[MemoryConfig, str]:
-    """compact Test JSONL Contact Us (config, persona) 
+    """compact Test JSONL Contact Us (config, persona)
 
     per-section cap ContactIssue #1135long-term section cap Oversize
     rate entries.compact_target_bytes=4096、long_term_cap=1024（25%）。

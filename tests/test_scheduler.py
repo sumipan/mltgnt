@@ -34,7 +34,7 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
 
 
 # ---------------------------------------------------------------------------
-# AC-3: YAML 
+# AC-3: YAML
 # ---------------------------------------------------------------------------
 
 def test_from_dict_valid_scheduled() -> None:
@@ -792,7 +792,7 @@ def test_ac3_command_success_posts_when_msg_present(tmp_path: Path) -> None:
     sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     sch.reload_jobs()
 
-    # Base class command Since the action is not implemented execute_action 
+    # Base class command Since the action is not implemented execute_action
     with patch.object(sch, "execute_action", return_value=(True, "stdout output")):
         with patch.object(sch, "_post", wraps=sch._post) as mock_post:
             sch._spawn_job(job, date(2026, 4, 23))
@@ -1016,7 +1016,7 @@ def test_slack_none_post_does_not_raise(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Issue #923: SlackClientProtocol **kwargs  / SkillLoaderProtocol 
+# Issue #923: SlackClientProtocol **kwargs  / SkillLoaderProtocol
 # ---------------------------------------------------------------------------
 
 def test_slack_client_protocol_import() -> None:

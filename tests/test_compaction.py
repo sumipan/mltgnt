@@ -546,7 +546,7 @@ class TestCompactPerSectionCap:
         path = tmp_path / "test_persona.jsonl"
 
         # long_term_cap = 25600 * 0.25 = 6400 bytes
-        # place content exceeding this value into  long_term 
+        # place content exceeding this value into  long_term
         long_content = "L" * 7000  # 7KB > 6.4KB cap
         entries = [
             self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
