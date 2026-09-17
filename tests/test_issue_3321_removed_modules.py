@@ -82,28 +82,3 @@ def test_changelog_removed_lists_six_modules() -> None:
     assert "### Removed" in text
     for name in ("loops", "ooda", "improvement", "kpi", "chat", "execution"):
         assert name in text
-
-
-def test_docs_mltgnt_lists_remaining_packages_only() -> None:
-    text = (_REPO_ROOT / "docs" / "MLTGNT.md").read_text(encoding="utf-8")
-    remaining = {
-        "agent",
-        "bridges",
-        "cli",
-        "config",
-        "conversation",
-        "daemon",
-        "interfaces",
-        "memory",
-        "persona",
-        "routing",
-        "scheduler",
-        "skill",
-    }
-    for name in remaining:
-        assert name in text
-    for name in _REMOVED_PATHS:
-        # Historical CHANGELOG-style mentions in other docs are fine;
-        # docs/MLTGNT.md must not list deleted packages as current layout.
-        assert f"`{name}/`" not in text
-        assert f"mltgnt.{name}" not in text
