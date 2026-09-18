@@ -15,7 +15,7 @@
 
 ### Security
 
-- **Remove host persona names from source and tests**（#3337）: `format_persona_body` の口調カットを固有名リテラルから汎用パターン（`\\n\\n\\S+口調の本文は`）へ変更。テストデータの固有名を合成名に置換
+- **test: normalize fixtures**（#3337）: Changed tone-cut in `format_persona_body` from a name-specific literal to a generic pattern. Replaced name-specific test data with synthetic identifiers.
 
 ### Added
 

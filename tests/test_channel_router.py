@@ -27,10 +27,9 @@ def _make_map(*entries: ChannelPersonaEntry) -> dict[str, list[ChannelPersonaEnt
     return {CHANNEL: list(entries)}
 
 
-# Japanese text intentionally kept for CJK processing test
-PERSONA_A = ChannelPersonaEntry(name="persona-a", role="primary", nickname="アキ")
-PERSONA_B = ChannelPersonaEntry(name="persona-b", role="secondary", nickname="ユキ")
-PERSONA_C = ChannelPersonaEntry(name="persona-c", role="secondary", nickname="ハル")
+PERSONA_A = ChannelPersonaEntry(name="persona-a", role="primary", nickname="aki")
+PERSONA_B = ChannelPersonaEntry(name="persona-b", role="secondary", nickname="yuki")
+PERSONA_C = ChannelPersonaEntry(name="persona-c", role="secondary", nickname="haru")
 
 CHANNEL_MAP_MULTI = _make_map(PERSONA_A, PERSONA_B, PERSONA_C)
 CHANNEL_MAP_PRIMARY_ONLY = _make_map(PERSONA_A)
@@ -41,14 +40,12 @@ CHANNEL_MAP_PRIMARY_ONLY = _make_map(PERSONA_A)
 # ---------------------------------------------------------------------------
 
 def test_detect_nickname_match():
-    # Japanese text intentionally kept for CJK processing test
-    result = detect_nickname("アキお願い", [PERSONA_A, PERSONA_B])
+    result = detect_nickname("aki please", [PERSONA_A, PERSONA_B])
     assert result == "persona-a"
 
 
 def test_detect_nickname_first_wins():
-    # Japanese text intentionally kept for CJK processing test
-    result = detect_nickname("アキユキ", [PERSONA_A, PERSONA_B])
+    result = detect_nickname("akiyuki", [PERSONA_A, PERSONA_B])
     assert result == "persona-a"
 
 
@@ -63,8 +60,7 @@ def test_detect_nickname_empty_text():
 
 
 def test_detect_nickname_empty_entries():
-    # Japanese text intentionally kept for CJK processing test
-    result = detect_nickname("アキ", [])
+    result = detect_nickname("aki", [])
     assert result is None
 
 
@@ -105,10 +101,9 @@ def test_find_observers_single_responder_returns_empty():
 def test_nickname_overrides_thread_fixed():
     thread_ts = "1000.0000"
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-a"}
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_responding_persona(
         channel=CHANNEL,
-        text="ユキ、look into this",
+        text="yuki, look into this",
         thread_ts=thread_ts,
         channel_map=CHANNEL_MAP_MULTI,
         thread_persona_map=thread_persona_map,
@@ -143,10 +138,9 @@ def test_nickname_switch_updates_fixed():
 
 
 def test_new_thread_nickname():
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_responding_persona(
         channel=CHANNEL,
-        text="ハル、please check",
+        text="haru, please check",
         thread_ts="2000.0000",
         channel_map=CHANNEL_MAP_MULTI,
         thread_persona_map={},
@@ -168,10 +162,9 @@ def test_new_thread_primary_fallback():
 def test_unknown_nickname_fallback():
     thread_ts = "3000.0000"
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-a"}
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_responding_persona(
         channel=CHANNEL,
-        text="ガチコマ、よろしく",
+        text="unknown-nick, please",
         thread_ts=thread_ts,
         channel_map=CHANNEL_MAP_MULTI,
         thread_persona_map=thread_persona_map,
@@ -180,10 +173,9 @@ def test_unknown_nickname_fallback():
 
 
 def test_unknown_nickname_fallback_no_thread():
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_responding_persona(
         channel=CHANNEL,
-        text="ガチコマ、よろしく",
+        text="unknown-nick, please",
         thread_ts=None,
         channel_map=CHANNEL_MAP_MULTI,
         thread_persona_map={},
@@ -192,10 +184,9 @@ def test_unknown_nickname_fallback_no_thread():
 
 
 def test_partial_nickname_match():
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_responding_persona(
         channel=CHANNEL,
-        text="アキユキの話",
+        text="akiyuki talk",
         thread_ts=None,
         channel_map=CHANNEL_MAP_MULTI,
         thread_persona_map={},
@@ -204,10 +195,9 @@ def test_partial_nickname_match():
 
 
 def test_unknown_channel():
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_responding_persona(
         channel="C_UNKNOWN",
-        text="ユキ、look into this",
+        text="yuki, look into this",
         thread_ts=None,
         channel_map=CHANNEL_MAP_MULTI,
         thread_persona_map={},
@@ -290,9 +280,8 @@ def test_space_persona_entry_alias():
 
 def test_resolve_persona_nickname_overrides_pinned():
     """AC-1: nickname takes priority over pinned."""
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_persona(
-        "ユキ、look into this",
+        "yuki, look into this",
         space_id=SPACE,
         conversation_id=CONV,
         persona_map=SPACE_MAP_MULTI,
@@ -340,9 +329,8 @@ def test_resolve_persona_returns_none_when_no_primary():
 
 def test_resolve_persona_unknown_space_returns_none():
     """AC-2: space_id not in persona_map returns None."""
-    # Japanese text intentionally kept for CJK processing test
     result = resolve_persona(
-        "ユキ、look into this",
+        "yuki, look into this",
         space_id="unknown-space",
         conversation_id=None,
         persona_map=SPACE_MAP_MULTI,
