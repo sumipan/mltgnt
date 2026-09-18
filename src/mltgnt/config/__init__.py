@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from mltgnt.config.language import JA, LanguagePack
+
 __all__ = [
     "DEFAULT_WEIGHT_MAP",
     "ConversationConfig",
@@ -41,6 +43,7 @@ class PersonaConfig:
     weight_map: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
     )
+    exclude_stems: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

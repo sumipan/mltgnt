@@ -3,6 +3,10 @@
 ## Unreleased
 
 
+### Added
+
+- **`LanguagePack` dataclass for locale-specific vocabulary**（#3382）: `mltgnt.config.language` に `LanguagePack` frozen dataclass と `JA` デフォルトインスタンスを追加。`deterministic_gate` / `persona/compress` / `persona/formatter` のハードコード日本語語彙を `LanguagePack` に移動し、`pack=None` 引数（None 時は `JA`）でロケール差し替えが可能に。`persona/registry` の `EXCLUDE_STEMS` を `frozenset()` に変更し、`list_personas` / `resolve_with_alias` に `exclude_stems` 引数を追加。`memory/dream/synthesizer` の重複 `_EXCLUDE_PERSONA_STEMS` を削除。`PersonaConfig` に `exclude_stems` フィールドを追加
+
 ### Removed
 
 - `tools/`（`mltgnt_fugu` 試作パッケージ）と `tests/tools/` を削除。`tools/lint-boundary.sh` は `scripts/lint-boundary.sh` へ移動（CI の boundary policy lint は維持）

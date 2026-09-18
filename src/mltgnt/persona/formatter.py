@@ -6,18 +6,18 @@ from __future__ import annotations
 
 import re
 
+from mltgnt.config.language import JA, LanguagePack
 
-def extract_persona_block_after_meta_headers(s: str) -> str:
+
+def extract_persona_block_after_meta_headers(s: str, pack: LanguagePack | None = None) -> str:
     """Keep only the body after a 'response as … (stdout-equivalent)' meta heading."""
+    _pack = pack or JA
     text = s.strip()
     if not text:
         return text
-    # Japanese text intentionally kept for CJK processing test
-    needles = (
-        "としての応答（標準出力相当）",
-        "としての応答（stdout相当）",
-        "としての応答",
-    )
+    needles = _pack.meta_header_needles
+    # The last (most general) needle needs a line-length guard to avoid false positives.
+    short_needle = needles[-1] if needles else None
     start_content = -1
     for n in needles:
         i = text.find(n)
@@ -25,10 +25,9 @@ def extract_persona_block_after_meta_headers(s: str) -> str:
             continue
         line_start = text.rfind("\n", 0, i) + 1
         line = text[line_start : i + len(n)]
-        # Japanese text intentionally kept for CJK processing test
-        if n == "としての応答" and len(line.strip()) > 48:
+        if n == short_needle and len(line.strip()) > 48:
             continue
-        if "としての応答" not in line:
+        if short_needle and short_needle not in line:
             continue
         nl = text.find("\n", i + len(n))
         if nl == -1:
@@ -48,31 +47,27 @@ def extract_persona_block_after_meta_headers(s: str) -> str:
     return after
 
 
-def dedupe_persona_prefix(body: str) -> str:
+def dedupe_persona_prefix(body: str, pack: LanguagePack | None = None) -> str:
     """Drop duplicate same-intent bodies when a reply and append are concatenated."""
     body = body.strip()
     if not body:
         return body
-    # Japanese text intentionally kept for CJK processing test
-    opener = re.compile(r"^今週（[^）]{1,80}）の計画[、,]", re.MULTILINE)
+    opener = (pack or JA).dedupe_opener_re
     matches = list(opener.finditer(body))
     if len(matches) >= 2:
         return body[matches[-1].start() :].strip()
     return body
 
 
-# Japanese text intentionally kept for CJK processing test
-_PERSONA_CUT_RE = re.compile(r"\n\n\S+口調の本文は")
-
-
-def format_persona_body(text: str) -> str:
+def format_persona_body(text: str, pack: LanguagePack | None = None) -> str:
     """Persona formatting: meta-heading extract → prefix dedupe → tone-meta cut."""
+    _pack = pack or JA
     s = text.strip()
     if not s:
         return ""
-    s = extract_persona_block_after_meta_headers(s)
-    m = _PERSONA_CUT_RE.search(s)
+    s = extract_persona_block_after_meta_headers(s, pack=_pack)
+    m = _pack.persona_cut_re.search(s)
     if m:
         s = s[: m.start()].rstrip()
-    s = dedupe_persona_prefix(s)
+    s = dedupe_persona_prefix(s, pack=_pack)
     return s.strip()
