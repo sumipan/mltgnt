@@ -68,3 +68,99 @@ def test_import_without_tools_dependency():
     sc = SchedulerConfig(schedule_yaml=Path("/c"), state_dir=Path("/d"))
     assert mc is not None
     assert sc is not None
+
+
+# ---------------------------------------------------------------------------
+# LanguagePack tests (Issue #3382)
+# ---------------------------------------------------------------------------
+
+
+def test_language_pack_importable():
+    """LanguagePack and JA constant can be imported from mltgnt.config."""
+    from mltgnt.config import LanguagePack
+    from mltgnt.config.language import JA
+    assert isinstance(JA, LanguagePack)
+
+
+def test_language_pack_frozen():
+    """LanguagePack instances are immutable."""
+    import pytest
+    from mltgnt.config.language import JA
+    with pytest.raises((AttributeError, TypeError)):
+        JA.work_request_markers = ()  # type: ignore[misc]
+
+
+def test_has_work_request_with_synthetic_pack():
+    """AC-3: Synthetic pack injection — 'please' returns True; Japanese text returns False."""
+    import re
+    from mltgnt.config import LanguagePack
+    from mltgnt.agent.deterministic_gate import has_work_request
+
+    pack = LanguagePack(
+        work_request_markers=("please",),
+        create_request_markers=(),
+        deferred_patterns=(),
+        compress_prompt_template="{heavy_text}",
+        v21_required_sections=(),
+        v21_example_section="",
+        meta_header_needles=(),
+        dedupe_opener_re=re.compile(r"NOMATCH"),
+        persona_cut_re=re.compile(r"NOMATCH"),
+        exclude_stems=frozenset(),
+    )
+    assert has_work_request("please do this", pack=pack) is True
+    # Japanese text intentionally kept for CJK processing test
+    assert has_work_request("これをして", pack=pack) is False
+
+
+def test_has_work_request_default_ja():
+    """AC-1: Default JA pack works for Japanese request phrasing."""
+    from mltgnt.agent.deterministic_gate import has_work_request
+    # Japanese text intentionally kept for CJK processing test
+    assert has_work_request("これをして") is True
+    assert has_work_request("hello world") is False
+
+
+def test_persona_config_has_exclude_stems():
+    """AC-4: PersonaConfig accepts exclude_stems field."""
+    from mltgnt.config import PersonaConfig
+    # Japanese text intentionally kept for CJK processing test
+    sample_stem = "サンプル"
+    pc = PersonaConfig(exclude_stems=frozenset({sample_stem}))
+    assert pc.exclude_stems == frozenset({sample_stem})
+    pc_default = PersonaConfig()
+    assert pc_default.exclude_stems == frozenset()
+
+
+def test_registry_exclude_stems_default_empty():
+    """AC-2: EXCLUDE_STEMS in registry has no hardcoded values."""
+    from mltgnt.persona.registry import EXCLUDE_STEMS
+    assert EXCLUDE_STEMS == frozenset()
+
+
+def test_list_personas_exclude_stems_arg(tmp_path):
+    """AC-4: list_personas with exclude_stems=frozenset() returns all personas."""
+    from mltgnt.persona.registry import list_personas
+    # Japanese text intentionally kept for CJK processing test
+    sample_stem = "サンプル"
+    (tmp_path / "alice.md").write_text("# alice\n")
+    (tmp_path / f"{sample_stem}.md").write_text("# sample\n")
+    all_stems = list_personas(tmp_path, exclude_stems=frozenset())
+    assert sample_stem in all_stems
+    assert "alice" in all_stems
+
+
+def test_list_personas_exclude_stems_filters(tmp_path):
+    """list_personas with exclude_stems filters out specified stems."""
+    from mltgnt.persona.registry import list_personas
+    (tmp_path / "alice.md").write_text("# alice\n")
+    (tmp_path / "bob.md").write_text("# bob\n")
+    result = list_personas(tmp_path, exclude_stems=frozenset({"bob"}))
+    assert "alice" in result
+    assert "bob" not in result
+
+
+def test_no_hardcoded_exclude_stems_in_synthesizer():
+    """AC-2: synthesizer does not define _EXCLUDE_PERSONA_STEMS."""
+    import mltgnt.memory.dream.synthesizer as synth_module
+    assert not hasattr(synth_module, "_EXCLUDE_PERSONA_STEMS")

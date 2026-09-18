@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-EXCLUDE_STEMS: frozenset[str] = frozenset({"\u30b5\u30f3\u30d7\u30eb"})
+from mltgnt.config.language import JA
+
+EXCLUDE_STEMS: frozenset[str] = frozenset()
 
 
 def resolve(name: str, persona_dir: Path) -> Path:
@@ -29,15 +31,23 @@ def resolve(name: str, persona_dir: Path) -> Path:
     return persona_dir / f"{name}.md"
 
 
-def resolve_with_alias(name: str, persona_dir: Path) -> Path:
+def resolve_with_alias(
+    name: str,
+    persona_dir: Path,
+    exclude_stems: frozenset[str] | None = None,
+) -> Path:
     """Resolve a persona file path by name or alias.
 
     1. Return `<persona_dir>/<name>.md` if it exists
     2. Otherwise scan all persona aliases for a match
 
+    Args:
+        exclude_stems: Stems to skip. When None falls back to JA.exclude_stems.
+
     Raises:
         FileNotFoundError: When neither name nor alias matches
     """
+    _exclude = JA.exclude_stems if exclude_stems is None else exclude_stems
     # Direct name lookup first
     direct = resolve(name, persona_dir)
     if direct.exists():
@@ -49,7 +59,7 @@ def resolve_with_alias(name: str, persona_dir: Path) -> Path:
     for p in sorted(persona_dir.iterdir()):
         if not p.is_file() or p.suffix.lower() != ".md":
             continue
-        if p.stem in EXCLUDE_STEMS:
+        if p.stem in _exclude:
             continue
         try:
             md = md_read(p.name, repo_root=p.parent)
@@ -68,13 +78,17 @@ def resolve_with_alias(name: str, persona_dir: Path) -> Path:
     )
 
 
-def list_personas(persona_dir: Path) -> list[str]:
+def list_personas(
+    persona_dir: Path,
+    exclude_stems: frozenset[str] | None = None,
+) -> list[str]:
     """Return valid persona name stems.
 
     - Only `<persona_dir>/*.md` (exclude files in subdirs)
-    - Exclude stems in EXCLUDE_STEMS
+    - Exclude stems in exclude_stems (defaults to JA.exclude_stems when None)
     - Return sorted by name
     """
+    _exclude = JA.exclude_stems if exclude_stems is None else exclude_stems
     if not persona_dir.is_dir():
         return []
 
@@ -84,7 +98,7 @@ def list_personas(persona_dir: Path) -> list[str]:
             continue
         if p.suffix.lower() != ".md":
             continue
-        if p.stem in EXCLUDE_STEMS:
+        if p.stem in _exclude:
             continue
         stems.append(p.stem)
 

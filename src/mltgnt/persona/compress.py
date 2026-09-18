@@ -18,34 +18,11 @@ from pathlib import Path
 
 import yaml
 
+from mltgnt.config.language import JA, LanguagePack
+
 logger = logging.getLogger(__name__)
 
 LIGHT_BLOCK_MAX_CHARS = 1500
-
-# Japanese text intentionally kept for CJK processing test
-_COMPRESS_PROMPT_TEMPLATE = """以下のペルソナの重量ブロックから、v2.1 形式の軽量ブロックを生成してください。
-
-## 出力形式
-
-1. リード文（1〜2文で人物の本質を要約）
-# Japanese text intentionally kept for CJK processing test
-2. 必須サブセクション（太字見出し）:
-   - **口調** — 話し方の特徴
-   - **価値観** — 大切にしていること
-   - **好意的反応** — どんなとき喜ぶか
-   - **引っかかる** — どんなとき不快になるか
-# Japanese text intentionally kept for CJK processing test
-3. 推奨（任意）:
-   - **発言例** — 引用ブロック（> ）形式で1〜3例
-
-## 制約
-- 1500文字以内（厳守）
-# Japanese text intentionally kept for CJK processing test
-- 太字見出しは上記の名前をそのまま使う
-- 発言例がある場合は必ず引用ブロック形式にする
-
-## 重量ブロック:
-{heavy_text}"""
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +71,7 @@ def compress_heavy_to_light(
     engine: str = "claude",
     model: str | None = None,
     timeout: int = 120,
+    pack: LanguagePack | None = None,
 ) -> str:
     """LLM-compress heavy-block text into a light-block summary.
 
@@ -102,6 +80,7 @@ def compress_heavy_to_light(
         engine: LLM engine name (default: "claude")
         model: Model name. Use engine default when None
         timeout: LLM call timeout seconds
+        pack: Language pack; defaults to JA when None
 
     Returns:
         v2.1 text within 1500 chars (lead + required subsections)
@@ -114,7 +93,7 @@ def compress_heavy_to_light(
     if not heavy_text.strip():
         raise RuntimeError("heavy_text is empty. Provide text to compress.")
 
-    prompt = _COMPRESS_PROMPT_TEMPLATE.format(heavy_text=heavy_text)
+    prompt = (pack or JA).compress_prompt_template.format(heavy_text=heavy_text)
 
     kwargs: dict = {"engine": engine, "timeout": timeout}
     if model is not None:
@@ -138,6 +117,7 @@ def regenerate_light_block(
     engine: str = "claude",
     model: str | None = None,
     timeout: int = 120,
+    pack: LanguagePack | None = None,
 ) -> RegenerationResult:
     """Regenerate the light block from the persona heavy block and write it back.
 
@@ -185,10 +165,10 @@ def regenerate_light_block(
     old_hash = "" if not existing_light.strip() else compute_block_hash(existing_light)
 
     # LLM compress
-    new_light = compress_heavy_to_light(heavy_text, engine=engine, model=model, timeout=timeout)
+    new_light = compress_heavy_to_light(heavy_text, engine=engine, model=model, timeout=timeout, pack=pack)
 
     # v2.1 validation
-    _validate_v21_light_block(new_light)
+    _validate_v21_light_block(new_light, pack=pack)
 
     new_hash = compute_block_hash(new_light)
 
@@ -220,21 +200,22 @@ def regenerate_light_block(
 # ---------------------------------------------------------------------------
 
 
-def _validate_v21_light_block(text: str) -> None:
+def _validate_v21_light_block(text: str, pack: LanguagePack | None = None) -> None:
     """Validate that a generated light block conforms to v2.1.
 
     v2.1 requirements:
     - Lead text (one or more non-empty lines) before the first **
-    # Japanese text intentionally kept for CJK processing test
-    - 必須サブセクション: **口調**、**価値観**、**好意的反応**、**引っかかる**
-    - If **発言例** is present, a following > line is required in that section
+    - Required subsections present (from pack.v21_required_sections)
+    - If pack.v21_example_section is present, a following > line is required
 
     Args:
         text: Text to validate
+        pack: Language pack; defaults to JA when None
 
     Raises:
         ValueError: When format requirements are not met
     """
+    _pack = pack or JA
     lines = text.strip().splitlines()
 
     # Lead check: non-empty line required before first ** heading
@@ -257,10 +238,7 @@ def _validate_v21_light_block(text: str) -> None:
             )
 
     # Required subsection check
-    # Japanese text intentionally kept for CJK processing test
-    required_sections = ["**口調**", "**価値観**", "**好意的反応**", "**引っかかる**"]
-    for section in required_sections:
-        # Whether a **-starting line contains the section name (any column)
+    for section in _pack.v21_required_sections:
         found = any(section in line for line in lines)
         if not found:
             section_name = section.strip("*")
@@ -269,26 +247,21 @@ def _validate_v21_light_block(text: str) -> None:
                 f" (Write as {section_name} — ...)"
             )
 
-    # Japanese text intentionally kept for CJK processing test
-    # Example-speech check: if **発言例** present, a later > line is required
+    # Example-speech check: if v21_example_section present, a later > line is required
+    example_section = _pack.v21_example_section
     for i, line in enumerate(lines):
-        # Japanese text intentionally kept for CJK processing test
-        if "**発言例**" in line:
-            # Look ahead for a > line (until the next bold heading)
+        if example_section in line:
             has_quote = False
             for j in range(i + 1, len(lines)):
                 next_line = lines[j]
-                # Japanese text intentionally kept for CJK processing test
-                if next_line.strip().startswith("**") and "**発言例**" not in next_line:
-                    # Entered another section; stop
+                if next_line.strip().startswith("**") and example_section not in next_line:
                     break
                 if next_line.strip().startswith("> ") or next_line.strip() == ">":
                     has_quote = True
                     break
             if not has_quote:
                 raise ValueError(
-                    # Japanese text intentionally kept for CJK processing test
-                    "v2.1 format error: **発言例** must be followed by a quote block (> line)."
+                    f"v2.1 format error: {example_section} must be followed by a quote block (> line)."
                 )
             break
 

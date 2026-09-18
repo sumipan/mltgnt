@@ -8,14 +8,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from mltgnt.config import MemoryConfig
+from mltgnt.config.language import JA
 from mltgnt.memory._format import MemoryEntry, assemble_entries_text
 from mltgnt.memory.dream._format import DreamSection, DreamSummary
 from mltgnt.memory.dream.api import read_dream, read_global
 
 LlmCall = Callable[[str], str]
-
-# Same exclusion rules as persona.registry (local copy for layer boundary)
-_EXCLUDE_PERSONA_STEMS = frozenset({"\u30b5\u30f3\u30d7\u30eb"})
 
 # Japanese text intentionally kept for CJK processing test
 _DEFAULT_CATEGORIES = ("行動パターン", "好み・傾向")
@@ -92,10 +90,11 @@ class Synthesizer:
         *,
         llm_call: LlmCall,
         categories: tuple[str, ...] = _DEFAULT_CATEGORIES,
+        exclude_stems: frozenset[str] | None = None,
     ) -> DreamSummary:
         exclude = set(config.global_dream_exclude_personas)
         persona_summaries: list[DreamSummary] = []
-        for stem in _list_chat_persona_stems(config.chat_dir):
+        for stem in _list_chat_persona_stems(config.chat_dir, exclude_stems=exclude_stems):
             if stem in exclude:
                 continue
             dream = read_dream(
@@ -142,15 +141,19 @@ class Synthesizer:
         return DreamSummary(persona="__global__", sections=merged, updated_at=updated_at)
 
 
-def _list_chat_persona_stems(chat_dir: Path) -> list[str]:
+def _list_chat_persona_stems(
+    chat_dir: Path,
+    exclude_stems: frozenset[str] | None = None,
+) -> list[str]:
     """Return stems from persona .md files under chat_dir (persona-layer independent)."""
+    _exclude = JA.exclude_stems if exclude_stems is None else exclude_stems
     if not chat_dir.is_dir():
         return []
     stems: list[str] = []
     for path in chat_dir.iterdir():
         if not path.is_file() or path.suffix.lower() != ".md":
             continue
-        if path.stem in _EXCLUDE_PERSONA_STEMS:
+        if path.stem in _exclude:
             continue
         stems.append(path.stem)
     return sorted(stems)
