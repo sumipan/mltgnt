@@ -135,7 +135,7 @@ def test_persona_config_has_exclude_stems():
 def test_registry_exclude_stems_default_empty():
     """AC-2: EXCLUDE_STEMS in registry has no hardcoded values."""
     from mltgnt.persona.registry import EXCLUDE_STEMS
-    assert EXCLUDE_STEMS == frozenset()
+    assert frozenset() == EXCLUDE_STEMS
 
 
 def test_list_personas_exclude_stems_arg(tmp_path):
