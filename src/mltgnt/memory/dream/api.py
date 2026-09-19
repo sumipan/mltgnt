@@ -1,4 +1,5 @@
 """mltgnt.memory.dream.api — read/write dream.json."""
+
 from __future__ import annotations
 
 import json
@@ -56,7 +57,9 @@ def write_dream(
 
 
 def global_json_path(
-    chat_dir: Path, *, memory_dir_name: str = "memory",
+    chat_dir: Path,
+    *,
+    memory_dir_name: str = "memory",
 ) -> Path:
     return chat_dir / memory_dir_name / "global.json"
 
@@ -95,8 +98,7 @@ def read_global_summary(config: MemoryConfig) -> str:
     if summary is None or not summary.sections:
         return ""
 
-    # Japanese text intentionally kept for CJK processing test
-    lines = ["", "", "## 記憶の要約", ""]
+    lines = ["", "", "## Memory summary", ""]
     for section in summary.sections:
         lines.append(f"### {section.category}")
         lines.append(section.content)
@@ -111,8 +113,7 @@ def read_dream_summary(config: MemoryConfig, persona_stem: str) -> str:
     if summary is None or not summary.sections:
         return ""
 
-    # Japanese text intentionally kept for CJK processing test
-    lines = ["", "", "## 記憶の要約", ""]
+    lines = ["", "", "## Memory summary", ""]
     for section in summary.sections:
         lines.append(f"### {section.category}")
         lines.append(section.content)

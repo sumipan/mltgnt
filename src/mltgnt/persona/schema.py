@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from mltgnt.config import PERSONA_SECTION_ALIASES
+
 # ---------------------------------------------------------------------------
 # Known allowed keys
 # ---------------------------------------------------------------------------
@@ -34,18 +36,16 @@ _KNOWN_PERSONA_KEYS: frozenset[str] = frozenset({"name", "aliases", "description
 _KNOWN_OPS_KEYS: frozenset[str] = frozenset({"slack", "engine", "model", "skills"})
 
 _KNOWN_OPS_SLACK_KEYS: frozenset[str] = frozenset(
-    {"username", "icon_emoji", "icon_url", "channel",
-     "secondary_channels", "nickname"}
+    {"username", "icon_emoji", "icon_url", "channel", "secondary_channels", "nickname"}
 )
 
 # Required sections (## <name> must exist in the body)
 REQUIRED_SECTIONS: tuple[str, ...] = (
-    # Japanese text intentionally kept for CJK processing test
-    "基本情報",
-    "価値観",
-    "反応パターン",
-    "口調",
-    "アウトプット形式",
+    "Background",
+    "Values",
+    "Reaction patterns",
+    "Tone",
+    "Output format",
 )
 
 
@@ -197,13 +197,16 @@ def validate_sections(body: str, fm: PersonaFM) -> ValidationResult:
     errors: list[str] = []
 
     for sec in REQUIRED_SECTIONS:
-        # Allow both "## N. <name>" and "## <name>" forms
-        if f"## {sec}" not in body and f"## 0. {sec}" not in body:
-            # Japanese text intentionally kept for CJK processing test
-            # Also try partial match (e.g. "## 1. 基本情報")
-            import re
-            if not re.search(rf"##\s+(?:\d+\.\s+)?(?:\S+)?{re.escape(sec)}", body):
-                warns.append(f"Required section \"{sec}\" not found")
+        aliases = [alias for alias, canonical in PERSONA_SECTION_ALIASES.items() if canonical == sec]
+        candidates = (sec, *aliases)
+        # Allow both numbered and unnumbered canonical or legacy headings.
+        import re
+
+        if not any(
+            re.search(rf"^##\s+(?:\d+\.\s+)?{re.escape(candidate)}(?:\s|$)", body, re.MULTILINE)
+            for candidate in candidates
+        ):
+            warns.append(f'Required section "{sec}" not found')
 
     return ValidationResult(ok=len(errors) == 0, warnings=warns, errors=errors)
 
@@ -228,4 +231,3 @@ VALID_ENGINES: frozenset[str] = frozenset({"claude", "gemini", "cursor", "codex"
 
 SYSTEM_DEFAULT_ENGINE: str = "claude"
 SYSTEM_DEFAULT_MODEL: str = ""
-

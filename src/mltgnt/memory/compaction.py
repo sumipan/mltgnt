@@ -12,6 +12,7 @@ Issue #1135: upstream diary's advanced compression logic.
 - date coverage post-check
 - entry reclassification (_redistribute_entries)
 """
+
 from __future__ import annotations
 
 import logging
@@ -130,18 +131,21 @@ def extract_promote_candidates(
         if len(group) < min_recurrence:
             continue
         summary = "\n\n".join(e.content for e in group if e.content.strip())
-        candidates.append(PromoteCandidate(
-            topic=source_tag,
-            summary=summary,
-            source_entries=len(group),
-            recurrence=len(group),
-        ))
+        candidates.append(
+            PromoteCandidate(
+                topic=source_tag,
+                summary=summary,
+                source_entries=len(group),
+                recurrence=len(group),
+            )
+        )
     return candidates
 
 
 def needs_compaction(config: "MemoryConfig", persona_stem: str) -> bool:
     """Whether the memory file exceeds the compaction threshold."""
     from mltgnt.memory import memory_file_path
+
     path = memory_file_path(config, persona_stem)
     if not path.exists():
         return False
@@ -159,10 +163,11 @@ def _effective_bytes_for_ratio(text: str) -> int:
     Supports both JSONL (one JSON per line) and Markdown (``\n---\n`` delimited).
     """
     import json as _json
+
     lines = text.splitlines()
     # JSONL detection: first non-empty line starts with {
     non_empty = [ln for ln in lines if ln.strip()]
-    if non_empty and non_empty[0].strip().startswith('{'):
+    if non_empty and non_empty[0].strip().startswith("{"):
         # JSONL: count only lines whose source_tag/content lack [slack-observe]
         kept_lines = []
         for line in lines:
@@ -170,21 +175,21 @@ def _effective_bytes_for_ratio(text: str) -> int:
                 continue
             try:
                 obj = _json.loads(line)
-                tag = obj.get('source_tag', '') or ''
-                content = obj.get('content', '') or ''
-                if '[slack-observe]' not in tag and '[slack-observe]' not in content:
+                tag = obj.get("source_tag", "") or ""
+                content = obj.get("content", "") or ""
+                if "[slack-observe]" not in tag and "[slack-observe]" not in content:
                     kept_lines.append(line)
             except _json.JSONDecodeError:
                 kept_lines.append(line)
-        cleaned = '\n'.join(kept_lines)
-        result = len(cleaned.encode('utf-8'))
+        cleaned = "\n".join(kept_lines)
+        result = len(cleaned.encode("utf-8"))
     else:
         # Markdown: delimited by \n---\n
-        blocks = re.split(r'\n---\n', text)
-        kept = [b for b in blocks if '[slack-observe]' not in b]
-        cleaned = '\n---\n'.join(kept)
-        result = len(cleaned.encode('utf-8'))
-    return result if result > 0 else len(text.encode('utf-8'))
+        blocks = re.split(r"\n---\n", text)
+        kept = [b for b in blocks if "[slack-observe]" not in b]
+        cleaned = "\n---\n".join(kept)
+        result = len(cleaned.encode("utf-8"))
+    return result if result > 0 else len(text.encode("utf-8"))
 
 
 def _build_section_prompt(section_text: str, target_bytes: int) -> str:
@@ -248,9 +253,7 @@ def _compact_section(
             _log.warning(warning)
             return result.strip(), warning
         warning = (
-            f"{section_name}: result too small "
-            f"({result_size}B < {original_size}B * {MIN_RATIO}), "
-            f"using original text"
+            f"{section_name}: result too small ({result_size}B < {original_size}B * {MIN_RATIO}), using original text"
         )
         _log.warning(warning)
         return body, warning
@@ -454,12 +457,30 @@ def _sanitize_phase1_output(text: str) -> str:
     kept: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
-        # Japanese text intentionally kept for CJK processing test
-        if stripped.startswith(("承知", "分析", "了解", "以下")):
+        if stripped.startswith(
+            (
+                "\N{CJK UNIFIED IDEOGRAPH-627F}\N{CJK UNIFIED IDEOGRAPH-77E5}",
+                "\N{CJK UNIFIED IDEOGRAPH-5206}\N{CJK UNIFIED IDEOGRAPH-6790}",
+                "\N{CJK UNIFIED IDEOGRAPH-4E86}\N{CJK UNIFIED IDEOGRAPH-89E3}",
+                "\N{CJK UNIFIED IDEOGRAPH-4EE5}\N{CJK UNIFIED IDEOGRAPH-4E0B}",
+            )
+        ):
+            continue
+        if stripped.startswith(("Understood", "Analyzing", "Analysis", "Below")):
             continue
         if stripped.startswith("## "):
             continue
-        if any(marker in stripped for marker in ("**サイズ**", "**統計**", "**分析**")):
+        if any(
+            marker in stripped
+            for marker in (
+                "**\N{KATAKANA LETTER SA}\N{KATAKANA LETTER I}\N{KATAKANA LETTER ZU}**",
+                "**\N{CJK UNIFIED IDEOGRAPH-7D71}\N{CJK UNIFIED IDEOGRAPH-8A08}**",
+                "**\N{CJK UNIFIED IDEOGRAPH-5206}\N{CJK UNIFIED IDEOGRAPH-6790}**",
+                "**Size**",
+                "**Statistics**",
+                "**Analysis**",
+            )
+        ):
             continue
         kept.append(line)
     return "\n".join(kept)
@@ -491,7 +512,9 @@ def _extract_and_merge_preferences(
 
     prompt = _PHASE1_PROMPT_TEMPLATE.format(
         target_bytes=target_bytes,
-        existing_prefs=existing_prefs if existing_prefs else "(No existing preferences/tendencies. Initialize from recent extraction only.)",
+        existing_prefs=existing_prefs
+        if existing_prefs
+        else "(No existing preferences/tendencies. Initialize from recent extraction only.)",
         recent_text=recent_text,
     )
 
@@ -541,9 +564,9 @@ def _strip_observe_entries(body: str) -> str:
     """
     if not body:
         return body
-    blocks = re.split(r'\n---\n', body)
-    kept = [b for b in blocks if '[slack-observe]' not in b]
-    return '\n---\n'.join(kept)
+    blocks = re.split(r"\n---\n", body)
+    kept = [b for b in blocks if "[slack-observe]" not in b]
+    return "\n---\n".join(kept)
 
 
 def _rollup_recent_chunk(recent_body: str, rollup_chunk: int) -> tuple[str, str]:
@@ -565,7 +588,7 @@ def _rollup_recent_chunk(recent_body: str, rollup_chunk: int) -> tuple[str, str]
     if not recent_body:
         return recent_body, ""
 
-    blocks = re.split(r'\n---\n', recent_body)
+    blocks = re.split(r"\n---\n", recent_body)
     blocks = [b for b in blocks if b]  # drop empty blocks
     if not blocks:
         return recent_body, ""
@@ -589,11 +612,11 @@ def _rollup_recent_chunk(recent_body: str, rollup_chunk: int) -> tuple[str, str]
         return recent_body, ""
 
     # Index-based split (handles duplicate entries)
-    promoted_blocks = blocks[:len(accumulated)]
-    remaining_blocks = blocks[len(accumulated):]
+    promoted_blocks = blocks[: len(accumulated)]
+    remaining_blocks = blocks[len(accumulated) :]
 
-    promoted_body = '\n---\n'.join(promoted_blocks)
-    remaining_body = '\n---\n'.join(remaining_blocks)
+    promoted_body = "\n---\n".join(promoted_blocks)
+    remaining_body = "\n---\n".join(remaining_blocks)
     return remaining_body, promoted_body
 
 
@@ -608,11 +631,11 @@ def _extract_chunk_date_range(promoted: str) -> tuple[str, str] | None:
         On failure (no dates found): None
     """
     import warnings
+
     matches = _ENTRY_HEADER_TS_RE.findall(promoted)
     if not matches:
         warnings.warn(
-            f"_extract_chunk_date_range: no date headers found in chunk "
-            f"(first 200 bytes: {promoted[:200]!r})",
+            f"_extract_chunk_date_range: no date headers found in chunk (first 200 bytes: {promoted[:200]!r})",
             stacklevel=2,
         )
         return None
@@ -673,6 +696,7 @@ def _compress_rollup_chunk(
         On all retries failing, return promoted unchanged.
     """
     import warnings
+
     prompt = _ROLLUP_SUMMARY_PROMPT.format(target=target, chunk=promoted)
     for attempt in range(max_retries + 1):
         try:
@@ -699,8 +723,7 @@ def _compress_rollup_chunk(
         return output
 
     warnings.warn(
-        f"_compress_rollup_chunk: all {max_retries + 1} attempts failed, "
-        f"falling back to raw promoted text",
+        f"_compress_rollup_chunk: all {max_retries + 1} attempts failed, falling back to raw promoted text",
         stacklevel=2,
     )
     return promoted
@@ -749,14 +772,16 @@ def _redistribute_entries(
         if entry.layer == new_layer:
             result.append(entry)
         else:
-            result.append(MemoryEntry(
-                timestamp=entry.timestamp,
-                role=entry.role,
-                content=entry.content,
-                source_tag=entry.source_tag,
-                layer=new_layer,
-                dedupe_key=entry.dedupe_key,
-            ))
+            result.append(
+                MemoryEntry(
+                    timestamp=entry.timestamp,
+                    role=entry.role,
+                    content=entry.content,
+                    source_tag=entry.source_tag,
+                    layer=new_layer,
+                    dedupe_key=entry.dedupe_key,
+                )
+            )
     return result
 
 
@@ -772,7 +797,7 @@ def _entry_to_block(e: "MemoryEntry") -> str:
         ts = ts.replace("T", " ")
     # Strip timezone (+09:00 etc.)
     if "+" in ts:
-        ts = ts[:ts.index("+")]
+        ts = ts[: ts.index("+")]
     elif ts.endswith("Z"):
         ts = ts[:-1]
     # Strip seconds (:SS): HH:MM:SS → HH:MM
@@ -918,8 +943,7 @@ def compact(
 
                         # Dynamic chunk_size
                         if current_recent_size <= ROLLUP_CHUNK:
-                            chunk_size = min(ROLLUP_FINE_CHUNK,
-                                             current_recent_size - ROLLUP_MIN_KEEP_BYTES)
+                            chunk_size = min(ROLLUP_FINE_CHUNK, current_recent_size - ROLLUP_MIN_KEEP_BYTES)
                             if chunk_size <= 0:
                                 break
                         else:
@@ -950,9 +974,12 @@ def compact(
                         observed_date_ranges.append(dates)
 
                         # LLM compress
-                        summary = _compress_rollup_chunk(promoted, llm_call,
-                                                          target=ROLLUP_SUMMARY_TARGET_BYTES,
-                                                          max_retries=ROLLUP_SUMMARY_MAX_RETRIES)
+                        summary = _compress_rollup_chunk(
+                            promoted,
+                            llm_call,
+                            target=ROLLUP_SUMMARY_TARGET_BYTES,
+                            max_retries=ROLLUP_SUMMARY_MAX_RETRIES,
+                        )
 
                         # Format
                         if summary is promoted:
@@ -992,10 +1019,14 @@ def compact(
                     all_promoted = "\n---\n".join(promoted_text_parts)
                     _log.info(
                         "Phase 1 input size: %d bytes (%d chunks)",
-                        len(all_promoted.encode()), len(promoted_text_parts),
+                        len(all_promoted.encode()),
+                        len(promoted_text_parts),
                     )
                     prefs_body, p1_warning = _extract_and_merge_preferences(
-                        prefs_body, all_promoted, prefs_cap, llm_call,
+                        prefs_body,
+                        all_promoted,
+                        prefs_cap,
+                        llm_call,
                         skip_min_ratio=skip_min_ratio,
                     )
                     if p1_warning:
@@ -1011,7 +1042,10 @@ def compact(
             mid_term_size_now = len(compacted["mid_term"].encode("utf-8"))
             if mid_term_size_now > mid_term_cap:
                 promote_warnings = _promote_mid_to_long(
-                    compacted, mid_term_cap, long_term_cap, llm_call,
+                    compacted,
+                    mid_term_cap,
+                    long_term_cap,
+                    llm_call,
                     skip_min_ratio=skip_min_ratio,
                 )
                 for w in promote_warnings:
@@ -1020,7 +1054,11 @@ def compact(
             # --- [C] preferences merge-compress when over cap (dedupe, max_ratio=0.90) ---
             if prefs_size > prefs_cap:
                 body, warning = _promote_with_compression(
-                    "preferences", prefs_body, "", prefs_cap, llm_call,
+                    "preferences",
+                    prefs_body,
+                    "",
+                    prefs_cap,
+                    llm_call,
                     max_ratio=PREFS_MAX_RATIO,
                     skip_min_ratio=skip_min_ratio,
                 )
@@ -1032,7 +1070,11 @@ def compact(
             long_term_size_now = len(compacted["long_term"].encode("utf-8"))
             if long_term_size_now > long_term_cap:
                 body, warning = _promote_with_compression(
-                    "long_term", compacted["long_term"], "", long_term_cap, llm_call,
+                    "long_term",
+                    compacted["long_term"],
+                    "",
+                    long_term_cap,
+                    llm_call,
                     max_ratio=LONG_TERM_MAX_RATIO,
                     skip_min_ratio=skip_min_ratio,
                 )
@@ -1059,22 +1101,34 @@ def compact(
             _recent_by_key = {(e.timestamp, e.role): e for e in recent_entries}
 
             def _block_to_entry(block: str, default_layer: str) -> "MemoryEntry":
-                m = re.match(r'^## (\S+ \S+) — (user|assistant)\n\n(.*)', block, re.DOTALL)
+                m = re.match(r"^## (\S+ \S+) — (user|assistant)\n\n(.*)", block, re.DOTALL)
                 if m:
                     ts_str, role, content = m.group(1), m.group(2), m.group(3).strip()
                     key = (ts_str, role)
                     if default_layer == "recent" and key in _recent_by_key:
                         return _recent_by_key[key]
-                    return MemoryEntry(timestamp=ts_str, role=role, content=content, source_tag="compaction", layer=default_layer)
-                return MemoryEntry(timestamp=now_ts, role="assistant", content=block.strip(), source_tag="compaction", layer=default_layer)
+                    return MemoryEntry(
+                        timestamp=ts_str, role=role, content=content, source_tag="compaction", layer=default_layer
+                    )
+                return MemoryEntry(
+                    timestamp=now_ts,
+                    role="assistant",
+                    content=block.strip(),
+                    source_tag="compaction",
+                    layer=default_layer,
+                )
 
             def _text_to_entries(body: str, layer: str) -> list["MemoryEntry"]:
                 if not body.strip():
                     return []
-                blocks = [b.strip() for b in re.split(r'\n---\n', body) if b.strip()]
+                blocks = [b.strip() for b in re.split(r"\n---\n", body) if b.strip()]
                 return [_block_to_entry(b, layer) for b in blocks]
 
-            final_prefs = [MemoryEntry(timestamp=now_ts, role="assistant", content=prefs_body.strip(), source_tag="preferences")] if prefs_body.strip() else []
+            final_prefs = (
+                [MemoryEntry(timestamp=now_ts, role="assistant", content=prefs_body.strip(), source_tag="preferences")]
+                if prefs_body.strip()
+                else []
+            )
             final_long = _text_to_entries(compacted["long_term"], "long_term")
             final_mid = _text_to_entries(compacted["mid_term"], "mid_term")
             final_recent = _text_to_entries(compacted["recent"], "recent")
@@ -1141,7 +1195,8 @@ def compact(
                 missed_str = ", ".join(f"{s}..{e}" for s, e in missed)
                 _log.warning(
                     "compact: post-check missed dates for %s: [%s]",
-                    persona_stem, missed_str,
+                    persona_stem,
+                    missed_str,
                 )
                 warnings_list.append(f"post-check missed dates: [{missed_str}]")
 
