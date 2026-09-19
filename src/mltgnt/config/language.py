@@ -28,6 +28,13 @@ class LanguagePack:
     persona_cut_re: re.Pattern[str]
     # Persona stems to exclude from listing by default (e.g. sample/template files)
     exclude_stems: frozenset[str]
+    # Japanese text intentionally kept for CJK processing test
+    persona_end_re: re.Pattern[str] = re.compile(r"\n-{3,}\s*\n\s*（以上）")
+    cancel_words: frozenset[str] = frozenset({"キャンセル", "止めて", "cancel", "stop"})
+    composite_header: str = "処理中に以下の発言がありました。これらを踏まえて対応してください。"
+    composite_cancel_suffix: str = (
+        "※ 中止指示が含まれています。現在の作業を中止し、中止した旨を報告してください。"
+    )
 
 
 # Japanese text intentionally kept for CJK processing test

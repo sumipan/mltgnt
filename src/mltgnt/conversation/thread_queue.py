@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mltgnt.conversation.types import HistoryMessage, TurnInput
+from mltgnt.config.language import JA
 
 if TYPE_CHECKING:
     from mltgnt.config import ConversationConfig
@@ -27,21 +28,14 @@ AdmitResult = namedtuple("AdmitResult", ["proceed", "queued", "status"])
 # Test monkeypatch compatibility (also used as pre-configure fallback)
 THREAD_QUEUE_DIR: Path | None = None
 
-# Japanese text intentionally kept for CJK processing test
-_CANCEL_WORDS = frozenset({"キャンセル", "止めて", "cancel", "stop"})
+_CANCEL_WORDS = JA.cancel_words
 
 _locks_guard = threading.Lock()
 _locks: dict[str, threading.Lock] = {}
 _active_config: ConversationConfig | None = None
 
-# Japanese text intentionally kept for CJK processing test
-_COMPOSITE_HEADER = (
-    "処理中に以下の発言がありました。これらを踏まえて対応してください。"
-)
-# Japanese text intentionally kept for CJK processing test
-_COMPOSITE_CANCEL_SUFFIX = (
-    "※ 中止指示が含まれています。現在の作業を中止し、中止した旨を報告してください。"
-)
+_COMPOSITE_HEADER = JA.composite_header
+_COMPOSITE_CANCEL_SUFFIX = JA.composite_cancel_suffix
 
 
 def configure(config: ConversationConfig) -> None:

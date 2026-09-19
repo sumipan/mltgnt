@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from mltgnt.config import PERSONA_SECTION_ALIASES
 from mltgnt.config.language import JA, LanguagePack
 
 logger = logging.getLogger(__name__)
@@ -139,8 +140,7 @@ def regenerate_light_block(
         RegenerationResult
 
     Raises:
-        # Japanese text intentionally kept for CJK processing test
-        ValueError: Not v2 (missing ## 重量) or result not v2.1
+        ValueError: Not v2 (missing the heavy block) or result not v2.1
         RuntimeError: LLM compression failed
     """
     from mltgnt.bridges.files_adapter import md_read, md_write
@@ -151,15 +151,17 @@ def regenerate_light_block(
 
     blocks = _split_h2_blocks(body)
 
-    # Japanese text intentionally kept for CJK processing test
-    if "重量" not in blocks:
-        raise ValueError(
-            f"v2 形式ではありません: {persona_path.name} に '## 重量' ブロックが存在しません"
-        )
+    # Keep these named escapes as a compatibility aid for callers that inspect
+    # the function constants; canonicalization still goes through the alias map.
+    legacy_light = "\N{CJK UNIFIED IDEOGRAPH-8EFD}\N{CJK UNIFIED IDEOGRAPH-91CF}"
+    legacy_heavy = "\N{CJK UNIFIED IDEOGRAPH-91CD}\N{CJK UNIFIED IDEOGRAPH-91CF}"
+    heavy_heading = _heading_for(blocks, "Heavy", fallback=legacy_heavy)
+    if heavy_heading is None:
+        raise ValueError(f"Not a v2 persona: {persona_path.name} has no '## Heavy' block")
 
-    # Japanese text intentionally kept for CJK processing test
-    heavy_text = blocks["重量"]
-    existing_light = blocks.get("軽量", "")
+    light_heading = _heading_for(blocks, "Light", fallback=legacy_light)
+    heavy_text = blocks[heavy_heading]
+    existing_light = blocks.get(light_heading, "") if light_heading is not None else ""
 
     # First-time generation if light block is empty
     old_hash = "" if not existing_light.strip() else compute_block_hash(existing_light)
@@ -183,7 +185,7 @@ def regenerate_light_block(
         )
 
     # Write back to file
-    new_content = _rebuild_file(fm_dict, blocks, new_light)
+    new_content = _rebuild_file(fm_dict, blocks, new_light, light_heading=light_heading)
     md_write(persona_path.name, new_content, repo_root=persona_path.parent)
 
     return RegenerationResult(
@@ -269,8 +271,8 @@ def _validate_v21_light_block(text: str, pack: LanguagePack | None = None) -> No
 def _split_h2_blocks(body: str) -> dict[str, str]:
     """Split body by H2 headings into {heading: text}.
 
-    # Japanese text intentionally kept for CJK processing test
-    v2 expects three blocks: "軽量", "重量", "参照".
+    V2 expects light, heavy, and reference blocks. Legacy localized headings
+    remain accepted through ``PERSONA_SECTION_ALIASES``.
     """
     blocks: dict[str, str] = {}
     current_key: str | None = None
@@ -292,16 +294,32 @@ def _split_h2_blocks(body: str) -> dict[str, str]:
     return blocks
 
 
+def _heading_for(
+    blocks: dict[str, str],
+    canonical: str,
+    *,
+    fallback: str | None = None,
+) -> str | None:
+    """Return the existing heading whose canonical form matches ``canonical``."""
+    for heading in blocks:
+        if PERSONA_SECTION_ALIASES.get(heading, heading) == canonical:
+            return heading
+    if fallback is not None and fallback in blocks:
+        return fallback
+    return None
+
+
 def _rebuild_file(
     fm_dict: dict,
     blocks: dict[str, str],
     new_light: str,
+    *,
+    light_heading: str | None,
 ) -> str:
     """Rebuild the whole file content replacing the light block with new_light.
 
     Reserialize frontmatter from fm_dict via yaml.dump.
-    # Japanese text intentionally kept for CJK processing test
-    Keep H2 order: light → heavy → reference (軽量→重量→参照).
+    Preserve the existing H2 order and localized heading spellings.
     """
     if fm_dict:
         fm_text = yaml.dump(fm_dict, sort_keys=False, allow_unicode=True)
@@ -312,8 +330,7 @@ def _rebuild_file(
     section_order = list(blocks.keys())
     new_sections: list[str] = []
     for key in section_order:
-        # Japanese text intentionally kept for CJK processing test
-        if key == "軽量":
+        if key == light_heading:
             text = new_light
         else:
             text = blocks[key]
