@@ -135,5 +135,5 @@ JA = LanguagePack(
     # Japanese text intentionally kept for CJK processing test
     persona_cut_re=re.compile(r"\n\n\S+口調の本文は"),
     # Japanese text intentionally kept for CJK processing test
-    exclude_stems=frozenset({"サンプル"}),
+    exclude_stems=frozenset({"\u30b5\u30f3\u30d7\u30eb"}),
 )
