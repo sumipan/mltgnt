@@ -17,7 +17,6 @@ from mltgnt.interfaces.persona import PersonaProtocol
 # Fixtures
 # ---------------------------------------------------------------------------
 
-# Japanese text intentionally kept for CJK processing test
 VALID_PERSONA_CONTENT = textwrap.dedent("""\
     ---
     persona:
@@ -28,23 +27,19 @@ VALID_PERSONA_CONTENT = textwrap.dedent("""\
       engine: claude
     ---
 
-    # Japanese text intentionally kept for CJK processing test
-    ## 基本情報
+    ## Basic information
 
     persona-a is a multi-legged tank-type AI robot from GHS.
 
-    # Japanese text intentionally kept for CJK processing test
-    ## 価値観
+    ## Values
 
     Curious and values companions.
 
-    # Japanese text intentionally kept for CJK processing test
-    ## 反応パターン
+    ## Reaction patterns
 
     Answers questions eagerly.
 
-    # Japanese text intentionally kept for CJK processing test
-    ## 口調
+    ## Tone
 
     Friendly and cheerful.
 """)
@@ -79,24 +74,20 @@ def test_register_custom_filter_output_appears(tachikoma_persona: Persona) -> No
 
 
 def test_replace_datetime_filter(tachikoma_persona: Persona) -> None:
-    # Japanese text intentionally kept for CJK processing test
-    """Replacing the datetime filter removes the old default '現在日時:' line."""
+    """Replacing the datetime filter removes the old default 'Current datetime:' line."""
     def new_fn(accumulated: str, ctx: dict[str, Any]) -> str:
         return accumulated + "REPLACED_DATETIME\n\n"
 
     tachikoma_persona.register_prompt_filter("datetime", new_fn)
     result = tachikoma_persona.format_prompt("test")
     assert "REPLACED_DATETIME" in result
-    # Japanese text intentionally kept for CJK processing test
     assert "Current datetime:" not in result
 
 
 @freeze_time("2026-04-23T10:00:00+09:00")
 def test_default_datetime_filter_backward_compat(tachikoma_persona: Persona) -> None:
-    # Japanese text intentionally kept for CJK processing test
-    """Without register_prompt_filter, the existing '現在日時:' line is still present."""
+    """Without register_prompt_filter, the existing 'Current datetime:' line is still present."""
     result = tachikoma_persona.format_prompt("test")
-    # Japanese text intentionally kept for CJK processing test
     assert "Current datetime: 2026-04-23 10:00:00 (JST)" in result
 
 

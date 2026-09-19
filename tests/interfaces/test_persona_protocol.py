@@ -21,19 +21,19 @@ VALID_PERSONA_CONTENT = textwrap.dedent("""\
       model: claude-3-5-sonnet-20241022
     ---
 
-    ## \u57fa\u672c\u60c5\u5831
+    ## Basic information
     Persona for tests.
 
-    ## \u4fa1\u5024\u89b3
+    ## Values
     Test.
 
-    ## \u53cd\u5fdc\u30d1\u30bf\u30fc\u30f3
+    ## Reaction patterns
     Pattern.
 
-    ## \u53e3\u8abf
+    ## Tone
     Tone.
 
-    ## \u30a2\u30a6\u30c8\u30d7\u30c3\u30c8\u5f62\u5f0f
+    ## Output format
     Format.
 """)
 

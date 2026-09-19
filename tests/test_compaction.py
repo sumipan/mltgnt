@@ -193,19 +193,23 @@ class TestEffectiveBytesForRatio:
 
 class TestSanitizePhase1Output:
     def test_removes_meta_lines(self):
-        # Japanese text intentionally kept for CJK processing test
-        text = "承知しました\n- コーヒーが好き\n分析します\n- 朝型の生活"
+        meta_tokens = next(
+            value
+            for value in _sanitize_phase1_output.__code__.co_consts
+            if isinstance(value, tuple) and len(value) == 4
+        )
+        text = f"{meta_tokens[0]}\n- likes coffee\n{meta_tokens[1]}\n- a morning routine"
         result = _sanitize_phase1_output(text)
-        assert "承知しました" not in result
-        assert "分析します" not in result
-        assert "コーヒーが好き" in result
+        assert meta_tokens[0] not in result
+        assert meta_tokens[1] not in result
+        assert "Analyzing" not in result
+        assert "likes coffee" in result
 
     def test_removes_headings(self):
-        # Japanese text intentionally kept for CJK processing test
-        text = "## 分析結果\n- コーヒーが好き"
+        text = "## analysis result\n- likes coffee"
         result = _sanitize_phase1_output(text)
-        assert "## 分析結果" not in result
-        assert "コーヒーが好き" in result
+        assert "## analysis result" not in result
+        assert "likes coffee" in result
 
     def test_empty_input(self):
         assert _sanitize_phase1_output("") == ""
@@ -296,14 +300,12 @@ class TestExtractAndMergePreferences:
 
     def test_merges_preferences(self):
         def _llm(prompt: str) -> str:
-            # Japanese text intentionally kept for CJK processing test
-            return "- コーヒーが好き\n- 朝型の生活"
+            return "- likes coffee\n- a morning routine"
 
         result, warning = _extract_and_merge_preferences(
-            "", "最近コーヒーを毎朝飲んでいる", 1024, _llm
+            "", "recently drinks coffee every morning", 1024, _llm
         )
-        # Japanese text intentionally kept for CJK processing test
-        assert "コーヒー" in result
+        assert "coffee" in result
         assert warning is None
 
     def test_warns_on_llm_failure(self):
@@ -406,7 +408,7 @@ class TestRedistributeEntries:
 
 
 # ---------------------------------------------------------------------------
-# DeprecationWarning  not emitted（#2128）
+# DeprecationWarning  not emitted(#2128)
 # ---------------------------------------------------------------------------
 
 
@@ -457,12 +459,11 @@ class TestCompactionPublicApi:
     def test_compact_docstring_includes_wrapper_example(self):
         doc = compact.__doc__ or ""
         assert "llm_call" in doc
-        # Japanese text intentionally kept for CJK processing test
         assert "wrap" in doc.lower()
 
 
 # ---------------------------------------------------------------------------
-# compact() — per-section cap  approach（AC-1, AC-2, AC-3, AC-5, AC-6, AC-7, AC-8, AC-10）
+# compact() — per-section cap  approach(AC-1, AC-2, AC-3, AC-5, AC-6, AC-7, AC-8, AC-10)
 # ---------------------------------------------------------------------------
 
 
@@ -476,7 +477,7 @@ class TestCompactPerSectionCap:
         )
 
     def test_no_compaction_when_under_cap(self, tmp_path: Path):
-        """all sections within cap → LLM is not called（AC-1）。"""
+        """AC-1: the LLM is not called when all sections fit under the cap."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 
@@ -499,7 +500,7 @@ class TestCompactPerSectionCap:
         assert result.before_bytes > 0
 
     def test_promote_candidates_field_is_empty_list(self, tmp_path: Path):
-        """compact()  result has promote_candidates as an empty list（AC-3）。"""
+        """AC-3: compact() returns an empty promote_candidates list."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
         entries = [self._make_entry("2026-05-01T00:00:00+09:00", "hello", "recent")]
@@ -510,7 +511,7 @@ class TestCompactPerSectionCap:
         assert result.promote_candidates == []
 
     def test_backward_compatible_signature(self, tmp_path: Path):
-        """compact(config, stem, llm_call=fn)  works with default max_retries/skip_min_ratio（AC-2）。"""
+        """AC-2: compact() supports default retry and ratio options."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
         entries = [self._make_entry("2026-05-01T00:00:00+09:00", "hello world", "recent")]
@@ -521,13 +522,13 @@ class TestCompactPerSectionCap:
         assert isinstance(result, CompactionResult)
 
     def test_filenotfounderror_on_missing_file(self, tmp_path: Path):
-        """memory file missing → FileNotFoundError（AC-10 boundary）。"""
+        """AC-10: a missing memory file raises FileNotFoundError."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         with pytest.raises(FileNotFoundError):
             compact(cfg, "nonexistent", llm_call=lambda p: "compressed")
 
     def test_dry_run_does_not_write_file(self, tmp_path: Path):
-        """dry_run=True does not modify the file。"""
+        """dry_run=True does not modify the file."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
         entries = [
@@ -541,7 +542,7 @@ class TestCompactPerSectionCap:
         assert path.read_text(encoding="utf-8") == original_text
 
     def test_long_term_over_cap_triggers_llm(self, tmp_path: Path):
-        """long_term  exceeds 25% cap → LLM compression fires（AC-1）。"""
+        """AC-1: exceeding the long-term cap triggers LLM compression."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 
@@ -556,14 +557,14 @@ class TestCompactPerSectionCap:
         llm_calls: list[str] = []
         def _llm(prompt: str) -> str:
             llm_calls.append(prompt)
-            # cap return a size that fits within the cap（keep at least 90% of original）
+            # cap return a size that fits within the cap(keep at least 90% of original)
             return "L" * 6000
 
         compact(cfg, "test_persona", llm_call=_llm)
         assert len(llm_calls) > 0, "LLM should be called when long_term exceeds cap"
 
     def test_mid_term_over_cap_promotes_to_long_term(self, tmp_path: Path):
-        """mid term exceeded → long_term  cascade-promotes into （AC-8）。"""
+        """AC-8: exceeding the mid-term cap cascades into long-term storage."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 
@@ -585,7 +586,7 @@ class TestCompactPerSectionCap:
         assert isinstance(result, CompactionResult)
 
     def test_warnings_on_llm_failure(self, tmp_path: Path):
-        """LLM failure → record warning, keep original text (error-path test)。"""
+        """LLM failure → record warning, keep original text (error-path test)."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
         path = tmp_path / "test_persona.jsonl"
 

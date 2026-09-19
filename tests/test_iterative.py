@@ -16,7 +16,7 @@ TC11: memory If the file is empty
 AC1: read_memory_iterative works
 AC3: from mltgnt.memory._iterative import IterativeRetriever
 AC4: judge_sufficiency SUFFICIENT → Instantly returnTC1 Verified)
-AC5: INSUFFICIENT → MEMORY Search → SUFFICIENT（TC2 Verified)
+AC5: INSUFFICIENT → MEMORY Search → SUFFICIENT(TC2 Verified)
 AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError
 AC7: llm_call Returns the first search result at an exceptionTC8 Verified)
 AC8: JSONL File empty → empty stringTC11 Verified)
@@ -133,7 +133,7 @@ def test_issue_ac4_callback_injection(tmp_path: Path) -> None:
 
 
 def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
-    """AC5: search_skills=None、LLM Home SKILL Source specification → Loop co ation in empty list."""
+    """AC5: search_skills=None,LLM Home SKILL Source specification → Loop co ation in empty list."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
@@ -157,12 +157,12 @@ def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC6: AgenticRetriever NoneImportError）
+# AC6: AgenticRetriever NoneImportError)
 # ---------------------------------------------------------------------------
 
 
 def test_ac6_agentic_retriever_import_error() -> None:
-    """AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError。"""
+    """AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError."""
     with pytest.raises(ImportError):
         from mltgnt.memory._agentic import AgenticRetriever  # noqa: F401
 
@@ -203,7 +203,7 @@ def test_tc1_memory_sufficient(tmp_path: Path) -> None:
 
 
 def test_tc2_memory_requery(tmp_path: Path) -> None:
-    """TC2: INSUFFICIENT→MEMORY→re-search query,2 SUFFICIENT。"""
+    """TC2: INSUFFICIENT→MEMORY→re-search query,2 SUFFICIENT."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PROJECT)
 
@@ -308,7 +308,7 @@ def test_tc4_multi_loop(tmp_path: Path) -> None:
 
 
 def test_tc5_preferences_always_included(tmp_path: Path) -> None:
-    """TC5: Any query Home preferences The section is included at the top."""
+    """TC5: every query includes the preferences section at the top."""
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_SUSHI)
 
@@ -321,8 +321,7 @@ def test_tc5_preferences_always_included(tmp_path: Path) -> None:
         llm_call=lambda _: "SUFFICIENT",
     )
 
-    # Japanese text intentionally kept for CJK processing test
-    assert "ユーザーの好み・傾向" in result
+    assert config.preferences_section_name in result
     assert "A user with food preferences" in result
 
 

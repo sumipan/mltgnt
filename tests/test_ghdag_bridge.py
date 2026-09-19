@@ -30,7 +30,7 @@ from mltgnt.bridges.ghdag_bridge import (
 from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMatchResult, SkillMeta
 
 # ---------------------------------------------------------------------------
-# bridges/__init__ — Package re-export（AC1, AC2, AC7）
+# bridges/__init__ — Package re-export(AC1, AC2, AC7)
 # ---------------------------------------------------------------------------
 
 
@@ -74,7 +74,7 @@ class TestBridgesInitImports:
 
 
 # ---------------------------------------------------------------------------
-# correlation_id — AuditContext PropagationAC3〜AC5）
+# correlation_id — AuditContext PropagationAC3-AC5)
 # ---------------------------------------------------------------------------
 
 
@@ -144,8 +144,7 @@ class TestCorrelationIdPropagation:
         assert ctx.correlation_id == "dag-456"
 
     def test_enqueue_and_wait_default_correlation_id(self, tmp_path):
-        # Japanese text intentionally kept for CJK processing test
-        """AC5: correlation_id 省略時は None が AuditContext に渡される。"""
+        """AC5: correlation_id When omitted,  None   AuditContext  is passed."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -178,7 +177,7 @@ class TestCorrelationIdPropagation:
 
 
 # ---------------------------------------------------------------------------
-# request_id — AuditContext Propagation#1346）
+# request_id — AuditContext Propagation#1346)
 # ---------------------------------------------------------------------------
 
 
@@ -250,8 +249,7 @@ class TestRequestIdPropagation:
         assert captured_contexts[0].request_id == "test-rid"
 
     def test_enqueue_and_wait_default_request_id(self, tmp_path):
-        # Japanese text intentionally kept for CJK processing test
-        """request_id 省略時は None が AuditContext に渡される。"""
+        """request_id When omitted,  None   AuditContext  is passed."""
         from ghdag.pipeline import LLMPipelineAPI
 
         jobs_dir = _make_jobs_dir(tmp_path)
@@ -421,7 +419,7 @@ class TestEnqueueAndWaitJsonlIntegration:
         return jobs_dir / "exec.jsonl"
 
     def test_exec_jsonl_all_lines_valid_json(self, tmp_path):
-        """enqueue_and_wait Home exec.jsonl All lines to write valid JSON。"""
+        """enqueue_and_wait Home exec.jsonl All lines to write valid JSON."""
         exec_jsonl = self._run(tmp_path)
         lines = [ln for ln in exec_jsonl.read_text().splitlines() if ln.strip()]
         assert len(lines) >= 1, "exec.jsonl s are not written"
@@ -539,7 +537,7 @@ class TestEnqueueAndWaitJsonlIntegration:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_and_wait — permission Transmittance TestIssue #2191）
+# enqueue_and_wait — permission Transmittance TestIssue #2191)
 # ---------------------------------------------------------------------------
 
 
@@ -652,7 +650,7 @@ class TestEnqueueAndWaitPromptPassthrough:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_dag — DAG Input TestAC-1〜AC-7）
+# enqueue_dag — DAG Input TestAC-1-AC-7)
 # ---------------------------------------------------------------------------
 
 
@@ -745,7 +743,7 @@ class TestEnqueueDag:
         assert s2.template == "B"
 
     def test_ac3_empty_steps_raises_value_error(self, tmp_path):
-        """AC-3: empty list ValueError（'empty' messages)."""
+        """AC-3: empty list ValueError('empty' messages)."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
         with pytest.raises(ValueError, match="empty"):
@@ -853,7 +851,7 @@ class TestEnqueueDag:
 
 # ---------------------------------------------------------------------------
 # enqueue_and_wait — result Read Test
-# （md_read  result content Verify acquisition)
+# (md_read  result content Verify acquisition)
 # ---------------------------------------------------------------------------
 
 _MD_READ = "mltgnt.bridges.ghdag_bridge.md_read"
@@ -947,7 +945,7 @@ class TestEnqueueAndWaitResultRead:
 
 
 # ---------------------------------------------------------------------------
-# enqueue_dag — Data Flow Result Propagation TestAC-8〜AC-12）
+# enqueue_dag — Data Flow Result Propagation TestAC-8-AC-12)
 # ---------------------------------------------------------------------------
 
 
@@ -967,8 +965,7 @@ class TestEnqueueDagDataFlow:
             return original_submit(self_api, step_list, base_context=base_context, **kwargs)
 
         mock_md_a = MagicMock()
-        # Japanese text intentionally kept for CJK processing test
-        mock_md_a.content = "分析結果A"
+        mock_md_a.content = "analysis resultA"
         mock_md_b = MagicMock()
         mock_md_b.content = ""
 
@@ -992,10 +989,9 @@ class TestEnqueueDagDataFlow:
         # step_b Home submit Home step_a_result Injected
         step_b_context = captured_contexts[1]
         assert "step_a_result" in step_b_context
-        # Japanese text intentionally kept for CJK processing test
-        assert step_b_context["step_a_result"] == "分析結果A"
+        assert step_b_context["step_a_result"] == "analysis resultA"
         # step_a Success
-        assert results[0] == (True, "分析結果A")
+        assert results[0] == (True, "analysis resultA")
 
     def test_ac9_independent_steps_no_cross_context(self, tmp_path):
         """AC-9: depends No Steps base_context to other steps _result not included."""
@@ -1134,7 +1130,7 @@ class TestEnqueueDagDataFlow:
 
 
 # ---------------------------------------------------------------------------
-# typecheck_dag / enqueue_dag compose-time typecheck（Issue #1386）
+# typecheck_dag / enqueue_dag compose-time typecheck(Issue #1386)
 # ---------------------------------------------------------------------------
 
 
@@ -1377,7 +1373,7 @@ class TestTypecheckDag:
 
 class TestEnqueueDagTypecheck:
     def test_enqueue_dag_typecheck_on_by_default(self, tmp_path):
-        """SKILL_IO_TYPECHECK Unset typecheck Run()mismatch Home SkillIOTypeError）。"""
+        """An unchecked run mismatch raises SkillIOTypeError."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         skills = {
             "upstream": _skill_meta(
@@ -1419,7 +1415,7 @@ class TestEnqueueDagTypecheck:
         assert (jobs_dir / "exec.jsonl").read_text().strip() == ""
 
     def test_enqueue_dag_typecheck_off_with_zero(self, tmp_path):
-        """SKILL_IO_TYPECHECK=0 Home typecheck Skip to contentmismatch 。"""
+        """SKILL_IO_TYPECHECK=0 Home typecheck Skip to contentmismatch ."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         skills = {
             "upstream": _skill_meta(
@@ -1603,7 +1599,7 @@ class TestFanoutPermissionInheritance:
 
 
 # ---------------------------------------------------------------------------
-# compose_pipeline / PIPELINE_STATUS PropagationIssue #3031）
+# compose_pipeline / PIPELINE_STATUS PropagationIssue #3031)
 # ---------------------------------------------------------------------------
 
 
@@ -1724,8 +1720,7 @@ class TestEnqueueDagPipelineStatus:
             return original_submit(self_api, step_list, base_context=base_context, **kwargs)
 
         mock_md_a = MagicMock()
-        # Japanese text intentionally kept for CJK processing test
-        mock_md_a.content = "分析結果\nPIPELINE_STATUS: OK\n"
+        mock_md_a.content = "analysis result\nPIPELINE_STATUS: OK\n"
         mock_md_b = MagicMock()
         mock_md_b.content = "summary"
 

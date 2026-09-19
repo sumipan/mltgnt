@@ -109,23 +109,22 @@ def test_has_work_request_with_synthetic_pack():
         exclude_stems=frozenset(),
     )
     assert has_work_request("please do this", pack=pack) is True
-    # Japanese text intentionally kept for CJK processing test
-    assert has_work_request("これをして", pack=pack) is False
+    assert has_work_request("do this", pack=pack) is False
 
 
 def test_has_work_request_default_ja():
     """AC-1: Default JA pack works for Japanese request phrasing."""
     from mltgnt.agent.deterministic_gate import has_work_request
-    # Japanese text intentionally kept for CJK processing test
-    assert has_work_request("これをして") is True
+    from mltgnt.config.language import JA
+
+    assert has_work_request(JA.work_request_markers[0]) is True
     assert has_work_request("hello world") is False
 
 
 def test_persona_config_has_exclude_stems():
     """AC-4: PersonaConfig accepts exclude_stems field."""
     from mltgnt.config import PersonaConfig
-    # Japanese text intentionally kept for CJK processing test
-    sample_stem = "サンプル"
+    sample_stem = "sample-persona"
     pc = PersonaConfig(exclude_stems=frozenset({sample_stem}))
     assert pc.exclude_stems == frozenset({sample_stem})
     pc_default = PersonaConfig()
@@ -141,8 +140,7 @@ def test_registry_exclude_stems_default_empty():
 def test_list_personas_exclude_stems_arg(tmp_path):
     """AC-4: list_personas with exclude_stems=frozenset() returns all personas."""
     from mltgnt.persona.registry import list_personas
-    # Japanese text intentionally kept for CJK processing test
-    sample_stem = "サンプル"
+    sample_stem = "sample-persona"
     (tmp_path / "alice.md").write_text("# alice\n")
     (tmp_path / f"{sample_stem}.md").write_text("# sample\n")
     all_stems = list_personas(tmp_path, exclude_stems=frozenset())

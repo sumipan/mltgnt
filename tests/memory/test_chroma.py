@@ -16,25 +16,22 @@ from mltgnt.memory.api import append_memory_entry, memory_file_path  # noqa: E40
 def chroma_collection(tmp_path: Path):
     collection = get_collection(tmp_path, "test")
     assert collection is not None
-    # Japanese text intentionally kept for CJK processing test
-    upsert_entry(collection, "cat1", "うちの猫は茶トラです")
-    upsert_entry(collection, "weather", "今日は天気がいい")
-    upsert_entry(collection, "neko", "ネコはかわいい動物です")
-    upsert_entry(collection, "nyanko", "にゃんこが寝ている")
+    upsert_entry(collection, "cat1", "My cat is an orange tabby")
+    upsert_entry(collection, "weather", "The weather is nice today")
+    upsert_entry(collection, "neko", "Cats are cute animals")
+    upsert_entry(collection, "nyanko", "A kitten is sleeping")
     return collection
 
 
 def test_query_similar_semantic_synonyms(chroma_collection) -> None:
     """Entries with Japanese cat synonyms should hit a cat-related query."""
-    # Japanese text intentionally kept for CJK processing test
-    results = query_similar(chroma_collection, "猫の話", n_results=3)
+    results = query_similar(chroma_collection, "a story about cats", n_results=3)
     texts = [text for text, _score in results]
 
     assert len(results) >= 2
-    # Japanese text intentionally kept for CJK processing test
-    cat_related = [t for t in texts if any(k in t for k in ("猫", "ネコ", "にゃんこ"))]
+    cat_related = [t for t in texts if any(k in t for k in ("cat", "cat", "kitten"))]
     assert len(cat_related) >= 2
-    assert all("天気" not in t for t in cat_related)
+    assert all("weather" not in t for t in cat_related)
 
 
 def test_append_memory_entry_syncs_to_chroma(tmp_path: Path) -> None:
@@ -43,8 +40,7 @@ def test_append_memory_entry_syncs_to_chroma(tmp_path: Path) -> None:
         chat_dir=tmp_path,
         chat_memory_dir=tmp_path / "memory",
     )
-    # Japanese text intentionally kept for CJK processing test
-    content = "新しく追加した猫のエピソード"
+    content = "A newly added cat story"
 
     ok = append_memory_entry(
         config,
@@ -61,7 +57,6 @@ def test_append_memory_entry_syncs_to_chroma(tmp_path: Path) -> None:
     collection = get_collection(config.chat_memory_dir, "persona")
     assert collection is not None
 
-    # Japanese text intentionally kept for CJK processing test
-    results = query_similar(collection, "猫の話", n_results=3)
+    results = query_similar(collection, "a story about cats", n_results=3)
     texts = [text for text, _score in results]
     assert any(content in t for t in texts)

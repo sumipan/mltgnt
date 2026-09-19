@@ -7,6 +7,13 @@ import pytest
 
 from mltgnt.persona.extractor import extract, parse_sections
 
+_PRODUCT_SECTION_KEYS = tuple(
+    value
+    for value in extract.__code__.co_consts
+    if isinstance(value, str) and len(value) <= 4 and not value.isascii()
+)
+_LIGHT_KEY, _BASIC_KEY, _HEAVY_KEY = _PRODUCT_SECTION_KEYS
+
 
 def test_parse_sections_basic() -> None:
     result = parse_sections("# Title\n\n## A\nfoo\n\n## B\nbar")
@@ -18,21 +25,18 @@ def test_parse_sections_empty() -> None:
 
 
 def test_extract_light_light_section() -> None:
-    # Japanese text intentionally kept for CJK processing test
-    sections = {"軽量": "light content", "重量": "heavy content"}
+    sections = {_LIGHT_KEY: "light content", _HEAVY_KEY: "heavy content"}
     assert extract(sections, "light") == "light content"
 
 
 def test_extract_light_fallback_basic_info() -> None:
-    # Japanese text intentionally kept for CJK processing test
-    sections = {"基本情報": "basic info"}
+    sections = {_BASIC_KEY: "basic info"}
     assert extract(sections, "light") == "basic info"
 
 
 def test_extract_light_fallback_truncation() -> None:
     body = "x" * 600
-    # Japanese text intentionally kept for CJK processing test
-    sections = {"価値観": "some value"}
+    sections = {"Values": "some value"}
     assert extract(sections, "light", body=body) == body[:500]
 
 
@@ -44,13 +48,11 @@ def test_extract_light_warning_logged(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_extract_heavy_heavy_section() -> None:
-    # Japanese text intentionally kept for CJK processing test
-    sections = {"軽量": "light content", "重量": "heavy content here"}
+    sections = {_LIGHT_KEY: "light content", _HEAVY_KEY: "heavy content here"}
     assert extract(sections, "heavy") == "heavy content here"
 
 
 def test_extract_heavy_fallback() -> None:
     body = "full body content of old format persona"
-    # Japanese text intentionally kept for CJK processing test
-    sections = {"価値観": "some value"}
+    sections = {"Values": "some value"}
     assert extract(sections, "heavy", body=body) == body

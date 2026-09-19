@@ -9,8 +9,8 @@ TC5: empty response (fail-safe)
 TC6: unknown source (fail-safe)
 TC7: unknown format (fail-safe)
 TC8: LLM exception propagation
-TC9: rewritten_query compat property（INSUFFICIENT/MEMORY）
-TC10: rewritten_query compat property（SUFFICIENT）
+TC9: rewritten_query compat property(INSUFFICIENT/MEMORY)
+TC10: rewritten_query compat property(SUFFICIENT)
 """
 from __future__ import annotations
 
@@ -132,7 +132,7 @@ def test_tc8_llm_exception():
 
 
 # ---------------------------------------------------------------------------
-# TC9: rewritten_query compat property（INSUFFICIENT/MEMORY）
+# TC9: rewritten_query compat property(INSUFFICIENT/MEMORY)
 # ---------------------------------------------------------------------------
 
 
@@ -143,7 +143,7 @@ def test_tc9_rewritten_query_insufficient():
 
 
 # ---------------------------------------------------------------------------
-# TC10: rewritten_query compat property（SUFFICIENT）
+# TC10: rewritten_query compat property(SUFFICIENT)
 # ---------------------------------------------------------------------------
 
 

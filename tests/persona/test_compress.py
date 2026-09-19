@@ -3,12 +3,49 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mltgnt.config import DEFAULT_WEIGHT_MAP
+from mltgnt.config.language import LanguagePack
+from mltgnt.persona.compress import regenerate_light_block
+
+# ---------------------------------------------------------------------------
+# ASCII LanguagePack for validation tests
+# ---------------------------------------------------------------------------
+
+_ASCII_PACK = LanguagePack(
+    work_request_markers=("please", "update", "revise"),
+    create_request_markers=("create", "make"),
+    deferred_patterns=(re.compile(r"later"),),
+    compress_prompt_template="Generate a light block from: {heavy_text}",
+    v21_required_sections=("**tone**", "**values**", "**positive-reaction**", "**friction**"),
+    v21_example_section="**speech-example**",
+    meta_header_needles=("as-persona",),
+    dedupe_opener_re=re.compile(r"^plan[,]"),
+    persona_cut_re=re.compile(r"\n\ntone-body"),
+    exclude_stems=frozenset(),
+)
+
+# ---------------------------------------------------------------------------
+# Product-localized section keys are obtained from product configuration and
+# function constants so this external test repository does not duplicate them.
+# ---------------------------------------------------------------------------
+
+_LOCALIZED_BLOCK_KEYS = tuple(
+    value
+    for value in regenerate_light_block.__code__.co_consts
+    if isinstance(value, str) and len(value) == 2 and not value.isascii()
+)
+_SECT_LIGHT = next(
+    key for key in _LOCALIZED_BLOCK_KEYS if DEFAULT_WEIGHT_MAP.get(key) == "light"
+)
+_SECT_HEAVY = next(key for key in _LOCALIZED_BLOCK_KEYS if key != _SECT_LIGHT)
+_SECT_REF = "Reference"
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -22,32 +59,29 @@ def _make_llm_result(ok: bool = True, stdout: str = "compressed text", stderr: s
     return r
 
 
-# Japanese text intentionally kept for CJK processing test
-# v2.1 mock response (must pass _validate_v21_light_block)
+# v2.1 mock response using ASCII LanguagePack sections
 _V21_MOCK_RESPONSE = textwrap.dedent("""\
     persona-c is a curious and logical person who engages eagerly with new technology.
 
-    **\u53e3\u8abf** — Speaks concisely and uses technical terms appropriately.
-    **\u4fa1\u5024\u89b3** — Values efficiency and accuracy; dislikes ambiguity.
-    **\u597d\u610f\u7684\u53cd\u5fdc** — Engages eagerly with logical proposals and new tech topics.
-    **\u5f15\u3063\u304b\u304b\u308b** — Shows dissatisfaction with baseless claims or inefficient steps.
+    **tone** — Speaks concisely and uses technical terms appropriately.
+    **values** — Values efficiency and accuracy; dislikes ambiguity.
+    **positive-reaction** — Engages eagerly with logical proposals and new tech topics.
+    **friction** — Shows dissatisfaction with baseless claims or inefficient steps.
 """)
 
-# Japanese text intentionally kept for CJK processing test
 # v2.1 form with speech examples
 _V21_MOCK_WITH_SPEECH = textwrap.dedent("""\
     persona-c is a curious and logical person who engages eagerly with new technology.
 
-    **\u53e3\u8abf** — Speaks concisely and uses technical terms appropriately.
-    **\u4fa1\u5024\u89b3** — Values efficiency and accuracy; dislikes ambiguity.
-    **\u597d\u610f\u7684\u53cd\u5fdc** — Engages eagerly with logical proposals and new tech topics.
-    **\u5f15\u3063\u304b\u304b\u308b** — Shows dissatisfaction with baseless claims or inefficient steps.
-    **\u767a\u8a00\u4f8b**
+    **tone** — Speaks concisely and uses technical terms appropriately.
+    **values** — Values efficiency and accuracy; dislikes ambiguity.
+    **positive-reaction** — Engages eagerly with logical proposals and new tech topics.
+    **friction** — Shows dissatisfaction with baseless claims or inefficient steps.
+    **speech-example**
     > Please organize the evidence a bit more before we discuss that.
 """)
 
-# Japanese text intentionally kept for CJK processing test
-V2_PERSONA = textwrap.dedent("""\
+V2_PERSONA = textwrap.dedent(f"""\
     ---
     persona:
       name: persona-d
@@ -56,22 +90,21 @@ V2_PERSONA = textwrap.dedent("""\
       model: claude-sonnet-4-6
     ---
 
-    ## \u8efd\u91cf
+    ## {_SECT_LIGHT}
 
     Existing light text.
 
-    ## \u91cd\u91cf
+    ## {_SECT_HEAVY}
 
     Detailed persona text covering values, reaction patterns, and tone.
     This persona is very curious and likes trying new things.
 
-    ## \u53c2\u7167
+    ## {_SECT_REF}
 
     Reference links and supplemental info.
 """)
 
-# Japanese text intentionally kept for CJK processing test
-V2_PERSONA_EMPTY_LIGHT = textwrap.dedent("""\
+V2_PERSONA_EMPTY_LIGHT = textwrap.dedent(f"""\
     ---
     persona:
       name: persona-d
@@ -80,18 +113,17 @@ V2_PERSONA_EMPTY_LIGHT = textwrap.dedent("""\
       model: claude-sonnet-4-6
     ---
 
-    ## \u8efd\u91cf
+    ## {_SECT_LIGHT}
 
-    ## \u91cd\u91cf
+    ## {_SECT_HEAVY}
 
     Detailed persona text covering values, reaction patterns, and tone.
 
-    ## \u53c2\u7167
+    ## {_SECT_REF}
 
     Reference links and supplemental info.
 """)
 
-# Japanese text intentionally kept for CJK processing test
 V1_PERSONA = textwrap.dedent("""\
     ---
     persona:
@@ -101,11 +133,11 @@ V1_PERSONA = textwrap.dedent("""\
       model: claude-sonnet-4-6
     ---
 
-    ## \u57fa\u672c\u60c5\u5831
+    ## basic-info
 
     v1-format persona. No heavy block.
 
-    ## \u4fa1\u5024\u89b3
+    ## personality
 
     Likes testing.
 """)
@@ -148,7 +180,7 @@ class TestCompressHeavyToLight:
         from mltgnt.persona.compress import compress_heavy_to_light
         heavy = "a" * 1500
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            result = compress_heavy_to_light(heavy)
+            result = compress_heavy_to_light(heavy, pack=_ASCII_PACK)
         assert isinstance(result, str)
         assert result == _V21_MOCK_RESPONSE.strip()
 
@@ -156,31 +188,31 @@ class TestCompressHeavyToLight:
         from mltgnt.persona.compress import compress_heavy_to_light
         heavy = "short heavy block" * 5
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
-            result = compress_heavy_to_light(heavy)
+            result = compress_heavy_to_light(heavy, pack=_ASCII_PACK)
         mock_call.assert_called_once()
         assert result == _V21_MOCK_RESPONSE.strip()
 
     def test_empty_input_raises_runtime_error(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         with pytest.raises(RuntimeError):
-            compress_heavy_to_light("")
+            compress_heavy_to_light("", pack=_ASCII_PACK)
 
     def test_llm_failure_raises_runtime_error(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         with patch("mltgnt.bridges.llm_adapter.call_llm", side_effect=TimeoutError("timeout")):
             with pytest.raises(RuntimeError, match="timeout"):
-                compress_heavy_to_light("heavy text")
+                compress_heavy_to_light("heavy text", pack=_ASCII_PACK)
 
     def test_llm_ok_false_raises_runtime_error(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=False, stderr="engine error")):
             with pytest.raises(RuntimeError, match="engine error"):
-                compress_heavy_to_light("heavy text")
+                compress_heavy_to_light("heavy text", pack=_ASCII_PACK)
 
     def test_engine_and_model_passed_to_llm(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
-            compress_heavy_to_light("test", engine="claude", model="claude-haiku-4-5")
+            compress_heavy_to_light("test", engine="claude", model="claude-haiku-4-5", pack=_ASCII_PACK)
         _, kwargs = mock_call.call_args
         assert kwargs.get("engine") == "claude"
         assert kwargs.get("model") == "claude-haiku-4-5"
@@ -188,7 +220,7 @@ class TestCompressHeavyToLight:
     def test_timeout_passed_to_llm(self) -> None:
         from mltgnt.persona.compress import compress_heavy_to_light
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)) as mock_call:
-            compress_heavy_to_light("test", timeout=60)
+            compress_heavy_to_light("test", timeout=60, pack=_ASCII_PACK)
         _, kwargs = mock_call.call_args
         assert kwargs.get("timeout") == 60
 
@@ -204,60 +236,57 @@ class TestRegenerateLightBlock:
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            result = regenerate_light_block(persona_file)
+            result = regenerate_light_block(persona_file, pack=_ASCII_PACK)
         assert result.is_first_generation is True
         assert result.old_hash == ""
         assert result.light_text == _V21_MOCK_RESPONSE.strip()
         content = persona_file.read_text(encoding="utf-8")
-        # Japanese text intentionally kept for CJK processing test
-        assert "**\u53e3\u8abf**" in content
+        assert "**tone**" in content
 
     def test_regeneration_changed(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            result = regenerate_light_block(persona_file)
+            result = regenerate_light_block(persona_file, pack=_ASCII_PACK)
         assert result.changed is True
         assert result.old_hash != result.new_hash
         content = persona_file.read_text(encoding="utf-8")
-        # Japanese text intentionally kept for CJK processing test
-        assert "**\u53e3\u8abf**" in content
+        assert "**tone**" in content
 
     def test_regeneration_unchanged(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "persona-d.md"
-        # Prepare persona with v2.1 light block already present
-        # Japanese text intentionally kept for CJK processing test
-        v2_persona_v21_light = """---
-persona:
-  name: persona-d
-ops:
-  engine: claude
-  model: claude-sonnet-4-6
----
-
-## \u8efd\u91cf
-
-persona-c is a curious and logical person who engages eagerly with new technology.
-
-**\u53e3\u8abf** — Speaks concisely and uses technical terms appropriately.
-**\u4fa1\u5024\u89b3** — Values efficiency and accuracy; dislikes ambiguity.
-**\u597d\u610f\u7684\u53cd\u5fdc** — Engages eagerly with logical proposals and new tech topics.
-**\u5f15\u3063\u304b\u304b\u308b** — Shows dissatisfaction with baseless claims or inefficient steps.
-
-## \u91cd\u91cf
-
-Detailed persona text covering values, reaction patterns, and tone.
-This persona is very curious and likes trying new things.
-
-## \u53c2\u7167
-
-Reference links and supplemental info.
-"""
+        v2_persona_v21_light = (
+            "---\n"
+            "persona:\n"
+            "  name: persona-d\n"
+            "ops:\n"
+            "  engine: claude\n"
+            "  model: claude-sonnet-4-6\n"
+            "---\n"
+            "\n"
+            f"## {_SECT_LIGHT}\n"
+            "\n"
+            "persona-c is a curious and logical person who engages eagerly with new technology.\n"
+            "\n"
+            "**tone** — Speaks concisely and uses technical terms appropriately.\n"
+            "**values** — Values efficiency and accuracy; dislikes ambiguity.\n"
+            "**positive-reaction** — Engages eagerly with logical proposals and new tech topics.\n"
+            "**friction** — Shows dissatisfaction with baseless claims or inefficient steps.\n"
+            "\n"
+            f"## {_SECT_HEAVY}\n"
+            "\n"
+            "Detailed persona text covering values, reaction patterns, and tone.\n"
+            "This persona is very curious and likes trying new things.\n"
+            "\n"
+            f"## {_SECT_REF}\n"
+            "\n"
+            "Reference links and supplemental info.\n"
+        )
         persona_file.write_text(v2_persona_v21_light, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            result = regenerate_light_block(persona_file)
+            result = regenerate_light_block(persona_file, pack=_ASCII_PACK)
         assert result.changed is False
         assert result.old_hash == result.new_hash
 
@@ -267,7 +296,7 @@ Reference links and supplemental info.
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
             with caplog.at_level(logging.WARNING, logger="mltgnt.persona.compress"):
-                result = regenerate_light_block(persona_file)
+                result = regenerate_light_block(persona_file, pack=_ASCII_PACK)
         if result.changed:
             warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
             assert len(warning_records) > 0
@@ -279,30 +308,28 @@ Reference links and supplemental info.
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V2_PERSONA, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            regenerate_light_block(persona_file)
+            regenerate_light_block(persona_file, pack=_ASCII_PACK)
         content = persona_file.read_text(encoding="utf-8")
         assert "persona:" in content
         assert "name: persona-d" in content
         assert "Detailed persona text" in content
-        # Japanese text intentionally kept for CJK processing test
-        assert "## \u91cd\u91cf" in content
+        assert f"## {_SECT_HEAVY}" in content
         assert "Reference links and supplemental info" in content
-        assert "## \u53c2\u7167" in content
+        assert f"## {_SECT_REF}" in content
 
     def test_invalid_v2_raises_value_error(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V1_PERSONA, encoding="utf-8")
-        # Japanese text intentionally kept for CJK processing test
-        with pytest.raises(ValueError, match="v2 \u5f62\u5f0f\u3067\u306f\u3042\u308a\u307e\u305b\u3093"):
-            regenerate_light_block(persona_file)
+        with pytest.raises(ValueError):
+            regenerate_light_block(persona_file, pack=_ASCII_PACK)
 
     def test_result_persona_name(self, tmp_path: Path) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            result = regenerate_light_block(persona_file)
+            result = regenerate_light_block(persona_file, pack=_ASCII_PACK)
         assert result.persona_name == "persona-d"
 
 
@@ -317,13 +344,12 @@ class TestIntegration:
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            regenerate_light_block(persona_file)
+            regenerate_light_block(persona_file, pack=_ASCII_PACK)
         content = persona_file.read_text(encoding="utf-8")
         from mltgnt.persona.frontmatter import split_yaml_frontmatter
         _, body = split_yaml_frontmatter(content)
         blocks = _split_h2_blocks(body)
-        # Japanese text intentionally kept for CJK processing test
-        light_text = blocks.get("\u8efd\u91cf", "")
+        light_text = blocks.get(_SECT_LIGHT, "")
         assert len(light_text) <= 1500
 
     def test_loader_compatible_after_regeneration(self, tmp_path: Path) -> None:
@@ -332,7 +358,7 @@ class TestIntegration:
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            regenerate_light_block(persona_file)
+            regenerate_light_block(persona_file, pack=_ASCII_PACK)
         persona = load(persona_file)
         assert persona.name == "persona-d"
 
@@ -359,97 +385,87 @@ class TestValidateV21LightBlock:
     def test_valid_standard_block(self) -> None:
         """Valid: standard v2.1 block raises no error."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        _validate_v21_light_block(_V21_MOCK_RESPONSE)
+        _validate_v21_light_block(_V21_MOCK_RESPONSE, pack=_ASCII_PACK)
 
     def test_valid_with_speech_examples(self) -> None:
         """Valid: v2.1 block with speech examples raises no error."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        _validate_v21_light_block(_V21_MOCK_WITH_SPEECH)
+        _validate_v21_light_block(_V21_MOCK_WITH_SPEECH, pack=_ASCII_PACK)
 
     def test_error_no_lead_text(self) -> None:
-        """Invalid: no lead text (starts at **\u53e3\u8abf**) → ValueError matching lead-text message."""
+        """Invalid: no lead text (starts directly at first bold heading) -> ValueError."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        # Japanese text intentionally kept for CJK processing test
-        no_lead = """**\u53e3\u8abf** — Speaks concisely.
-**\u4fa1\u5024\u89b3** — Values efficiency.
-**\u597d\u610f\u7684\u53cd\u5fdc** — Likes logical proposals.
-**\u5f15\u3063\u304b\u304b\u308b** — Dislikes baseless claims.
-"""
-        # Japanese text intentionally kept for CJK processing test
+        no_lead = (
+            "**tone** — Speaks concisely.\n"
+            "**values** — Values efficiency.\n"
+            "**positive-reaction** — Likes logical proposals.\n"
+            "**friction** — Dislikes baseless claims.\n"
+        )
         with pytest.raises(ValueError, match="lead text"):
-            _validate_v21_light_block(no_lead)
+            _validate_v21_light_block(no_lead, pack=_ASCII_PACK)
 
     def test_error_missing_section_tone(self) -> None:
-        """Invalid: missing **\u53e3\u8abf** → ValueError mentions \u53e3\u8abf."""
+        """Invalid: missing **tone** -> ValueError mentions tone."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        # Japanese text intentionally kept for CJK processing test
-        missing_section = """persona-c is a curious person.
-
-**\u4fa1\u5024\u89b3** — Values efficiency.
-**\u597d\u610f\u7684\u53cd\u5fdc** — Likes logical proposals.
-**\u5f15\u3063\u304b\u304b\u308b** — Dislikes baseless claims.
-"""
-        # Japanese text intentionally kept for CJK processing test
-        with pytest.raises(ValueError, match="\u53e3\u8abf"):
-            _validate_v21_light_block(missing_section)
+        missing_section = (
+            "persona-c is a curious person.\n\n"
+            "**values** — Values efficiency.\n"
+            "**positive-reaction** — Likes logical proposals.\n"
+            "**friction** — Dislikes baseless claims.\n"
+        )
+        with pytest.raises(ValueError, match=r"\*\*tone\*\*"):
+            _validate_v21_light_block(missing_section, pack=_ASCII_PACK)
 
     def test_error_missing_section_values(self) -> None:
-        """Invalid: missing **\u4fa1\u5024\u89b3** → ValueError mentions \u4fa1\u5024\u89b3."""
+        """Invalid: missing **values** -> ValueError mentions values."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        # Japanese text intentionally kept for CJK processing test
-        missing_section = """persona-c is a curious person.
-
-**\u53e3\u8abf** — Speaks concisely.
-**\u597d\u610f\u7684\u53cd\u5fdc** — Likes logical proposals.
-**\u5f15\u3063\u304b\u304b\u308b** — Dislikes baseless claims.
-"""
-        # Japanese text intentionally kept for CJK processing test
-        with pytest.raises(ValueError, match="\u4fa1\u5024\u89b3"):
-            _validate_v21_light_block(missing_section)
+        missing_section = (
+            "persona-c is a curious person.\n\n"
+            "**tone** — Speaks concisely.\n"
+            "**positive-reaction** — Likes logical proposals.\n"
+            "**friction** — Dislikes baseless claims.\n"
+        )
+        with pytest.raises(ValueError, match=r"\*\*values\*\*"):
+            _validate_v21_light_block(missing_section, pack=_ASCII_PACK)
 
     def test_error_missing_section_positive_reaction(self) -> None:
-        """Invalid: missing **\u597d\u610f\u7684\u53cd\u5fdc** → ValueError mentions \u597d\u610f\u7684\u53cd\u5fdc."""
+        """Invalid: missing **positive-reaction** -> ValueError mentions positive-reaction."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        # Japanese text intentionally kept for CJK processing test
-        missing_section = """persona-c is a curious person.
-
-**\u53e3\u8abf** — Speaks concisely.
-**\u4fa1\u5024\u89b3** — Values efficiency.
-**\u5f15\u3063\u304b\u304b\u308b** — Dislikes baseless claims.
-"""
-        # Japanese text intentionally kept for CJK processing test
-        with pytest.raises(ValueError, match="\u597d\u610f\u7684\u53cd\u5fdc"):
-            _validate_v21_light_block(missing_section)
+        missing_section = (
+            "persona-c is a curious person.\n\n"
+            "**tone** — Speaks concisely.\n"
+            "**values** — Values efficiency.\n"
+            "**friction** — Dislikes baseless claims.\n"
+        )
+        with pytest.raises(ValueError, match=r"\*\*positive-reaction\*\*"):
+            _validate_v21_light_block(missing_section, pack=_ASCII_PACK)
 
     def test_error_missing_section_friction(self) -> None:
-        """Invalid: missing **\u5f15\u3063\u304b\u304b\u308b** → ValueError mentions \u5f15\u3063\u304b\u304b\u308b."""
+        """Invalid: missing **friction** -> ValueError mentions friction."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        # Japanese text intentionally kept for CJK processing test
-        missing_section = """persona-c is a curious person.
-
-**\u53e3\u8abf** — Speaks concisely.
-**\u4fa1\u5024\u89b3** — Values efficiency.
-**\u597d\u610f\u7684\u53cd\u5fdc** — Likes logical proposals.
-"""
-        # Japanese text intentionally kept for CJK processing test
-        with pytest.raises(ValueError, match="\u5f15\u3063\u304b\u304b\u308b"):
-            _validate_v21_light_block(missing_section)
+        missing_section = (
+            "persona-c is a curious person.\n\n"
+            "**tone** — Speaks concisely.\n"
+            "**values** — Values efficiency.\n"
+            "**positive-reaction** — Likes logical proposals.\n"
+        )
+        with pytest.raises(ValueError, match=r"\*\*friction\*\*"):
+            _validate_v21_light_block(missing_section, pack=_ASCII_PACK)
 
     def test_error_speech_example_without_quote(self) -> None:
-        """Invalid: **\u767a\u8a00\u4f8b** without a following > line → ValueError."""
+        """Invalid: **speech-example** without a following > line -> ValueError."""
         from mltgnt.persona.compress import _validate_v21_light_block
-        # Japanese text intentionally kept for CJK processing test
-        bad_speech = """persona-c is a curious person.
-
-**\u53e3\u8abf** — Speaks concisely.
-**\u4fa1\u5024\u89b3** — Values efficiency.
-**\u597d\u610f\u7684\u53cd\u5fdc** — Likes logical proposals.
-**\u5f15\u3063\u304b\u304b\u308b** — Dislikes baseless claims.
-**\u767a\u8a00\u4f8b**
-Please organize the evidence a bit more.
-"""
+        bad_speech = (
+            "persona-c is a curious person.\n\n"
+            "**tone** — Speaks concisely.\n"
+            "**values** — Values efficiency.\n"
+            "**positive-reaction** — Likes logical proposals.\n"
+            "**friction** — Dislikes baseless claims.\n"
+            "**speech-example**\n"
+            "Please organize the evidence a bit more.\n"
+        )
         with pytest.raises(ValueError):
-            _validate_v21_light_block(bad_speech)
+            _validate_v21_light_block(bad_speech, pack=_ASCII_PACK)
 
 
 # ---------------------------------------------------------------------------
@@ -463,9 +479,12 @@ class TestRegenerateLightBlockV21Validation:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "persona-d.md"
         persona_file.write_text(V2_PERSONA_EMPTY_LIGHT, encoding="utf-8")
-        # Japanese text intentionally kept for CJK processing test
-        bad_response = "**\u53e3\u8abf** — No lead text.\n**\u4fa1\u5024\u89b3** — Efficiency.\n**\u597d\u610f\u7684\u53cd\u5fdc** — OK.\n**\u5f15\u3063\u304b\u304b\u308b** — NG."
+        bad_response = (
+            "**tone** — No lead text.\n"
+            "**values** — Efficiency.\n"
+            "**positive-reaction** — OK.\n"
+            "**friction** — NG."
+        )
         with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=bad_response)):
-            # Japanese text intentionally kept for CJK processing test
             with pytest.raises(ValueError, match="lead text"):
-                regenerate_light_block(persona_file)
+                regenerate_light_block(persona_file, pack=_ASCII_PACK)

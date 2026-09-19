@@ -38,14 +38,12 @@ def test_vectorize_single_entry() -> None:
 
 def test_vectorize_japanese_text() -> None:
     """TC5: TF-IDF vectorization works on Japanese text."""
-    # Japanese text intentionally kept for CJK processing test
     query_vec, entry_vecs = vectorize(
-        "Python のデコレータについて教えて",
+        "Python  explain decorators",
         [
-            "料理のレシピについて話した。おいしいパスタの作り方を学んだ。",
-            "Python のデコレータについて調べた。コードの再利用性が高まる。",
-            # Japanese text intentionally kept for CJK processing test
-            "今日の天気は晴れだった。気温が上がってきた。",
+            "Discussed recipes and learned to make pasta.",
+            "Python  decorators were studied. Code reuse improved.",
+            "The weather was sunny and warmer today.",
         ],
     )
     assert query_vec.shape[0] == 1

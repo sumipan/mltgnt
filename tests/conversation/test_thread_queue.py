@@ -89,7 +89,7 @@ def test_drain_to_turn_input_returns_turn_input(queue_root: Path):
     assert turn.persona_id == "p1"
     assert "second" in turn.text
     assert "third" in turn.text
-    assert "処理中に以下の発言がありました" in turn.text  # Japanese text intentionally kept for CJK processing test
+    assert "[1] second" in turn.text
 
 
 def test_drain_to_turn_input_empty_returns_none(queue_root: Path):

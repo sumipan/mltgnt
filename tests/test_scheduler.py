@@ -1,5 +1,5 @@
 """
-tests/test_mltgnt_scheduler.py — mltgnt.scheduler Unit Test()AC-3）
+tests/test_mltgnt_scheduler.py — mltgnt.scheduler Unit Test()AC-3)
 
 Design: Issue #118 §7 AC-3
 """
@@ -56,7 +56,6 @@ def test_from_dict_valid_scheduled() -> None:
 
 def test_from_dict_invalid_mode_raises() -> None:
     """`mode` outside scheduled|fuzzy_window|interval|chained → ValueError."""
-    # Japanese text intentionally kept for CJK processing test
     with pytest.raises(ValueError, match="unknown mode"):
         ScheduleJob.from_dict({
             "id": "bad",
@@ -80,7 +79,6 @@ def test_from_dict_invalid_hhmm_raises() -> None:
 
 def test_overnight_fuzzy_window_raises() -> None:
     """Overnight fuzzy window → ValueError."""
-    # Japanese text intentionally kept for CJK processing test
     with pytest.raises(ValueError, match="overnight"):
         ScheduleJob.from_dict({
             "id": "overnight",
@@ -308,8 +306,7 @@ def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str 
         "---\n"
         f"persona:\n  name: {name}\n"
         f"ops:\n  engine: {engine}\n  model: {model}\n"
-        # Japanese text intentionally kept for CJK processing test
-        "---\n\n## 基本情報\n\npersona body",
+        "---\n\n## Basic information\n\npersona body",
         encoding="utf-8",
     )
     return p
@@ -552,7 +549,7 @@ def test_skill_action_request_id_shared_with_fanout(tmp_path: Path) -> None:
 
 
 def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
-    """action_args.skill Not specified → (False, Error message)。"""
+    """action_args.skill Not specified → (False, Error message)."""
     sch, _ = _make_skill_scheduler(tmp_path)
     job = _skill_job(action_args={"persona": "persona-a"})
 
@@ -563,7 +560,7 @@ def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
 
 
 def test_skill_action_missing_persona(tmp_path: Path) -> None:
-    """action_args.persona Not specified → (False, Error message)。"""
+    """action_args.persona Not specified → (False, Error message)."""
     sch, _ = _make_skill_scheduler(tmp_path)
     job = _skill_job(action_args={"skill": "test-skill"})
 
@@ -574,8 +571,7 @@ def test_skill_action_missing_persona(tmp_path: Path) -> None:
 
 
 def test_skill_action_skill_not_found(tmp_path: Path) -> None:
-    # Japanese text intentionally kept for CJK processing test
-    """スキルレジストリにない名前 → (False, 'スキルが見つかりません')。"""
+    """A name absent from the skill registry → (False, 'Skill not found')."""
     sch, _ = _make_skill_scheduler(tmp_path)
     _make_persona(tmp_path, "persona-a")
     job = _skill_job(action_args={"skill": "nonexistent-skill", "persona": "persona-a"})
@@ -583,14 +579,12 @@ def test_skill_action_skill_not_found(tmp_path: Path) -> None:
     ok, msg = sch.execute_action(job)
 
     assert ok is False
-    # Japanese text intentionally kept for CJK processing test
     assert "Skill not found" in msg
     assert "nonexistent-skill" in msg
 
 
 def test_skill_action_persona_file_not_found(tmp_path: Path) -> None:
-    # Japanese text intentionally kept for CJK processing test
-    """ペルソナファイル不在 → (False, 'ペルソナファイルが見つかりません')。"""
+    """Persona file absent → (False, 'Persona file not found')."""
     sch, _ = _make_skill_scheduler(tmp_path)
     # Don't make a persona file
     job = _skill_job(action_args={"skill": "test-skill", "persona": "Not Found"})
@@ -598,7 +592,6 @@ def test_skill_action_persona_file_not_found(tmp_path: Path) -> None:
     ok, msg = sch.execute_action(job)
 
     assert ok is False
-    # Japanese text intentionally kept for CJK processing test
     assert "Persona file not found" in msg
 
 
@@ -617,12 +610,12 @@ def _make_skill_meta_with_body(name: str, tmp_path: Path, body: str, model: str 
 
 
 # ---------------------------------------------------------------------------
-# Issue #270: runner.run() Variable subst tion viaAC1〜AC4）
+# Issue #270: runner.run() Variable subst tion viaAC1-AC4)
 # ---------------------------------------------------------------------------
 
 
 def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
-    """$SKILL_DIR to be deployed in the parent directory of the skill file.AC1）。"""
+    """AC1: expand $SKILL_DIR to the skill file's parent directory."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "$SKILL_DIR/scripts/run.py Run")
     sch._skill_registry = {"test-skill": meta}
@@ -638,7 +631,7 @@ def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
 
 
 def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
-    """$ARGUMENTS Home $0, $1 to expandAC2）。"""
+    """AC2: expand $ARGUMENTS, $0, and $1."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS → $0 $1")
     sch._skill_registry = {"test-skill": meta}
@@ -652,7 +645,7 @@ def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
 
 
 def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
-    """$PERSONA Home persona.name to expandAC5）。"""
+    """AC5: expand $PERSONA to persona.name."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "Assignee: $PERSONA")
     sch._skill_registry = {"test-skill": meta}
@@ -666,7 +659,7 @@ def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
 
 
 def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
-    """argv Unspecified $ARGUMENTS is expanded to emptyAC2）。"""
+    """AC2: expand $ARGUMENTS to empty when argv is omitted."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "Argument: [$ARGUMENTS]")
     sch._skill_registry = {"test-skill": meta}
@@ -680,7 +673,7 @@ def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
 
 
 def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
-    """persona.format_prompt() Prompt structure viaAC3）。"""
+    """AC3: build the prompt through persona.format_prompt()."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "")
     sch._skill_registry = {"test-skill": meta}
@@ -692,14 +685,13 @@ def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
 
     prompt = mock_enqueue.call_args.kwargs["prompt"]
     # Product prompt template strings (src Englishization is out of scope).
-    # Japanese text intentionally kept for CJK processing test
     assert "You are the following character" in prompt
     assert "--- User instruction ---" in prompt
     assert "Current datetime:" in prompt
 
 
 def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
-    """skill.meta.model Home action_args.model More priorityAC4）。"""
+    """AC4: skill.meta.model takes priority over action_args.model."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "", model="sonnet")
     sch._skill_registry = {"test-skill": meta}
@@ -713,7 +705,7 @@ def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
 
 
 def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> None:
-    """skill.meta.model Home None Home action_args.model fallback toAC4）。"""
+    """AC4: fall back to action_args.model when skill.meta.model is None."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
     meta = _make_skill_meta_with_body("test-skill", tmp_path, "", model=None)
     sch._skill_registry = {"test-skill": meta}
@@ -1026,7 +1018,7 @@ def test_slack_client_protocol_import() -> None:
 
 
 def test_skill_loader_protocol_deleted() -> None:
-    """SkillLoaderProtocol not deletedImportError）。"""
+    """SkillLoaderProtocol remains importable."""
     with pytest.raises(ImportError):
         from mltgnt.interfaces import SkillLoaderProtocol  # noqa: F401
 
@@ -1209,7 +1201,6 @@ def test_load_jobs_invalid_yaml_raises_config_error(tmp_path: Path) -> None:
     bad_yaml.write_text("jobs:\n  - id: [unclosed\n", encoding="utf-8")
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", yaml_path=bad_yaml)
 
-    # Japanese text intentionally kept for CJK processing test
     with pytest.raises(ConfigError, match="YAML load error"):
         sch._load_jobs()
 
@@ -1247,7 +1238,7 @@ from mltgnt.scheduler.state import SchedulePaths as _SchedulePaths  # noqa: E402
 
 
 def test_from_dict_on_exit_skip() -> None:
-    """`on_exit: {nonzero: skip}` → `OnExitPolicy(nonzero="skip")`。"""
+    """`on_exit: {nonzero: skip}` → `OnExitPolicy(nonzero="skip")`."""
     job = ScheduleJob.from_dict({
         "id": "j",
         "mode": "scheduled",
@@ -1260,7 +1251,7 @@ def test_from_dict_on_exit_skip() -> None:
 
 
 def test_from_dict_on_exit_fail_explicit() -> None:
-    """`on_exit: {nonzero: fail}` → `OnExitPolicy(nonzero="fail")`。"""
+    """`on_exit: {nonzero: fail}` → `OnExitPolicy(nonzero="fail")`."""
     job = ScheduleJob.from_dict({
         "id": "j",
         "mode": "scheduled",
@@ -1273,7 +1264,7 @@ def test_from_dict_on_exit_fail_explicit() -> None:
 
 
 def test_from_dict_on_exit_none() -> None:
-    """`on_exit` Not specified → `job.on_exit is None`。"""
+    """`on_exit` Not specified → `job.on_exit is None`."""
     job = ScheduleJob.from_dict({
         "id": "j",
         "mode": "scheduled",
@@ -1285,7 +1276,7 @@ def test_from_dict_on_exit_none() -> None:
 
 
 def test_from_dict_on_exit_invalid_value() -> None:
-    """`on_exit: {nonzero: retry}` → `ValueError`。"""
+    """`on_exit: {nonzero: retry}` → `ValueError`."""
     with pytest.raises(ValueError, match="fail.*skip|skip.*fail"):
         ScheduleJob.from_dict({
             "id": "j",
@@ -1298,7 +1289,7 @@ def test_from_dict_on_exit_invalid_value() -> None:
 
 
 def test_from_dict_on_exit_empty_dict() -> None:
-    """`on_exit: {}` (English) → `ValueError`。"""
+    """`on_exit: {}` (English) → `ValueError`."""
     with pytest.raises(ValueError, match="nonzero"):
         ScheduleJob.from_dict({
             "id": "j",
@@ -1311,7 +1302,7 @@ def test_from_dict_on_exit_empty_dict() -> None:
 
 
 def test_from_dict_on_exit_not_dict() -> None:
-    """`on_exit: "skip"` () → `ValueError`。"""
+    """`on_exit: "skip"` () → `ValueError`."""
     with pytest.raises(ValueError, match="dict"):
         ScheduleJob.from_dict({
             "id": "j",
@@ -1324,7 +1315,7 @@ def test_from_dict_on_exit_not_dict() -> None:
 
 
 def test_skipped_path_format(tmp_path: Path) -> None:
-    """`SchedulePaths.skipped_path("j1", date(2026,1,1))` → `<state_dir>/skipped/j1_2026-01-01.skipped`。"""
+    """`SchedulePaths.skipped_path("j1", date(2026,1,1))` → `<state_dir>/skipped/j1_2026-01-01.skipped`."""
     p = _SchedulePaths(tmp_path / "state")
     result = p.skipped_path("j1", date(2026, 1, 1))
     assert result == tmp_path / "state" / "skipped" / "j1_2026-01-01.skipped"

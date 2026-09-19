@@ -9,60 +9,56 @@ from mltgnt.persona.formatter import (
     format_persona_body,
 )
 
+# Synthetic host-specific names that must not leak into formatter source.
+_PERSONA_NAME_A = "synthetic-persona-a"
+_PERSONA_NAME_B = "synthetic-persona-b"
+_PERSONA_NAME_C = "synthetic-persona-c"
 
-def test_extract_persona_block_after_meta_headers() -> None:
-    # Japanese text intentionally kept for CJK processing test
+
+def test_extract_persona_block_after_meta_headers(ascii_pack) -> None:
     raw = (
-        "前置き\n\n"
-        "persona-aとしての応答（標準出力相当）\n\n"
-        "んー、わかるかも。\n\n"
-        "---\n\n（以上）\n"
+        "preamble\n\n"
+        "persona-a as-persona (stdout-equivalent)\n\n"
+        "hmm, I see.\n\n"
+        "---\n\n"
     )
-    out = extract_persona_block_after_meta_headers(raw)
-    # Japanese text intentionally kept for CJK processing test
-    assert out.startswith("んー、わかるかも。")
-    assert "としての応答" not in out
-    assert "（以上）" not in out
+    out = extract_persona_block_after_meta_headers(raw, pack=ascii_pack)
+    assert out.startswith("hmm, I see.")
+    assert "as-persona" not in out
 
 
-def test_dedupe_persona_prefix_keeps_last_opener() -> None:
-    # Japanese text intentionally kept for CJK processing test
+def test_dedupe_persona_prefix_keeps_last_opener(ascii_pack) -> None:
     body = (
-        "今週（3/24〜3/28）の計画、最初の要約。\n\n"
-        "今週（3/24〜3/28）の計画、本当の本文だけ残す。"
+        "this-week (W1) plan, first summary.\n\n"
+        "this-week (W1) plan, keep only the real body."
     )
-    out = dedupe_persona_prefix(body)
-    # Japanese text intentionally kept for CJK processing test
-    assert out.startswith("今週（3/24〜3/28）の計画、本当の本文")
-    assert out.count("今週（") == 1
+    out = dedupe_persona_prefix(body, pack=ascii_pack)
+    assert out.startswith("this-week (W1) plan, keep only the real body")
+    assert out.count("this-week (") == 1
 
 
-def test_dedupe_persona_prefix_noop_when_single() -> None:
-    # Japanese text intentionally kept for CJK processing test
-    body = "今週（3/24〜3/28）の計画、これだけ。"
-    assert dedupe_persona_prefix(body) == body
+def test_dedupe_persona_prefix_noop_when_single(ascii_pack) -> None:
+    body = "this-week (W1) plan, just one."
+    assert dedupe_persona_prefix(body, pack=ascii_pack) == body
 
 
-def test_format_persona_body_composes_extract_and_dedupe() -> None:
-    # Japanese text intentionally kept for CJK processing test
+def test_format_persona_body_composes_extract_and_dedupe(ascii_pack) -> None:
     raw = (
-        "メタ\n\n"
-        "persona-aとしての応答（標準出力相当）\n\n"
-        "今週（3/24〜3/28）の計画、一回目。\n\n"
-        "今週（3/24〜3/28）の計画、二回目だけ残す。"
+        "meta\n\n"
+        "persona-a as-persona (stdout-equivalent)\n\n"
+        "this-week (W1) plan, first pass.\n\n"
+        "this-week (W1) plan, keep only this."
     )
-    out = format_persona_body(raw)
-    # Japanese text intentionally kept for CJK processing test
-    assert "としての応答" not in out
-    assert out.count("今週（") == 1
-    assert "二回目だけ残す" in out
+    out = format_persona_body(raw, pack=ascii_pack)
+    assert "as-persona" not in out
+    assert out.count("this-week (") == 1
+    assert "keep only this" in out
 
 
-def test_format_persona_body_cuts_generic_tone_marker() -> None:
+def test_format_persona_body_cuts_generic_tone_marker(ascii_pack) -> None:
     """Cut marker must match any persona token, not a host-specific name (#3337)."""
-    # Japanese text intentionally kept for CJK processing test
-    raw = "本文です。\n\npersona-a口調の本文はここに続く説明"
-    assert format_persona_body(raw) == "本文です。"
+    raw = "body text.\n\npersona-a tone-body starts here with explanation"
+    assert format_persona_body(raw, pack=ascii_pack) == "body text."
 
 
 def test_formatter_source_has_no_media_or_sdk() -> None:
@@ -77,7 +73,6 @@ def test_formatter_source_has_no_media_or_sdk() -> None:
     assert "slack_sdk" not in src
     assert "ghdag" not in src
     assert "markdown_to_slack_mrkdwn" not in src
-    # Host persona tokens must not appear as contiguous literals (#3337).
-    assert "\u3042\u3093\u3069\u3045\u30fc" not in src
-    assert "\u5b89\u85e4\u745e\u7a42" not in src
-    assert "\u30cf\u30cb" not in src
+    assert _PERSONA_NAME_A not in src
+    assert _PERSONA_NAME_B not in src
+    assert _PERSONA_NAME_C not in src

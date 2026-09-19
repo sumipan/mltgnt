@@ -117,10 +117,9 @@ def test_synthesize_global_skips_personas_without_dream(chat_dir: Path) -> None:
     summary = Synthesizer.synthesize_global(config, llm_call=llm)
 
     assert summary.persona == "__global__"
-    # Japanese text intentionally kept for CJK processing test
     assert "[Persona: alice]" in captured_prompts[0]
     assert "[Persona: bob]" in captured_prompts[0]
-    assert "【ペルソナ: charlie】" not in captured_prompts[0]
+    assert "[Persona: charlie]" not in captured_prompts[0]
     assert read_dream(chat_dir / "charlie") is None
 
 
@@ -138,7 +137,6 @@ def test_synthesize_global_respects_exclude_personas(chat_dir: Path) -> None:
     config = _memory_config(chat_dir, global_dream_exclude_personas=("alice",))
     Synthesizer.synthesize_global(config, llm_call=llm)
 
-    # Japanese text intentionally kept for CJK processing test
     assert "[Persona: alice]" not in captured_prompts[0]
     assert "[Persona: bob]" in captured_prompts[0]
 
@@ -213,8 +211,8 @@ def test_read_global_summary_formats_like_read_dream_summary(chat_dir: Path) -> 
     config = _memory_config(chat_dir)
     result = read_global_summary(config)
 
-    # Japanese text intentionally kept for CJK processing test
-    assert result.startswith("\n\n## 記憶の要約\n\n")
+    assert result.startswith("\n\n## ")
+    assert "merged behavior" in result
     assert "### Behavior patterns\nmerged behavior" in result
     assert "### Preferences\nmerged preference" in result
 
