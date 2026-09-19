@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from mltgnt.bridges.files_adapter import md_read
-from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
+from mltgnt.config import DEFAULT_WEIGHT_MAP, PERSONA_SECTION_ALIASES, PersonaConfig
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
 
 PromptFilter = Callable[[str, dict[str, Any]], str]
@@ -45,8 +45,7 @@ class Persona:
     Attributes:
         name:        Persona name (FM persona.name / file stem)
         fm:          Parsed PersonaFM
-        # Japanese text intentionally kept for CJK processing test
-        sections:    Body section dict (e.g. "基本情報" → text)
+        sections:    Body section dictionary (for example, "Background" to text)
         body:        Full body without FM
         path:        Source file path
     """
@@ -56,12 +55,8 @@ class Persona:
     sections: dict[str, str]
     body: str
     path: Path
-    weight_map: dict[str, str] = field(
-        default_factory=lambda: dict(DEFAULT_WEIGHT_MAP)
-    )
-    _prompt_filters: list[tuple[str, PromptFilter]] = field(
-        default_factory=list, init=False, repr=False
-    )
+    weight_map: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_WEIGHT_MAP))
+    _prompt_filters: list[tuple[str, PromptFilter]] = field(default_factory=list, init=False, repr=False)
 
     DEFAULT_OP_MODE: str = "critique"
 
@@ -95,11 +90,7 @@ class Persona:
             )
             body_part = self.body
         else:
-            selected = [
-                f"## {key}\n\n{text}"
-                for key, text in self.sections.items()
-                if _weight_for(key) == weight
-            ]
+            selected = [f"## {key}\n\n{text}" for key, text in self.sections.items() if _weight_for(key) == weight]
             body_part = "\n\n".join(selected)
 
         return (
@@ -113,14 +104,13 @@ class Persona:
     def extract_output_format(self, op_mode: str | None = None) -> str | None:
         """Return the H4 block for op_mode from the output-format section."""
         op_mode = op_mode or self.DEFAULT_OP_MODE
-        # Japanese text intentionally kept for CJK processing test
-        section = self.sections.get("アウトプット形式") or self.sections.get("Output format")
+        section = self.sections.get("Output format")
         if section is None:
             return None
         blocks = re.split(r"^#### ", section, flags=re.MULTILINE)
         for block in blocks:
             if block.startswith(op_mode):
-                text = block[len(op_mode):].strip()
+                text = block[len(op_mode) :].strip()
                 return text if text else None
         return None
 
@@ -147,15 +137,11 @@ def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
     try:
         md = md_read(path.name, repo_root=path.parent)
     except yaml.YAMLError as e:
-        raise PersonaValidationError(
-            f"Failed to parse YAML frontmatter: {path}"
-        ) from e
+        raise PersonaValidationError(f"Failed to parse YAML frontmatter: {path}") from e
 
     meta = md.frontmatter
     if "persona" not in meta:
-        raise PersonaValidationError(
-            f"YAML frontmatter missing required key 'persona': {path}"
-        )
+        raise PersonaValidationError(f"YAML frontmatter missing required key 'persona': {path}")
 
     body = md.content.strip()
     fm = parse_fm(meta, file_stem=path.stem)
@@ -165,7 +151,8 @@ def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
     for err in result.errors:
         logger.warning("[persona] %s: %s", path.name, err)
 
-    sections = _parse_sections(body)
+    aliases = config.section_aliases if config else PERSONA_SECTION_ALIASES
+    sections = _parse_sections(body, section_aliases=aliases)
 
     logger.info(
         "[persona] loaded %r (sections: %s, fm_keys: %s)",
@@ -185,44 +172,53 @@ def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
     )
 
 
-# Japanese text intentionally kept for CJK processing test
-_H2_EXPAND_KEYS: tuple[str, ...] = ("重量", "参照", "Heavy", "Reference")
+_H2_EXPAND_KEYS: tuple[str, ...] = ("Heavy", "Reference")
 
 
-def _expand_h3_sections(section_text: str) -> dict[str, str]:
+def _expand_h3_sections(
+    section_text: str,
+    *,
+    section_aliases: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Split into a flat dict by H3 (###) subsections.
 
     First line of each block is the heading name; the rest is body.
     Ignore pre-H3 content before the first H3 (discard if empty).
     """
     result: dict[str, str] = {}
+    aliases = PERSONA_SECTION_ALIASES if section_aliases is None else section_aliases
     parts = re.split(r"^###\s+", section_text, flags=re.MULTILINE)
     for part in parts:
         if not part.strip():
             continue
         lines = part.split("\n", 1)
-        key = lines[0].strip()
+        raw_key = lines[0].strip()
+        key = aliases.get(raw_key, raw_key)
         body = lines[1].strip() if len(lines) > 1 else ""
         if key:
             result[key] = body
     return result
 
 
-def _parse_sections(body: str) -> dict[str, str]:
+def _parse_sections(
+    body: str,
+    *,
+    section_aliases: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Split body into sections by ## headings.
 
     Heading lines themselves are not included in section bodies.
-    # Japanese text intentionally kept for CJK processing test
-    For numbered headings like "## 1. 基本情報", normalize the key to "基本情報".
+    For numbered headings like "## 1. Background", remove the number prefix.
     Exclude sections starting with "## 0. ..." (§0).
 
-    In v2, further expand `## 重量` and `## 参照` by H3 (###)
+    In v2, further expand ``## Heavy`` and ``## Reference`` by H3 (###)
     into a flat dict keyed by H3 heading names.
     """
     sections: dict[str, str] = {}
     current_key: str | None = None
     current_lines: list[str] = []
     skip_current: bool = False
+    aliases = PERSONA_SECTION_ALIASES if section_aliases is None else section_aliases
 
     for line in body.splitlines():
         m = re.match(r"^##\s+(\d+\.\s+)?(.+)", line)
@@ -238,9 +234,13 @@ def _parse_sections(body: str) -> dict[str, str]:
                 current_lines = []
                 continue
             skip_current = False
-            # Japanese text intentionally kept for CJK processing test
-            # Strip annotations such as 【必須】
-            current_key = re.sub(r"\s*【[^】]*】", "", raw_title).strip()
+            # Strip full-width bracket annotations used by legacy files.
+            raw_title = re.sub(
+                r"\s*\N{LEFT BLACK LENTICULAR BRACKET}[^\N{RIGHT BLACK LENTICULAR BRACKET}]*\N{RIGHT BLACK LENTICULAR BRACKET}",
+                "",
+                raw_title,
+            ).strip()
+            current_key = aliases.get(raw_title, raw_title)
             current_lines = []
         else:
             if not skip_current:
@@ -249,11 +249,13 @@ def _parse_sections(body: str) -> dict[str, str]:
     if current_key is not None and not skip_current:
         sections[current_key] = "\n".join(current_lines).strip()
 
-    # Japanese text intentionally kept for CJK processing test
-    # v2: expand ## 重量 / ## 参照 / ## Heavy / ## Reference via H3 into a flat dict
+    # Expand the v2 container sections via H3 into a flat dictionary.
     for h2_key in _H2_EXPAND_KEYS:
         if h2_key in sections:
-            h3_sections = _expand_h3_sections(sections.pop(h2_key))
+            h3_sections = _expand_h3_sections(
+                sections.pop(h2_key),
+                section_aliases=aliases,
+            )
             sections.update(h3_sections)
 
     return sections

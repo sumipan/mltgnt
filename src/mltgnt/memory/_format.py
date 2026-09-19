@@ -3,6 +3,7 @@ mltgnt.memory._format — parse and format memory files.
 
 Design: Issue #823 (JSONL unification)
 """
+
 from __future__ import annotations
 
 import json
@@ -56,21 +57,22 @@ def parse_jsonl(path: Path) -> list[MemoryEntry]:
             continue
         try:
             data = json.loads(line)
-            entries.append(MemoryEntry(
-                timestamp=data.get("timestamp", ""),
-                role=data.get("role", ""),
-                content=data.get("content", ""),
-                source_tag=data.get("source_tag", ""),
-                layer=data.get("layer"),
-                dedupe_key=data.get("dedupe_key"),
-            ))
+            entries.append(
+                MemoryEntry(
+                    timestamp=data.get("timestamp", ""),
+                    role=data.get("role", ""),
+                    content=data.get("content", ""),
+                    source_tag=data.get("source_tag", ""),
+                    layer=data.get("layer"),
+                    dedupe_key=data.get("dedupe_key"),
+                )
+            )
         except (json.JSONDecodeError, TypeError):
             pass
     return entries
 
 
-# Japanese text intentionally kept for CJK processing test
-_PREFS_HEADING = "ユーザーの好み・傾向"
+_PREFS_HEADING = "User’s preferences and tendencies"
 
 
 def assemble_entries_text(
@@ -89,10 +91,10 @@ def assemble_entries_text(
         if entry.source_tag == "preferences":
             parts.append(f"## {preferences_heading}\n\n{entry.content.strip()}")
         else:
-            body = f"[{entry.source_tag}]\n{entry.content.strip()}" if entry.content.strip() else f"[{entry.source_tag}]"
+            body = (
+                f"[{entry.source_tag}]\n{entry.content.strip()}" if entry.content.strip() else f"[{entry.source_tag}]"
+            )
             parts.append(f"## {entry.timestamp} — {entry.role}\n\n{body}")
     if not parts:
         return ""
     return "\n\n---\n\n".join(parts) + "\n"
-
-

@@ -1,4 +1,5 @@
 """mltgnt.memory.dream.synthesizer — synthesize DreamSummary via LLM."""
+
 from __future__ import annotations
 
 import re
@@ -15,8 +16,7 @@ from mltgnt.memory.dream.api import read_dream, read_global
 
 LlmCall = Callable[[str], str]
 
-# Japanese text intentionally kept for CJK processing test
-_DEFAULT_CATEGORIES = ("行動パターン", "好み・傾向")
+_DEFAULT_CATEGORIES = ("Behavior patterns", "Preferences and tendencies")
 
 _SYNTH_PROMPT = """\
 Read the following memory entries and summarize/synthesize per specified category.
@@ -66,9 +66,7 @@ class Synthesizer:
 
         entries_text = assemble_entries_text(entries).strip()
         if existing and existing.sections:
-            existing_lines = "\n".join(
-                f"## {s.category}\n{s.content.strip()}" for s in existing.sections
-            )
+            existing_lines = "\n".join(f"## {s.category}\n{s.content.strip()}" for s in existing.sections)
             existing_block = f"[Existing dream summary]\n{existing_lines}\n\n"
         else:
             existing_block = ""
@@ -110,9 +108,7 @@ class Synthesizer:
         existing = read_global(config.chat_dir, memory_dir_name=config.dream_dir_name)
 
         if existing and existing.sections:
-            existing_lines = "\n".join(
-                f"## {s.category}\n{s.content.strip()}" for s in existing.sections
-            )
+            existing_lines = "\n".join(f"## {s.category}\n{s.content.strip()}" for s in existing.sections)
             existing_block = f"[Existing global summary]\n{existing_lines}\n\n"
         else:
             existing_block = ""
@@ -165,11 +161,13 @@ def _parse_sections(raw: str, *, source_entries: int) -> list[DreamSection]:
         category = match.group(1).strip()
         content = match.group(2).strip()
         if category and content:
-            sections.append(DreamSection(
-                category=category,
-                content=content,
-                source_entries=source_entries,
-            ))
+            sections.append(
+                DreamSection(
+                    category=category,
+                    content=content,
+                    source_entries=source_entries,
+                )
+            )
     if not sections:
         raise ValueError("LLM response contained no parseable dream sections")
     return sections

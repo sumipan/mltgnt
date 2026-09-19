@@ -3,6 +3,7 @@
 Slack triage preprocessing utilities.
 Moved from persona/triage.py (Issue #911).
 """
+
 from __future__ import annotations
 
 import json
@@ -14,16 +15,27 @@ TRIAGE_PROFILE_MAX_CHARS = 6000
 def extract_triage_section(markdown: str) -> str | None:
     """Return the triage section body from persona Markdown, or None.
 
-    # Japanese text intentionally kept for CJK processing test
-    Prefer v2 `## 軽量`; fall back to v1 `## トリアージ用`.
+    Prefer v2 ``## Light``; fall back to v1 ``## Triage``. Legacy localized
+    headings remain readable for existing persona files.
     """
-    # Japanese text intentionally kept for CJK processing test
-    m = re.search(r"^##\s+軽量\s*$", markdown, re.MULTILINE)
+    m = re.search(r"^##\s+Light\s*$", markdown, re.MULTILINE)
     if not m:
-        m = re.search(r"^##\s+トリアージ用\s*$", markdown, re.MULTILINE)
+        m = re.search(r"^##\s+Triage\s*$", markdown, re.MULTILINE)
+    if not m:
+        m = re.search(
+            r"^##\s+\N{CJK UNIFIED IDEOGRAPH-8EFD}\N{CJK UNIFIED IDEOGRAPH-91CF}\s*$",
+            markdown,
+            re.MULTILINE,
+        )
+    if not m:
+        m = re.search(
+            r"^##\s+\N{KATAKANA LETTER TO}\N{KATAKANA LETTER RI}\N{KATAKANA LETTER A}\N{KATAKANA-HIRAGANA PROLONGED SOUND MARK}\N{KATAKANA LETTER ZI}\N{CJK UNIFIED IDEOGRAPH-7528}\s*$",
+            markdown,
+            re.MULTILINE,
+        )
     if not m:
         return None
-    after = markdown[m.end():].lstrip("\n")
+    after = markdown[m.end() :].lstrip("\n")
     m2 = re.search(r"^##\s+", after, re.MULTILINE)
     if m2:
         body = after[: m2.start()].rstrip()
@@ -48,9 +60,7 @@ def prepare_profile_for_triage(profile_content: str | None, logger) -> str | Non
     truncated = 0
     if len(text) > TRIAGE_PROFILE_MAX_CHARS:
         text = (
-            text[:TRIAGE_PROFILE_MAX_CHARS].rstrip()
-            # Japanese text intentionally kept for CJK processing test
-            + "\n…(truncated. Place a summary under `## トリアージ用` for stability)"
+            text[:TRIAGE_PROFILE_MAX_CHARS].rstrip() + "\n…(truncated. Place a summary under `## Triage` for stability)"
         )
         truncated = 1
     logger.info(
@@ -84,6 +94,6 @@ def extract_json_object(text: str) -> dict | None:
     if start == -1 or end == -1 or end <= start:
         return None
     try:
-        return json.loads(s[start: end + 1])
+        return json.loads(s[start : end + 1])
     except json.JSONDecodeError:
         return None

@@ -8,6 +8,18 @@ from pathlib import Path
 import pytest
 
 _TESTS_ROOT = Path(__file__).parent
+_SRC_ROOT = _TESTS_ROOT.parent / "src" / "mltgnt"
+_SOURCE_FILES = (
+    _SRC_ROOT / "config" / "__init__.py",
+    _SRC_ROOT / "persona" / "schema.py",
+    _SRC_ROOT / "persona" / "extractor.py",
+    _SRC_ROOT / "persona" / "loader.py",
+    _SRC_ROOT / "memory" / "_format.py",
+    _SRC_ROOT / "memory" / "compaction.py",
+    _SRC_ROOT / "memory" / "dream" / "synthesizer.py",
+    _SRC_ROOT / "memory" / "dream" / "api.py",
+    _SRC_ROOT / "routing" / "triage.py",
+)
 _CJK_RANGES = ((0x3000, 0x9FFF), (0xFF00, 0xFFEF))
 _UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
 _BYTE_ESCAPE_RE = re.compile(r"(?:\\x[0-9a-fA-F]{2})+")
@@ -70,10 +82,46 @@ def test_violation_variants_are_detected(tmp_path: Path, payload: str, kind: str
 
 
 def test_no_cjk_in_tests() -> None:
-    violations = [
-        violation
-        for path in _scanned_files(_TESTS_ROOT)
-        for violation in _violations(path)
-    ]
+    violations = [violation for path in _scanned_files(_TESTS_ROOT) for violation in _violations(path)]
 
     assert not violations, "CJK test data found:\n" + "\n".join(violations)
+
+
+def test_no_cjk_in_source_modules() -> None:
+    violations = [violation for path in _SOURCE_FILES for violation in _violations(path)]
+
+    assert not violations, "CJK source data found:\n" + "\n".join(violations)
+
+
+def test_persona_section_keys_are_canonical_english() -> None:
+    from mltgnt.config import DEFAULT_WEIGHT_MAP
+    from mltgnt.persona.schema import REQUIRED_SECTIONS
+
+    assert all(key.isascii() for key in DEFAULT_WEIGHT_MAP)
+    assert all(key.isascii() for key in REQUIRED_SECTIONS)
+
+
+def test_legacy_persona_headings_normalize_to_english() -> None:
+    from mltgnt.config import PERSONA_SECTION_ALIASES
+    from mltgnt.persona.loader import _parse_sections
+
+    legacy_heavy = next(legacy for legacy, canonical in PERSONA_SECTION_ALIASES.items() if canonical == "Heavy")
+    legacy_background = next(
+        legacy for legacy, canonical in PERSONA_SECTION_ALIASES.items() if canonical == "Background"
+    )
+    body = f"## {legacy_heavy}\n\n### {legacy_background}\n\nlegacy content"
+
+    assert _parse_sections(body) == {"Background": "legacy content"}
+
+
+def test_legacy_required_sections_remain_valid() -> None:
+    from mltgnt.config import PERSONA_SECTION_ALIASES
+    from mltgnt.persona.schema import PersonaFM, REQUIRED_SECTIONS, validate_sections
+
+    headings = []
+    for canonical in REQUIRED_SECTIONS:
+        legacy = next(alias for alias, mapped in PERSONA_SECTION_ALIASES.items() if mapped == canonical)
+        headings.append(f"## {legacy}\n\ncontent")
+
+    result = validate_sections("\n\n".join(headings), PersonaFM(name="legacy"))
+    assert result.warnings == []
