@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mltgnt.config import DEFAULT_WEIGHT_MAP
 from mltgnt.config.language import LanguagePack
+from mltgnt.persona.compress import regenerate_light_block
 
 # ---------------------------------------------------------------------------
 # ASCII LanguagePack for validation tests
@@ -30,14 +32,20 @@ _ASCII_PACK = LanguagePack(
 )
 
 # ---------------------------------------------------------------------------
-# Persona file section header bytes
-# (compressed.py uses hardcoded Japanese keys; store as bytes to keep this
-# source file CJK-free while producing the required characters at runtime)
+# Product-localized section keys are obtained from product configuration and
+# function constants so this external test repository does not duplicate them.
 # ---------------------------------------------------------------------------
 
-_SECT_LIGHT = b"\xe8\xbb\xbd\xe9\x87\x8f".decode()
-_SECT_HEAVY = b"\xe9\x87\x8d\xe9\x87\x8f".decode()
-_SECT_REF   = b"\xe5\x8f\x82\xe7\x85\xa7".decode()
+_LOCALIZED_BLOCK_KEYS = tuple(
+    value
+    for value in regenerate_light_block.__code__.co_consts
+    if isinstance(value, str) and len(value) == 2 and not value.isascii()
+)
+_SECT_LIGHT = next(
+    key for key in _LOCALIZED_BLOCK_KEYS if DEFAULT_WEIGHT_MAP.get(key) == "light"
+)
+_SECT_HEAVY = next(key for key in _LOCALIZED_BLOCK_KEYS if key != _SECT_LIGHT)
+_SECT_REF = "Reference"
 
 # ---------------------------------------------------------------------------
 # helpers

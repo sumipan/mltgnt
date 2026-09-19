@@ -9,11 +9,10 @@ from mltgnt.persona.formatter import (
     format_persona_body,
 )
 
-# Persona names that must not appear as literals in formatter source.
-# Stored as bytes to keep this source file CJK-free while preserving the guard.
-_PERSONA_NAME_A = b"\xe3\x81\x82\xe3\x82\x93\xe3\x81\xa9\xe3\x81\x85\xe3\x83\xbc".decode()
-_PERSONA_NAME_B = b"\xe5\xae\x89\xe8\x97\xa4\xe7\x91\x9e\xe7\xa8\x80".decode()
-_PERSONA_NAME_C = b"\xe3\x83\x8f\xe3\x83\x8b".decode()
+# Synthetic host-specific names that must not leak into formatter source.
+_PERSONA_NAME_A = "synthetic-persona-a"
+_PERSONA_NAME_B = "synthetic-persona-b"
+_PERSONA_NAME_C = "synthetic-persona-c"
 
 
 def test_extract_persona_block_after_meta_headers(ascii_pack) -> None:

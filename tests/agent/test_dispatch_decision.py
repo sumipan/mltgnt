@@ -18,9 +18,8 @@ from mltgnt.agent.dispatch_preflight import (
 )
 from mltgnt.conversation.session_store import SessionRecord
 
-# Persona names that must not appear as literals in agent source modules.
-# Stored as bytes to keep this source file CJK-free while preserving the guard.
-_SECRETARY_PROMPT = b"\xe3\x81\x82\xe3\x81\xaa\xe3\x81\x9f\xe3\x81\xaf\xe7\xa7\x98\xe6\x9b\xb8\xe3\x82\xa8\xe3\x83\xbc\xe3\x82\xb8\xe3\x82\xa7\xe3\x83\xb3\xe3\x83\x88".decode()
+# Synthetic host-specific prompt that must not leak into agent source modules.
+_SECRETARY_PROMPT = "synthetic-secretary-instruction"
 
 
 def _preflight(

@@ -1,4 +1,4 @@
-"""mltgnt.persona.phrases / resolve / types / memory（#3318）。"""
+"""Tests for persona phrases, resolution, types, and memory (#3318)."""
 from __future__ import annotations
 
 from pathlib import Path

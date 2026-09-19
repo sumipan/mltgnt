@@ -76,7 +76,7 @@ class TestCreateAuditWriter:
         assert "secret123" not in audit_text
 
     def test_multiple_tools_separate_records_unique_uuids(self, tmp_path):
-        """AC-4: Tools 3 Run → Number of lines 3、UUID All different."""
+        """AC-4: Tools 3 Run → Number of lines 3,UUID All different."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -113,8 +113,7 @@ class TestCreateAuditWriter:
         assert record["engine"] == "my-agent"
 
     def test_default_source_is_mltgnt_agent(self, tmp_path):
-        # Japanese text intentionally kept for CJK processing test
-        """source を省略したとき engine は 'mltgnt-agent'。"""
+        """Omitting source uses the mltgnt-agent engine."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -146,8 +145,7 @@ class TestCreateAuditWriter:
         assert record["correlation_id"] == "session-123"
 
     def test_falls_back_to_tool_name_when_correlation_id_omitted(self, tmp_path):
-        # Japanese text intentionally kept for CJK processing test
-        """correlation_id 省略時は従来どおり tool_name を使う。"""
+        """correlation_id When omitted, preserve legacy behavior tool_name  is used."""
         audit_path = tmp_path / "audit.jsonl"
         runner = AgentRunner(
             llm_call=make_llm([
@@ -181,8 +179,8 @@ def _make_metrics(uuid: str = "t1", status: str = "success") -> TaskMetrics:
     )
 
 
-# AC-4: ghdag on_task_progress Contact Us event sample()CLAUDE.md §10/§11）
-# claude: jobs/events/9c3d8e05-...jsonl First Linemodel=claude-sonnet-4-6）
+# AC-4: ghdag on_task_progress Contact Us event sample()CLAUDE.md §10/§11)
+# claude: jobs/events/9c3d8e05-...jsonl First Linemodel=claude-sonnet-4-6)
 # cursor: ghdag tests/fixtures/cursor_stream_success.jsonl Contact Us
 # codex: ghdag tests/fixtures/codex_jsonl_success.jsonl Contact Us
 _PROGRESS_EVENT_CLAUDE = {
@@ -223,7 +221,7 @@ class TestMltgntHooks:
             assert callable(getattr(hooks, method, None)), f"{method} is not implemented"
 
     def test_on_task_cancelled_writes_cancelled(self, tmp_path):
-        """AC-1: on_task_cancelled → event_type=task_cancelled + status=cancelled。"""
+        """AC-1: on_task_cancelled → event_type=task_cancelled + status=cancelled."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path, source="mltgnt-scheduler")
         task = Task(uuid="t1", command="echo hello", model="claude-sonnet-4-6")
@@ -344,8 +342,7 @@ class TestMltgntHooks:
         assert record["engine"] == "my-scheduler"
 
     def test_default_source_is_mltgnt_scheduler(self, tmp_path):
-        # Japanese text intentionally kept for CJK processing test
-        """source を省略したとき engine は 'mltgnt-scheduler'（on_task_start で確認）。"""
+        """Omitting source uses the mltgnt-scheduler engine for on_task_start."""
         audit_path = tmp_path / "audit.jsonl"
         hooks = MltgntHooks(audit_path)
         hooks.on_task_start("t1", _make_task())
@@ -390,7 +387,7 @@ class TestLayerBoundaryReExports:
 
 
 class TestBuildMetaPublicApi:
-    """AC-2: build_meta Open _build_meta Backward compatibility alias。"""
+    """AC-2: build_meta Open _build_meta Backward compatibility alias."""
 
     def test_build_meta_importable_and_alias(self, tmp_path) -> None:
         from mltgnt.skill.loader import _build_meta, build_meta

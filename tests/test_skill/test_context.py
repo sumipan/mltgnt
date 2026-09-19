@@ -76,11 +76,9 @@ class TestBuildExtraContext:
         result = build_extra_context(meta, tmp_path, "persona-a", knowledge_count=2)
 
         assert result is not None
-        # Japanese text intentionally kept for CJK processing test
         assert "### knowledge (last 2)" in result
         assert "p2" in result and "p3" in result
         assert "p1" not in result
-        # Japanese text intentionally kept for CJK processing test
         assert "### Memory (tail)" not in result
 
     def test_memory_only_formatted(self, tmp_path: Path) -> None:
@@ -97,7 +95,6 @@ class TestBuildExtraContext:
         result = build_extra_context(meta, tmp_path, "persona-a", memory_max_bytes=4096)
 
         assert result is not None
-        # Japanese text intentionally kept for CJK processing test
         assert "### Memory (tail)" in result
         assert "- [2026-04-21 14:25] user: Is persona-b around?" in result
         assert '{"timestamp"' not in result
@@ -123,10 +120,8 @@ class TestBuildExtraContext:
         )
 
         assert result is not None
-        # Japanese text intentionally kept for CJK processing test
         assert "### knowledge (last 1)" in result
         assert "k2" in result and "k1" not in result
-        # Japanese text intentionally kept for CJK processing test
         assert "### Memory (tail)" in result
         assert "last night's talk" in result
         assert "- [" in result

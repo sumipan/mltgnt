@@ -17,23 +17,23 @@ PERSONA_CONTENT = textwrap.dedent("""\
       model: claude-sonnet-4-6
     ---
 
-    ## \u57fa\u672c\u60c5\u5831
+    ## Basic information
 
     persona-a is a multi-legged tank-type AI robot from GHS.
 
-    ## \u4fa1\u5024\u89b3
+    ## Values
 
     Curious.
 
-    ## \u53cd\u5fdc\u30d1\u30bf\u30fc\u30f3
+    ## Reaction patterns
 
     Answers questions.
 
-    ## \u53e3\u8abf
+    ## Tone
 
     Friendly.
 
-    ## \u30a2\u30a6\u30c8\u30d7\u30c3\u30c8\u5f62\u5f0f
+    ## Output format
 
     Be concise.
 """)

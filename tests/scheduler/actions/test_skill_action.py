@@ -924,16 +924,14 @@ class TestContextInjection:
             with_memory=True,
             omit_injection_args=True,
         )
-        # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" not in prompt
+        assert "## Context" not in prompt
         assert records == []
 
     def test_neither_knowledge_nor_memory(self, tmp_path: Path) -> None:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=False, with_memory=False
         )
-        # Japanese text intentionally kept for CJK processing test
-        assert "## コンテキスト" not in prompt
+        assert "## Context" not in prompt
         # Even when explicitly set, skip audit if real data is empty (#3173)
         assert records == []
 
@@ -941,7 +939,6 @@ class TestContextInjection:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=True, with_memory=False, knowledge_count=3
         )
-        # Japanese text intentionally kept for CJK processing test
         assert "## Context" in prompt
         assert "### knowledge (last 3)" in prompt
         assert "k4" in prompt and "k5" in prompt and "k6" in prompt
@@ -955,7 +952,6 @@ class TestContextInjection:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=False, with_memory=True
         )
-        # Japanese text intentionally kept for CJK processing test
         assert "## Context" in prompt
         assert "### knowledge" not in prompt
         assert "### Memory (tail)" in prompt
@@ -969,7 +965,6 @@ class TestContextInjection:
         prompt, records = self._capture_prompt(
             tmp_path, with_knowledge=True, with_memory=True, knowledge_count=2
         )
-        # Japanese text intentionally kept for CJK processing test
         assert "## Context" in prompt
         assert "### knowledge (last 2)" in prompt
         assert "### Memory (tail)" in prompt
@@ -990,7 +985,6 @@ class TestContextInjection:
             with_memory=True,
             memory_exclude_source_tags=["slack-observe"],
         )
-        # Japanese text intentionally kept for CJK processing test
         assert "## Context" in prompt
         assert "last night's talk" in prompt
         assert "observe-only" not in prompt

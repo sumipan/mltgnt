@@ -47,11 +47,10 @@ def _write_memory(config: MemoryConfig, persona: str, content: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-# Japanese text intentionally kept for CJK processing test
 MEMORY_THREE_ENTRIES = (
-    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"料理のレシピについて話した。おいしいパスタの作り方を学んだ。","source_tag":"file"}\n'
-    '{"timestamp":"2026-01-02T10:00:00+09:00","role":"user","content":"Python のデコレータについて調べた。コードの再利用性が高まる。","source_tag":"file"}\n'
-    '{"timestamp":"2026-01-03T10:00:00+09:00","role":"user","content":"今日の天気は晴れだった。気温が上がってきた。","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"Discussed recipes and learned to make pasta.","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-02T10:00:00+09:00","role":"user","content":"Python  decorators were studied. Code reuse improved.","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-03T10:00:00+09:00","role":"user","content":"The weather was sunny and warmer today.","source_tag":"file"}\n'
 )
 
 
@@ -60,19 +59,17 @@ def test_tc1_score_ordering(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
-    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
-        "Python デコレータ",
+        "Python decorator",
         max_bytes=4096,
         max_entries=3,
     )
 
     # Programming entry must appear before cooking/weather
-    # Japanese text intentionally kept for CJK processing test
-    prog_idx = result.find("Python のデコレータ")
-    cook_idx = result.find("料理のレシピ")
+    prog_idx = result.find("Python  decorators")
+    cook_idx = result.find("recipes")
     assert prog_idx != -1
     assert cook_idx != -1
     assert prog_idx < cook_idx
@@ -83,11 +80,10 @@ def test_tc1_score_ordering(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-# Japanese text intentionally kept for CJK processing test
 MEMORY_WITH_PREFERENCES = (
-    '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"プログラミングが得意。Python を主に使う。","source_tag":"preferences"}\n'
-    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"料理のレシピについて話した。","source_tag":"file"}\n'
-    '{"timestamp":"2026-01-02T10:00:00+09:00","role":"user","content":"天気の話をした。","source_tag":"file"}\n'
+    '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"Good at programming.Python  is mainly used.","source_tag":"preferences"}\n'
+    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"Discussed recipes.","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-02T10:00:00+09:00","role":"user","content":"Discussed the weather.","source_tag":"file"}\n'
 )
 
 
@@ -96,18 +92,16 @@ def test_tc2_preferences_always_included(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_WITH_PREFERENCES)
 
-    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
-        "今日の天気",
+        "today weather",
         max_bytes=4096,
         max_entries=1,
     )
 
-    # Japanese text intentionally kept for CJK processing test
-    assert "ユーザーの好み・傾向" in result
-    assert "Python を主に使う" in result
+    assert config.preferences_section_name in result
+    assert "Python  is mainly used" in result
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +183,6 @@ def test_tc5_japanese_text(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
-    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
@@ -199,9 +192,8 @@ def test_tc5_japanese_text(tmp_path: Path) -> None:
     )
 
     # Result must be non-empty and include an entry
-    # Japanese text intentionally kept for CJK processing test
     assert result
-    assert "Python のデコレータ" in result
+    assert "Python  decorators" in result
 
 
 # ---------------------------------------------------------------------------
@@ -263,9 +255,8 @@ def test_tc7_empty_memory(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-# Japanese text intentionally kept for CJK processing test
 MEMORY_PREFERENCES_ONLY = (
-    '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"プログラミングが好き。","source_tag":"preferences"}\n'
+    '{"timestamp":"1970-01-01T00:00:00+00:00","role":"system","content":"Likes programming.","source_tag":"preferences"}\n'
 )
 
 
@@ -274,18 +265,16 @@ def test_tc8_preferences_only(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_PREFERENCES_ONLY)
 
-    # Japanese text intentionally kept for CJK processing test
     result = read_memory_by_relevance(
         config,
         "persona",
-        "Python について",
+        "Python  about ",
         max_bytes=4096,
         max_entries=5,
     )
 
-    # Japanese text intentionally kept for CJK processing test
-    assert "ユーザーの好み・傾向" in result
-    assert "プログラミングが好き" in result
+    assert config.preferences_section_name in result
+    assert "likes programming" in result.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -318,9 +307,8 @@ def test_tc9_empty_query_fallback(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-# Japanese text intentionally kept for CJK processing test
 MEMORY_SINGLE_ENTRY = (
-    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"Python のデコレータについて調べた。","source_tag":"file"}\n'
+    '{"timestamp":"2026-01-01T10:00:00+09:00","role":"user","content":"Python  decorators were studied.","source_tag":"file"}\n'
 )
 
 
@@ -337,8 +325,7 @@ def test_tc10_single_entry(tmp_path: Path) -> None:
         max_entries=5,
     )
 
-    # Japanese text intentionally kept for CJK processing test
-    assert "Python のデコレータ" in result
+    assert "Python  decorators" in result
 
 
 # ---------------------------------------------------------------------------
@@ -357,16 +344,14 @@ def test_suf_tc1_sufficient_same_as_relevance(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
-    # Japanese text intentionally kept for CJK processing test
     expected = read_memory_by_relevance(
-        config, "persona", "Python デコレータ", max_bytes=4096, max_entries=3
+        config, "persona", "Python decorator", max_bytes=4096, max_entries=3
     )
 
     result = read_memory_with_sufficiency_check(
         config,
         "persona",
-        # Japanese text intentionally kept for CJK processing test
-        "Python デコレータ",
+        "Python decorator",
         max_bytes=4096,
         max_entries=3,
         llm_call=lambda p: "SUFFICIENT",
@@ -492,7 +477,6 @@ def test_suf_tc5_no_llm_call_same_as_relevance(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
-    # Japanese text intentionally kept for CJK processing test
     expected = read_memory_by_relevance(
         config, "persona", "Python", max_bytes=4096, max_entries=3
     )
@@ -519,8 +503,7 @@ def test_suf_tc7_llm_raises_returns_initial(tmp_path: Path, caplog) -> None:
     config = make_config(tmp_path)
     _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
 
-    # Japanese text intentionally kept for CJK processing test
-    initial_entries = [ScoredEntry("Python のデコレータについて調べた。コードの再利用性が高まる。", 0.9)]
+    initial_entries = [ScoredEntry("Python  decorators were studied. Code reuse improved.", 0.9)]
 
     def mock_search(cfg, persona, q, *, max_entries):
         return initial_entries
@@ -537,8 +520,7 @@ def test_suf_tc7_llm_raises_returns_initial(tmp_path: Path, caplog) -> None:
                     llm_call=lambda p: "SUFFICIENT",
                 )
 
-    # Japanese text intentionally kept for CJK processing test
-    assert "Python のデコレータ" in result
+    assert "Python  decorators" in result
     assert any(
         "sufficiency" in r.message.lower() or "error" in r.message.lower()
         for r in caplog.records

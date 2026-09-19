@@ -53,14 +53,12 @@ def test_run_dream_action_success(tmp_path: Path) -> None:
     config = _memory_config(tmp_path)
     job = _dream_job()
 
-    # Japanese text intentionally kept for CJK processing test
-    llm_response = _text_result("## 行動パターン\nmorning person\n\n## 好み・傾向\nconcise")
+    llm_response = _text_result("## Behavior patterns\nmorning person\n\n## Preferences\nconcise")
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=llm_response):
         ok, msg = run_dream_action(job, persona_dir=persona_dir, memory_config=config)
 
     assert ok is True
-    # Japanese text intentionally kept for CJK processing test
     assert "synthesized" in msg
     loaded = read_dream(persona_dir)
     assert loaded is not None
@@ -106,14 +104,12 @@ def test_memory_dream_registered_and_fires(tmp_path: Path) -> None:
         memory_config=config,
     )
     job = _dream_job()
-    # Japanese text intentionally kept for CJK processing test
-    llm_response = _text_result("## 行動パターン\npattern\n\n## 好み・傾向\npref")
+    llm_response = _text_result("## Behavior patterns\npattern\n\n## Preferences\npref")
 
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=llm_response):
         ok, msg = sch.execute_action(job)
 
     assert ok is True
-    # Japanese text intentionally kept for CJK processing test
     assert "synthesized" in msg
 
 

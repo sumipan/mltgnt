@@ -217,7 +217,6 @@ class TestRunExtraContext:
         )
         sys_content = result.chat_input.messages[0]["content"]
         assert "skill body" in sys_content
-        # Japanese text intentionally kept for CJK processing test
         assert "## Context" in sys_content
         assert "knowledge and memory snippet" in sys_content
         # Context is appended after the skill body
@@ -231,7 +230,6 @@ class TestRunExtraContext:
         without = run(skill, persona, "", chat_input)
         with_none = run(skill, persona, "", chat_input, extra_context=None)
         assert without.chat_input.messages[0]["content"] == with_none.chat_input.messages[0]["content"]
-        # Japanese text intentionally kept for CJK processing test
         assert "## Context" not in without.chat_input.messages[0]["content"]
 
 

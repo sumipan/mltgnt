@@ -41,7 +41,7 @@ def make_config(tmp_path: Path) -> MemoryConfig:
 
 
 def _ts_ago(days: float = 0, weeks: float = 0) -> str:
-    """Time stamp before the specified period from now()ISO 8601, JST）。"""
+    """Return an ISO 8601 JST timestamp for the requested age."""
     delta = datetime.timedelta(days=days, weeks=weeks)
     dt = datetime.datetime.now(datetime.timezone.utc) - delta
     jst = datetime.timezone(datetime.timedelta(hours=9))
@@ -94,7 +94,7 @@ def test_jsonl_roundtrip_with_layer() -> None:
 
 
 def test_parse_jsonl_null_layer(tmp_path: Path) -> None:
-    """`layer` Home null Home JSON When reading a line MemoryEntry.layer is None。"""
+    """`layer` Home null Home JSON When reading a line MemoryEntry.layer is None."""
     path = tmp_path / "test.jsonl"
     path.write_text(
         '{"timestamp":"2030-01-01T00:00:00+09:00","role":"user","content":"hi","source_tag":"file","layer":null}\n',
@@ -285,8 +285,7 @@ def test_read_memory_tail_text_layers_none_returns_all(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_read_memory_preferences_extracts_section(tmp_path: Path) -> None:
-    # Japanese text intentionally kept for CJK processing test
-    """source_tag="preferences" エントリを `## ユーザーの好み・傾向` 見出しで返す。"""
+    """source_tag="preferences"  entries under the  `## User preferences`  heading."""
     config = make_config(tmp_path)
     mp = memory_file_path(config, "test_persona")
     _write_jsonl(mp, [
@@ -294,8 +293,7 @@ def test_read_memory_preferences_extracts_section(tmp_path: Path) -> None:
         MemoryEntry("2026-04-17T10:00:00+09:00", "user", "Entry.", "file"),
     ])
     result = read_memory_preferences(config, "test_persona")
-    # Japanese text intentionally kept for CJK processing test
-    assert "ユーザーの好み・傾向" in result
+    assert config.preferences_section_name in result
     assert "This is the text of your choice." in result
 
 
@@ -421,8 +419,8 @@ def test_memory_config_new_fields() -> None:
     assert config.mid_weeks == 3
     assert config.compact_threshold_bytes == 40_960
     assert config.compact_target_bytes == 25_600
-    # Japanese text intentionally kept for CJK processing test
-    assert config.preferences_section_name == "ユーザーの好み・傾向"
+    assert config.preferences_section_name
+    assert not config.preferences_section_name.isascii()
     assert config.protected_layers == ("caveat",)
 
 
@@ -459,8 +457,7 @@ def test_ensure_jsonl_no_md_fallback(tmp_path: Path) -> None:
     """.jsonl HOME.md Without automatic migration .jsonl Return the path as it is (empty string)."""
     config = make_config(tmp_path)
     md_path = memory_file_path(config, "persona").with_suffix(".md")
-    # Japanese text intentionally kept for CJK processing test
-    md_path.write_text("## ユーザーの好み・傾向\n\n好みの内容\n", encoding="utf-8")
+    md_path.write_text("## User preferences\n\npreference content\n", encoding="utf-8")
 
     result = read_memory_tail_text(config, "persona", max_bytes=4096, max_entries=20)
     assert result == ""
@@ -479,14 +476,12 @@ def test_old_api_functions_not_accessible() -> None:
 # ---------------------------------------------------------------------------
 
 def test_assemble_entries_text_preferences_heading() -> None:
-    # Japanese text intentionally kept for CJK processing test
-    """preferences エントリは '## ユーザーの好み・傾向' 見出しで出力される。"""
+    """preferences  entries use the  '## User preferences'  heading in output."""
     entries = [
         MemoryEntry("1970-01-01T00:00:00+00:00", "system", "Like content", "preferences"),
     ]
     result = assemble_entries_text(entries)
-    # Japanese text intentionally kept for CJK processing test
-    assert "## ユーザーの好み・傾向" in result
+    assert f"## {MemoryConfig(chat_dir=Path('/tmp/chat')).preferences_section_name}" in result
     assert "Like content" in result
 
 
@@ -556,7 +551,7 @@ def _make_compact_entries(
     """compact Test JSONL Contact Us (config, persona)
 
     per-section cap ContactIssue #1135long-term section cap Oversize
-    rate entries.compact_target_bytes=4096、long_term_cap=1024（25%）。
+    Use compact_target_bytes=4096 and long_term_cap=1024 (25%).
     """
     config = MemoryConfig(
         chat_dir=tmp_path,
@@ -590,7 +585,7 @@ def _identity_llm(prompt: str) -> str:
 def test_compact_calls_llm_per_group_and_writes_result(tmp_path: Path) -> None:
     """compact Home cap Excess section llm_call call results JSONL Write to
 
-    per-section cap ContactIssue #1135）: long_term / mid_term Home cap Excessive LLM is called.
+    per-section cap ContactIssue #1135): long_term / mid_term Home cap Excessive LLM is called.
     """
     config, persona = _make_compact_entries(tmp_path)
 
@@ -627,7 +622,7 @@ def test_compact_dry_run_does_not_write(tmp_path: Path) -> None:
 def test_compact_all_llm_failures_fallback(tmp_path: Path) -> None:
     """All LLM If the call fails, it falls back to the original text and writes.
 
-    per-section cap ContactIssue #1135）: cap Excess section LLM and
+    per-section cap ContactIssue #1135): cap Excess section LLM and
     If it fails, hold the original text. warning Register
     """
     config, persona = _make_compact_entries(tmp_path)
@@ -712,7 +707,7 @@ def test_compact_protected_layer_content_unchanged(tmp_path: Path) -> None:
 def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
     """`protected_layers=()` Home caveat Entry is also included.
 
-    per-section cap ContactIssue #1135）: protected_layers=() Forcaveat Contact Us
+    per-section cap ContactIssue #1135): protected_layers=() Forcaveat Contact Us
     Normal layer Classificationlong_term/mid_term/recent) Followcap Overtime LLM Compressed.
     """
     config = MemoryConfig(
@@ -727,7 +722,7 @@ def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
     (tmp_path / "memory").mkdir(exist_ok=True)
     mp = memory_file_path(config, "persona")
     entries = [
-        # caveat Entrieslong_term layer、cap Oversize)
+        # caveat Entrieslong_term layer,cap Oversize)
         MemoryEntry(_ts_ago(days=90), "assistant", "caveatcontent " + "c" * 1100, "manual", layer="long_term"),
         MemoryEntry(_ts_ago(days=2), "user", "Recent Posts", "file", layer="recent"),
     ]

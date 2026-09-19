@@ -1,5 +1,5 @@
 """
-tests/test_mltgnt_routing.py — mltgnt.routing  unit tests（AC-4）
+tests/test_mltgnt_routing.py — mltgnt.routing  unit tests(AC-4)
 
 Design: Issue #118 §7 AC-4
 """
@@ -68,7 +68,7 @@ def test_load_channel_persona_map_nickname_fallback() -> None:
 
 
 def test_load_channel_persona_map_primary_duplicate_raises_config_error() -> None:
-    """Two primary channels → ConfigError。"""
+    """Two primary channels → ConfigError."""
     persona_a = MagicMock()
     persona_a.name = "PersonaA"
     persona_a.fm.slack_channel = "C_SAME"
