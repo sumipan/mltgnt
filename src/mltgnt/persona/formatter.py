@@ -4,8 +4,6 @@ Media- and task-path agnostic. No SDK / engine / artifact-path vocabulary.
 """
 from __future__ import annotations
 
-import re
-
 from mltgnt.config.language import JA, LanguagePack
 
 
@@ -40,8 +38,7 @@ def extract_persona_block_after_meta_headers(s: str, pack: LanguagePack | None =
     after = text[start_content:].lstrip("\n")
     if not after:
         return text
-    # Japanese text intentionally kept for CJK processing test
-    end_m = re.search(r"\n-{3,}\s*\n\s*（以上）", after)
+    end_m = _pack.persona_end_re.search(after)
     if end_m:
         after = after[: end_m.start()].rstrip()
     return after

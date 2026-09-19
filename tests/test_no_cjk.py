@@ -9,18 +9,13 @@ import pytest
 
 _TESTS_ROOT = Path(__file__).parent
 _SRC_ROOT = _TESTS_ROOT.parent / "src" / "mltgnt"
-_SOURCE_FILES = (
-    _SRC_ROOT / "config" / "__init__.py",
-    _SRC_ROOT / "persona" / "schema.py",
-    _SRC_ROOT / "persona" / "extractor.py",
-    _SRC_ROOT / "persona" / "loader.py",
-    _SRC_ROOT / "memory" / "_format.py",
-    _SRC_ROOT / "memory" / "compaction.py",
-    _SRC_ROOT / "memory" / "dream" / "synthesizer.py",
-    _SRC_ROOT / "memory" / "dream" / "api.py",
-    _SRC_ROOT / "routing" / "triage.py",
+_SOURCE_EXCEPTIONS = {_SRC_ROOT / "config" / "language.py"}
+_CJK_RANGES = (
+    (0x3040, 0x30FF),
+    (0x3400, 0x9FFF),
+    (0xF900, 0xFAFF),
+    (0xFF66, 0xFF9F),
 )
-_CJK_RANGES = ((0x3000, 0x9FFF), (0xFF00, 0xFFEF))
 _UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
 _BYTE_ESCAPE_RE = re.compile(r"(?:\\x[0-9a-fA-F]{2})+")
 _FIXTURE_SUFFIXES = {".json", ".jsonl", ".md", ".txt", ".yaml", ".yml"}
@@ -88,9 +83,19 @@ def test_no_cjk_in_tests() -> None:
 
 
 def test_no_cjk_in_source_modules() -> None:
-    violations = [violation for path in _SOURCE_FILES for violation in _violations(path)]
+    source_files = set(_SRC_ROOT.rglob("*.py"))
+    violations = [
+        violation
+        for path in sorted(source_files - _SOURCE_EXCEPTIONS)
+        for violation in _violations(path)
+    ]
 
     assert not violations, "CJK source data found:\n" + "\n".join(violations)
+
+
+def test_source_cjk_exception_is_only_language_pack() -> None:
+    assert {_SRC_ROOT / "config" / "language.py"} == _SOURCE_EXCEPTIONS
+    assert set(_SRC_ROOT.rglob("*.py")) >= _SOURCE_EXCEPTIONS
 
 
 def test_persona_section_keys_are_canonical_english() -> None:
