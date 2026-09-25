@@ -22,6 +22,7 @@ FM structure:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -231,3 +232,25 @@ VALID_ENGINES: frozenset[str] = frozenset({"claude", "gemini", "cursor", "codex"
 
 SYSTEM_DEFAULT_ENGINE: str = "claude"
 SYSTEM_DEFAULT_MODEL: str = ""
+
+_DEFAULT_ENGINE_ENV: str = "MLTGNT_DEFAULT_ENGINE"
+
+
+def system_default_engine() -> str:
+    """Return the host-wide default engine.
+
+    Reads MLTGNT_DEFAULT_ENGINE on every call (not at import time).
+    Unset or blank -> SYSTEM_DEFAULT_ENGINE.
+    A value in VALID_ENGINES (after strip) -> that value.
+    Anything else -> ValueError naming the bad value and VALID_ENGINES.
+    """
+    raw = os.environ.get(_DEFAULT_ENGINE_ENV, "")
+    value = raw.strip()
+    if not value:
+        return SYSTEM_DEFAULT_ENGINE
+    if value not in VALID_ENGINES:
+        raise ValueError(
+            f"{_DEFAULT_ENGINE_ENV}={raw!r} is not a valid engine; "
+            f"expected one of {sorted(VALID_ENGINES)}"
+        )
+    return value

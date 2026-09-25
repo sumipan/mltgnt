@@ -36,17 +36,18 @@ def run_persona_prompt(
 
     Raises:
         FileNotFoundError: Persona file not found.
+        ValueError: Persona has no ops.engine and MLTGNT_DEFAULT_ENGINE is invalid.
     """
     from mltgnt.bridges.llm_adapter import call_llm
     from mltgnt.persona.loader import load
     from mltgnt.persona.registry import resolve_with_alias
-    from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE, SYSTEM_DEFAULT_MODEL
+    from mltgnt.persona.schema import SYSTEM_DEFAULT_MODEL, system_default_engine
 
     pdir = persona_dir if persona_dir is not None else Path("agents")
     path = resolve_with_alias(str(persona_name), pdir)
     persona = load(path)
 
-    engine = persona.fm.engine or SYSTEM_DEFAULT_ENGINE
+    engine = persona.fm.engine or system_default_engine()
     model = persona.fm.model or SYSTEM_DEFAULT_MODEL
 
     effective_prompt = f"{memory}\n\n{prompt}" if memory is not None else prompt

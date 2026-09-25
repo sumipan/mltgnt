@@ -12,7 +12,7 @@ from typing import Callable
 
 from mltgnt.agent.dispatch_preflight import PreflightContext
 from mltgnt.conversation.session_store import SessionRecord
-from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE
+from mltgnt.persona.schema import system_default_engine
 
 REASK_MESSAGE = (
     "This cannot be completed here; please restate the target and work clearly"
@@ -51,7 +51,7 @@ class DispatchDecision:
 
 
 def _normalize_primary_engine_model(engine: str, model: str) -> tuple[str, str]:
-    primary_engine = (engine or "").strip() or SYSTEM_DEFAULT_ENGINE
+    primary_engine = (engine or "").strip() or system_default_engine()
     primary_model = (model or "").strip()
     return primary_engine, primary_model
 
