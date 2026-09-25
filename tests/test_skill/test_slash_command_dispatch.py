@@ -265,7 +265,7 @@ class TestResolveSkillIntegration:
             assert kwargs.get("engine") == "codex"
 
     async def test_resolve_skill_default_matcher_engine(self, tmp_path: Path) -> None:
-        """matcher_engine unset → match() receives engine='claude'"""
+        """matcher_engine unset -> match() receives engine='claude'"""
         _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
         no_match = SkillMatchResult(decisive=None, candidates=[], rationale="none", arguments="hello")
         with patch("mltgnt.skill.match", new=AsyncMock(return_value=no_match)) as mock_match:
