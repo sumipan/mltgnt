@@ -174,6 +174,150 @@ class TestMatcherModel:
         assert _DEFAULT_MATCHER_MODEL == "claude-haiku-4-5-20251001"
 
 
+def _fake_result(body: str = "none", success: bool = True) -> MagicMock:
+    return MagicMock(success=success, body=body, stderr="")
+
+
+class TestMatcherEngine:
+    """Issue #3806: engine is selectable for the LLM and discover stages."""
+
+    DISCOVER_SKILLS = {
+        "greet": SkillMeta(
+            name="greet",
+            description="hello greeting",
+            argument_hint="",
+            model=None,
+            path=Path("/fake/skills/greet/SKILL.md"),
+            triggers=[],
+        ),
+    }
+
+    async def _llm_stage_kwargs(self, **match_kwargs) -> dict:
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher.llm_call") as mock:
+                mock.return_value = _fake_result("none")
+                await match("hello", SKILLS, **match_kwargs)
+                mock.assert_called_once()
+                _, kwargs = mock.call_args
+                return kwargs
+        finally:
+            agentic_patcher.stop()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("engine", "expected_model"),
+        [
+            ("claude", _DEFAULT_MATCHER_MODEL),
+            ("cursor", None),
+            ("codex", None),
+        ],
+    )
+    async def test_llm_stage_engine(self, engine: str, expected_model: str | None) -> None:
+        kwargs = await self._llm_stage_kwargs(engine=engine)
+        assert kwargs["engine"] == engine
+        assert kwargs["model"] == expected_model
+        assert kwargs["timeout"] == 30
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("engine", "expected_model"),
+        [
+            ("claude", _DEFAULT_MATCHER_MODEL),
+            ("cursor", None),
+            ("codex", None),
+        ],
+    )
+    async def test_discover_stage_engine(
+        self, engine: str, expected_model: str | None
+    ) -> None:
+        with patch("mltgnt.skill.matcher.llm_call") as mock:
+            mock.return_value = _fake_result("UNRESOLVED")
+            result = await match("hello", self.DISCOVER_SKILLS, engine=engine)
+        assert result.decisive is None
+        # discover stage + LLM fallback stage
+        assert mock.call_count == 2
+        for call in mock.call_args_list:
+            assert call.kwargs["engine"] == engine
+            assert call.kwargs["model"] == expected_model
+            assert call.kwargs["timeout"] == 30
+
+    @pytest.mark.asyncio
+    async def test_explicit_model_kept_for_non_claude(self) -> None:
+        kwargs = await self._llm_stage_kwargs(engine="cursor", model="custom-model")
+        assert kwargs["engine"] == "cursor"
+        assert kwargs["model"] == "custom-model"
+
+    @pytest.mark.asyncio
+    async def test_default_engine_is_claude(self) -> None:
+        kwargs = await self._llm_stage_kwargs()
+        assert kwargs == {
+            "engine": "claude",
+            "model": _DEFAULT_MATCHER_MODEL,
+            "timeout": 30,
+        }
+
+    @pytest.mark.asyncio
+    async def test_empty_engine_treated_as_claude(self) -> None:
+        kwargs = await self._llm_stage_kwargs(engine="")
+        assert kwargs["engine"] == "claude"
+        assert kwargs["model"] == _DEFAULT_MATCHER_MODEL
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("engine", ["cursor", "codex"])
+    @pytest.mark.parametrize("model", [None, ""])
+    async def test_non_claude_does_not_use_default_model(
+        self, engine: str, model: str | None
+    ) -> None:
+        # None lets ghdag resolve the engine default; "" fails its allowlist check.
+        kwargs = await self._llm_stage_kwargs(engine=engine, model=model)
+        assert kwargs["model"] is None
+
+    @pytest.mark.asyncio
+    async def test_unknown_engine_failure_is_soft(self) -> None:
+        with patch("mltgnt.skill.matcher.llm_call") as mock:
+            mock.return_value = _fake_result("", success=False)
+            result = await match("hello", self.DISCOVER_SKILLS, engine="unknown-engine")
+        assert result.decisive is None
+        assert result.rationale == "none"
+        assert mock.call_args.kwargs["engine"] == "unknown-engine"
+
+    @pytest.mark.asyncio
+    async def test_unknown_engine_exception_is_soft(self) -> None:
+        with patch("mltgnt.skill.matcher.llm_call", side_effect=RuntimeError("boom")):
+            result = await match("hello", self.DISCOVER_SKILLS, engine="unknown-engine")
+        assert result.decisive is None
+        assert result.rationale == "none"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("engine", [None, "claude", "cursor", "codex"])
+    @pytest.mark.parametrize(
+        "user_input",
+        ["/review x", "please do a review", "run trig-edit now"],
+    )
+    async def test_deterministic_stages_skip_llm(
+        self, engine: str | None, user_input: str
+    ) -> None:
+        skills = {"review": _meta("review"), "edit2": _meta("edit2", triggers=["trig-edit"])}
+        kwargs = {} if engine is None else {"engine": engine}
+        with patch("mltgnt.skill.matcher.llm_call") as mock:
+            result = await match(user_input, skills, **kwargs)
+        assert result.decisive is not None
+        mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_match_pipeline_passes_engine(self) -> None:
+        no_match = MagicMock()
+        with patch(
+            "mltgnt.skill.matcher.match", new=AsyncMock(return_value=no_match)
+        ) as mock_match:
+            results = await match_pipeline("/a x | plain text", SKILLS, engine="codex")
+        assert results == [no_match, no_match]
+        assert mock_match.call_count == 2
+        for call in mock_match.call_args_list:
+            assert call.kwargs["engine"] == "codex"
+
+
 class TestMatchTriggersOnly:
     def test_match_by_trigger_keyword(self) -> None:
         """AC1: matches on trigger keywords"""

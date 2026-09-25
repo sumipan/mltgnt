@@ -254,6 +254,26 @@ class TestResolveSkillIntegration:
             _, kwargs = mock_match.call_args
             assert kwargs.get("model") == "custom-model"
 
+    async def test_resolve_skill_passes_matcher_engine(self, tmp_path: Path) -> None:
+        """matcher_engine='codex' is passed to match() as engine='codex'"""
+        _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
+        no_match = SkillMatchResult(decisive=None, candidates=[], rationale="none", arguments="hello")
+        with patch("mltgnt.skill.match", new=AsyncMock(return_value=no_match)) as mock_match:
+            await resolve_skill("hello", [tmp_path], matcher_engine="codex")
+            mock_match.assert_called_once()
+            _, kwargs = mock_match.call_args
+            assert kwargs.get("engine") == "codex"
+
+    async def test_resolve_skill_default_matcher_engine(self, tmp_path: Path) -> None:
+        """matcher_engine unset -> match() receives engine='claude'"""
+        _write_skill(tmp_path, "persona-create/SKILL.md", PERSONA_CREATE_SKILL_MD)
+        no_match = SkillMatchResult(decisive=None, candidates=[], rationale="none", arguments="hello")
+        with patch("mltgnt.skill.match", new=AsyncMock(return_value=no_match)) as mock_match:
+            await resolve_skill("hello", [tmp_path])
+            mock_match.assert_called_once()
+            _, kwargs = mock_match.call_args
+            assert kwargs.get("engine") == "claude"
+
     async def test_resolve_with_real_skills_dir(self) -> None:
         """Resolve from the real skills/ directory (only when SKILL.md exists)"""
         real_skills_dir = Path("/Users/ngystks/Github/diary/skills")

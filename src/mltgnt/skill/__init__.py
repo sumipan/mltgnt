@@ -63,6 +63,8 @@ async def resolve_skill(
     persona_skills: list[str] | None = None,
     entry_file: str = "SKILL.md",
     matcher_model: str | None = None,
+    *,
+    matcher_engine: str = "claude",
 ) -> "tuple | None":
     """
     Search/match a skill from user input; return (SkillFile, arguments_str).
@@ -76,6 +78,7 @@ async def resolve_skill(
         persona_skills: Persona skills field (None = no filter)
         entry_file: Skill entry filename
         matcher_model: Model for LLM intent classification (None = default)
+        matcher_engine: Engine for LLM intent classification (default "claude")
     Returns:
         (SkillFile, arguments_str) or None
     """
@@ -86,7 +89,13 @@ async def resolve_skill(
     if not skills:
         return None
 
-    result = await match(user_input, skills, persona_skills=persona_skills, model=matcher_model)
+    result = await match(
+        user_input,
+        skills,
+        persona_skills=persona_skills,
+        model=matcher_model,
+        engine=matcher_engine,
+    )
     if result.decisive is None:
         return None
 
