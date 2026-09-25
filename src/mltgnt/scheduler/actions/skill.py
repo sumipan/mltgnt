@@ -493,6 +493,7 @@ def _run_pipeline_action(
             argv_str,
             skills,
             persona_skills=persona_skills,
+            engine=engine or "claude",
         )
     )
     steps = compose_pipeline(

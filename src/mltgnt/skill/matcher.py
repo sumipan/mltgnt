@@ -28,6 +28,22 @@ No extra explanation.
 """
 
 
+def _llm_args(engine: str | None, model: str | None) -> tuple[str, str | None]:
+    """Normalize (engine, model) into the values passed to llm_call.
+
+    - engine None / "" -> "claude"
+    - engine == "claude" -> model or _DEFAULT_MATCHER_MODEL
+    - otherwise -> model or None (defer to the engine's default model)
+
+    ghdag resolves the engine default only for model=None; model="" is
+    rejected by its allowlist check.
+    """
+    resolved_engine = engine or "claude"
+    if resolved_engine == "claude":
+        return resolved_engine, model or _DEFAULT_MATCHER_MODEL
+    return resolved_engine, model or None
+
+
 def _filter_by_persona(
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None,
@@ -120,6 +136,8 @@ async def _match_by_llm(
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None,
     model: str | None = None,
+    *,
+    engine: str = "claude",
 ) -> tuple[SkillMeta, str] | None:
     """Pass the skill list and input to an LLM for intent classification.
 
@@ -142,7 +160,13 @@ async def _match_by_llm(
     prompt = f"{_LLM_SYSTEM_PROMPT}\n\nSkill list:\n{skill_list}\n\nUser input: {user_input}"
 
     try:
-        result = llm_call(prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30)
+        llm_engine, llm_model = _llm_args(engine, model)
+        result = llm_call(
+            prompt,
+            engine=llm_engine,
+            model=llm_model,  # type: ignore[arg-type]  # ghdag call_text accepts None
+            timeout=30,
+        )
         if not result.success:
             _log.warning("LLM intent classification error: %s", result.stderr)
             return None
@@ -171,6 +195,8 @@ async def match_pipeline(
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None = None,
     model: str | None = None,
+    *,
+    engine: str = "claude",
 ) -> list[SkillMatchResult]:
     """Split pipe input and delegate each segment to match().
 
@@ -180,7 +206,9 @@ async def match_pipeline(
     segments = split_pipe_segments(user_input)
     results: list[SkillMatchResult] = []
     for segment in segments:
-        result = await match(segment, skills, persona_skills=persona_skills, model=model)
+        result = await match(
+            segment, skills, persona_skills=persona_skills, model=model, engine=engine
+        )
         results.append(result)
     return results
 
@@ -190,6 +218,8 @@ async def match(
     skills: dict[str, SkillMeta],
     persona_skills: list[str] | None = None,
     model: str | None = None,
+    *,
+    engine: str = "claude",
 ) -> SkillMatchResult:
     """
     Identify a skill from user input (5-stage fallback).
@@ -244,9 +274,14 @@ async def match(
         )
 
     # Step 4: AgenticSkillDiscoverer (iterative narrowing)
+    llm_engine, llm_model = _llm_args(engine, model)
+
     def _llm_for_discover(prompt: str) -> str:
         result = llm_call(
-            prompt, engine="claude", model=model or _DEFAULT_MATCHER_MODEL, timeout=30
+            prompt,
+            engine=llm_engine,
+            model=llm_model,  # type: ignore[arg-type]  # ghdag call_text accepts None
+            timeout=30,
         )
         if not result.success:
             raise RuntimeError(result.stderr)
@@ -276,7 +311,9 @@ async def match(
         )
 
     # Step 5: existing LLM intent-classification fallback (when unresolved)
-    llm_result = await _match_by_llm(user_input, skills, persona_skills, model=model)
+    llm_result = await _match_by_llm(
+        user_input, skills, persona_skills, model=model, engine=engine
+    )
     if llm_result is not None:
         meta, arguments = llm_result
         return SkillMatchResult(

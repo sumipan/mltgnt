@@ -641,6 +641,64 @@ class TestEnablePipeline:
         mock_dag.assert_called_once()
 
 
+    def _run_pipeline_engine(
+        self, tmp_path: Path, *, persona_engine: str, job_engine: str | None
+    ) -> dict:
+        from unittest.mock import AsyncMock
+
+        from mltgnt.skill.models import SkillMatchResult
+
+        persona_dir = _make_persona(tmp_path, engine=persona_engine)
+        meta = _make_skill_meta("test-skill", tmp_path)
+        action_args = {
+            "skill": "test-skill",
+            "persona": "persona-a",
+            "argv": ["/test-skill", "x"],
+            "enable_pipeline": True,
+        }
+        if job_engine is not None:
+            action_args["engine"] = job_engine
+        job = _skill_job(action_args=action_args)
+        match_results = [
+            SkillMatchResult(
+                decisive=meta,
+                candidates=[meta],
+                rationale="slash:test-skill",
+                arguments="x",
+            )
+        ]
+        with (
+            patch(
+                "mltgnt.skill.matcher.match_pipeline",
+                new_callable=AsyncMock,
+                return_value=match_results,
+            ) as mock_match,
+            patch(_ENQUEUE_DAG, return_value=[(True, "pipe-done")]),
+        ):
+            ok, _ = run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+        assert ok is True
+        mock_match.assert_called_once()
+        return mock_match.call_args.kwargs
+
+    def test_enable_pipeline_passes_job_engine_to_match(self, tmp_path: Path) -> None:
+        kwargs = self._run_pipeline_engine(
+            tmp_path, persona_engine="claude", job_engine="cursor"
+        )
+        assert kwargs["engine"] == "cursor"
+
+    def test_enable_pipeline_engine_defaults_to_claude(self, tmp_path: Path) -> None:
+        kwargs = self._run_pipeline_engine(
+            tmp_path, persona_engine='""', job_engine=None
+        )
+        assert kwargs["engine"] == "claude"
+
+
 class TestSnapshotWrites:
     def test_empty_patterns_returns_empty(self, tmp_path: Path) -> None:
         assert _snapshot_writes([], tmp_path) == {}
