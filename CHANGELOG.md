@@ -5,6 +5,8 @@
 
 ### Added
 
+- **`chain_every_run` for chained scheduler jobs**: a `mode: chained` job with `chain_every_run: true` fires right after *every* successful run of its `depends_on` job (previously chained jobs fired once per day via date-marked done files, so chaining after an `interval` job never fired). The upstream job's output text is passed as `ScheduleJob.upstream_output`; `action: skill` appends it to the persona's user message. Such jobs never write done / skipped / failed marks and are never time-triggered by `tick()`. Use case: a deterministic interval check script followed by a persona skill run that acts on the check result.
+
 - **`LanguagePack` dataclass for locale-specific vocabulary**（#3382）: `mltgnt.config.language` に `LanguagePack` frozen dataclass と `JA` デフォルトインスタンスを追加。`deterministic_gate` / `persona/compress` / `persona/formatter` のハードコード日本語語彙を `LanguagePack` に移動し、`pack=None` 引数（None 時は `JA`）でロケール差し替えが可能に。`persona/registry` の `EXCLUDE_STEMS` を `frozenset()` に変更し、`list_personas` / `resolve_with_alias` に `exclude_stems` 引数を追加。`memory/dream/synthesizer` の重複 `_EXCLUDE_PERSONA_STEMS` を削除。`PersonaConfig` に `exclude_stems` フィールドを追加
 
 ### Removed

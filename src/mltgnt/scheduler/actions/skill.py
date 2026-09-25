@@ -295,6 +295,11 @@ def run_skill_action(
 
     argv_list = aa.get("argv", [])
     argv_str = " ".join(str(x) for x in argv_list) if argv_list else ""
+    upstream_output = (getattr(job, "upstream_output", None) or "").strip()
+    if upstream_output:
+        # chain_every_run: hand the upstream job's output to the skill as the
+        # tail of the user message so the persona can act on it.
+        argv_str = f"{argv_str}\n\n{upstream_output}".strip() if argv_str else upstream_output
 
     knowledge_count_cfg = aa.get("knowledge_count", 0)
     memory_max_bytes_cfg = aa.get("memory_max_bytes", 0)
