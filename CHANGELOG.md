@@ -11,10 +11,15 @@
 
 - **`MLTGNT_DEFAULT_ENGINE` host-wide default engine** (#3809): new `mltgnt.persona.schema.system_default_engine()` reads `MLTGNT_DEFAULT_ENGINE` on every call (unset/blank -> `SYSTEM_DEFAULT_ENGINE` = `"claude"`; values outside `VALID_ENGINES` raise `ValueError`). `run_persona_prompt`, `format_result_for_persona(engine="")` and `dispatch_decision._normalize_primary_engine_model` use it when no engine is given; an explicit engine always wins. `SYSTEM_DEFAULT_ENGINE` is kept unchanged for compatibility.
 - **Selectable engine for skill matcher LLM stages** (#3806): `match` / `match_pipeline` accept a keyword-only `engine` (default `"claude"`) used by both the agentic discover stage and the LLM intent-classification stage. `_DEFAULT_MATCHER_MODEL` applies only to claude; other engines get `model=None` (ghdag resolves the engine default; `""` is rejected by its allowlist) unless `model` is given. `resolve_skill` gains `matcher_engine`, and the scheduler `enable_pipeline` path passes the job / persona engine to `match_pipeline`.
+- **`MemoryConfig.dream_engine`**: selects the LLM engine (`"claude"` / `"cursor"` / `"codex"`, default `"claude"`) used by the `memory_dream` schedule action. An empty value is treated as `"claude"`. Hosts that only run cursor or codex no longer fail the daily dream job with `claude: command not found`.
 
 - **`chain_every_run` for chained scheduler jobs**: a `mode: chained` job with `chain_every_run: true` fires right after *every* successful run of its `depends_on` job (previously chained jobs fired once per day via date-marked done files, so chaining after an `interval` job never fired). The upstream job's output text is passed as `ScheduleJob.upstream_output`; `action: skill` appends it to the persona's user message. Such jobs never write done / skipped / failed marks and are never time-triggered by `tick()`. Use case: a deterministic interval check script followed by a persona skill run that acts on the check result.
 
 - **`LanguagePack` dataclass for locale-specific vocabulary**（#3382）: `mltgnt.config.language` に `LanguagePack` frozen dataclass と `JA` デフォルトインスタンスを追加。`deterministic_gate` / `persona/compress` / `persona/formatter` のハードコード日本語語彙を `LanguagePack` に移動し、`pack=None` 引数（None 時は `JA`）でロケール差し替えが可能に。`persona/registry` の `EXCLUDE_STEMS` を `frozenset()` に変更し、`list_personas` / `resolve_with_alias` に `exclude_stems` 引数を追加。`memory/dream/synthesizer` の重複 `_EXCLUDE_PERSONA_STEMS` を削除。`PersonaConfig` に `exclude_stems` フィールドを追加
+
+### Changed
+
+- **`MemoryConfig.dream_model` default is now `""`**: when empty, the `claude` engine falls back to `claude-haiku-4-5-20251001` (same model as before), and other engines use their ghdag default model. An explicit `dream_model` is passed through unchanged for any engine.
 
 ### Removed
 

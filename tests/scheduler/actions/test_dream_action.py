@@ -125,3 +125,56 @@ def test_persona_scheduler_default_memory_config_unchanged(tmp_path: Path) -> No
     ok, msg = sch.execute_action(job)
     assert ok is True
     assert msg == ""
+
+
+def _run_with_config(tmp_path: Path, config: MemoryConfig):
+    persona_dir = _setup_persona_with_jsonl(tmp_path / "agents", "alice")
+    llm_response = _text_result("## Behavior patterns\npattern\n\n## Preferences\npref")
+    with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=llm_response) as mock_call:
+        ok, _msg = run_dream_action(_dream_job(), persona_dir=persona_dir, memory_config=config)
+    assert ok is True
+    return mock_call.call_args.kwargs
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_engine", "expected_model"),
+    [
+        ({}, "claude", "claude-haiku-4-5-20251001"),
+        ({"dream_engine": ""}, "claude", "claude-haiku-4-5-20251001"),
+        # Empty model is forwarded as None so ghdag picks the engine default
+        # (ghdag rejects "" in its model allowlist check).
+        ({"dream_engine": "cursor"}, "cursor", None),
+        ({"dream_engine": "codex"}, "codex", None),
+        ({"dream_engine": "cursor", "dream_model": "X"}, "cursor", "X"),
+    ],
+)
+def test_run_dream_action_passes_resolved_engine_and_model(
+    tmp_path: Path,
+    overrides: dict[str, str],
+    expected_engine: str,
+    expected_model: str | None,
+) -> None:
+    config = MemoryConfig(chat_dir=tmp_path, use_dream_summary=True, **overrides)
+    kwargs = _run_with_config(tmp_path, config)
+    assert kwargs["engine"] == expected_engine
+    assert kwargs["model"] == expected_model
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({}, ("claude", "claude-haiku-4-5-20251001")),
+        ({"dream_engine": ""}, ("claude", "claude-haiku-4-5-20251001")),
+        ({"dream_engine": " cursor "}, ("cursor", "")),
+        ({"dream_engine": "codex"}, ("codex", "")),
+        ({"dream_engine": "codex", "dream_model": "X"}, ("codex", "X")),
+        ({"dream_model": "custom"}, ("claude", "custom")),
+    ],
+)
+def test_resolve_dream_llm(
+    tmp_path: Path, overrides: dict[str, str], expected: tuple[str, str]
+) -> None:
+    from mltgnt.scheduler.actions.dream import _resolve_dream_llm
+
+    config = MemoryConfig(chat_dir=tmp_path, **overrides)
+    assert _resolve_dream_llm(config) == expected

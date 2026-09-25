@@ -10,6 +10,17 @@ from mltgnt.scheduler.models import ScheduleJob
 
 __all__ = ["run_dream_action"]
 
+_CLAUDE_DEFAULT_DREAM_MODEL = "claude-haiku-4-5-20251001"
+
+
+def _resolve_dream_llm(memory_config: MemoryConfig) -> tuple[str, str]:
+    """Return (engine, model) for the dream synthesis call."""
+    engine = memory_config.dream_engine.strip() or "claude"
+    model = memory_config.dream_model.strip()
+    if not model and engine == "claude":
+        model = _CLAUDE_DEFAULT_DREAM_MODEL
+    return engine, model
+
 
 def run_dream_action(
     job: ScheduleJob,
@@ -34,11 +45,18 @@ def run_dream_action(
         return True, f"dream: {persona_stem} has no JSONL entries"
 
     existing = read_dream(persona_dir, memory_dir_name=dir_name)
+    engine, model = _resolve_dream_llm(memory_config)
 
     def llm_call(prompt: str) -> str:
         from mltgnt.bridges.llm_adapter import call_llm
 
-        return str(call_llm(prompt, model=memory_config.dream_model).body)
+        # ghdag applies the engine default model only for None; "" is rejected
+        # by its allowlist check, so an empty model is forwarded as None.
+        return str(call_llm(
+            prompt,
+            engine=engine,
+            model=model or None,  # type: ignore[arg-type]
+        ).body)
 
     try:
         summary = Synthesizer.synthesize(
