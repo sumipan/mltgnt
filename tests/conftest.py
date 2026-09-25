@@ -9,6 +9,7 @@ import sys
 import pytest
 
 from mltgnt.config.language import LanguagePack
+from mltgnt.memory import flush_memory_commits
 
 
 def _polyfill_template_get_identifiers() -> None:
@@ -31,6 +32,20 @@ def _polyfill_template_get_identifiers() -> None:
 
 
 _polyfill_template_get_identifiers()
+
+
+_VCS_ENV = ("ENABLE_GIT", "GHDAG_VCS_CONFIG", "GHDAG_AUDIT_PATH")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_memory_commits(monkeypatch: pytest.MonkeyPatch):
+    """Keep memory commits off real repos: clear VCS env, drain pending commits via NullSink."""
+    for name in _VCS_ENV:
+        monkeypatch.delenv(name, raising=False)
+    yield
+    for name in _VCS_ENV:
+        monkeypatch.delenv(name, raising=False)
+    flush_memory_commits()
 
 
 @pytest.fixture(scope="session")

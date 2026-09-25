@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from mltgnt.config import MemoryConfig
+from mltgnt.memory._commit import schedule_commit
 from mltgnt.memory.dream._format import (
     DreamSummary,
     dream_summary_from_json,
@@ -54,6 +55,7 @@ def write_dream(
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(dream_summary_to_json(summary), encoding="utf-8")
     tmp.replace(path)
+    schedule_commit(path, summary.persona, "dream")
 
 
 def global_json_path(
@@ -90,6 +92,7 @@ def write_global(
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(dream_summary_to_json(summary), encoding="utf-8")
     tmp.replace(path)
+    schedule_commit(path, "__global__", "global")
 
 
 def read_global_summary(config: MemoryConfig) -> str:

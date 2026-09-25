@@ -1,4 +1,5 @@
 """mltgnt.memory — re-export hub."""
+from mltgnt.memory._commit import flush_memory_commits
 from mltgnt.memory._format import (
     MemoryEntry,
     assemble_entries_text,
@@ -46,6 +47,7 @@ __all__ = [
     "LlmCallError",
     "CompactionResult",
     "compact",
+    "flush_memory_commits",
     "needs_compaction",
     "MemoryEntry",
     "parse_jsonl",

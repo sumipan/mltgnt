@@ -46,6 +46,7 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "append_memory_entry",
         "assemble_entries_text",
         "compact",
+        "flush_memory_commits",
         "get_collection",
         "memory_file_path",
         "needs_compaction",

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Iterator
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
 
+from mltgnt.memory._commit import schedule_commit
 from mltgnt.memory._format import (
     MemoryEntry,
     assemble_entries_text,
@@ -193,6 +194,7 @@ def append_memory_entry(
         with mp.open("a", encoding="utf-8") as f:
             f.write(line)
         _sync_chroma_entry(config, persona_stem, entry)
+        schedule_commit(mp, persona_stem, "append", debounce_sec=config.commit_debounce_sec)
 
     mp = memory_file_path(config, persona_stem)
 

@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
 
+from mltgnt.memory._commit import schedule_commit
 from mltgnt.memory._format import MemoryEntry, parse_jsonl, serialize_entry
 
 _log = logging.getLogger(__name__)
@@ -1202,6 +1203,9 @@ def compact(
 
         if not dry_run:
             path.write_text(new_text, encoding="utf-8")
+            schedule_commit(
+                path, persona_stem, "compact", debounce_sec=config.commit_debounce_sec
+            )
 
         return CompactionResult(
             before_bytes=before_bytes,
