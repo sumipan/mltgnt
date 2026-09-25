@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- `tests/scheduler/test_chain_every_run.py::test_dependent_fires_again_on_next_upstream_run` raced the runner thread: it issued the second `tick` as soon as the dependent action had appended its output, while the upstream / dependent job ids were still in `_running` (the `finally` that discards them runs after the action), so `_spawn_job` skipped the second chain about one run in three. The test now waits until no job is running before the second tick. No runtime change.
+
 
 ### Added
 
