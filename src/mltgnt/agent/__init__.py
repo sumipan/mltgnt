@@ -24,22 +24,29 @@ from mltgnt.agent.dispatch_preflight import (
     SkillWorkerResult,
     run_preflight,
 )
+from mltgnt.agent.plan import Plan, PlanItem, build_plan_prompt, parse_plan
+from mltgnt.agent.reflexion import DefaultReflexionEvaluator
 
 __all__ = [
     "AgentResult",
     "AgentRunner",
+    "DefaultReflexionEvaluator",
     "DirectAgentResult",
     "DispatchDecision",
     "MemoryWorkerResult",
     "MODE_DELEGATE",
     "MODE_REPLY",
+    "Plan",
+    "PlanItem",
     "PreflightContext",
     "SkillWorkerResult",
+    "build_plan_prompt",
     "extract_artifact_references",
     "has_work_request",
     "is_create_request",
     "make_dispatch_decision",
     "match_deferred_promise",
+    "parse_plan",
     "run_preflight",
     "should_force_delegate",
     "should_preempt_delegate",
