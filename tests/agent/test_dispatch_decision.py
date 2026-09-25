@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from mltgnt.agent.dispatch_decision import (
     MODE_DELEGATE,
     MODE_REPLY,
@@ -174,3 +176,32 @@ def test_agent_modules_have_no_hardcoded_prompts() -> None:
         src = (root / name).read_text(encoding="utf-8")
         assert _SECRETARY_PROMPT not in src
         assert "slack_sdk" not in src
+
+
+@pytest.mark.parametrize("engine", ["claude", "cursor", "codex"])
+def test_normalize_primary_engine_uses_env_default(
+    monkeypatch: pytest.MonkeyPatch, engine: str
+) -> None:
+    from mltgnt.agent.dispatch_decision import _normalize_primary_engine_model
+
+    monkeypatch.setenv("MLTGNT_DEFAULT_ENGINE", engine)
+    assert _normalize_primary_engine_model("", "") == (engine, "")
+
+
+def test_normalize_primary_engine_unset_env_is_claude(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mltgnt.agent.dispatch_decision import _normalize_primary_engine_model
+
+    monkeypatch.delenv("MLTGNT_DEFAULT_ENGINE", raising=False)
+    assert _normalize_primary_engine_model("", "") == ("claude", "")
+
+
+@pytest.mark.parametrize("value", ["claude", "foo"])
+def test_normalize_primary_engine_explicit_wins(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    from mltgnt.agent.dispatch_decision import _normalize_primary_engine_model
+
+    monkeypatch.setenv("MLTGNT_DEFAULT_ENGINE", value)
+    assert _normalize_primary_engine_model(" codex ", "m") == ("codex", "m")

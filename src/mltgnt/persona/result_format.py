@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Protocol
 
-from mltgnt.persona.schema import SYSTEM_DEFAULT_ENGINE
+from mltgnt.persona.schema import system_default_engine
 
 DEFAULT_FORMAT_INPUT_MAX_CHARS = 48_000
 DEFAULT_FORMAT_TIMEOUT_SEC = 25
@@ -53,7 +53,7 @@ def format_result_for_persona(
         s = s[:input_max_chars] + "\n\n[Input truncated because it was too long]"
     full_input = (prompt_header or "") + s
 
-    effective_engine = (engine or "").strip() or SYSTEM_DEFAULT_ENGINE
+    effective_engine = (engine or "").strip() or system_default_engine()
     try:
         proc = llm_call(
             "",
