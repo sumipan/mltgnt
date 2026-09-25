@@ -4,7 +4,7 @@
 mltgnt is the middle layer of a three-layer stack: **L0 [ghdag](https://github.com/sumipan/ghdag)** runs DAGs and LLM engines, **L1 mltgnt** defines the domain contracts, and **L2 your host** owns processes, credentials, and channel I/O.
 Unlike agent frameworks that bundle model clients and orchestration, mltgnt ships no model client and no DAG engine — it is the typed layer you put between the two.
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.66.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.67.0)-orange)
 
 ## Not (what this is not)
 
@@ -17,18 +17,18 @@ Unlike agent frameworks that bundle model clients and orchestration, mltgnt ship
 ## Installation
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.66.0"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.67.0"
 ```
 
 With development tools:
 
 ```bash
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.66.0"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.67.0"
 ```
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.66.0` |
+| Distribution | `mltgnt` `0.67.0` |
 | Python | `>=3.10` |
 | Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.80.0` |
 | `dev` extra | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
@@ -270,7 +270,7 @@ In the example below, `health_check` is a custom action registered through `Pers
 | `PersonaValidationError` | `mltgnt.persona` | `Exception` | `load_persona` found YAML frontmatter that does not parse or lacks the required `persona` key. |
 | `SkillLoadError` | `mltgnt.skill.models` | `Exception` | Loading skills failed: the ghdag tools list timed out, failed, or returned invalid JSON, or a skill references an unknown tool. |
 | `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | `TypeError` | The compose-time skill I/O type check found a pipe type mismatch between DAG steps (disable with `SKILL_IO_TYPECHECK=0`). |
-| `LlmCallError` | `mltgnt.memory.compaction` (re-exported by `mltgnt.memory`) | `RuntimeError` | Type for wrapping errors from an injected `llm_call` during memory compaction. mltgnt itself does not raise it in v0.66.0. |
+| `LlmCallError` | `mltgnt.memory.compaction` (re-exported by `mltgnt.memory`) | `RuntimeError` | Type for wrapping errors from an injected `llm_call` during memory compaction. mltgnt itself does not raise it in v0.67.0. |
 
 `ScheduleJob.from_dict` and `system_default_engine()` raise the built-in `ValueError` for invalid job definitions and invalid `MLTGNT_DEFAULT_ENGINE` values.
 
@@ -278,7 +278,7 @@ In the example below, `health_check` is a custom action registered through `Pers
 
 - mltgnt is pre-1.0. A minor (`0.Y.0`) release may contain breaking changes; a patch (`0.Y.Z`) release does not. Every change is listed in `CHANGELOG.md`.
 - The stable surface is `mltgnt.__all__` and `mltgnt.interfaces`. Other subpackage names may change in any minor release.
-- Pin an exact tag (for example `@v0.66.0`) in production.
+- Pin an exact tag (for example `@v0.67.0`) in production.
 
 ## Deprecated API
 
