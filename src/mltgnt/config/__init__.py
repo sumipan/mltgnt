@@ -116,7 +116,8 @@ class MemoryConfig:
     preferences_section_name: str = "User’s preferences and tendencies"
     protected_layers: tuple[str, ...] = ("caveat",)
     timezone: str = "Asia/Tokyo"  # used by _redistribute_entries
-    dream_model: str = "claude-haiku-4-5-20251001"
+    dream_model: str = ""  # empty: engine default (claude falls back to haiku)
+    dream_engine: str = "claude"  # "claude" / "cursor" / "codex"
     use_dream_summary: bool = False
     dream_dir_name: str = "memory"
     global_dream_exclude_personas: tuple[str, ...] = ()

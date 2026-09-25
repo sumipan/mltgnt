@@ -162,3 +162,11 @@ def test_no_hardcoded_exclude_stems_in_synthesizer():
     """AC-2: synthesizer does not define _EXCLUDE_PERSONA_STEMS."""
     import mltgnt.memory.dream.synthesizer as synth_module
     assert not hasattr(synth_module, "_EXCLUDE_PERSONA_STEMS")
+
+
+def test_memory_config_dream_engine_and_model_defaults():
+    """MemoryConfig defaults: dream_engine is claude and dream_model is empty."""
+    from mltgnt.config import MemoryConfig
+    config = MemoryConfig(chat_dir=Path("/tmp/chat"))
+    assert config.dream_engine == "claude"
+    assert config.dream_model == ""
