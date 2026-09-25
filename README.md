@@ -1,321 +1,231 @@
 # mltgnt
 
-**L1 agent runtime for host-integrated operations.** In the L0 / L1 / L2 stack (**L0 [ghdag](https://github.com/sumipan/ghdag) / L1 mltgnt / L2 host**), mltgnt owns type contracts, persona and memory orchestration, and loop boundaries. ghdag owns DAG transport and LLM adapter wiring; the host owns process lifecycle and channel I/O.
+**Type contracts and chat I/O for multi-agent personas.** mltgnt is the L1 layer of the **L0 [ghdag](https://github.com/sumipan/ghdag) / L1 mltgnt / L2 host** stack: it owns persona, memory, skill, scheduling, and conversation contracts, while ghdag runs DAGs and LLM adapters and the host owns processes and channel I/O. Unlike agent frameworks that bundle model clients and orchestration, mltgnt is a typed domain layer you plug between a DAG runner and your own host.
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.30.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.61.0)-orange)
 
 ## Not (what this is not)
 
 | Item | Why |
 |------|-----|
-| Not an LLM SDK | mltgnt does not call model providers directly; LLM calls go through ghdag adapters. |
-| Not a DAG engine | Task scheduling, queueing, and DAG state management are owned by ghdag. |
-| Not a host runtime | Slack / CLI host process management and deployment are L2 responsibilities. |
+| Not an LLM SDK | mltgnt never calls model providers directly; LLM calls go through ghdag (`mltgnt.bridges`). |
+| Not a DAG engine | Queueing, dependency resolution, and DAG state are owned by ghdag. mltgnt only builds steps and waits for results. |
+| Not a host runtime | Slack / CLI processes, deployment, and credentials are L2 host responsibilities. `mltgnt run` only hosts components that the host supplies. |
 
 ## Installation
 
-Requires Python `>=3.10`.
-
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.30.0"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.61.0"
 ```
 
 | Item | Value |
 |------|-------|
 | Package | `mltgnt` |
 | Python | `>=3.10` |
-| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.43.0` |
-| Console script | `mltgnt = mltgnt.cli.main:main` |
+| Runtime dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.78.0` |
+| Console script | `mltgnt` (entry point `mltgnt.cli.main:main`) |
 | License | MIT |
 
-Dev extras (`pytest`, `pytest-asyncio`, `pytest-cov`, `freezegun`, `import-linter`, `mypy`, `ruff`):
+Development extras (`pytest`, `pytest-asyncio`, `pytest-cov`, `freezegun`, `import-linter`, `mypy`, `ruff`):
 
 ```bash
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.30.0"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.61.0"
 ```
 
 ## Quick Start
 
-Examples use symbols from `mltgnt.__all__` and match patterns covered by `tests/`.
-
-### Load a persona
+The example below uses only `mltgnt.__all__` symbols and runs offline (no LLM, no network). It creates a persona file, loads and validates it, then writes and reads a dream summary.
 
 ```python
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
-from mltgnt import load_persona
+from mltgnt import (
+    DreamSection,
+    DreamSummary,
+    list_personas,
+    load_persona,
+    read_dream,
+    validate_persona,
+    write_dream,
+)
 
-persona_md = """\
----
-persona:
-  name: Tachikoma
-ops:
-  engine: claude
-  model: claude-sonnet-5
----
+root = Path(tempfile.mkdtemp())
+agents = root / "agents"
+agents.mkdir()
+(agents / "helper.md").write_text(
+    "---\n"
+    "persona:\n"
+    "  name: helper\n"
+    "---\n"
+    "## Basic information\n"
+    "\n"
+    "A concise, friendly assistant.\n",
+    encoding="utf-8",
+)
 
-## Background
-A curious multi-legged AI tank.
-"""
+print(list_personas(agents))                  # ['helper']
+persona = load_persona("helper", persona_dir=agents)
+print(persona.name)                           # helper
+print(validate_persona(persona))              # [] (no warnings)
 
-with tempfile.TemporaryDirectory() as tmp:
-    persona_dir = Path(tmp)
-    (persona_dir / "Tachikoma.md").write_text(persona_md, encoding="utf-8")
-    persona = load_persona("Tachikoma", persona_dir=persona_dir)
-    print(persona.name)
+persona_dir = root / "chat" / "helper"
+write_dream(
+    persona_dir,
+    DreamSummary(
+        persona="helper",
+        sections=[DreamSection(category="preferences", content="Prefers short answers.", source_entries=3)],
+        updated_at="2026-01-01T00:00:00+00:00",
+    ),
+)
+summary = read_dream(persona_dir)             # reads chat/helper/memory/dream.json
+assert summary is not None
+print([s.category for s in summary.sections])  # ['preferences']
 ```
 
-### Write and read a dream summary
-
-```python
-from pathlib import Path
-import tempfile
-
-from mltgnt import DreamSection, DreamSummary, read_dream, write_dream
-
-with tempfile.TemporaryDirectory() as tmp:
-    persona_dir = Path(tmp) / "Tachikoma"
-    persona_dir.mkdir()
-    summary = DreamSummary(
-        persona="Tachikoma",
-        sections=[
-            DreamSection(
-                category="facts",
-                content="Likes curiosity.",
-                source_entries=1,
-            )
-        ],
-        updated_at="2026-09-11T00:00:00+09:00",
-    )
-    write_dream(persona_dir, summary)
-    loaded = read_dream(persona_dir)
-    assert loaded is not None
-    print(loaded.sections[0].category, loaded.sections[0].content)
-```
-
-### Run the chat pipeline (requires a live ghdag LLM path)
-
-```python
-from pathlib import Path
-import tempfile
-
-from mltgnt import load_persona, run_pipeline
-
-persona_md = """\
----
-persona:
-  name: Tachikoma
-ops:
-  engine: claude
-  model: claude-sonnet-5
----
-
-## Style
-Answer in one short paragraph.
-"""
-
-with tempfile.TemporaryDirectory() as tmp:
-    persona_dir = Path(tmp)
-    (persona_dir / "Tachikoma.md").write_text(persona_md, encoding="utf-8")
-    persona = load_persona("Tachikoma", persona_dir=persona_dir)
-    out = run_pipeline(
-        "Say hello from mltgnt.",
-        persona,
-        engine="claude",
-        model="claude-sonnet-5",
-    )
-    print(out.persona_name, out.content)
-```
+The same dream summary can be inspected from the CLI with `mltgnt memory dream show <persona> --chat-dir <chat-dir>` (here `<persona>` is `helper` and `<chat-dir>` is `root / "chat"`).
 
 ## CLI Reference
 
-Entry point: `mltgnt` → `mltgnt.cli.main:main` (argparse).
+The CLI is defined with argparse in `src/mltgnt/cli/main.py` and `src/mltgnt/cli/memory.py`. `python -m mltgnt` is equivalent to the `mltgnt` console script. Running without a subcommand prints help and exits with `0`.
 
-### `mltgnt run`
+| Command | Arguments | Behavior |
+|---------|-----------|----------|
+| `mltgnt run` | `--components MODULE:FUNCTION` (required), `--pid-file PATH` (default `/tmp/mltgnt_daemon.pid`) | Imports `MODULE`, calls `FUNCTION()` to obtain the daemon components, and runs them under `DaemonRunner` with a PID lock. |
+| `mltgnt memory dream show` | `persona` (positional), `--chat-dir PATH` (required) | Prints each section of `<chat-dir>/<persona>/memory/dream.json`. Prints a notice and exits `0` when no summary exists. |
+| `mltgnt memory dream forget` | `persona` (positional), `--category NAME` (required), `--chat-dir PATH` (required) | Removes one category from the dream summary. Exits `1` when the summary or category is missing. |
 
-Start the daemon with a host-provided component factory.
+Exit codes for `mltgnt run`:
 
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `--components` | yes | — | Component factory as `MODULE:FUNCTION` |
-| `--pid-file` | no | `/tmp/mltgnt_daemon.pid` | PID lock file path |
-
-| Exit code | Meaning |
-|-----------|---------|
-| `0` | Daemon started |
-| `1` | Generic `MltgntError` |
-| `2` | `ConfigError` (invalid `--components`, missing module/function, non-callable) |
-| `3` | `DependencyError` (PID lock or other blocked dependency) |
-
-### `mltgnt memory dream show`
-
-Print dream summary sections for one persona.
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `persona` | yes | Persona name / stem |
-| `--chat-dir` | yes | Parent directory that contains persona subdirectories |
-
-| Exit code | Meaning |
-|-----------|---------|
-| `0` | Sections printed, or no dream summary found (informational message on stdout) |
-
-### `mltgnt memory dream forget`
-
-Remove one dream summary category for a persona.
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `persona` | yes | Persona name / stem |
-| `--category` | yes | Category name to remove |
-| `--chat-dir` | yes | Parent directory that contains persona subdirectories |
-
-| Exit code | Meaning |
-|-----------|---------|
-| `0` | Category removed |
-| `1` | No dream summary, or category not found (message on stderr) |
+| Code | Cause |
+|------|-------|
+| `0` | Normal exit |
+| `1` | Any other `MltgntError` |
+| `2` | `ConfigError` (for example a malformed `--components` value, a missing module, or a missing / non-callable function) |
+| `3` | `DependencyError` |
 
 ## Public API
 
-Stable public surface: `mltgnt.__all__` (**24** symbols, including `__version__`).
+`mltgnt.__all__` (`src/mltgnt/__init__.py`) exports exactly these 23 names. Everything else is reachable only through its subpackage.
 
-| Symbol | Signature / shape | Purpose |
-|--------|-------------------|---------|
-| `run_pipeline` | `(prompt, persona, *, engine='', model='', timeout=300, memory=None, orchestration_ctx=None, audit_path=None) -> ChatOutput` | Run one chat turn through the L1 pipeline |
-| `read_memory_iterative` | `(config, persona_stem, query, *, max_bytes, max_entries, llm_call, skill_paths=None, max_iterations=3) -> str` | Iterative memory retrieval with an LLM sufficiency loop |
-| `read_memory_by_relevance` | `(config, persona_stem, query, *, max_bytes, max_entries, layers=None) -> str` | Retrieve memory entries ranked by relevance |
-| `read_memory_with_sufficiency_check` | `(config, persona_stem, query, *, max_bytes, max_entries, llm_call=None) -> str` | Retrieve memory with an optional sufficiency check |
-| `DreamSection` | `(category, content, source_entries)` | One category block inside a dream summary |
-| `DreamSummary` | `(persona, sections, updated_at)` | Aggregated dream summary for a persona |
-| `read_dream` | `(persona_dir, *, memory_dir_name='memory') -> DreamSummary \| None` | Load a persona dream summary from disk |
-| `write_dream` | `(persona_dir, summary, *, memory_dir_name='memory') -> None` | Persist a persona dream summary to disk |
-| `Persona` | dataclass (`name`, `fm`, `sections`, `body`, `path`, …) | Loaded persona document and frontmatter |
-| `load_persona` | `(name, *, persona_dir=None, config=None) -> Persona` | Load a persona by name or alias |
-| `list_personas` | `(persona_dir=None) -> list[str]` | List available persona stems |
-| `validate_persona` | `(persona, *, available_skills=None) -> list[str]` | Validate persona frontmatter/body; returns warnings |
-| `run_persona_prompt` | `(persona_name, prompt, persona_dir=None, timeout=120, memory=None) -> str` | Render and run a persona prompt |
-| `ChatInput` | dataclass | Chat pipeline input DTO |
-| `ChatOutput` | dataclass | Chat pipeline output DTO |
-| `Message` | `TypedDict` with `role`, `content` | Single chat message record |
-| `PersonaProtocol` | Protocol (`name`, `fm`, `format_prompt`, `register_prompt_filter`) | Minimal persona contract for runtime APIs |
-| `AgentResult` | dataclass | Result of one agent action classification |
-| `AgentRunner` | class | Agent orchestration runner |
-| `enqueue_dag` | `(steps, timeout, idempotency_key, jobs_dir, exec_done_dir, ...) -> list[tuple[bool, str]]` | Enqueue a ghdag job without waiting |
-| `enqueue_and_wait` | `(prompt, engine, model, timeout, idempotency_key, jobs_dir, exec_done_dir, ...) -> tuple[bool, str]` | Enqueue a ghdag job and wait for completion |
-| `PersonaScheduler` | class | Schedule persona-driven actions |
-| `ScheduleJob` | dataclass | One scheduled job record |
-| `__version__` | `str` | Installed package version string |
+| Group | Symbol | Kind | Signature / fields | Defined in |
+|-------|--------|------|--------------------|------------|
+| memory | `read_memory_iterative` | function | `(config, persona_stem, query, *, max_bytes, max_entries, llm_call, skill_paths=None, max_iterations=3) -> str` | `mltgnt.memory.search` |
+| memory | `read_memory_by_relevance` | function | `(config, persona_stem, query, *, max_bytes, max_entries, layers=None) -> str` | `mltgnt.memory.search` |
+| memory | `read_memory_with_sufficiency_check` | function | `(config, persona_stem, query, *, max_bytes, max_entries, llm_call=None) -> str` | `mltgnt.memory.search` |
+| memory | `DreamSection` | frozen dataclass | `category: str`, `content: str`, `source_entries: int` | `mltgnt.memory.dream._format` |
+| memory | `DreamSummary` | frozen dataclass | `persona: str`, `sections: list[DreamSection]`, `updated_at: str` | `mltgnt.memory.dream._format` |
+| memory | `read_dream` | function | `(persona_dir, *, memory_dir_name="memory") -> DreamSummary \| None` | `mltgnt.memory.dream.api` |
+| memory | `write_dream` | function | `(persona_dir, summary, *, memory_dir_name="memory") -> None` | `mltgnt.memory.dream.api` |
+| persona | `Persona` | dataclass | `name`, `fm`, `sections`, `body`, `path`, `weight_map`; methods `format_prompt(instruction, *, weight="heavy")`, `register_prompt_filter(name, fn)` | `mltgnt.persona.loader` |
+| persona | `load_persona` | function | `(name, *, persona_dir=None, config=None) -> Persona` (default directory `./agents`) | `mltgnt.persona` |
+| persona | `list_personas` | function | `(persona_dir=None) -> list[str]` | `mltgnt.persona` |
+| persona | `validate_persona` | function | `(persona, *, available_skills=None) -> list[str]` (warnings; empty means OK) | `mltgnt.persona` |
+| persona | `run_persona_prompt` | function | `(persona_name, prompt, persona_dir=None, timeout=120, memory=None) -> str` (calls an LLM through ghdag) | `mltgnt.persona.runner` |
+| interfaces | `ChatInput` | dataclass | `source`, `session_key`, `messages`, `persona_name=""`, `model=None`, `context_files=[]`, `context_memory_excerpt=None`, `context_memory_preferences=None` | `mltgnt.interfaces.types` |
+| interfaces | `ChatOutput` | dataclass | `content`, `persona_name`, `timestamp`, `session_key` | `mltgnt.interfaces.types` |
+| interfaces | `Message` | TypedDict | `role: str`, `content: str` | `mltgnt.interfaces.types` |
+| interfaces | `PersonaProtocol` | Protocol | `name`, `fm`, `format_prompt(instruction)`, `register_prompt_filter(name, fn)` | `mltgnt.interfaces.persona` |
+| agent | `AgentResult` | dataclass | `tool`, `args`, `raw_response`, `tool_trace=None`, `reflexion_count=0` | `mltgnt.agent._runner` |
+| agent | `AgentRunner` | class | `(*, llm_call, tool_executor, terminal_tools, max_iterations=3, max_iterations_fn=None, evaluator=None, retry_config=None, logger=None, audit_writer=None, classifier=None)` | `mltgnt.agent._runner` |
+| bridges | `enqueue_dag` | function | `(steps, timeout, idempotency_key, jobs_dir, exec_done_dir, persona_dir=None, correlation_id=None, parent_correlation_id=None, request_id=None, skills=None, permission=None, order_builder=None) -> list[tuple[bool, str]]` | `mltgnt.bridges.ghdag_bridge` |
+| bridges | `enqueue_and_wait` | function | `(prompt, engine, model, timeout, idempotency_key, jobs_dir, exec_done_dir, persona_name=None, persona_dir=None, correlation_id=None, parent_correlation_id=None, request_id=None, permission=None, order_builder=None, run_result=None) -> tuple[bool, str]` | `mltgnt.bridges.ghdag_bridge` |
+| scheduler | `PersonaScheduler` | class | `(slack, *, config=None, state_dir=None, yaml_path=None, salt="", jobs=None, ..., actions=None, memory_config=None)` | `mltgnt.scheduler.runner` |
+| scheduler | `ScheduleJob` | dataclass | `id`, `mode` (`scheduled` / `fuzzy_window` / `interval` / `chained`), `action`, `notify`, ...; `ScheduleJob.from_dict(raw)` | `mltgnt.scheduler.models` |
+| version | `__version__` | str | Installed distribution version (`"0.0.0"` when metadata is unavailable) | `mltgnt` |
 
 ## Protocols / Extension Points
 
-Host-facing contracts you can implement without depending on L3 concretes:
+Hosts extend mltgnt by implementing these Protocols or by injecting callables. The `mltgnt.interfaces` package re-exports all interface types.
 
-| Contract | Module | Purpose |
-|----------|--------|---------|
-| `PersonaProtocol` | `mltgnt.interfaces.persona` | Minimal persona identity + prompt formatting |
-| `ChatPipelineProtocol` | `mltgnt.interfaces.chat` | Host chat pipeline (`ChatInputBase` → `ChatOutputBase`) |
-| `SlackClientProtocol` | `mltgnt.interfaces.slack` | Slack post boundary (returns `bool`, does not raise) |
-| `DaemonComponent` | `mltgnt.daemon` | Daemon lifecycle (`start` / `stop` / `name`) |
-| `HumanChannel` | `mltgnt.interfaces.loops` | Thread open / ask / notify / progress / deliverable |
-| `SubtaskExecutor` | `mltgnt.interfaces.loops` | Async submit / poll for auto subtasks |
-| `ConditionEvaluator` | `mltgnt.interfaces.loops` | Watcher condition evaluation |
-| `ActionExecutor` | `mltgnt.interfaces.loops` | Deterministic side-effect execution |
-| `MemoryAppender` | `mltgnt.interfaces.loops` | Optional host sink for memory append events |
-| `ObserveSource` | `mltgnt.interfaces.ooda` | OODA observe-phase event source |
-| `ActDispatcher` | `mltgnt.interfaces.dispatch` | OODA act-phase dispatch boundary |
+| Extension point | Module | Contract |
+|-----------------|--------|----------|
+| `PersonaProtocol` | `mltgnt.interfaces.persona` | Structural type for persona objects (`name`, `fm`, `format_prompt`, `register_prompt_filter`). |
+| `SlackClientProtocol` | `mltgnt.interfaces.slack` | `post_message(text, channel, thread_ts=None, blocks=None, reply_broadcast=False) -> bool`; returns `False` on failure instead of raising. |
+| `TurnHandler` | `mltgnt.interfaces.turn` | `handle(turn: TurnInput) -> TurnResult`. Media-agnostic boundary between the host media layer and the conversation layer. |
+| `TurnInput` / `TurnResult` / `Attachment` / `HistoryMessage` | `mltgnt.interfaces.turn` | Frozen dataclasses carried across `TurnHandler`. `TurnResult.kind` is `"reply"` or `"task"`. |
+| `PersonaFMBase` / `ChatInputBase` / `ChatOutputBase` | `mltgnt.interfaces.types` | Runtime-checkable Protocols matching persona frontmatter and chat input / output shapes. |
+| `DaemonComponent` | `mltgnt.daemon` | `name` property, non-blocking `start()`, `stop()`. The `--components` factory of `mltgnt run` returns these. |
+| `LLMCaller` | `mltgnt.agent._runner` | `(prompt, *, tool_result=None) -> str \| None`; injected into `AgentRunner` as `llm_call`. |
+| `ToolExecutor` | `mltgnt.agent._runner` | `(tool_name, tool_args) -> str`; injected into `AgentRunner` as `tool_executor`. |
+| `ReflexionEvaluator` | `mltgnt.agent._runner` | `(prompt, tool_name, tool_args, tool_result, tool_trace) -> ReflexionVerdict`; optional `AgentRunner` `evaluator`. |
+| `LanguagePack` / `JA` | `mltgnt.config.language` | Frozen dataclass holding locale-specific vocabulary. Functions that take `pack=None` fall back to the default `JA` pack; pass your own pack to switch locale. |
 
 ## Architecture
 
-Top-level packages under `src/mltgnt/` (**17** directories):
-
 | Path | Responsibility |
 |------|----------------|
-| `agent/` | `AgentRunner` orchestration and action classification |
-| `bridges/` | ghdag integration (audit, files, hooks, LLM, DAG enqueue) |
-| `chat/` | Chat pipeline (`run_pipeline`) |
-| `cli/` | CLI entry points (`run`, `memory dream show\|forget`) |
-| `config/` | Runtime configuration dataclasses |
-| `daemon/` | Daemon lifecycle (`DaemonRunner`, `PidLock`, skill watcher) |
-| `execution/` | Shared execution runner base interfaces |
-| `improvement/` | Self-improvement loop (analyzer, hub, patch, rollback) |
-| `interfaces/` | Type contracts and host boundary protocols |
-| `kpi/` | KPI calculation and reporting |
-| `loops/` | Objective loops (engine, budget, conditions, store) |
-| `memory/` | Memory retrieval, compaction, and dream summaries |
-| `ooda/` | OODA orchestration (audit source, exec dispatcher, runner) |
-| `persona/` | Persona loading, validation, and helpers |
-| `routing/` | Channel routing and agentic triage |
-| `scheduler/` | `PersonaScheduler` and schedule actions |
-| `skill/` | Skill loading, matching, linting, and execution |
+| `agent/` | Generic tool-calling agent loop (`AgentRunner`) with retry and Reflexion hooks, plus action classification and dispatch-decision gates. |
+| `bridges/` | Adapters to ghdag: DAG submission (`enqueue_dag`, `enqueue_and_wait`), LLM calls, DAG hooks / audit writer, Markdown file I/O. |
+| `cli/` | argparse CLI (`mltgnt run`, `mltgnt memory dream show`, `mltgnt memory dream forget`). |
+| `config/` | Configuration dataclasses (`PersonaConfig`, `MemoryConfig`, `SchedulerConfig`, `ConversationConfig`) and `LanguagePack`. |
+| `conversation/` | Media-agnostic conversation layer: queue, session ledger, thread index, thread-to-persona binding, session compaction. |
+| `daemon/` | `DaemonComponent` Protocol, `DaemonRunner`, PID lock, skill registry watcher component. |
+| `interfaces/` | Dependency-free DTOs and Protocols shared by all layers. |
+| `memory/` | Persona memory JSONL read / search (TF-IDF relevance, sufficiency check, iterative retrieval), compaction; `memory/dream/` synthesizes and stores `dream.json` summaries. |
+| `persona/` | Persona file loading, frontmatter schema and validation, registry, prompt formatting, light-block compression, persona prompt runner. |
+| `routing/` | Space-to-persona routing, observer lookup, nickname detection, LLM triage, agentic skill discovery. |
+| `scheduler/` | Job model and YAML loader, `PersonaScheduler` tick loop, run state, fan-out; `scheduler/actions/` holds built-in dream and skill actions. |
+| `skill/` | Markdown skill discovery, loading, lint, matching, context building, and execution. |
+| `exceptions.py` | Shared exception hierarchy (`MltgntError`, `ConfigError`, `DependencyError`). |
+| `__main__.py` | Enables `python -m mltgnt`. |
 
-Shared exception module (package root, not a directory): `exceptions.py` → `MltgntError`, `ConfigError`, `DependencyError`.
+### Layer contracts (`.importlinter`)
 
-### Layer structure (import-linter)
+Layers, top to bottom. A layer may import only layers below it. `mltgnt.config` is importable from anywhere; the other allowed exceptions are listed under `ignore_imports` in `.importlinter`.
 
-From `.importlinter`:
+| Layer | Packages |
+|-------|----------|
+| 1 | `daemon` |
+| 2 | `scheduler` \| `agent` \| `routing` |
+| 3 | `persona` \| `skill` \| `memory` \| `conversation` |
+| 4 | `bridges` |
+| 5 | `interfaces` |
 
-```
-daemon | loops
-scheduler | agent | routing
-persona | chat | skill | memory
-bridges
-interfaces
-```
-
-Contracts:
-
-- **Layered architecture**: upper layers may depend on lower layers; reverse imports are forbidden.
-- **L3 domain isolation**: `persona`, `chat`, `skill`, `memory`, and `loops` must not import `ghdag` directly (bridges mediate access).
+| Contract | Type | Rule |
+|----------|------|------|
+| mltgnt layered architecture | layers | Enforces the table above. |
+| L3 domain must not import ghdag directly | forbidden | `persona`, `skill`, `memory`, `conversation` must not import `ghdag`; they go through `bridges`. |
 
 ## Configuration
 
-### Environment variables
-
-Verified via `os.environ.get` / `os.getenv` under `src/mltgnt/`:
+Most settings are passed as config dataclasses from `mltgnt.config`. The only environment variables read under `src/` are:
 
 | Variable | Used in | Meaning |
 |----------|---------|---------|
-| `NIKKI_ROOT` | `mltgnt.skill.runner` | Diary root path for template substitutions |
-| `REPO_ROOT` | `mltgnt.skill.runner` | Repository root path for template substitutions |
-| `SKILL_IO_TYPECHECK` | `mltgnt.bridges.ghdag_bridge` | Skill I/O type checking is enabled unless set to `"0"` |
-| `MLTGNT_AS_OF_DATE` | `mltgnt.improvement.loop` | Optional `YYYY-MM-DD` override for improvement-cycle "today" |
+| `NIKKI_ROOT` | `mltgnt.skill.runner` | Value substituted for `$NIKKI_ROOT` in skill bodies (empty string when unset). |
+| `REPO_ROOT` | `mltgnt.skill.runner` | Value substituted for `$REPO_ROOT` in skill bodies (empty string when unset). |
+| `SKILL_IO_TYPECHECK` | `mltgnt.bridges.ghdag_bridge` | Skill I/O type checking in `enqueue_dag` runs unless this is `"0"`. |
+| `THREAD_PERSONA_TTL_DAYS` | `mltgnt.conversation.thread_persona_store` | TTL in days for thread-pinned personas (default `30`). Ignored when a `ConversationConfig` has been configured. |
 
 ## Error Reference
 
-Public types from `mltgnt.exceptions.__all__`:
-
-```text
-MltgntError
-├── ConfigError
-└── DependencyError
-```
-
-| Type | Bases | Notes |
-|------|-------|-------|
-| `MltgntError` | `Exception` | Package base; catch with `except MltgntError` |
-| `ConfigError` | `MltgntError` | YAML / configuration load or parse failure |
-| `DependencyError` | `MltgntError` | External dependency (callable / subprocess / API) failure |
-
-Related types outside `exceptions.py` (not in that `__all__`):
-
-| Type | Module | Bases | Notes |
-|------|--------|-------|-------|
-| `PersonaValidationError` | `mltgnt.persona` | `Exception` | Persona frontmatter validation failure |
-| `LlmCallError` | `mltgnt.memory.compaction` | `RuntimeError` | Memory compaction LLM call failure |
+| Type | Module | Bases | Raised when |
+|------|--------|-------|-------------|
+| `MltgntError` | `mltgnt.exceptions` | `Exception` | Common base; catch it to handle all mltgnt errors below. |
+| `ConfigError` | `mltgnt.exceptions` | `MltgntError` | Configuration or argument error (for example invalid `--components`). CLI exit code `2`. |
+| `DependencyError` | `mltgnt.exceptions` | `MltgntError` | External dependency (callable, subprocess, API) failure. CLI exit code `3`. |
+| `PersonaValidationError` | `mltgnt.persona` | `Exception` | Persona frontmatter cannot be parsed or lacks the required `persona` key (`load_persona`). |
+| `SkillLoadError` | `mltgnt.skill.models` | `Exception` | Skill load or tool validation failure. |
+| `SkillIOTypeError` | `mltgnt.bridges.ghdag_bridge` | `TypeError` | Pipe type mismatch detected by the compose-time skill I/O type check. |
+| `LlmCallError` | `mltgnt.memory.compaction` | `RuntimeError` | Wraps an error raised by the injected `llm_call` during memory compaction. |
 
 ## Public API Stability
 
-mltgnt is pre-1.0 (`0.Y.Z`):
+- mltgnt is pre-1.0 and follows SemVer in its pre-1.0 form: a minor (`Y`) bump may contain breaking changes; patch (`Z`) bumps do not.
+- The stable surface is `mltgnt.__all__` and `mltgnt.interfaces`. Other subpackage symbols may change in any minor release; see `CHANGELOG.md`.
+- Pin an exact tag (for example `@v0.61.0`) in production.
 
-- `Y` increments may include breaking API changes.
-- `Z` increments are intended to be backward-compatible fixes or additions.
-- The documented stable surface is `mltgnt.__all__`, plus host contracts under `mltgnt.interfaces`.
+## Deprecated API
+
+These remain importable from `mltgnt.routing` and emit `DeprecationWarning`.
+
+| Deprecated | Replacement |
+|------------|-------------|
+| `resolve_responding_persona` | `resolve_persona` |
+| `find_observers` | `find_observers_in_space` |
+| `ChannelPersonaEntry` | `SpacePersonaEntry` (alias; no warning) |
 
 ## License
 
-MIT (SPDX: `MIT`, matching `license = "MIT"` in `pyproject.toml`).
-
-- Source: https://github.com/sumipan/mltgnt
-- Issues: https://github.com/sumipan/mltgnt/issues
-- L0 runtime: https://github.com/sumipan/ghdag
+MIT (SPDX: `MIT`).
