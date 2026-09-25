@@ -2,7 +2,7 @@
 
 **Type contracts and chat I/O for multi-agent personas.** mltgnt is the L1 layer of the **L0 [ghdag](https://github.com/sumipan/ghdag) / L1 mltgnt / L2 host** stack: it owns persona, memory, skill, scheduling, and conversation contracts, while ghdag runs DAGs and LLM adapters and the host owns processes and channel I/O. Unlike agent frameworks that bundle model clients and orchestration, mltgnt is a typed domain layer you plug between a DAG runner and your own host.
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.61.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.62.0)-orange)
 
 ## Not (what this is not)
 
@@ -15,7 +15,7 @@
 ## Installation
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.61.0"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.62.0"
 ```
 
 | Item | Value |
@@ -29,7 +29,7 @@ pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.61.0"
 Development extras (`pytest`, `pytest-asyncio`, `pytest-cov`, `freezegun`, `import-linter`, `mypy`, `ruff`):
 
 ```bash
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.61.0"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.62.0"
 ```
 
 ## Quick Start
@@ -214,7 +214,7 @@ Most settings are passed as config dataclasses from `mltgnt.config`. The only en
 
 - mltgnt is pre-1.0 and follows SemVer in its pre-1.0 form: a minor (`Y`) bump may contain breaking changes; patch (`Z`) bumps do not.
 - The stable surface is `mltgnt.__all__` and `mltgnt.interfaces`. Other subpackage symbols may change in any minor release; see `CHANGELOG.md`.
-- Pin an exact tag (for example `@v0.61.0`) in production.
+- Pin an exact tag (for example `@v0.62.0`) in production.
 
 ## Deprecated API
 
