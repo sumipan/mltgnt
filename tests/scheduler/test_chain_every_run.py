@@ -99,6 +99,9 @@ def test_dependent_fires_again_on_next_upstream_run(tmp_path: Path) -> None:
 
     sch.tick(_dt(10, 0))
     _wait_until(lambda: len(captured) == 1)
+    # The action appends before the runner thread leaves ``_running``; a second
+    # tick while ``check`` / ``act`` are still marked running is skipped.
+    _wait_until(lambda: not sch._running)
     sch.tick(_dt(10, 15))
     _wait_until(lambda: len(captured) == 2)
 
