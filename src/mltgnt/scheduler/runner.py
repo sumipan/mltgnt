@@ -5,6 +5,7 @@ import logging
 import random
 import threading
 import time
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
@@ -387,25 +388,53 @@ class PersonaScheduler(BaseRunner):
 
         raise ValueError(f"Unsupported action: {job.action}")
 
-    def _spawn_job(self, job: ScheduleJob, d: date, on_finish: Optional[Callable[[], None]] = None) -> None:
+    def _fire_chain_every_run(self, upstream: ScheduleJob, d: date, output: str) -> None:
+        """Spawn every ``chain_every_run`` job that depends on ``upstream``.
+
+        Unlike date-marked chains, these fire after *each* successful run of the
+        upstream job and receive its output text as ``upstream_output``.
+        """
+        with self._jobs_lock:
+            dependents = [
+                j
+                for j in self._jobs
+                if j.chain_every_run and j.enabled and upstream.id in j.depends_on
+            ]
+        for dep in dependents:
+            _log.info("chain_every_run: %s -> %s", upstream.id, dep.id)
+            self._spawn_job(dep, d, upstream_output=output)
+
+    def _spawn_job(
+        self,
+        job: ScheduleJob,
+        d: date,
+        on_finish: Optional[Callable[[], None]] = None,
+        upstream_output: Optional[str] = None,
+    ) -> None:
+        # chain_every_run jobs behave like interval jobs for state marks:
+        # they may run many times per day, so never write done/skipped/failed.
+        marks_state = job.mode != "interval" and not job.chain_every_run
+        job_run = replace(job, upstream_output=upstream_output) if upstream_output is not None else job
+
         def runner() -> None:
             fired_at = datetime.now(ZoneInfo(self._default_tz))
             try:
-                ok, msg = self.execute_action(job)
+                ok, msg = self.execute_action(job_run)
                 if ok:
-                    if job.mode != "interval":
+                    if marks_state:
                         self._mark_done(job, d)
                     _log.info("success: %s", job.id)
                     if msg:
                         self._post(job, msg)
                     self._record_to_memory(job, msg, True, fired_at)
+                    self._fire_chain_every_run(job, d, msg)
                 else:
                     if job.on_exit is not None and job.on_exit.nonzero == "skip":
-                        if job.mode != "interval":
+                        if marks_state:
                             self._mark_skipped(job, d)
                         _log.info("skip (on_exit): %s", job.id)
                     else:
-                        if job.mode != "interval":
+                        if marks_state:
                             self._mark_failed(job, d, reason=msg[:400])
                         _log.error("failure: %s: %s", job.id, msg)
                         snippet = msg.strip()[-400:] if msg.strip() else "(no details)"
@@ -450,6 +479,9 @@ class PersonaScheduler(BaseRunner):
             self._fuzzy_last_dispatch_slot.clear()
 
         for job in jobs:
+            if job.chain_every_run:
+                # fired only by _fire_chain_every_run after the upstream job succeeds
+                continue
             z = ZoneInfo(job.timezone)
             local = now.astimezone(z)
             d = local.date()

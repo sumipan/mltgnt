@@ -50,6 +50,11 @@ class ScheduleJob:
     on_chain_failure: str = "abort_notify"  # abort_notify | silent
     every_week_on: Optional[str] = None  # "monday" | ... | "sunday" (None = daily)
     on_exit: Optional[OnExitPolicy] = None
+    # chained + chain_every_run: fire right after every successful run of a
+    # depends_on job (not once per day). The upstream job's output text is
+    # handed over via ``upstream_output``.
+    chain_every_run: bool = False
+    upstream_output: Optional[str] = None  # runtime only; never parsed from YAML
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any], *, default_timezone: str = _DEFAULT_TIMEZONE) -> "ScheduleJob":
@@ -79,6 +84,12 @@ class ScheduleJob:
         else:
             depends_on = []
         on_chain_failure = str(raw.get("on_chain_failure", "abort_notify"))
+        chain_every_run = bool(raw.get("chain_every_run", False))
+        if chain_every_run:
+            if mode != "chained":
+                raise ValueError(f"job {jid}: chain_every_run requires mode: chained")
+            if not depends_on:
+                raise ValueError(f"job {jid}: chain_every_run requires depends_on")
 
         if mode == "scheduled":
             if not every:
@@ -162,6 +173,7 @@ class ScheduleJob:
             on_chain_failure=on_chain_failure,
             every_week_on=every_week_on,
             on_exit=on_exit,
+            chain_every_run=chain_every_run,
         )
 
     def target_hhmm_scheduled(self) -> tuple[int, int]:
