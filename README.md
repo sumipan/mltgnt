@@ -2,63 +2,65 @@
 
 **Typed building blocks for multi-agent chat hosts: personas, memory, skills, agent loops, routing, scheduling, conversation state, and media I/O.**
 
-mltgnt is the middle layer of a three-layer stack:
+mltgnt sits in the middle of a three-layer stack. It owns domain types and behavior; it delegates execution down to ghdag and leaves deployment to the host above it.
 
 | Layer | Owner | Responsibility |
 |-------|-------|----------------|
 | L0 | [ghdag](https://github.com/sumipan/ghdag) | DAG execution, LLM engines, VCS sinks |
-| L1 | **mltgnt** | Domain types and behavior: personas, memory, skills, agent loop, routing, scheduler, conversation, media contract |
+| L1 | **mltgnt** | Personas, memory, skills, agent loop, routing, scheduler, conversation state, media contract |
 | L2 | Your host | Processes, credentials, paths, deployment |
 
-Every LLM call and every git commit goes to ghdag through `mltgnt.bridges`. Chat media (Slack, WebChat, or your own) plug in through one `MediaClient` Protocol.
+All LLM calls and git commits leave mltgnt through `mltgnt.bridges`, which is the only package that imports ghdag. Chat media (Slack, WebChat, or your own) connect through the single `MediaClient` Protocol.
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.84.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.85.0)-orange)
 
-Pre-1.0 (`0.84.0`). A minor release may break the API; see [Public API Stability](#public-api-stability).
+Pre-1.0, current release `0.85.0`. Minor releases may change the API; see [Public API Stability](#public-api-stability).
 
 ## Not
 
 | mltgnt is not | Instead |
 |---------------|---------|
-| An LLM SDK | It contains no model client. `mltgnt.bridges.call_llm`, `enqueue_and_wait`, and `enqueue_dag` hand work to ghdag. |
-| A DAG engine | Queueing, dependency resolution, and job state belong to ghdag. mltgnt builds steps and waits for results. |
-| A host runtime | Paths, secrets, and process layout are injected by the host. `mltgnt run` only starts the components a host factory returns. |
-| A Slack bot | Slack and WebChat are optional media adapters behind `MediaClient`; the core packages never import `mltgnt.media`. |
+| An LLM SDK | There is no model client. `mltgnt.bridges.call_llm`, `enqueue_and_wait`, and `enqueue_dag` hand work to ghdag. |
+| A DAG engine | Queueing, dependency resolution, and job state belong to ghdag. mltgnt builds steps and waits for their results. |
+| A host runtime | The host injects paths, secrets, and process layout. `mltgnt run` only starts the components a host factory returns. |
+| A Slack bot | Slack and WebChat are optional adapters behind `MediaClient`; core packages never import `mltgnt.media`. |
 
 ## Installation
 
+mltgnt is installed from a git tag:
+
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.84.0"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.85.0"
 
-# With the Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.84.0"
+# Slack medium (mltgnt.media.slack)
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.85.0"
 
-# With the WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.84.0"
+# WebChat medium (mltgnt.media.webchat)
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.85.0"
 
-# With development tools
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.84.0"
+# Development tools (tests, lint, type check, import-linter)
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.85.0"
 ```
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.84.0` |
+| Distribution | `mltgnt` `0.85.0` |
 | Python | `>=3.10` |
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.86.0` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
 | Extra `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
-| Console script | `mltgnt` = `mltgnt.cli.main:main`; `python -m mltgnt` is the same |
-| Type information | `py.typed` is shipped |
-| Optional, not declared | `chromadb`: when importable, memory search uses a Chroma collection; otherwise TF-IDF only |
+| Console script | `mltgnt` = `mltgnt.cli.main:main` (`python -m mltgnt` is equivalent) |
+| Type information | Ships `py.typed` |
+| Optional, undeclared | `chromadb`: if importable, memory search also queries a Chroma collection; otherwise it uses TF-IDF only |
 
-The Slack and WebChat apps import their third-party packages lazily, so the rest of the media modules import without the extra.
+The Slack and WebChat apps import their third-party packages lazily, so the other media modules import without the extras installed.
 
 ## Quick Start
 
-The example runs offline: no LLM call, no network.
+This example needs no LLM and no network. It creates a persona, stores a dream summary, and runs the agent loop with a scripted LLM.
 
 ```python
 import json
@@ -114,13 +116,13 @@ result = runner.run("Which timezone?")
 print(result.tool, result.args)                  # answer {'text': 'UTC'}
 ```
 
-Inspect the stored dream summary from the shell:
+To inspect the stored dream summary from the shell:
 
 ```bash
 mltgnt memory dream show guide --chat-dir /path/to/root/chat
 ```
 
-A custom medium only needs the four `MediaClient` methods:
+A custom medium implements the four `MediaClient` methods:
 
 ```python
 from mltgnt.interfaces.media import MediaClient, Status
@@ -682,10 +684,10 @@ Built-in exceptions from the public API: `ValueError` from `ScheduleJob.from_dic
 
 ## Public API Stability
 
-- Versioning is `0.Y.Z`: a minor release (`0.Y.0`) may break the API, a patch release does not. Changes are listed in `CHANGELOG.md`.
-- Supported surface: `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media`), the CLI, and the configuration schema in this README. Other subpackage names, including `mltgnt.media` modules, may change in any minor release.
-- Renamed or removed APIs keep a deprecated alias for at least one minor release.
-- Pin an exact tag in production, for example `@v0.84.0`.
+- Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API; a patch release does not. Every change is recorded in `CHANGELOG.md`.
+- The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media`), the CLI, and the configuration schema documented here. Other subpackage names, including the `mltgnt.media` modules, may change in any minor release.
+- A renamed or removed API keeps a deprecated alias for at least one minor release.
+- Pin an exact tag in production, for example `@v0.85.0`.
 
 ## Deprecated API
 
