@@ -10,7 +10,7 @@ import logging
 import os
 import tempfile
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -19,7 +19,19 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-_LOCK = threading.Lock()
+__all__ = [
+    "LOCK",
+    "compact",
+    "configure",
+    "configure_on_set",
+    "is_expired",
+    "load",
+    "set_persona",
+    "ttl_days",
+]
+
+LOCK = threading.Lock()
+_LOCK = LOCK  # deprecated alias
 _active_config: ConversationConfig | None = None
 _store_path_override: Path | None = None
 
@@ -49,7 +61,7 @@ def _store_path() -> Path:
     )
 
 
-def _ttl_days() -> int:
+def ttl_days() -> int:
     if _active_config is not None:
         return int(_active_config.thread_persona_ttl_days)
     raw = os.environ.get("THREAD_PERSONA_TTL_DAYS", "30")
@@ -59,6 +71,9 @@ def _ttl_days() -> int:
         return 30
 
 
+_ttl_days = ttl_days  # deprecated alias
+
+
 def _parse_ts(ts: str) -> datetime | None:
     try:
         return datetime.fromisoformat(ts)
@@ -66,7 +81,8 @@ def _parse_ts(ts: str) -> datetime | None:
         return None
 
 
-def _is_expired(ts: str, *, now: datetime | None = None) -> bool:
+def is_expired(ts: str, *, now: datetime | None = None) -> bool:
+    """True when ts is unparsable or older than ttl_days() (exactly TTL is kept)."""
     parsed = _parse_ts(ts)
     if parsed is None:
         return True
@@ -74,10 +90,14 @@ def _is_expired(ts: str, *, now: datetime | None = None) -> bool:
         now = datetime.now(timezone.utc)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return (now - parsed).days >= _ttl_days()
+    return now - parsed > timedelta(days=ttl_days())
 
 
-def _compact(entries: dict[str, tuple[str, str]]) -> None:
+_is_expired = is_expired  # deprecated alias
+
+
+def compact(entries: dict[str, tuple[str, str]]) -> None:
+    """Atomically rewrite the store with the given key -> (persona, ts) entries."""
     path = _store_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,6 +117,9 @@ def _compact(entries: dict[str, tuple[str, str]]) -> None:
         os.replace(tmp, path)
     except OSError:
         _log.warning("[thread_persona_store] compaction failed", exc_info=True)
+
+
+_compact = compact  # deprecated alias
 
 
 def load() -> dict[str, str]:
@@ -129,13 +152,13 @@ def load() -> dict[str, str]:
         if not isinstance(key, str) or not isinstance(persona, str) or not isinstance(ts, str):
             _log.warning("[thread_persona_store] invalid entry at line %d", line_no)
             continue
-        if _is_expired(ts):
+        if is_expired(ts):
             continue
 
         result[key] = persona
         compact_entries[key] = (persona, ts)
 
-    _compact(compact_entries)
+    compact(compact_entries)
     return result
 
 
@@ -153,7 +176,7 @@ def set_persona(conversation_id: str, persona: str) -> None:
     entry = {"key": key, "persona": persona, "ts": ts}
     path = _store_path()
 
-    with _LOCK:
+    with LOCK:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as f:
