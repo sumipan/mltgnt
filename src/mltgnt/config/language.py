@@ -50,6 +50,9 @@ class LanguagePack:
     )
     enqueue_failed_text: str = "Failed to enqueue the request. Please try again later."
     progress_line_pattern: re.Pattern[str] = re.compile(r"^\s*\[progress\]:?\s*(?P<text>.+)$", re.MULTILINE)
+    # Memory-tool trigger words (mltgnt.memory.tools); empty by default, injected by callers
+    remember_trigger_words: frozenset[str] = frozenset()
+    forget_trigger_words: frozenset[str] = frozenset()
 
 
 # Japanese text intentionally kept for CJK processing test

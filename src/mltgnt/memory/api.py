@@ -40,8 +40,20 @@ def _resolve_memory_dir(config: "MemoryConfig") -> Path:
 
 
 def memory_file_path(config: "MemoryConfig", persona_stem: str) -> Path:
-    """`_resolve_memory_dir(config) / f\"{persona_stem}.jsonl\"`"""
-    return _resolve_memory_dir(config) / f"{persona_stem}.jsonl"
+    """Resolve the episodic memory file of a persona.
+
+    - ``<dir>/<stem>/`` exists -> ``<dir>/<stem>/episodes.jsonl``
+    - otherwise -> the flat ``<dir>/<stem>.jsonl`` (legacy layout)
+
+    Callers that write to the returned path directly keep working without
+    creating a directory; a persona moves to the directory layout once
+    ``<dir>/<stem>/`` is created (e.g. by a migration).
+    """
+    memory_dir = _resolve_memory_dir(config)
+    persona_dir = memory_dir / persona_stem
+    if persona_dir.is_dir():
+        return persona_dir / "episodes.jsonl"
+    return memory_dir / f"{persona_stem}.jsonl"
 
 
 def _tail_utf8_bytes(s: str, max_bytes: int) -> str:
@@ -180,8 +192,8 @@ def append_memory_entry(
     Lock failure (under_lock False) returns False.
     """
     def _write() -> None:
-        _resolve_memory_dir(config).mkdir(parents=True, exist_ok=True)
         mp = memory_file_path(config, persona_stem)
+        mp.parent.mkdir(parents=True, exist_ok=True)
         entry = MemoryEntry(
             timestamp=timestamp,
             role=role,
