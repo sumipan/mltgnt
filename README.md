@@ -171,7 +171,7 @@ Top-level contents of `src/mltgnt/`:
 | `conversation/` | Media-independent conversation layer: thread queue, session store, thread index, thread-to-persona binding, session compaction. |
 | `daemon/` | `DaemonComponent`, `DaemonRunner`, `PidLock`, `SkillWatcherComponent`. |
 | `interfaces/` | Dependency-free DTOs and Protocols shared by every layer. |
-| `memory/` | Persona memory read and search (TF-IDF relevance, sufficiency check, iterative retrieval) and compaction; `memory/dream/` synthesizes and stores `dream.json`. |
+| `memory/` | Persona memory read and search (TF-IDF relevance, sufficiency check, iterative retrieval) and compaction; `memory/dream/` synthesizes and stores `dream.json`. After each write (append, compact, `dream.json`, `global.json`) the file is committed through the ghdag `memory` sink with a per-path debounce (`MemoryConfig.commit_debounce_sec`, default 300 s); only when `ENABLE_GIT` is truthy, otherwise a no-op. `mltgnt.memory.flush_memory_commits()` commits pending paths immediately (also run at process exit). |
 | `persona/` | Persona file loading, frontmatter schema, validation, registry, prompt formatting, compression, and `run_persona_prompt`. |
 | `routing/` | Space-to-persona routing, observers, LLM triage, agentic skill discovery. |
 | `scheduler/` | `ScheduleJob` model and YAML loader, `PersonaScheduler`, run state, fan-out; built-in actions in `scheduler/actions/`. |
@@ -216,7 +216,7 @@ All are frozen dataclasses. Paths are injected by the host; mltgnt hardcodes non
 | Class | Required fields | Optional fields (default) |
 |-------|-----------------|---------------------------|
 | `PersonaConfig` | — | `weight_map` (`DEFAULT_WEIGHT_MAP`), `section_aliases` (`PERSONA_SECTION_ALIASES`), `exclude_stems` (`frozenset()`) |
-| `MemoryConfig` | `chat_dir` | `chat_memory_dir` (`None`), `inject_max_bytes` (`10240`), `inject_max_entries` (`12`), `preferences_max_bytes` (`5120`), `lock_timeout_sec` (`30.0`), `lock_stale_threshold_sec` (`300.0`), `raw_days` (`7`), `mid_weeks` (`3`), `compact_threshold_bytes` (`40960`), `compact_target_bytes` (`25600`), `preferences_section_name`, `protected_layers` (`("caveat",)`), `timezone` (`"Asia/Tokyo"`), `dream_model` (`"claude-haiku-4-5-20251001"`), `use_dream_summary` (`False`), `dream_dir_name` (`"memory"`), `global_dream_exclude_personas` (`()`) |
+| `MemoryConfig` | `chat_dir` | `chat_memory_dir` (`None`), `inject_max_bytes` (`10240`), `inject_max_entries` (`12`), `preferences_max_bytes` (`5120`), `lock_timeout_sec` (`30.0`), `lock_stale_threshold_sec` (`300.0`), `raw_days` (`7`), `mid_weeks` (`3`), `compact_threshold_bytes` (`40960`), `compact_target_bytes` (`25600`), `preferences_section_name`, `protected_layers` (`("caveat",)`), `timezone` (`"Asia/Tokyo"`), `dream_model` (`"claude-haiku-4-5-20251001"`), `use_dream_summary` (`False`), `dream_dir_name` (`"memory"`), `commit_debounce_sec` (`300.0`), `global_dream_exclude_personas` (`()`) |
 | `SchedulerConfig` | `schedule_yaml`, `state_dir` | `timezone` (`"Asia/Tokyo"`), `salt` (`""`) |
 | `ConversationConfig` | `queue_dir`, `sessions_dir`, `ledger_dir`, `thread_index_dir`, `thread_persona_path` | `posts_dir` (`None`), `audit_path` (`None`), `stale_after_sec` (`3600`), `max_queued` (`20`), `cleanup_ttl_days` (`14`), `thread_persona_ttl_days` (`30`) |
 

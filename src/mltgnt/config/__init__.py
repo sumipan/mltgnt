@@ -120,6 +120,7 @@ class MemoryConfig:
     dream_engine: str = "claude"  # "claude" / "cursor" / "codex"
     use_dream_summary: bool = False
     dream_dir_name: str = "memory"
+    commit_debounce_sec: float = 300.0  # memory git commit debounce (nexus #3833)
     global_dream_exclude_personas: tuple[str, ...] = ()
 
 
