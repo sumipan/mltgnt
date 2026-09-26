@@ -36,23 +36,20 @@ class LanguagePack:
         "※ 中止指示が含まれています。現在の作業を中止し、中止した旨を報告してください。"
     )
     # Media-layer vocabulary (mltgnt.media)
-    # Japanese text intentionally kept for CJK processing test
-    approval_words: frozenset[str] = frozenset({"承認", "OK", "ok", "yes", "approve"})
+    approval_words: frozenset[str] = frozenset({"OK", "ok", "yes", "approve"})
     # Status value (mltgnt.interfaces.media.Status) -> display label
     status_labels: dict[str, str] = field(
         hash=False,
         default_factory=lambda: {
-            # Japanese text intentionally kept for CJK processing test
-            "received": "受付",
-            "working": "作業中",
-            "done": "完了",
-            "failed": "失敗",
-            "cancelled": "中止",
+            "received": "Received",
+            "working": "Working",
+            "done": "Done",
+            "failed": "Failed",
+            "cancelled": "Cancelled",
         }
     )
-    # Japanese text intentionally kept for CJK processing test
-    enqueue_failed_text: str = "依頼の投入に失敗しました。時間をおいて再度お試しください。"
-    progress_line_pattern: re.Pattern[str] = re.compile(r"^\s*(?:\[progress\]|進捗[:：])\s*(?P<text>.+)$", re.MULTILINE)
+    enqueue_failed_text: str = "Failed to enqueue the request. Please try again later."
+    progress_line_pattern: re.Pattern[str] = re.compile(r"^\s*\[progress\]:?\s*(?P<text>.+)$", re.MULTILINE)
 
 
 # Japanese text intentionally kept for CJK processing test
