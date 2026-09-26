@@ -34,6 +34,41 @@ from mltgnt.memory.compaction import (
     compact,
     needs_compaction,
 )
+from mltgnt.memory.archive import archive_episodes
+from mltgnt.memory.core_render import render_core
+from mltgnt.memory.reflection import (
+    ApplyReport,
+    ReflectionAdd,
+    ReflectionParseError,
+    ReflectionResult,
+    apply_reflection,
+    build_reflection_prompt,
+    parse_reflection,
+)
+from mltgnt.memory.semantic import KINDS, SemanticEntry, SemanticStore, validate_entry
+from mltgnt.memory.tools import MEMORY_TOOL_SPECS, MemoryGate, MemoryToolExecutor
+
+# The semantic-memory API above is importable from ``mltgnt.memory`` but kept out
+# of ``__all__`` (pinned by tests/test_all_snapshot.py); its submodules
+# (semantic / core_render / tools / reflection / archive) declare their own ``__all__``.
+_SEMANTIC_API = (
+    ApplyReport,
+    KINDS,
+    MEMORY_TOOL_SPECS,
+    MemoryGate,
+    MemoryToolExecutor,
+    ReflectionAdd,
+    ReflectionParseError,
+    ReflectionResult,
+    SemanticEntry,
+    SemanticStore,
+    apply_reflection,
+    archive_episodes,
+    build_reflection_prompt,
+    parse_reflection,
+    render_core,
+    validate_entry,
+)
 
 __all__ = [
     "persona_memory_lock",
