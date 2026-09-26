@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 __all__ = ["LanguagePack", "JA"]
 
@@ -35,6 +35,21 @@ class LanguagePack:
     composite_cancel_suffix: str = (
         "※ 中止指示が含まれています。現在の作業を中止し、中止した旨を報告してください。"
     )
+    # Media-layer vocabulary (mltgnt.media)
+    approval_words: frozenset[str] = frozenset({"OK", "ok", "yes", "approve"})
+    # Status value (mltgnt.interfaces.media.Status) -> display label
+    status_labels: dict[str, str] = field(
+        hash=False,
+        default_factory=lambda: {
+            "received": "Received",
+            "working": "Working",
+            "done": "Done",
+            "failed": "Failed",
+            "cancelled": "Cancelled",
+        }
+    )
+    enqueue_failed_text: str = "Failed to enqueue the request. Please try again later."
+    progress_line_pattern: re.Pattern[str] = re.compile(r"^\s*\[progress\]:?\s*(?P<text>.+)$", re.MULTILINE)
 
 
 # Japanese text intentionally kept for CJK processing test

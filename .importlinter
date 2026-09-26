@@ -7,7 +7,7 @@ include_external_packages = True
 name = mltgnt layered architecture
 type = layers
 layers =
-    daemon
+    daemon | media
     scheduler | agent | routing
     persona | skill | memory | conversation
     bridges
@@ -31,3 +31,27 @@ source_modules =
 forbidden_modules =
     ghdag
 allow_indirect_imports = True
+
+[importlinter:contract:core_no_media]
+name = Core packages must not import the media layer
+type = forbidden
+source_modules =
+    mltgnt.scheduler
+    mltgnt.agent
+    mltgnt.routing
+    mltgnt.persona
+    mltgnt.skill
+    mltgnt.memory
+    mltgnt.conversation
+    mltgnt.bridges
+    mltgnt.interfaces
+forbidden_modules =
+    mltgnt.media
+
+[importlinter:contract:media_slack_webchat]
+name = media.slack and media.webchat must not import each other
+type = layers
+containers =
+    mltgnt.media
+layers =
+    (slack) | (webchat)

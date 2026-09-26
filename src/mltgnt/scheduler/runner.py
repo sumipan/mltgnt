@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 from zoneinfo import ZoneInfo
 
 from mltgnt.exceptions import ConfigError
+from mltgnt.interfaces.media import adapt_client
 from mltgnt.scheduler.actions.skill import run_skill_action
 from mltgnt.scheduler.base_runner import BaseRunner
 from mltgnt.scheduler.loader import load_schedule_jobs
@@ -30,6 +31,7 @@ _log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig, SchedulerConfig
+    from mltgnt.interfaces.media import MediaClient
     from mltgnt.interfaces.slack import SlackClientProtocol
 
 class PersonaScheduler(BaseRunner):
@@ -42,7 +44,7 @@ class PersonaScheduler(BaseRunner):
 
     def __init__(
         self,
-        slack: Optional["SlackClientProtocol"],
+        slack: "MediaClient | SlackClientProtocol | None",
         *,
         config: Optional["SchedulerConfig"] = None,
         state_dir: Optional[Path] = None,
@@ -71,6 +73,8 @@ class PersonaScheduler(BaseRunner):
             self._default_tz = _DEFAULT_TIMEZONE
 
         self.slack = slack
+        # SlackClientProtocol clients are wrapped here (one DeprecationWarning).
+        self._media: Optional["MediaClient"] = adapt_client(slack) if slack is not None else None
         self.state_dir = self._state_dir
         self.yaml_path = self._yaml_path
         self.salt = self._salt
@@ -244,11 +248,13 @@ class PersonaScheduler(BaseRunner):
                 post_kwargs = self._default_slack_post_kwargs() if self._default_slack_post_kwargs else {}
         else:
             post_kwargs = self._default_slack_post_kwargs() if self._default_slack_post_kwargs else {}
-        self.slack.post_message(
-            text,
-            channel=self.notify_channel(job),
-            **post_kwargs,
-        )
+        legacy_post = getattr(self.slack, "post_message", None)
+        if callable(legacy_post) and any(k != "thread_ts" for k in post_kwargs):
+            # Slack display options (username / icon_emoji ...) have no MediaClient equivalent.
+            legacy_post(text, channel=self.notify_channel(job), **post_kwargs)
+            return
+        if self._media is not None:
+            self._media.post(text, self.notify_channel(job), post_kwargs.get("thread_ts"))
 
     def _mark_done(self, job: ScheduleJob, d: date) -> None:
         p = self.paths.done_path(job.id, d)

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- **Media layer contract** (#4027): new `mltgnt.interfaces.media` with `Status` (`str` Enum: `RECEIVED` / `WORKING` / `DONE` / `FAILED` / `CANCELLED`), the `MediaClient` Protocol (`post` / `update` / `set_status` / `upload`; failures return `None` / `False`, `upload` defaults to `False`) and `adapt_client(obj)`. New `mltgnt.media` package (`__all__ = []`; import from submodules): `media._core.types` (`MediaEvent`, `OutboundMessage`), `media._core.client` (re-export), `media._core.config` (`MediaConfig`: required `state_dir` / `pending_dir` / `events_dir`, plus `language`, `progress_min_interval_sec`, `approval_ttl_sec`). New extras `mltgnt[slack]` (slack_sdk / slack_bolt) and `mltgnt[webchat]` (fastapi / uvicorn). `.importlinter` adds `media` as a top layer next to `daemon`, forbids core packages from importing `mltgnt.media`, and keeps `media.slack` / `media.webchat` independent. `LanguagePack` gains `approval_words`, `status_labels`, `enqueue_failed_text` and `progress_line_pattern` (ASCII defaults, inherited by `JA`; hosts that want localized values pass their own `LanguagePack`).
+- `PersonaScheduler(slack=...)` accepts a `MediaClient` (notifications use `post(text, space, thread)`). `notify: slack_secretary` / `slack_custom` and `memory: true` behave as before; when persona post kwargs (e.g. `icon_emoji`) are present and the client has `post_message`, that call is kept.
+
+### Deprecated
+
+- `SlackClientProtocol` (`post_message`): use `MediaClient`. Passing such a client to `adapt_client` (and so to `PersonaScheduler`) emits one `DeprecationWarning` and wraps it (`post` -> `post_message(text, channel=space, thread_ts=thread)`; returns the ts from `post_message_ts` when available, otherwise `""`, and `None` on failure). `SlackClientProtocol.post_message_ts` is added with a default. Removal is planned for the next minor (Y) bump.
+
 ### Fixed
 
 - `tests/scheduler/test_chain_every_run.py::test_dependent_fires_again_on_next_upstream_run` raced the runner thread: it issued the second `tick` as soon as the dependent action had appended its output, while the upstream / dependent job ids were still in `_running` (the `finally` that discards them runs after the action), so `_spawn_job` skipped the second chain about one run in three. The test now waits until no job is running before the second tick. No runtime change.
