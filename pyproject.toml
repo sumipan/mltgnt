@@ -28,6 +28,14 @@ dev = [
     "mypy>=1.10",
     "ruff>=0.4",
 ]
+slack = [
+    "slack_sdk>=3.0",
+    "slack_bolt>=1.18",
+]
+webchat = [
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+]
 
 [project.urls]
 Homepage = "https://github.com/sumipan/mltgnt"
