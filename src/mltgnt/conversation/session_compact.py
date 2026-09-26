@@ -18,6 +18,19 @@ from mltgnt.conversation.session_store import load_turns, session_path, storage_
 if TYPE_CHECKING:
     from mltgnt.config import ConversationConfig
 
+__all__ = [
+    "CompactionResult",
+    "audit_path",
+    "build_prompt",
+    "compact",
+    "configure",
+    "configure_llm_factory",
+    "estimate_tokens",
+    "format_turns_for_prompt",
+    "load_turns_safe",
+    "needs_compaction",
+]
+
 _JST = timezone(timedelta(hours=9))
 
 _LlmFactory = Callable[[], Callable[[str], str]]
@@ -46,12 +59,15 @@ def configure_llm_factory(factory: _LlmFactory | None) -> None:
     _llm_factory = factory
 
 
-def _estimate_tokens(turns: list[dict]) -> float:
+def estimate_tokens(turns: list[dict]) -> float:
     total_chars = sum(
         len(t.get("content", "") or t.get("summary", ""))
         for t in turns
     )
     return total_chars / 3
+
+
+_estimate_tokens = estimate_tokens  # deprecated alias
 
 
 def needs_compaction(
@@ -62,7 +78,7 @@ def needs_compaction(
     turns = load_turns(conversation_id)
     if not turns:
         return False
-    return _estimate_tokens(turns) > threshold_tokens
+    return estimate_tokens(turns) > threshold_tokens
 
 
 def _make_llm_call() -> Callable[[str], str]:
@@ -72,7 +88,7 @@ def _make_llm_call() -> Callable[[str], str]:
     return factory()
 
 
-def _format_turns_for_prompt(
+def format_turns_for_prompt(
     turns_to_compact: list[dict],
     existing_compacted: list[dict],
 ) -> str:
@@ -97,8 +113,11 @@ def _format_turns_for_prompt(
     return "\n".join(lines)
 
 
-def _build_prompt(turns_to_compact: list[dict], existing_compacted: list[dict]) -> str:
-    formatted = _format_turns_for_prompt(turns_to_compact, existing_compacted)
+_format_turns_for_prompt = format_turns_for_prompt  # deprecated alias
+
+
+def build_prompt(turns_to_compact: list[dict], existing_compacted: list[dict]) -> str:
+    formatted = format_turns_for_prompt(turns_to_compact, existing_compacted)
     return (
         "Please briefly summarize the following session conversation log.\n\n"
         "- Include each speaker persona name (e.g. persona-a, persona-b) in the summary\n"
@@ -108,7 +127,10 @@ def _build_prompt(turns_to_compact: list[dict], existing_compacted: list[dict]) 
     )
 
 
-def _audit_path() -> Path:
+_build_prompt = build_prompt  # deprecated alias
+
+
+def audit_path() -> Path:
     if _active_config is not None and _active_config.audit_path is not None:
         return _active_config.audit_path
     if _active_config is not None:
@@ -116,6 +138,9 @@ def _audit_path() -> Path:
     raise RuntimeError(
         "session_compact is not configured; call mltgnt.conversation.configure() first"
     )
+
+
+_audit_path = audit_path  # deprecated alias
 
 
 def compact(
@@ -163,7 +188,7 @@ def compact(
     prev_covered = sum(c.get("covered_turns", 0) for c in existing_compacted)
     covered_turns = prev_covered + len(to_compact)
 
-    prompt = _build_prompt(to_compact, existing_compacted)
+    prompt = build_prompt(to_compact, existing_compacted)
     summary = call(prompt).strip()
 
     now_ts = datetime.now(_JST).isoformat()
@@ -228,7 +253,7 @@ def compact(
             "personas": personas,
             "ts": now_ts,
         }
-        audit = _audit_path()
+        audit = audit_path()
         audit.parent.mkdir(parents=True, exist_ok=True)
         with open(audit, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")

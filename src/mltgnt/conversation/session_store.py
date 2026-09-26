@@ -18,6 +18,27 @@ from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from mltgnt.config import ConversationConfig
 
+__all__ = [
+    "SessionRecord",
+    "append_turn",
+    "configure",
+    "configure_paths",
+    "configure_resume_check",
+    "gc_sessions",
+    "invalidate_ledger",
+    "invalidate_session",
+    "latest_session",
+    "load_turns",
+    "lookup_ledger",
+    "record_ledger_entry",
+    "record_session",
+    "resume_supported",
+    "session_exists",
+    "session_path",
+    "sessions_dir",
+    "storage_key",
+]
+
 _JST = timezone(timedelta(hours=9))
 
 # Query to the engine layer (resume disabled when unset)
@@ -67,7 +88,7 @@ def configure_paths(
         _ledger_dir_override = ledger_dir
 
 
-def _sessions_dir() -> Path:
+def sessions_dir() -> Path:
     if _sessions_dir_override is not None:
         return _sessions_dir_override
     if _active_config is not None:
@@ -75,6 +96,9 @@ def _sessions_dir() -> Path:
     raise RuntimeError(
         "session_store is not configured; call mltgnt.conversation.configure() first"
     )
+
+
+_sessions_dir = sessions_dir  # deprecated alias
 
 
 def _ledger_dir() -> Path:
@@ -93,7 +117,7 @@ def storage_key(conversation_id: str) -> str:
 
 
 def session_path(conversation_id: str) -> Path:
-    return _sessions_dir() / f"{storage_key(conversation_id)}.jsonl"
+    return sessions_dir() / f"{storage_key(conversation_id)}.jsonl"
 
 
 def _ledger_path(key: str) -> Path:

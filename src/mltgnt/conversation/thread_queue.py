@@ -13,7 +13,7 @@ import threading
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from mltgnt.conversation.types import HistoryMessage, TurnInput
 from mltgnt.config.language import JA
@@ -22,6 +22,25 @@ if TYPE_CHECKING:
     from mltgnt.config import ConversationConfig
 
 _log = logging.getLogger(__name__)
+
+__all__ = [
+    "AdmitResult",
+    "THREAD_QUEUE_DIR",
+    "admit",
+    "build_composite_instruction",
+    "configure",
+    "drain_to_turn_input",
+    "drained_entries_meta",
+    "finish_turn",
+    "is_stale",
+    "read_state",
+    "record_job",
+    "record_job_by_key",
+    "set_config_provider",
+    "set_lock_registry",
+    "storage_key",
+    "thread_queue_config",
+]
 
 AdmitResult = namedtuple("AdmitResult", ["proceed", "queued", "status"])
 
@@ -33,6 +52,7 @@ _CANCEL_WORDS = JA.cancel_words
 _locks_guard = threading.Lock()
 _locks: dict[str, threading.Lock] = {}
 _active_config: ConversationConfig | None = None
+_config_provider: Callable[[], dict[str, int]] | None = None
 
 _COMPOSITE_HEADER = JA.composite_header
 _COMPOSITE_CANCEL_SUFFIX = JA.composite_cancel_suffix
@@ -59,7 +79,24 @@ def _active_thread_queue_dir() -> Path:
     return _thread_queue_dir()
 
 
-def _thread_queue_config() -> dict[str, int]:
+def set_lock_registry(locks: dict[str, threading.Lock]) -> None:
+    """Replace the per-thread lock registry (shared with the host)."""
+    global _locks
+    with _locks_guard:
+        _locks = locks
+
+
+def set_config_provider(fn: Callable[[], dict[str, int]] | None) -> None:
+    """Inject a queue threshold provider. Pass None to restore the default."""
+    global _config_provider
+    _config_provider = fn
+
+
+def thread_queue_config() -> dict[str, int]:
+    """Queue thresholds: stale_after_sec / max_queued / cleanup_ttl_days."""
+    provider = _config_provider
+    if provider is not None:
+        return provider()
     if _active_config is not None:
         return {
             "stale_after_sec": int(_active_config.stale_after_sec),
@@ -71,6 +108,11 @@ def _thread_queue_config() -> dict[str, int]:
         "max_queued": 20,
         "cleanup_ttl_days": 14,
     }
+
+
+# Deprecated alias (removed in the next Y bump). admit() resolves it at call
+# time, so assigning this module attribute directly still takes effect.
+_thread_queue_config = thread_queue_config
 
 
 def storage_key(conversation_id: str) -> str:
@@ -117,7 +159,7 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
         raise
 
 
-def _read_state(thread_key: str) -> dict:
+def read_state(thread_key: str) -> dict:
     path = _state_path(thread_key)
     if not path.is_file():
         return {"status": "idle", "started_at": None, "current_uuid": None}
@@ -137,6 +179,9 @@ def _read_state(thread_key: str) -> dict:
     }
 
 
+_read_state = read_state  # deprecated alias
+
+
 def _write_state(thread_key: str, state: dict) -> None:
     _atomic_write_json(_state_path(thread_key), state)
 
@@ -152,7 +197,7 @@ def _is_cancel_instruction(instruction: str) -> bool:
     return instruction.strip() in _CANCEL_WORDS
 
 
-def _is_stale(state: dict, stale_after_sec: int) -> bool:
+def is_stale(state: dict, stale_after_sec: int) -> bool:
     if state.get("status") != "running":
         return False
     started_at = state.get("started_at")
@@ -165,6 +210,9 @@ def _is_stale(state: dict, stale_after_sec: int) -> bool:
     if started.tzinfo is None:
         started = started.replace(tzinfo=timezone.utc)
     return datetime.now(timezone.utc) - started > timedelta(seconds=stale_after_sec)
+
+
+_is_stale = is_stale  # deprecated alias
 
 
 def _write_inbox_entry(
@@ -199,9 +247,9 @@ def admit(
     lock = _get_lock(thread_key)
     with lock:
         cfg = _thread_queue_config()
-        state = _read_state(thread_key)
+        state = read_state(thread_key)
 
-        if _is_stale(state, cfg["stale_after_sec"]):
+        if is_stale(state, cfg["stale_after_sec"]):
             _log.warning(
                 "thread_queue stale reset thread_key=%s started_at=%s",
                 thread_key,
@@ -239,7 +287,7 @@ def record_job(conversation_id: str, uuid: str) -> None:
     thread_key = storage_key(conversation_id)
     lock = _get_lock(thread_key)
     with lock:
-        state = _read_state(thread_key)
+        state = read_state(thread_key)
         state["current_uuid"] = uuid
         _write_state(thread_key, state)
 
@@ -248,7 +296,7 @@ def record_job_by_key(thread_key: str, uuid: str) -> None:
     """Direct storage_key (compat with former make_thread_key)."""
     lock = _get_lock(thread_key)
     with lock:
-        state = _read_state(thread_key)
+        state = read_state(thread_key)
         state["current_uuid"] = uuid
         _write_state(thread_key, state)
 

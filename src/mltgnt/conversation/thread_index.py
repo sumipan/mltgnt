@@ -8,14 +8,25 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from mltgnt.config import ConversationConfig
 
 _log = logging.getLogger(__name__)
 
+__all__ = [
+    "append_entry",
+    "configure",
+    "lookup_result_path",
+    "register_bot_post",
+    "set_post_content_writer",
+    "storage_key",
+    "write_post_content",
+]
+
 _active_config: ConversationConfig | None = None
+_post_content_writer: Callable[[str, str], str] | None = None
 
 
 def configure(config: ConversationConfig) -> None:
@@ -90,13 +101,31 @@ def _lookup_in_file(index_path: Path, posted_ts: str) -> str | None:
     return None
 
 
-def _write_post_content(uid: str, content: str) -> str:
-    """Persist reply body and return a relative-path-like reference string."""
+def set_post_content_writer(fn: Callable[[str, str], str] | None) -> None:
+    """Inject a reply body writer. Pass None to restore the default."""
+    global _post_content_writer
+    _post_content_writer = fn
+
+
+def _default_write_post_content(uid: str, content: str) -> str:
     posts = _posts_dir()
     posts.mkdir(parents=True, exist_ok=True)
     target = posts / f"{uid}.md"
     target.write_text(content, encoding="utf-8")
     return str(target)
+
+
+def write_post_content(uid: str, content: str) -> str:
+    """Persist reply body and return a relative-path-like reference string."""
+    writer = _post_content_writer
+    if writer is not None:
+        return writer(uid, content)
+    return _default_write_post_content(uid, content)
+
+
+# Deprecated alias (removed in the next Y bump). register_bot_post() resolves
+# it at call time, so assigning this module attribute directly still takes effect.
+_write_post_content = write_post_content
 
 
 def register_bot_post(
