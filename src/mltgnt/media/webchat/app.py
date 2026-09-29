@@ -1,18 +1,21 @@
 """FastAPI app of the WebChat medium. FastAPI / uvicorn are imported lazily.
 
-Endpoints: ``GET /`` (UI), ``GET /messages?day=YYYY-MM-DD``, ``POST /messages``,
-``GET /threads/{thread_id}`` and ``GET /stream`` (SSE of ``message`` / ``update`` /
-``status`` rows; the UI replaces the element with the same message_id).
+Endpoints: ``GET /`` (UI), ``GET /config``, ``GET /assets/{name}``, ``GET /messages?day=``,
+``POST /messages``, ``GET /threads/{thread_id}``, ``POST /messages/{id}/bookmark``,
+``GET /bookmarks`` and ``GET /stream`` (SSE of message / update / status / bookmark /
+reaction rows; the UI replaces the element with the same message_id).
 SSE event ids are ``<day>:<byte offset>`` so a reconnect resumes via ``Last-Event-ID``.
 """
 
 import asyncio
 import json
 import logging
+import mimetypes
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import date
+from pathlib import Path
 from typing import Any, Protocol
 
 from mltgnt.media._core import id_map
@@ -22,11 +25,12 @@ from mltgnt.media.webchat.inbound import to_media_event
 from mltgnt.media.webchat.store import WebChatStore
 from mltgnt.media.webchat.ui import INDEX_HTML
 
-__all__ = ["EventHandler", "create_app", "parse_event_id", "serve"]
+__all__ = ["EventHandler", "create_app", "parse_event_id", "safe_asset_path", "serve"]
 
 _log = logging.getLogger(__name__)
 
 _EXTRA_HINT = "fastapi is not installed; install the extra: pip install 'mltgnt[webchat]'"
+_SSE_KINDS = frozenset({"message", "update", "status", "bookmark", "reaction"})
 
 
 class EventHandler(Protocol):
@@ -52,8 +56,19 @@ def parse_event_id(value: str | None) -> tuple[date, int] | None:
     return day, offset
 
 
+def safe_asset_path(assets_dir: Path, name: str) -> Path | None:
+    """Return a regular file directly under ``assets_dir``, or None when unsafe."""
+    if not name or "/" in name or "\\" in name or name in (".", "..") or ".." in name:
+        return None
+    base = assets_dir.resolve()
+    candidate = (assets_dir / name).resolve()
+    if candidate.parent != base or not candidate.is_file():
+        return None
+    return candidate
+
+
 def _sse(row: dict[str, Any], event_id: str) -> str:
-    kind = row.get("kind") if row.get("kind") in ("message", "update", "status") else "message"
+    kind = row.get("kind") if row.get("kind") in _SSE_KINDS else "message"
     return f"id: {event_id}\nevent: {kind}\ndata: {json.dumps(row, ensure_ascii=False)}\n\n"
 
 
@@ -79,7 +94,7 @@ def create_app(
     """
     try:
         from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-        from fastapi.responses import HTMLResponse, StreamingResponse
+        from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
     except ImportError as exc:
         raise ImportError(_EXTRA_HINT) from exc
 
@@ -90,9 +105,30 @@ def create_app(
     def index() -> HTMLResponse:
         return HTMLResponse(INDEX_HTML)
 
+    @app.get("/config")
+    def get_config() -> dict[str, Any]:
+        return {
+            "avatars": dict(config.avatars),
+            "display_names": dict(config.display_names),
+        }
+
+    @app.get("/assets/{name}")
+    def get_asset(name: str) -> Any:
+        if config.assets_dir is None:
+            raise HTTPException(status_code=404)
+        path = safe_asset_path(config.assets_dir, name)
+        if path is None:
+            raise HTTPException(status_code=404)
+        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        return FileResponse(path, media_type=media_type)
+
     @app.get("/messages")
     def list_messages(day: date | None = None) -> list[dict[str, Any]]:
         return store.read(day or store.today())
+
+    @app.get("/bookmarks")
+    def list_bookmarks() -> list[dict[str, Any]]:
+        return store.bookmarks()
 
     @app.post("/messages", status_code=202)
     async def post_message(request: Request, background: BackgroundTasks) -> dict[str, Any]:
@@ -114,6 +150,26 @@ def create_app(
             raise HTTPException(status_code=503, detail="store unavailable") from exc
         background.add_task(_run_event, bridge, event)
         return {"message_id": message_id, "thread_ts": thread_ts, "conversation_id": event.conversation_id}
+
+    @app.post("/messages/{message_id}/bookmark")
+    async def set_bookmark(message_id: str, request: Request) -> dict[str, Any]:
+        try:
+            body = await request.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="body must be JSON") from exc
+        if not isinstance(body, dict) or set(body.keys()) != {"bookmarked"}:
+            raise HTTPException(status_code=422, detail="body must be {\"bookmarked\": bool}")
+        bookmarked = body["bookmarked"]
+        if not isinstance(bookmarked, bool):
+            raise HTTPException(status_code=422, detail="bookmarked must be a bool")
+        try:
+            row = store.set_bookmark(message_id, bookmarked)
+        except OSError as exc:
+            _log.warning("[webchat] bookmark failed: %s", exc)
+            raise HTTPException(status_code=503, detail="store unavailable") from exc
+        if row is None:
+            raise HTTPException(status_code=404, detail="unknown or non-root message_id")
+        return store.enrich(store.latest(message_id) or row)
 
     @app.get("/threads/{thread_id}")
     def get_thread(thread_id: str) -> list[dict[str, Any]]:
@@ -149,7 +205,6 @@ async def _tail(
     deadline = None if timeout_sec is None else monotonic() + timeout_sec
     yield "retry: 1000\n\n"
     while True:
-        # the day is taken before reading, so the old file is drained before switching
         today = store.today()
         rows, offset = store.read_from(day, offset)
         for end, row in rows:

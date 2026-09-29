@@ -2,8 +2,10 @@
 
 Every row is a full snapshot of one message (``ts`` / ``message_id`` / ``author`` /
 ``text`` / ``thread_ts`` / ``kind`` / ``status`` / ``task_uuid``). ``kind`` says why
-the row was written: ``message`` (new), ``update`` (text changed) or ``status``.
-Rows are only appended under ``fcntl.flock``; the latest row of a message_id wins.
+the row was written: ``message`` (new), ``update`` (text changed), ``status``,
+``bookmark`` or ``reaction``. Rows are only appended under ``fcntl.flock``; the latest
+row of a message_id wins for display kinds. Bookmark and reaction rows are append-only
+events that derive ``bookmarked`` and ``reactions`` on the target message.
 """
 
 from __future__ import annotations
@@ -17,24 +19,27 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-__all__ = ["KINDS", "WebChatStore"]
+__all__ = ["KINDS", "MESSAGE_KINDS", "WebChatStore"]
 
 _log = logging.getLogger(__name__)
 
-KINDS = ("message", "update", "status")
+KINDS = ("message", "update", "status", "bookmark", "reaction")
+MESSAGE_KINDS = ("message", "update", "status")
 
 
 def _now() -> datetime:
     return datetime.now().astimezone()
 
 
-def _latest_per_id(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+def _latest_per_id(rows: Iterable[dict[str, Any]], *, kinds: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
     """Last row of each message_id, ordered by the message's first appearance."""
     latest: dict[str, dict[str, Any]] = {}
     for row in rows:
+        if kinds is not None and row.get("kind") not in kinds:
+            continue
         message_id = row.get("message_id")
         if isinstance(message_id, str) and message_id:
-            latest[message_id] = row  # re-assigning an existing key keeps its position
+            latest[message_id] = row
     return list(latest.values())
 
 
@@ -62,6 +67,8 @@ class WebChatStore:
         kind: str = "message",
         status: str | None = None,
         task_uuid: str | None = None,
+        bookmarked: bool | None = None,
+        reaction: str | None = None,
     ) -> dict[str, Any]:
         """Append one row to today's file and return it. OSError propagates to the caller."""
         if kind not in KINDS:
@@ -77,6 +84,10 @@ class WebChatStore:
             "status": status,
             "task_uuid": task_uuid,
         }
+        if bookmarked is not None:
+            row["bookmarked"] = bookmarked
+        if reaction is not None:
+            row["reaction"] = reaction
         line = json.dumps(row, ensure_ascii=False) + "\n"
         path = self.path_for(now.date())
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -135,6 +146,9 @@ class WebChatStore:
     def _rows(self, day: date) -> list[dict[str, Any]]:
         return [row for _, row in self.read_from(day)[0]]
 
+    def _all_rows(self) -> list[dict[str, Any]]:
+        return [row for day in self.days() for row in self._rows(day)]
+
     def days(self) -> list[date]:
         """Days that have a file, oldest first."""
         out: list[date] = []
@@ -147,27 +161,117 @@ class WebChatStore:
                 continue
         return sorted(out)
 
+    def _bookmark_state(self) -> dict[str, bool]:
+        state: dict[str, bool] = {}
+        for row in self._all_rows():
+            if row.get("kind") == "bookmark" and isinstance(row.get("bookmarked"), bool):
+                message_id = row.get("message_id")
+                if isinstance(message_id, str) and message_id:
+                    state[message_id] = row["bookmarked"]
+        return state
+
+    def _reaction_state(self) -> dict[str, list[str]]:
+        state: dict[str, list[str]] = {}
+        for row in self._all_rows():
+            if row.get("kind") != "reaction":
+                continue
+            message_id = row.get("message_id")
+            reaction = row.get("reaction")
+            if isinstance(message_id, str) and message_id and isinstance(reaction, str) and reaction:
+                state.setdefault(message_id, []).append(reaction)
+        return state
+
+    def _reply_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        # A reply may have multiple update/status snapshots. Count the logical
+        # messages, not the number of persisted snapshots.
+        for row in _latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS):
+            thread_ts = row.get("thread_ts")
+            if isinstance(thread_ts, str) and thread_ts:
+                counts[thread_ts] = counts.get(thread_ts, 0) + 1
+        return counts
+
+    def enrich(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Add derived ``reply_count``, ``bookmarked`` and ``reactions`` fields."""
+        message_id = row.get("message_id")
+        if not isinstance(message_id, str):
+            return row
+        bookmarks = self._bookmark_state()
+        reactions = self._reaction_state()
+        reply_counts = self._reply_counts()
+        out = dict(row)
+        out["bookmarked"] = bookmarks.get(message_id, False)
+        out["reactions"] = list(reactions.get(message_id, []))
+        if row.get("thread_ts"):
+            out["reply_count"] = 0
+        else:
+            out["reply_count"] = reply_counts.get(message_id, 0)
+        return out
+
     def read(self, day: date) -> list[dict[str, Any]]:
-        """Messages of ``day``: the last row of each message_id."""
-        return _latest_per_id(self._rows(day))
+        """Messages of ``day``: the last row of each message_id, with derived fields."""
+        rows = _latest_per_id(self._rows(day), kinds=MESSAGE_KINDS)
+        return [self.enrich(row) for row in rows]
 
     def read_all(self) -> list[dict[str, Any]]:
-        """Messages of every day: the last row of each message_id."""
-        return _latest_per_id(row for day in self.days() for row in self._rows(day))
+        """Messages of every day: the last row of each message_id, with derived fields."""
+        rows = _latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS)
+        return [self.enrich(row) for row in rows]
 
     def latest(self, message_id: str) -> dict[str, Any] | None:
-        """Last row of ``message_id`` searching the newest day first."""
+        """Last display row of ``message_id`` searching the newest day first."""
         for day in reversed(self.days()):
             found = None
             for row in self._rows(day):
-                if row.get("message_id") == message_id:
+                if row.get("message_id") == message_id and row.get("kind") in MESSAGE_KINDS:
                     found = row
             if found is not None:
-                return found
+                return self.enrich(found)
         return None
 
     def thread(self, thread_id: str) -> list[dict[str, Any]]:
         """The thread's root message and its replies."""
-        return [
-            row for row in self.read_all() if row.get("message_id") == thread_id or row.get("thread_ts") == thread_id
+        rows = [
+            row
+            for row in self.read_all()
+            if row.get("message_id") == thread_id or row.get("thread_ts") == thread_id
         ]
+        return [self.enrich(row) for row in rows]
+
+    def set_bookmark(self, message_id: str, bookmarked: bool) -> dict[str, Any] | None:
+        """Append a bookmark row for a root message. None when the id is unknown or a reply."""
+        current = self.latest(message_id)
+        if current is None or current.get("thread_ts"):
+            return None
+        return self.append(
+            message_id=message_id,
+            author=str(current.get("author") or ""),
+            text=str(current.get("text") or ""),
+            thread_ts=None,
+            kind="bookmark",
+            bookmarked=bookmarked,
+        )
+
+    def add_reaction(self, message_id: str, name: str) -> dict[str, Any] | None:
+        """Append a reaction row. None when the id is unknown."""
+        current = self.latest(message_id)
+        if current is None:
+            return None
+        return self.append(
+            message_id=message_id,
+            author=str(current.get("author") or ""),
+            text=str(current.get("text") or ""),
+            thread_ts=current.get("thread_ts"),
+            kind="reaction",
+            reaction=name,
+        )
+
+    def bookmarks(self) -> list[dict[str, Any]]:
+        """Bookmarked root messages, newest bookmark first."""
+        state = self._bookmark_state()
+        bookmarked_ids = [mid for mid, on in state.items() if on]
+        if not bookmarked_ids:
+            return []
+        rows = [row for row in self.read_all() if row.get("message_id") in bookmarked_ids and not row.get("thread_ts")]
+        rows.sort(key=lambda row: row.get("ts") or "", reverse=True)
+        return rows

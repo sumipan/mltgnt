@@ -267,3 +267,39 @@ def test_opaque_conversation_id_posts_without_thread(tmp_path: Path) -> None:
     bridge, web = _bridge(tmp_path, RecordingHandler())
     bridge.handle_event(_event(cid="room-1"))
     assert web.calls_of("chat_postMessage") == [{"channel": "C1", "text": "pong"}]
+
+
+def test_reply_applies_persona_reaction(tmp_path: Path) -> None:
+    handler = RecordingHandler(TurnResult(kind="reply", text="pong", reaction="bulb"))
+    bridge, web = _bridge(tmp_path, handler)
+    result = bridge.handle_event(_event())
+    assert result == TurnResult(kind="reply", text="pong", reaction="bulb")
+    persona = [c for c in web.calls_of("reactions_add") if c["name"] == "bulb" and c["timestamp"] == "100.0"]
+    assert len(persona) == 1
+
+
+def test_task_applies_persona_reaction(tmp_path: Path) -> None:
+    handler = RecordingHandler(TurnResult(kind="task", task_ref=UID, reaction="eyes"))
+    bridge, web = _bridge(tmp_path, handler)
+    bridge.handle_event(_event())
+    persona = [c for c in web.calls_of("reactions_add") if c["name"] == "eyes" and c["timestamp"] == "100.0"]
+    assert len(persona) == 1
+
+
+def test_reaction_none_skips_react(tmp_path: Path) -> None:
+    bridge, web = _bridge(tmp_path, RecordingHandler(TurnResult(kind="reply", text="pong")))
+    bridge.handle_event(_event())
+    persona = [c for c in web.calls_of("reactions_add") if c["name"] not in (WORKING, DONE, FAILED)]
+    assert persona == []
+
+
+def test_reaction_failure_still_returns_reply(tmp_path: Path) -> None:
+    web = FakeWebClient(errors={"reactions_add": FakeSlackApiError("invalid_name")})
+    bridge, _web = _bridge(tmp_path, RecordingHandler(TurnResult(kind="reply", text="pong", reaction="bulb")), web)
+    assert bridge.handle_event(_event()) == TurnResult(kind="reply", text="pong", reaction="bulb")
+
+
+def test_reaction_already_reacted_is_success(tmp_path: Path) -> None:
+    web = FakeWebClient(errors={"reactions_add": FakeSlackApiError("already_reacted")})
+    bridge, _web = _bridge(tmp_path, RecordingHandler(TurnResult(kind="reply", text="pong", reaction="bulb")), web)
+    assert bridge.handle_event(_event()) == TurnResult(kind="reply", text="pong", reaction="bulb")

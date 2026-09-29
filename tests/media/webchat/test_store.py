@@ -129,3 +129,50 @@ def test_latest_and_thread_span_days(tmp_path: Path) -> None:
     assert [r["message_id"] for r in store.read(DAY)] == ["root"]
     assert store.read(DAY)[0]["status"] is None
     assert store.latest("missing") is None
+
+
+def test_reply_count_spans_days(tmp_path: Path) -> None:
+    store, clock = _store(tmp_path)
+    store.append(message_id="root", author="u", text="q")
+    store.append(message_id="same-day", author="bot", text="a", thread_ts="root")
+    clock.now += timedelta(days=1)
+    store.append(message_id="next-day", author="bot", text="b", thread_ts="root")
+    root = store.latest("root")
+    assert root is not None and root["reply_count"] == 2
+    assert store.read(DAY + timedelta(days=1))[0]["reply_count"] == 0
+
+
+def test_reply_count_does_not_count_update_snapshots(tmp_path: Path) -> None:
+    store, _clock = _store(tmp_path)
+    store.append(message_id="root", author="u", text="q")
+    store.append(message_id="reply", author="bot", text="draft", thread_ts="root")
+    store.revise("reply", "update", text="final")
+    store.revise("reply", "status", status="done")
+    root = store.latest("root")
+    assert root is not None and root["reply_count"] == 1
+
+
+def test_bookmark_persists_and_lists(tmp_path: Path) -> None:
+    store, _clock = _store(tmp_path)
+    store.append(message_id="root", author="u", text="keep")
+    assert store.set_bookmark("root", True) is not None
+    root = store.latest("root")
+    assert root is not None and root["bookmarked"] is True
+    assert store.set_bookmark("root", False) is not None
+    assert store.latest("root") is not None and store.latest("root")["bookmarked"] is False
+    store.set_bookmark("root", True)
+    assert [r["message_id"] for r in store.bookmarks()] == ["root"]
+    assert store.set_bookmark("missing", True) is None
+    store.append(message_id="reply", author="u", text="r", thread_ts="root")
+    assert store.set_bookmark("reply", True) is None
+
+
+def test_reaction_persists(tmp_path: Path) -> None:
+    store, _clock = _store(tmp_path)
+    store.append(message_id="m1", author="u", text="hi")
+    assert store.add_reaction("m1", "bulb") is not None
+    row = store.latest("m1")
+    assert row is not None and row["reactions"] == ["bulb"]
+    store.add_reaction("m1", "eyes")
+    row = store.latest("m1")
+    assert row is not None and row["reactions"] == ["bulb", "eyes"]

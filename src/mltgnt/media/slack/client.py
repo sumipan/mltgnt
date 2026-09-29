@@ -129,3 +129,25 @@ class SlackClient:
     def upload(self, path: str, space: str, thread: str | None = None) -> bool:
         """Unsupported: file posting is handled outside this client."""
         return False
+
+    def react(self, message_id: str, name: str) -> bool:
+        """Add emoji ``name`` to ``message_id`` (persona reaction, not status)."""
+        located = self._locate(message_id)
+        if located is None:
+            return False
+        channel, ts = located
+        try:
+            self._web.reactions_add(channel=channel, timestamp=ts, name=name)
+        except Exception as exc:
+            error = _api_error(exc)
+            if error == "already_reacted":
+                return True
+            _log.warning(
+                "slack client: reactions_add %s failed channel=%s ts=%s: %s",
+                name,
+                channel,
+                ts,
+                error,
+            )
+            return False
+        return True
