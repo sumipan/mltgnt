@@ -188,3 +188,20 @@ def test_result_is_the_same_on_both_media(tmp_path: Path) -> None:
         assert bridge.deliver_result(UID, "job done") is None
         assert medium.posts() == ["job done"], medium.name
         assert PendingStore(medium.pending_dir).load(UID) is None, medium.name
+
+
+def test_persona_reaction_is_the_same_on_both_media(tmp_path: Path) -> None:
+    handler, media = _media(tmp_path, TurnResult(kind="reply", text="pong", reaction="bulb"))
+    slack_event = media[0].receive("ping")
+    webchat_event = media[1].receive("ping")
+    assert _bridge(media[0]).handle_event(slack_event) == TurnResult(kind="reply", text="pong", reaction="bulb")
+    assert _bridge(media[1]).handle_event(webchat_event) == TurnResult(kind="reply", text="pong", reaction="bulb")
+    slack_web = media[0].client._web  # type: ignore[attr-defined]
+    persona_calls = [
+        c for c in slack_web.calls_of("reactions_add") if c["name"] == "bulb" and c["timestamp"] == slack_event.message_id
+    ]
+    assert len(persona_calls) == 1
+    webchat_store = media[1].client.store  # type: ignore[attr-defined]
+    row = webchat_store.latest(webchat_event.message_id)
+    assert row is not None and row["reactions"] == ["bulb"]
+    assert handler.turns[0].text == handler.turns[1].text == "ping"

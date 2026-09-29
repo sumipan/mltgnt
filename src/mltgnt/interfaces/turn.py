@@ -46,6 +46,7 @@ class TurnResult:
     kind: Literal["reply", "task"]
     text: str = ""
     task_ref: str | None = None
+    reaction: str | None = None
 
 
 @runtime_checkable

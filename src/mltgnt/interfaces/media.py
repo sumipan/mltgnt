@@ -43,6 +43,10 @@ class MediaClient(Protocol):
         """Upload the file at ``path``. Default: unsupported (False)."""
         return False
 
+    def react(self, message_id: str, name: str) -> bool:
+        """Add emoji ``name`` to ``message_id``. Default: unsupported (False)."""
+        return False
+
 
 class _PostMessageAdapter:
     """Expose a legacy ``post_message`` client as a MediaClient."""
@@ -64,6 +68,9 @@ class _PostMessageAdapter:
         return False
 
     def upload(self, path: str, space: str, thread: str | None = None) -> bool:
+        return False
+
+    def react(self, message_id: str, name: str) -> bool:
         return False
 
 

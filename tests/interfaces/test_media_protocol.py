@@ -13,6 +13,7 @@ class FakeMedia:
 
     def __init__(self) -> None:
         self.posts: list[tuple[str, str, str | None]] = []
+        self.reactions: list[tuple[str, str]] = []
 
     def post(self, text: str, space: str, thread: str | None = None) -> str | None:
         self.posts.append((text, space, thread))
@@ -26,6 +27,10 @@ class FakeMedia:
 
     def upload(self, path: str, space: str, thread: str | None = None) -> bool:
         return False
+
+    def react(self, message_id: str, name: str) -> bool:
+        self.reactions.append((message_id, name))
+        return True
 
 
 class LegacySlack:
@@ -70,6 +75,26 @@ def test_upload_default_returns_false() -> None:
     assert Explicit().upload("a.txt", "S1") is False
 
 
+def test_react_default_returns_false() -> None:
+    class Explicit(MediaClient):
+        def post(self, text: str, space: str, thread: str | None = None) -> str | None:
+            return None
+
+        def update(self, message_id: str, text: str) -> bool:
+            return False
+
+        def set_status(self, message_id: str, status: Status) -> bool:
+            return False
+
+    assert Explicit().react("M1", "bulb") is False
+
+
+def test_turn_result_reaction_defaults_to_none() -> None:
+    from mltgnt.interfaces.turn import TurnResult
+
+    assert TurnResult(kind="reply", text="ok").reaction is None
+
+
 def test_adapt_client_returns_media_client_as_is_without_warning() -> None:
     client = FakeMedia()
     with warnings.catch_warnings():
@@ -111,6 +136,7 @@ def test_adapter_other_methods_report_unsupported() -> None:
     assert adapted.update("M1", "x") is False
     assert adapted.set_status("M1", Status.DONE) is False
     assert adapted.upload("a.txt", "S1") is False
+    assert adapted.react("M1", "bulb") is False
 
 
 def test_adapt_client_rejects_unknown_object() -> None:

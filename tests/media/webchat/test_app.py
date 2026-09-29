@@ -15,7 +15,7 @@ pytest.importorskip("httpx")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from mltgnt.media._core.types import MediaEvent  # noqa: E402
-from mltgnt.media.webchat.app import _tail, create_app, parse_event_id, serve  # noqa: E402
+from mltgnt.media.webchat.app import _tail, create_app, parse_event_id, safe_asset_path, serve  # noqa: E402
 from mltgnt.media.webchat.config import WebChatMediaConfig  # noqa: E402
 from mltgnt.media.webchat.store import WebChatStore  # noqa: E402
 from mltgnt.media.webchat.ui import INDEX_HTML  # noqa: E402
@@ -218,3 +218,107 @@ def test_serve_binds_config_address(tmp_path: Path) -> None:
     app = object()
     serve(app, _config(tmp_path), runner=lambda a, **kw: calls.append((a, kw)))
     assert calls == [(app, {"host": "127.0.0.1", "port": 8765})]
+
+
+def test_config_endpoint_returns_avatars(tmp_path: Path) -> None:
+    config = WebChatMediaConfig(
+        state_dir=tmp_path / "s",
+        pending_dir=tmp_path / "p",
+        events_dir=tmp_path / "e",
+        store_dir=tmp_path / "w",
+        avatars={"u1": "avatar.png"},
+        display_names={"u1": "User One"},
+    )
+    client = TestClient(create_app(config, RecordingBridge()))
+    resp = client.get("/config")
+    assert resp.status_code == 200
+    assert resp.json() == {"avatars": {"u1": "avatar.png"}, "display_names": {"u1": "User One"}}
+
+
+def test_assets_serves_direct_file(tmp_path: Path) -> None:
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "avatar.png").write_bytes(b"PNG")
+    config = WebChatMediaConfig(
+        state_dir=tmp_path / "s",
+        pending_dir=tmp_path / "p",
+        events_dir=tmp_path / "e",
+        store_dir=tmp_path / "w",
+        assets_dir=assets,
+    )
+    client = TestClient(create_app(config, RecordingBridge()))
+    resp = client.get("/assets/avatar.png")
+    assert resp.status_code == 200
+    assert resp.content == b"PNG"
+
+
+@pytest.mark.parametrize("name", ["../secret", "sub/file.png"])
+def test_assets_rejects_unsafe_names(tmp_path: Path, name: str) -> None:
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    config = WebChatMediaConfig(
+        state_dir=tmp_path / "s",
+        pending_dir=tmp_path / "p",
+        events_dir=tmp_path / "e",
+        store_dir=tmp_path / "w",
+        assets_dir=assets,
+    )
+    client = TestClient(create_app(config, RecordingBridge()))
+    assert client.get(f"/assets/{name}").status_code == 404
+    assert safe_asset_path(assets, name) is None
+
+
+def test_safe_asset_path_rejects_dotdot(tmp_path: Path) -> None:
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    assert safe_asset_path(assets, "..") is None
+
+
+def test_bookmark_toggle_and_list(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    root = client.post("/messages", json={"text": "keep"}).json()["message_id"]
+    on = client.post(f"/messages/{root}/bookmark", json={"bookmarked": True})
+    assert on.status_code == 200
+    assert on.json()["bookmarked"] is True
+    assert client.get("/bookmarks").json()[0]["message_id"] == root
+    off = client.post(f"/messages/{root}/bookmark", json={"bookmarked": False})
+    assert off.status_code == 200
+    assert off.json()["bookmarked"] is False
+    assert client.get("/bookmarks").json() == []
+
+
+@pytest.mark.parametrize("body", [{"bookmarked": "yes"}, {"flag": True}, {}])
+def test_bookmark_rejects_non_bool(tmp_path: Path, body: Any) -> None:
+    client, store, _bridge = _app(tmp_path)
+    root = store.append(message_id="root", author="u", text="x")["message_id"]
+    assert client.post(f"/messages/{root}/bookmark", json=body).status_code == 422
+
+
+def test_bookmark_unknown_or_reply_is_404(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    root = store.append(message_id="root", author="u", text="x")["message_id"]
+    store.append(message_id="reply", author="u", text="r", thread_ts=root)
+    assert client.post("/messages/missing/bookmark", json={"bookmarked": True}).status_code == 404
+    assert client.post("/messages/reply/bookmark", json={"bookmarked": True}).status_code == 404
+
+
+def test_messages_include_reply_count(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    root = store.append(message_id="root", author="u", text="q")["message_id"]
+    store.append(message_id="r1", author="bot", text="a", thread_ts=root)
+    rows = client.get("/messages").json()
+    root_row = next(r for r in rows if r["message_id"] == "root")
+    assert root_row["reply_count"] == 1
+    assert root_row["reactions"] == []
+    assert root_row["bookmarked"] is False
+
+
+def test_stream_emits_bookmark_and_reaction(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path, poll_interval_sec=0.01, stream_timeout_sec=0.05)
+    root = store.append(message_id="root", author="u", text="x")["message_id"]
+    store.set_bookmark(root, True)
+    store.add_reaction(root, "bulb")
+    resp = client.get("/stream", headers={"Last-Event-ID": "2026-01-05:0"})
+    events = [f["event"] for f in _frames(resp.text)]
+    assert "bookmark" in events
+    assert "reaction" in events

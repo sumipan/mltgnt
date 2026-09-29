@@ -108,6 +108,13 @@ class MediaBridge:
         for message_id in message_ids:
             self._client.set_status(message_id, status)
 
+    def _apply_reaction(self, message_ids: Sequence[str], reaction: str | None) -> None:
+        if not reaction or not message_ids:
+            return
+        target = message_ids[-1]
+        if not self._client.react(target, reaction):
+            _log.warning("[bridge] reaction failed message_id=%s name=%s", target, reaction)
+
     def _run_turn(self, space: str, turn: TurnInput, message_ids: Sequence[str]) -> TurnResult | None:
         """One handler call. Only a successfully delegated task leaves the conversation running."""
         session_store.append_turn(turn.conversation_id, "user", turn.text)
@@ -118,6 +125,7 @@ class MediaBridge:
             _log.exception("[bridge] handler failed conversation_id=%s", turn.conversation_id)
             self._set_status(message_ids, Status.FAILED)
             return None
+        self._apply_reaction(message_ids, result.reaction)
         thread = _thread_of(turn.conversation_id)
         if result.kind == "task":
             if not result.task_ref:

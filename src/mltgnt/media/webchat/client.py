@@ -55,6 +55,17 @@ class WebChatClient:
         """Unsupported: file posting is not implemented for WebChat."""
         return False
 
+    def react(self, message_id: str, name: str) -> bool:
+        try:
+            row = self._store.add_reaction(message_id, name)
+        except (OSError, ValueError) as exc:
+            _log.warning("webchat client: reaction failed message_id=%s: %s", message_id, exc)
+            return False
+        if row is None:
+            _log.warning("webchat client: unknown message_id=%s for reaction", message_id)
+            return False
+        return True
+
     def _revise(self, message_id: str, kind: str, **changes: str) -> bool:
         try:
             row = self._store.revise(message_id, kind, **changes)

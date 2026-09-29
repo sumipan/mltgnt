@@ -82,3 +82,17 @@ def test_revise_failure_is_false(tmp_path: Path) -> None:
         assert client.update(message_id, "v2") is False
     finally:
         day_file.chmod(0o644)
+
+
+def test_react_appends_reaction_row(tmp_path: Path) -> None:
+    client = WebChatClient(_config(tmp_path))
+    message_id = client.post("hello", "webchat")
+    assert message_id is not None
+    assert client.react(message_id, "bulb") is True
+    row = client.store.latest(message_id)
+    assert row is not None and row["reactions"] == ["bulb"]
+
+
+def test_react_unknown_message_is_false(tmp_path: Path) -> None:
+    client = WebChatClient(_config(tmp_path))
+    assert client.react("missing", "bulb") is False

@@ -29,6 +29,9 @@ class FakeMedia:
     def upload(self, path: str, space: str, thread: str | None = None) -> bool:
         return False
 
+    def react(self, message_id: str, name: str) -> bool:
+        return True
+
 
 class LegacySlack:
     def __init__(self) -> None:

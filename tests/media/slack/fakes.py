@@ -20,7 +20,8 @@ class FakeWebClient:
     """Record every API call as ``(method, kwargs)`` in ``calls``.
 
     ``errors`` maps a method name to the exception it raises. ``replies`` is the
-    ``messages`` list returned by ``conversations_replies``.
+    ``messages`` list returned by ``conversations_replies``. ``reaction_errors`` maps
+    ``(channel, timestamp, name)`` to an exception for ``reactions_add``.
     """
 
     def __init__(
@@ -29,10 +30,12 @@ class FakeWebClient:
         token: str | None = "xoxb-test",
         errors: dict[str, BaseException] | None = None,
         replies: list[dict[str, Any]] | None = None,
+        reaction_errors: dict[tuple[str, str, str], BaseException] | None = None,
     ) -> None:
         self.token = token
         self.errors: dict[str, BaseException] = dict(errors or {})
         self.replies: list[dict[str, Any]] = list(replies or [])
+        self.reaction_errors: dict[tuple[str, str, str], BaseException] = dict(reaction_errors or {})
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._next_ts = 1
 
@@ -56,6 +59,10 @@ class FakeWebClient:
         return {"ok": True, "ts": kwargs.get("ts")}
 
     def reactions_add(self, **kwargs: Any) -> dict[str, Any]:
+        key = (str(kwargs.get("channel") or ""), str(kwargs.get("timestamp") or ""), str(kwargs.get("name") or ""))
+        error = self.reaction_errors.get(key)
+        if error is not None:
+            raise error
         self._record("reactions_add", kwargs)
         return {"ok": True}
 
