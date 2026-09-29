@@ -85,7 +85,12 @@ INDEX_HTML = """<!doctype html>
     s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
     s = s.replace(/\\*\\*([^*]+)\\*\\*/g, "<strong>$1</strong>");
     s = s.replace(/\\*([^*]+)\\*/g, "<em>$1</em>");
-    s = s.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" rel="noopener">$1</a>');
+    s = s.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, function (_match, label, href) {
+      var value = href.trim();
+      if (!/^(https?:\\/\\/|mailto:|\\/|#)/i.test(value)) { return label; }
+      value = value.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      return '<a href="' + value + '" rel="noopener noreferrer">' + label + "</a>";
+    });
     return s;
   }
 
@@ -196,13 +201,18 @@ INDEX_HTML = """<!doctype html>
     if (panelMode === "thread" && (row.message_id === threadTs || row.thread_ts === threadTs)) {
       render(row, panelBody);
     }
+    if (panelMode === "bookmarks" && !row.thread_ts) {
+      var panelRow = document.getElementById("panel-body-m-" + row.message_id);
+      if (row.bookmarked) { render(row, panelBody); }
+      else if (panelRow) { panelRow.remove(); }
+    }
     if (!row.thread_ts) {
       render(row, log);
     }
   }
 
   function render(row, container) {
-    var id = "m-" + row.message_id;
+    var id = container.id + "-m-" + row.message_id;
     var el = document.getElementById(id);
     if (!el) {
       el = document.createElement("div");
@@ -234,7 +244,7 @@ INDEX_HTML = """<!doctype html>
     });
     var nodes = log.querySelectorAll(".msg");
     for (var i = 0; i < nodes.length; i++) {
-      nodes[i].classList.toggle("selected", nodes[i].id === "m-" + rootId);
+      nodes[i].classList.toggle("selected", nodes[i].id === "log-m-" + rootId);
     }
   }
 

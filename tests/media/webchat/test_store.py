@@ -142,6 +142,16 @@ def test_reply_count_spans_days(tmp_path: Path) -> None:
     assert store.read(DAY + timedelta(days=1))[0]["reply_count"] == 0
 
 
+def test_reply_count_does_not_count_update_snapshots(tmp_path: Path) -> None:
+    store, _clock = _store(tmp_path)
+    store.append(message_id="root", author="u", text="q")
+    store.append(message_id="reply", author="bot", text="draft", thread_ts="root")
+    store.revise("reply", "update", text="final")
+    store.revise("reply", "status", status="done")
+    root = store.latest("root")
+    assert root is not None and root["reply_count"] == 1
+
+
 def test_bookmark_persists_and_lists(tmp_path: Path) -> None:
     store, _clock = _store(tmp_path)
     store.append(message_id="root", author="u", text="keep")

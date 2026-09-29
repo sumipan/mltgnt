@@ -322,3 +322,11 @@ def test_stream_emits_bookmark_and_reaction(tmp_path: Path) -> None:
     events = [f["event"] for f in _frames(resp.text)]
     assert "bookmark" in events
     assert "reaction" in events
+
+
+def test_ui_uses_container_scoped_message_ids_and_safe_links() -> None:
+    assert 'var id = container.id + "-m-" + row.message_id' in INDEX_HTML
+    assert 'nodes[i].id === "log-m-" + rootId' in INDEX_HTML
+    assert "panel-body-m-" in INDEX_HTML
+    assert "noopener noreferrer" in INDEX_HTML
+    assert "mailto:" in INDEX_HTML

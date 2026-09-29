@@ -183,9 +183,9 @@ class WebChatStore:
 
     def _reply_counts(self) -> dict[str, int]:
         counts: dict[str, int] = {}
-        for row in self._all_rows():
-            if row.get("kind") not in MESSAGE_KINDS:
-                continue
+        # A reply may have multiple update/status snapshots. Count the logical
+        # messages, not the number of persisted snapshots.
+        for row in _latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS):
             thread_ts = row.get("thread_ts")
             if isinstance(thread_ts, str) and thread_ts:
                 counts[thread_ts] = counts.get(thread_ts, 0) + 1
