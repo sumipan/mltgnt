@@ -78,12 +78,13 @@ def test_turn_result_fields() -> None:
     from mltgnt.interfaces.turn import TurnResult
 
     fields = {f.name for f in dataclasses.fields(TurnResult)}
-    assert fields == {"kind", "text", "task_ref"}
+    assert fields == {"kind", "text", "task_ref", "reaction"}
 
     hints = get_type_hints(TurnResult)
     assert set(get_args(hints["kind"])) == {"reply", "task"}
     assert hints["text"] is str
     assert hints["task_ref"] == str | None
+    assert hints["reaction"] == str | None
 
 
 def test_all_boundary_types_are_frozen_dataclasses() -> None:
@@ -154,6 +155,7 @@ def test_attachment_and_history_message_defaults() -> None:
     result = TurnResult(kind="task", task_ref="uuid-1")
     assert result.text == ""
     assert result.task_ref == "uuid-1"
+    assert result.reaction is None
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         turn.text = "mutated"  # type: ignore[misc]
