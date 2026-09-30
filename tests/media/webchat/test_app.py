@@ -330,3 +330,59 @@ def test_ui_uses_container_scoped_message_ids_and_safe_links() -> None:
     assert "panel-body-m-" in INDEX_HTML
     assert "noopener noreferrer" in INDEX_HTML
     assert "mailto:" in INDEX_HTML
+
+
+def test_stream_status_event_includes_enriched_thread_fields(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path, poll_interval_sec=0.01, stream_timeout_sec=0.05)
+    store.append(message_id="root", author="u", text="q")
+    store.append(message_id="r1", author="a", text="a", thread_ts="root")
+    store.revise("root", "status", status="done")
+    resp = client.get("/stream", headers={"Last-Event-ID": "2026-01-05:0"})
+    status_frames = [f for f in _frames(resp.text) if f["event"] == "status"]
+    assert len(status_frames) == 1
+    data = json.loads(status_frames[0]["data"])
+    assert data["message_id"] == "root"
+    assert data["reply_count"] == 1
+    assert data["last_reply_ts"] == store.latest("r1")["ts"]
+    assert data["participants"] == ["a"]
+    assert data["reactions"] == []
+    assert data["bookmarked"] is False
+
+
+def test_stream_reaction_event_includes_enriched_reactions(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path, poll_interval_sec=0.01, stream_timeout_sec=0.05)
+    root = store.append(message_id="root", author="u", text="x")["message_id"]
+    store.add_reaction(root, "bulb")
+    resp = client.get("/stream", headers={"Last-Event-ID": "2026-01-05:0"})
+    reaction_frames = [f for f in _frames(resp.text) if f["event"] == "reaction"]
+    assert len(reaction_frames) == 1
+    data = json.loads(reaction_frames[0]["data"])
+    assert data["kind"] == "reaction"
+    assert data["reactions"] == ["bulb"]
+
+
+def test_index_html_slack_ui_elements() -> None:
+    for token in (
+        'id="panel-form"',
+        'id="panel-text"',
+        'id="saved-link"',
+        ".thread-summary",
+        ".chip",
+        ".save",
+        ".state",
+        ".divider",
+    ):
+        assert token in INDEX_HTML
+
+
+def test_index_html_removed_legacy_elements() -> None:
+    for token in (
+        'id="tabs"',
+        'id="tab-chat"',
+        'id="tab-bookmarks"',
+        '"unbookmark"',
+        "renderToolbar",
+        ".status.done",
+        "base.reactions.push",
+    ):
+        assert token not in INDEX_HTML
