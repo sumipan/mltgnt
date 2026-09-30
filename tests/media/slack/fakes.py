@@ -70,6 +70,10 @@ class FakeWebClient:
         self._record("reactions_remove", kwargs)
         return {"ok": True}
 
+    def files_upload_v2(self, **kwargs: Any) -> dict[str, Any]:
+        self._record("files_upload_v2", kwargs)
+        return {"ok": True}
+
     def conversations_replies(self, **kwargs: Any) -> dict[str, Any]:
         self._record("conversations_replies", kwargs)
         return {"ok": True, "messages": list(self.replies)}
