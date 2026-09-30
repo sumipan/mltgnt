@@ -181,31 +181,54 @@ class WebChatStore:
                 state.setdefault(message_id, []).append(reaction)
         return state
 
-    def _reply_counts(self) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        # A reply may have multiple update/status snapshots. Count the logical
-        # messages, not the number of persisted snapshots.
-        for row in _latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS):
+    def _thread_summaries(self) -> dict[str, dict[str, Any]]:
+        summaries: dict[str, dict[str, Any]] = {}
+        seen_reply_message: set[str] = set()
+        for row in self._all_rows():
+            if row.get("kind") != "message":
+                continue
+            message_id = row.get("message_id")
             thread_ts = row.get("thread_ts")
-            if isinstance(thread_ts, str) and thread_ts:
-                counts[thread_ts] = counts.get(thread_ts, 0) + 1
-        return counts
+            if not isinstance(message_id, str) or not message_id:
+                continue
+            if not isinstance(thread_ts, str) or not thread_ts:
+                continue
+            if message_id in seen_reply_message:
+                continue
+            seen_reply_message.add(message_id)
+            summary = summaries.setdefault(
+                thread_ts,
+                {"reply_count": 0, "last_reply_ts": None, "participants": []},
+            )
+            summary["reply_count"] += 1
+            ts = row.get("ts")
+            if isinstance(ts, str):
+                summary["last_reply_ts"] = ts
+            author = row.get("author")
+            if isinstance(author, str) and author and author not in summary["participants"]:
+                summary["participants"].append(author)
+        return summaries
 
     def enrich(self, row: dict[str, Any]) -> dict[str, Any]:
-        """Add derived ``reply_count``, ``bookmarked`` and ``reactions`` fields."""
+        """Add derived ``reply_count``, ``last_reply_ts``, ``participants``, ``bookmarked`` and ``reactions``."""
         message_id = row.get("message_id")
         if not isinstance(message_id, str):
             return row
         bookmarks = self._bookmark_state()
         reactions = self._reaction_state()
-        reply_counts = self._reply_counts()
+        summaries = self._thread_summaries()
         out = dict(row)
         out["bookmarked"] = bookmarks.get(message_id, False)
         out["reactions"] = list(reactions.get(message_id, []))
         if row.get("thread_ts"):
             out["reply_count"] = 0
+            out["last_reply_ts"] = None
+            out["participants"] = []
         else:
-            out["reply_count"] = reply_counts.get(message_id, 0)
+            summary = summaries.get(message_id, {})
+            out["reply_count"] = int(summary.get("reply_count", 0))
+            out["last_reply_ts"] = summary.get("last_reply_ts")
+            out["participants"] = list(summary.get("participants", []))
         return out
 
     def read(self, day: date) -> list[dict[str, Any]]:

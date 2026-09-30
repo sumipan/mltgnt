@@ -2,8 +2,8 @@
 
 Endpoints: ``GET /`` (UI), ``GET /config``, ``GET /assets/{name}``, ``GET /messages?day=``,
 ``POST /messages``, ``GET /threads/{thread_id}``, ``POST /messages/{id}/bookmark``,
-``GET /bookmarks`` and ``GET /stream`` (SSE of message / update / status / bookmark /
-reaction rows; the UI replaces the element with the same message_id).
+``GET /bookmarks`` and ``GET /stream`` (SSE of enriched message / update / status /
+bookmark / reaction rows; the UI replaces the element with the same message_id).
 SSE event ids are ``<day>:<byte offset>`` so a reconnect resumes via ``Last-Event-ID``.
 """
 
@@ -208,7 +208,7 @@ async def _tail(
         today = store.today()
         rows, offset = store.read_from(day, offset)
         for end, row in rows:
-            yield _sse(row, f"{day.isoformat()}:{end}")
+            yield _sse(store.enrich(row), f"{day.isoformat()}:{end}")
         if today > day:
             day, offset = today, 0
             continue
