@@ -15,8 +15,15 @@ class FakeMedia:
         self.posts: list[tuple[str, str, str | None]] = []
         self.reactions: list[tuple[str, str]] = []
 
-    def post(self, text: str, space: str, thread: str | None = None) -> str | None:
-        self.posts.append((text, space, thread))
+    def post(
+        self,
+        text: str,
+        space: str,
+        thread: str | None = None,
+        *,
+        extra: dict[str, object] | None = None,
+    ) -> str | None:
+        self.posts.append((text, space, thread, extra))
         return "M1"
 
     def update(self, message_id: str, text: str) -> bool:
@@ -142,3 +149,17 @@ def test_adapter_other_methods_report_unsupported() -> None:
 def test_adapt_client_rejects_unknown_object() -> None:
     with pytest.raises(TypeError):
         adapt_client(object())
+
+
+def test_fake_media_accepts_extra_kwarg() -> None:
+    client = FakeMedia()
+    assert client.post("hi", "S1", extra={"username": "bot"}) == "M1"
+    assert client.posts == [("hi", "S1", None, {"username": "bot"})]
+
+
+def test_adapter_forwards_extra_to_legacy() -> None:
+    legacy = LegacySlack()
+    with pytest.warns(DeprecationWarning):
+        adapted = adapt_client(legacy)
+    adapted.post("hi", "S1", extra={"username": "bot"})
+    assert legacy.calls == [(("hi",), {"channel": "S1", "thread_ts": None, "username": "bot"})]

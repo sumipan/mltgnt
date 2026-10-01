@@ -9,7 +9,8 @@ watchers call ``deliver_result``. Messages queued meanwhile run as the next turn
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from mltgnt.conversation import session_store, thread_queue
 from mltgnt.interfaces.media import MediaClient, Status
@@ -73,7 +74,7 @@ class MediaBridge:
             self._finalize(event.space_id, event.conversation_id)
         return result
 
-    def deliver_result(self, uid: str, body: str) -> str | None:
+    def deliver_result(self, uid: str, body: str, *, post_options: dict[str, Any] | None = None) -> str | None:
         """Post a delegated job's ``body`` to its thread and fire ``on_result``.
 
         Returns the posted message id; None when ``uid`` is unknown (already
@@ -86,7 +87,13 @@ class MediaBridge:
         thread = pending.get("thread") or None
         conversation_id = str(pending.get("conversation_id") or "")
         message_ids = [str(m) for m in pending.get("message_ids") or [] if m]
-        posted = self._client.post(body, space, thread)
+        extra = post_options if post_options is not None else pending.get("post_options")
+        try:
+            posted = self._post(body, space, thread, extra)
+        except ValueError:
+            _log.warning("[bridge] result post rejected uid=%s", uid)
+            self._pending.save(uid, pending)
+            return None
         if not posted:
             _log.warning("[bridge] result post failed uid=%s", uid)
             self._pending.save(uid, pending)
@@ -103,6 +110,17 @@ class MediaBridge:
             for t in session_store.load_turns(conversation_id)
             if t.get("kind") == "turn"
         )
+
+    def _post(
+        self,
+        text: str,
+        space: str,
+        thread: str | None,
+        extra: Mapping[str, Any] | None,
+    ) -> str | None:
+        if extra is not None:
+            return self._client.post(text, space, thread, extra=extra)
+        return self._client.post(text, space, thread)
 
     def _set_status(self, message_ids: Sequence[str], status: Status) -> None:
         for message_id in message_ids:
@@ -132,20 +150,25 @@ class MediaBridge:
                 _log.warning("[bridge] task result without task_ref conversation_id=%s", turn.conversation_id)
                 self._set_status(message_ids, Status.FAILED)
                 return result
-            self._pending.save(
-                result.task_ref,
-                {
-                    "state": "running",
-                    "space": space,
-                    "thread": thread,
-                    "conversation_id": turn.conversation_id,
-                    "message_ids": list(message_ids),
-                    "persona_id": turn.persona_id,
-                },
-            )
+            pending_record: dict[str, Any] = {
+                "state": "running",
+                "space": space,
+                "thread": thread,
+                "conversation_id": turn.conversation_id,
+                "message_ids": list(message_ids),
+                "persona_id": turn.persona_id,
+            }
+            if result.post_options is not None:
+                pending_record["post_options"] = result.post_options
+            self._pending.save(result.task_ref, pending_record)
             self._set_status(message_ids, Status.WORKING)
             return result
-        posted = self._client.post(result.text, space, thread)
+        try:
+            posted = self._post(result.text, space, thread, result.post_options)
+        except ValueError:
+            _log.warning("[bridge] reply post rejected conversation_id=%s", turn.conversation_id)
+            self._set_status(message_ids, Status.FAILED)
+            return result
         if posted:
             session_store.append_turn(turn.conversation_id, "assistant", result.text, turn.persona_id)
             self._set_status(message_ids, Status.DONE)

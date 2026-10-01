@@ -303,3 +303,70 @@ def test_reaction_already_reacted_is_success(tmp_path: Path) -> None:
     web = FakeWebClient(errors={"reactions_add": FakeSlackApiError("already_reacted")})
     bridge, _web = _bridge(tmp_path, RecordingHandler(TurnResult(kind="reply", text="pong", reaction="bulb")), web)
     assert bridge.handle_event(_event()) == TurnResult(kind="reply", text="pong", reaction="bulb")
+
+
+def test_reply_passes_post_options_as_extra(tmp_path: Path) -> None:
+    blocks = [{"type": "section", "text": {"type": "plain_text", "text": "pong"}}]
+    handler = RecordingHandler(
+        TurnResult(kind="reply", text="pong", post_options={"username": "bot", "blocks": blocks}),
+    )
+    bridge, web = _bridge(tmp_path, handler)
+    bridge.handle_event(_event())
+    assert web.calls_of("chat_postMessage") == [
+        {
+            "channel": "C1",
+            "text": "pong",
+            "thread_ts": "100.0",
+            "username": "bot",
+            "blocks": blocks,
+        }
+    ]
+
+
+def test_delegation_saves_post_options_to_pending(tmp_path: Path) -> None:
+    options = {"username": "bot"}
+    bridge, _web = _bridge(
+        tmp_path,
+        RecordingHandler(TurnResult(kind="task", task_ref=UID, post_options=options)),
+    )
+    bridge.handle_event(_event())
+    pending = PendingStore(tmp_path / "p").load(UID)
+    assert pending is not None
+    assert pending["post_options"] == options
+
+
+def test_deliver_result_falls_back_to_pending_post_options(tmp_path: Path) -> None:
+    blocks = [{"type": "section", "text": {"type": "plain_text", "text": "job done"}}]
+    bridge, web = _bridge(
+        tmp_path,
+        RecordingHandler(TurnResult(kind="task", task_ref=UID, post_options={"blocks": blocks})),
+    )
+    bridge.handle_event(_event())
+    bridge.deliver_result(UID, "job done")
+    assert web.calls_of("chat_postMessage") == [
+        {"channel": "C1", "text": "job done", "thread_ts": "100.0", "blocks": blocks},
+    ]
+
+
+def test_deliver_result_explicit_empty_post_options_skips_pending(tmp_path: Path) -> None:
+    blocks = [{"type": "section"}]
+    bridge, web = _bridge(
+        tmp_path,
+        RecordingHandler(TurnResult(kind="task", task_ref=UID, post_options={"blocks": blocks})),
+    )
+    bridge.handle_event(_event())
+    bridge.deliver_result(UID, "job done", post_options={})
+    assert web.calls_of("chat_postMessage") == [
+        {"channel": "C1", "text": "job done", "thread_ts": "100.0"},
+    ]
+
+
+def test_deliver_result_invalid_post_options_keeps_pending(tmp_path: Path) -> None:
+    bridge, web = _bridge(
+        tmp_path,
+        RecordingHandler(TurnResult(kind="task", task_ref=UID, post_options={"unknown": 1})),
+    )
+    bridge.handle_event(_event())
+    assert bridge.deliver_result(UID, "job done") is None
+    assert PendingStore(tmp_path / "p").load(UID) is not None
+    assert web.calls_of("chat_postMessage") == []

@@ -96,3 +96,11 @@ def test_react_appends_reaction_row(tmp_path: Path) -> None:
 def test_react_unknown_message_is_false(tmp_path: Path) -> None:
     client = WebChatClient(_config(tmp_path))
     assert client.react("missing", "bulb") is False
+
+
+def test_post_ignores_extra(tmp_path: Path) -> None:
+    client = WebChatClient(_config(tmp_path))
+    message_id = client.post("hello", "webchat", extra={"username": "bot", "blocks": []})
+    assert message_id is not None
+    row = client.store.latest(message_id)
+    assert row is not None and row["text"] == "hello"

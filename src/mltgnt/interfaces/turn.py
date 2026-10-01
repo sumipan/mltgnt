@@ -7,7 +7,7 @@ mltgnt owns the neck contract; the host implements the media layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,7 @@ class TurnResult:
     text: str = ""
     task_ref: str | None = None
     reaction: str | None = None
+    post_options: dict[str, Any] | None = None
 
 
 @runtime_checkable
