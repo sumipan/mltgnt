@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Mapping
+from typing import Any
 
 from mltgnt.interfaces.media import Status
 from mltgnt.media.webchat.config import WebChatMediaConfig
@@ -36,7 +38,14 @@ class WebChatClient:
     def store(self) -> WebChatStore:
         return self._store
 
-    def post(self, text: str, space: str, thread: str | None = None) -> str | None:
+    def post(
+        self,
+        text: str,
+        space: str,
+        thread: str | None = None,
+        *,
+        extra: Mapping[str, Any] | None = None,
+    ) -> str | None:
         message_id = uuid.uuid4().hex
         try:
             self._store.append(message_id=message_id, author=self._author, text=text, thread_ts=thread or None)

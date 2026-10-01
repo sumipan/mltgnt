@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import warnings
 from enum import Enum
+from collections.abc import Mapping
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["Status", "MediaClient", "adapt_client"]
@@ -27,7 +28,14 @@ class Status(str, Enum):
 class MediaClient(Protocol):
     """Post / update messages on a medium. Failures return None / False (never raise)."""
 
-    def post(self, text: str, space: str, thread: str | None = None) -> str | None:
+    def post(
+        self,
+        text: str,
+        space: str,
+        thread: str | None = None,
+        *,
+        extra: Mapping[str, Any] | None = None,
+    ) -> str | None:
         """Post ``text`` to ``space`` (optionally in ``thread``). Return the message id, or None on failure."""
         ...
 
@@ -54,11 +62,19 @@ class _PostMessageAdapter:
     def __init__(self, legacy: Any) -> None:
         self._legacy = legacy
 
-    def post(self, text: str, space: str, thread: str | None = None, **extra: Any) -> str | None:
+    def post(
+        self,
+        text: str,
+        space: str,
+        thread: str | None = None,
+        *,
+        extra: Mapping[str, Any] | None = None,
+    ) -> str | None:
+        extra_kwargs = dict(extra or ())
         post_message_ts = getattr(self._legacy, "post_message_ts", None)
-        if callable(post_message_ts) and not extra:
+        if callable(post_message_ts) and not extra_kwargs:
             return post_message_ts(text, channel=space, thread_ts=thread)  # type: ignore[no-any-return]
-        ok = self._legacy.post_message(text, channel=space, thread_ts=thread, **extra)
+        ok = self._legacy.post_message(text, channel=space, thread_ts=thread, **extra_kwargs)
         return "" if ok else None
 
     def update(self, message_id: str, text: str) -> bool:
