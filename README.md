@@ -14,9 +14,9 @@ All LLM calls and git commits leave mltgnt through `mltgnt.bridges`, which is th
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.91.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.93.0)-orange)
 
-Pre-1.0, current release `0.91.0`. Minor releases may change the API; see [Public API Stability](#public-api-stability).
+Pre-1.0, current release `0.93.0`. Minor releases may change the API; see [Public API Stability](#public-api-stability).
 
 ## Not
 
@@ -32,23 +32,23 @@ Pre-1.0, current release `0.91.0`. Minor releases may change the API; see [Publi
 mltgnt is installed from a git tag:
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.91.0"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.93.0"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.91.0"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.93.0"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.91.0"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.93.0"
 
 # Development tools (tests, lint, type check, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.91.0"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.93.0"
 ```
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.91.0` |
+| Distribution | `mltgnt` `0.93.0` |
 | Python | `>=3.10` |
-| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.87.0` |
+| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.88.0` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
 | Extra `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
@@ -437,6 +437,26 @@ Dependency-free DTOs and Protocols shared by every layer.
 
 ## Architecture
 
+### Packages
+
+Every top-level package under `src/mltgnt/` tracked by git:
+
+| Package | Role |
+|---------|------|
+| `agent` | Tool-calling loop, dispatch decisions, Reflexion, and plan tracking |
+| `bridges` | ghdag integration: LLM calls, DAG enqueue, file I/O, audit hooks |
+| `cli` | `mltgnt` console entry point (`run`, `memory dream show`, `memory dream forget`) |
+| `config` | Frozen dataclasses for persona, memory, scheduler, and conversation settings |
+| `conversation` | Per-thread queue, session ledger, thread index, and persona bindings |
+| `daemon` | `DaemonRunner`, PID lock, and `SkillWatcherComponent` for `mltgnt run` |
+| `interfaces` | Dependency-free DTOs and Protocols (`MediaClient`, `TurnHandler`, chat types) |
+| `media` | Medium adapters (`slack`, `webchat`) and the shared `MediaBridge` core |
+| `memory` | Episodic log, compaction, semantic store, dream summaries, and search |
+| `persona` | Markdown persona loading, validation, compression, and prompt execution |
+| `routing` | Space-to-persona resolution, triage helpers, and agentic skill discovery |
+| `scheduler` | YAML-driven scheduled jobs with built-in `skill` and `memory_dream` actions |
+| `skill` | Skill discovery, matching, variable substitution, and execution |
+
 ### Layers (`.importlinter`)
 
 A layer imports only the layers below it. Packages on the same row are independent.
@@ -704,7 +724,7 @@ Built-in exceptions from the public API: `ValueError` from `ScheduleJob.from_dic
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API; a patch release does not. Every change is recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media`), the CLI, and the configuration schema documented here. Other subpackage names, including the `mltgnt.media` modules, may change in any minor release.
 - A renamed or removed API keeps a deprecated alias for at least one minor release.
-- Pin an exact tag in production, for example `@v0.91.0`.
+- Pin an exact tag in production, for example `@v0.93.0`.
 
 ## Deprecated API
 
