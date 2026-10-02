@@ -14,9 +14,9 @@ All LLM calls and git commits leave mltgnt through `mltgnt.bridges`, which is th
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.88.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.90.0)-orange)
 
-Pre-1.0, current release `0.88.0`. Minor releases may change the API; see [Public API Stability](#public-api-stability).
+Pre-1.0, current release `0.90.0`. Minor releases may change the API; see [Public API Stability](#public-api-stability).
 
 ## Not
 
@@ -32,23 +32,23 @@ Pre-1.0, current release `0.88.0`. Minor releases may change the API; see [Publi
 mltgnt is installed from a git tag:
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.88.0"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.90.0"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.88.0"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.90.0"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.88.0"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.90.0"
 
 # Development tools (tests, lint, type check, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.88.0"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.90.0"
 ```
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.88.0` |
+| Distribution | `mltgnt` `0.90.0` |
 | Python | `>=3.10` |
-| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.86.0` |
+| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.87.0` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
 | Extra `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
@@ -122,24 +122,37 @@ To inspect the stored dream summary from the shell:
 mltgnt memory dream show guide --chat-dir /path/to/root/chat
 ```
 
-A custom medium implements the four `MediaClient` methods:
+A custom medium implements the `MediaClient` Protocol:
 
 ```python
+from collections.abc import Mapping
+from typing import Any
+
 from mltgnt.interfaces.media import MediaClient, Status
 
 
 class ConsoleMedia:
-    def post(self, text, space, thread=None):
+    def post(
+        self,
+        text: str,
+        space: str,
+        thread: str | None = None,
+        *,
+        extra: Mapping[str, Any] | None = None,
+    ) -> str | None:
         print(f"[{space}] {text}")
         return "m-1"
 
-    def update(self, message_id, text):
+    def update(self, message_id: str, text: str) -> bool:
         return True
 
-    def set_status(self, message_id, status):
+    def set_status(self, message_id: str, status: Status) -> bool:
         return True
 
-    def upload(self, path, space, thread=None):
+    def upload(self, path: str, space: str, thread: str | None = None) -> bool:
+        return False
+
+    def react(self, message_id: str, name: str) -> bool:
         return False
 
 
@@ -352,7 +365,7 @@ Dependency-free DTOs and Protocols shared by every layer.
 | Name | Contract |
 |------|----------|
 | `Status` | `str` Enum: `RECEIVED` (`"received"`), `WORKING` (`"working"`), `DONE` (`"done"`), `FAILED` (`"failed"`), `CANCELLED` (`"cancelled"`) |
-| `MediaClient` | `post(text, space, thread=None) -> str \| None`, `update(message_id, text) -> bool`, `set_status(message_id, status) -> bool`, `upload(path, space, thread=None) -> bool`. Failures return `None` / `False` instead of raising. |
+| `MediaClient` | `post(text, space, thread=None, *, extra: Mapping[str, Any] \| None = None) -> str \| None`, `update(message_id, text) -> bool`, `set_status(message_id, status) -> bool`, `upload(path, space, thread=None) -> bool`, `react(message_id, name) -> bool`. Failures return `None` / `False` instead of raising. |
 | `adapt_client` | `(obj) -> MediaClient`. Objects with `post` are returned unchanged; objects with only `post_message` are wrapped with one `DeprecationWarning`; anything else raises `TypeError`. |
 
 ### `mltgnt.media`
@@ -366,7 +379,7 @@ Dependency-free DTOs and Protocols shared by every layer.
 | `types` | `MediaEvent`, `OutboundMessage` | `MediaEvent(space_id, conversation_id, message_id, author, text, attachments=(), raw=None)`; `OutboundMessage(text, space_id, thread_id=None)` |
 | `client` | `MediaClient`, `Status`, `adapt_client` | Re-export of `mltgnt.interfaces.media` |
 | `config` | `MediaConfig` | See [Media settings](#media-settings) |
-| `bridge` | `MediaBridge` | `MediaBridge(client, handler, config, hooks=None, *, pending_prefix="pending-")`; `handle_event(event)` runs one turn and posts a reply or records a pending task; `deliver_result(uid, body)` posts a task result |
+| `bridge` | `MediaBridge` | `MediaBridge(client, handler, config, hooks=None, *, pending_prefix="pending-")`; `handle_event(event)` runs one turn and posts a reply or records a pending task; `deliver_result(uid, body, *, post_options=None)` posts a task result |
 | `hooks` | `HookRegistry`, `OnInbound`, `BeforeDispatch`, `AfterPost`, `OnResult` | Turn hooks, run in registration order; a hook that raises is logged and skipped |
 | `component` | `MediaBridgeComponent` | `(start, *, mode, backoff_sec, on_exit=None)`; runs `start` in a process or thread and restarts it with backoff |
 | `watchers` | `ExecDoneHandler`, `ProgressWatcher`, `DeliveryReconciler`, `catchup_pending_on_startup`, `iter_pending_with_done`, `CATCHUP_STATES` | Job completion, startup catch-up, delivery reconciliation, progress polling |
@@ -379,26 +392,30 @@ Dependency-free DTOs and Protocols shared by every layer.
 | `thread_reactions` | `admit`, `status_for_admission`, `acknowledge_drained` | Queue admission to message `Status` |
 | `sanitizer` | `sanitize_result_body`, `strip_status_lines`, `strip_leading_paragraphs`, `dedupe_trailing_repeated_block`, `extract_final_assistant_text` | Cleans a result before posting |
 
+`MediaBridge` forwards `TurnResult.post_options` to `MediaClient.post(extra=...)` for both immediate replies and deferred `deliver_result` posts. Invalid `extra` keys on Slack raise `ValueError` before the API call.
+
 `mltgnt.media.slack` (extra `slack`):
 
 | Module | Names | Summary |
 |--------|-------|---------|
 | `config` | `SlackMediaConfig`, `DEFAULT_STATUS_REACTIONS` | See [Media settings](#media-settings) |
-| `client` | `SlackClient`, `split_text` | `SlackClient(web_client, config, *, default_channel="")`; statuses become reactions, long text is split at `chunk_max_chars` |
+| `client` | `SlackClient`, `split_text`, `POST_EXTRA_KEYS`, `UPDATE_EXTRA_KEYS` | `SlackClient(web_client, config, *, default_channel="")`; statuses become reactions, long text is split at `chunk_max_chars`; `POST_EXTRA_KEYS = {"username", "icon_emoji", "icon_url", "blocks", "reply_broadcast"}`, `UPDATE_EXTRA_KEYS = {"blocks"}` |
 | `app` | `build_app`, `start_socket_mode` | `build_app(config)` creates a Bolt app; `start_socket_mode(app, config)` blocks in Socket Mode |
 | `inbound` | `to_media_event`, `strip_mentions`, `thread_ts_from_event`, `files_to_attachments` | Slack event to `MediaEvent` |
 | `history` | `fetch_thread_messages`, `extract_text_from_message`, `extract_text_from_blocks`, `table_block_to_markdown` | Thread fetch and text extraction |
 | `media_store` | `save_images`, `SavedMedia`, `safe_filename`, `ext_from_mimetype` | Image attachment download |
 | `mrkdwn` | `markdown_to_mrkdwn`, `normalize_markdown_residual` | Markdown to Slack mrkdwn |
 
+`SlackClient` additionally provides `upload(path, space, thread=None, *, title=None)` via `files_upload_v2`, `react(message_id, name)` for persona reactions, and `unreact(message_id, name)` to remove a reaction. `update(message_id, text, *, extra=None)` accepts `UPDATE_EXTRA_KEYS`.
+
 `mltgnt.media.webchat` (extra `webchat` for the app):
 
 | Module | Names | Summary |
 |--------|-------|---------|
 | `config` | `WebChatMediaConfig` | See [Media settings](#media-settings) |
-| `client` | `WebChatClient` | `WebChatClient(config, *, store=None, author="assistant")` |
-| `store` | `WebChatStore`, `KINDS` | Daily JSONL of message snapshots of kind `message`, `update`, `status` |
-| `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /`, `GET /messages`, `POST /messages`, `GET /threads/{thread_id}`, `GET /stream` (SSE); `serve(app, config)` runs it on `config.host:config.port` |
+| `client` | `WebChatClient` | `WebChatClient(config, *, store=None, author="assistant")`; `post(..., extra=...)` and `react(message_id, name)` |
+| `store` | `WebChatStore`, `KINDS`, `MESSAGE_KINDS` | Daily JSONL of message snapshots; `KINDS = ("message", "update", "status", "bookmark", "reaction")`, `MESSAGE_KINDS = ("message", "update", "status")` |
+| `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /`, `GET /config`, `GET /assets/{name}`, `GET /messages`, `POST /messages`, `GET /threads/{thread_id}`, `POST /messages/{message_id}/bookmark`, `GET /bookmarks`, and `GET /stream` (SSE of `message` / `update` / `status` / `bookmark` / `reaction` rows); `serve(app, config)` runs it on `config.host:config.port` |
 | `inbound` | `to_media_event`, `DEFAULT_AUTHOR` | `POST /messages` body to `MediaEvent` |
 | `ui` | `INDEX_HTML` | Single-page UI served at `GET /` |
 
@@ -406,8 +423,8 @@ Dependency-free DTOs and Protocols shared by every layer.
 
 | Extension point | Module | Contract | Consumed by |
 |-----------------|--------|----------|-------------|
-| `MediaClient` | `mltgnt.interfaces.media` | `post` / `update` / `set_status` / `upload` | `PersonaScheduler`, `MediaBridge`; implemented by `SlackClient`, `WebChatClient` |
-| `TurnHandler` | `mltgnt.interfaces.turn` | `handle(turn: TurnInput) -> TurnResult`; `TurnResult.kind` is `"reply"` or `"task"` | `MediaBridge` |
+| `MediaClient` | `mltgnt.interfaces.media` | `post` / `update` / `set_status` / `upload` / `react`; `post` accepts `extra` | `PersonaScheduler`, `MediaBridge`; implemented by `SlackClient`, `WebChatClient` |
+| `TurnHandler` | `mltgnt.interfaces.turn` | `handle(turn: TurnInput) -> TurnResult`; `TurnResult` has `kind` (`"reply"` or `"task"`), `text`, `task_ref`, `reaction`, `post_options` | `MediaBridge` |
 | `HookRegistry` hooks | `mltgnt.media._core.hooks` | `OnInbound(event) -> bool` (return `True` to stop the turn), `BeforeDispatch(turn) -> TurnInput`, `AfterPost(result, message_id) -> None`, `OnResult(uid, body) -> None` | `MediaBridge` |
 | `EventHandler` | `mltgnt.media.webchat.app` | `handle_event(event: MediaEvent)` | `create_app`; satisfied by `MediaBridge` |
 | `DaemonComponent` | `mltgnt.daemon` | `name` property, non-blocking `start()`, `stop()` | `DaemonRunner`, `mltgnt run` |
@@ -495,7 +512,7 @@ Every module under `src/mltgnt/` (package `__init__.py` files re-export the publ
 | `media/_core/types.py` | `MediaEvent`, `OutboundMessage` |
 | `media/_core/watchers.py` | Completion, catch-up, reconciliation, progress watchers |
 | `media/slack/app.py` | Bolt app and Socket Mode |
-| `media/slack/client.py` | `SlackClient`, `split_text` |
+| `media/slack/client.py` | `SlackClient`, `split_text`, `POST_EXTRA_KEYS`, `UPDATE_EXTRA_KEYS` |
 | `media/slack/config.py` | `SlackMediaConfig` |
 | `media/slack/history.py` | Thread fetch and text extraction |
 | `media/slack/inbound.py` | Slack event to `MediaEvent` |
@@ -590,7 +607,7 @@ All are frozen dataclasses.
 | Class | Required fields | Optional fields (default) |
 |-------|-----------------|---------------------------|
 | `PersonaConfig` | — | `weight_map` (`DEFAULT_WEIGHT_MAP`), `section_aliases` (built-in alias map), `exclude_stems` (`frozenset()`) |
-| `MemoryConfig` | `chat_dir` | `chat_memory_dir` (`None`), `inject_max_bytes` (`10240`), `inject_max_entries` (`12`), `preferences_max_bytes` (`5120`), `lock_timeout_sec` (`30.0`), `lock_stale_threshold_sec` (`300.0`), `raw_days` (`7`), `mid_weeks` (`3`), `compact_threshold_bytes` (`40960`), `compact_target_bytes` (`25600`), `preferences_section_name` (`"User’s preferences and tendencies"`), `protected_layers` (`("caveat",)`), `timezone` (`"Asia/Tokyo"`), `dream_model` (`""`), `dream_engine` (`"claude"`), `use_dream_summary` (`False`), `dream_dir_name` (`"memory"`), `commit_debounce_sec` (`300.0`), `global_dream_exclude_personas` (`()`) |
+| `MemoryConfig` | `chat_dir` | `chat_memory_dir` (`None`), `inject_max_bytes` (`10240`), `inject_max_entries` (`12`), `preferences_max_bytes` (`5120`), `lock_timeout_sec` (`30.0`), `lock_stale_threshold_sec` (`300.0`), `raw_days` (`7`), `mid_weeks` (`3`), `compact_threshold_bytes` (`40960`), `compact_target_bytes` (`25600`), `preferences_section_name` (`"User's preferences and tendencies"`), `protected_layers` (`("caveat",)`), `timezone` (`"Asia/Tokyo"`), `dream_model` (`""`), `dream_engine` (`"claude"`), `use_dream_summary` (`False`), `dream_dir_name` (`"memory"`), `commit_debounce_sec` (`300.0`), `global_dream_exclude_personas` (`()`) |
 | `SchedulerConfig` | `schedule_yaml`, `state_dir` | `timezone` (`"Asia/Tokyo"`), `salt` (`""`) |
 | `ConversationConfig` | `queue_dir`, `sessions_dir`, `ledger_dir`, `thread_index_dir`, `thread_persona_path` | `posts_dir` (`None`), `audit_path` (`None`), `stale_after_sec` (`3600`), `max_queued` (`20`), `cleanup_ttl_days` (`14`), `thread_persona_ttl_days` (`30`) |
 
@@ -612,7 +629,7 @@ All are frozen dataclasses.
 | Subclass | Extra fields (default) |
 |----------|------------------------|
 | `SlackMediaConfig` | `bot_token_env` (`"SLACK_BOT_TOKEN"`), `app_token_env` (`"SLACK_APP_TOKEN"`), `status_reactions` (`DEFAULT_STATUS_REACTIONS`), `chunk_max_chars` (`3000`, must be positive) |
-| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`) |
+| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`), `display_names` (`{}`) |
 
 ### LanguagePack
 
@@ -687,7 +704,7 @@ Built-in exceptions from the public API: `ValueError` from `ScheduleJob.from_dic
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API; a patch release does not. Every change is recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media`), the CLI, and the configuration schema documented here. Other subpackage names, including the `mltgnt.media` modules, may change in any minor release.
 - A renamed or removed API keeps a deprecated alias for at least one minor release.
-- Pin an exact tag in production, for example `@v0.88.0`.
+- Pin an exact tag in production, for example `@v0.90.0`.
 
 ## Deprecated API
 
