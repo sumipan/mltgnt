@@ -1791,3 +1791,74 @@ class TestEnqueueDagPipelineStatus:
         assert results[0][0] is False
         assert "INVALID_STATE" in results[0][1]
         assert results[1] == (False, "dependency failed")
+
+
+class TestTaskTimeoutSecAnnotations:
+    """task_timeout_sec is written to exec.jsonl annotations.timeout_sec."""
+
+    @staticmethod
+    def _records(jobs_dir: Path) -> list[dict]:
+        text = (jobs_dir / "exec.jsonl").read_text(encoding="utf-8")
+        return [json.loads(ln) for ln in text.splitlines() if ln.strip()]
+
+    def _run_single(self, tmp_path: Path, **kwargs) -> list[dict]:
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        with (
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_and_wait(
+                prompt="test prompt",
+                engine="cursor",
+                model="auto",
+                timeout=5.0,
+                idempotency_key=f"scheduler:tts:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+                **kwargs,
+            )
+        return self._records(jobs_dir)
+
+    def _run_dag(self, tmp_path: Path, **kwargs) -> list[dict]:
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        with (
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_dag(
+                steps=[
+                    DagStep(id="s1", prompt="P1", engine="cursor"),
+                    DagStep(id="s2", prompt="P2", engine="cursor", depends=["s1"]),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:tts:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+                **kwargs,
+            )
+        return self._records(jobs_dir)
+
+    def test_enqueue_and_wait_writes_timeout_sec(self, tmp_path):
+        records = self._run_single(tmp_path, task_timeout_sec=300)
+        assert len(records) == 1
+        annotations = records[0].get("annotations") or {}
+        assert "timeout_sec" in annotations
+        assert float(annotations["timeout_sec"]) == 300
+
+    def test_enqueue_and_wait_omits_timeout_sec_by_default(self, tmp_path):
+        records = self._run_single(tmp_path)
+        assert len(records) == 1
+        assert "timeout_sec" not in (records[0].get("annotations") or {})
+
+    def test_enqueue_dag_writes_timeout_sec_on_all_steps(self, tmp_path):
+        records = self._run_dag(tmp_path, task_timeout_sec=300)
+        assert len(records) == 2
+        for record in records:
+            annotations = record.get("annotations") or {}
+            assert float(annotations["timeout_sec"]) == 300
+
+    def test_enqueue_dag_omits_timeout_sec_by_default(self, tmp_path):
+        records = self._run_dag(tmp_path)
+        assert len(records) == 2
+        for record in records:
+            assert "timeout_sec" not in (record.get("annotations") or {})

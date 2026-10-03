@@ -258,6 +258,13 @@ def typecheck_dag(
                 raise SkillIOTypeError(msg)
 
 
+def _task_timeout_submit_kwargs(task_timeout_sec: float | None) -> dict:
+    """Build api.submit kwargs carrying annotations.timeout_sec when set."""
+    if task_timeout_sec is None:
+        return {}
+    return {"metadata": {"timeout_sec": task_timeout_sec}}
+
+
 def enqueue_dag(
     steps: list[DagStep],
     timeout: float,
@@ -271,10 +278,15 @@ def enqueue_dag(
     skills: dict[str, SkillMeta] | None = None,
     permission: str | None = None,
     order_builder: OrderBuilder | None = None,
+    task_timeout_sec: float | None = None,
 ) -> list[tuple[bool, str]]:
     """Submit multiple steps with dependencies sequentially and wait for all.
 
     Submit and wait one step at a time; inject prior results into later base_context.
+
+    Args:
+        task_timeout_sec: ghdag task execution limit in seconds, applied to every
+            step. None uses the host default.
 
     Returns:
         (bool, str) list in the same order as input steps.
@@ -313,6 +325,7 @@ def enqueue_dag(
     if os.environ.get("SKILL_IO_TYPECHECK") != "0" and skills is not None:
         typecheck_dag(sorted_steps, skills)
 
+    submit_kwargs = _task_timeout_submit_kwargs(task_timeout_sec)
     completed_results: dict[str, str] = {}
     pipeline_statuses: dict[str, str] = {}
     failed_steps: set[str] = set()
@@ -351,6 +364,7 @@ def enqueue_dag(
             audit_context=_scheduler_audit_context(
                 correlation_id, parent_correlation_id, request_id
             ),
+            **submit_kwargs,
         )
         first_submit = False
 
@@ -416,6 +430,7 @@ def enqueue_and_wait(
     permission: str | None = None,
     order_builder: OrderBuilder | None = None,
     run_result: SkillRunResult | None = None,
+    task_timeout_sec: float | None = None,
 ) -> tuple[bool, str]:
     """Submit an order via LLMPipelineAPI and wait for the result.
 
@@ -428,6 +443,7 @@ def enqueue_and_wait(
         jobs_dir: Location for order/result/exec.jsonl (jobs/)
         exec_done_dir: Location for done markers (jobs/done/<uuid>)
         run_result: Skill runner result; write result frontmatter when skill_io=v1
+        task_timeout_sec: ghdag task execution limit in seconds. None uses the host default.
 
     Returns:
         (True, result_content) — success
@@ -462,6 +478,7 @@ def enqueue_and_wait(
         audit_context=_scheduler_audit_context(
             correlation_id, parent_correlation_id, request_id
         ),
+        **_task_timeout_submit_kwargs(task_timeout_sec),
     )
 
     skill_line = next(

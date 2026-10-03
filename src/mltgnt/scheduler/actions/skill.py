@@ -255,6 +255,19 @@ def _write_skill_result_audit(
         print(f"skill_result_audit: write failed: {e}", file=sys.stderr)
 
 
+def _resolve_task_timeout_sec(job_id: str, raw: object) -> float | None:
+    """Return a positive task timeout from action_args, or None."""
+    if raw is None:
+        return None
+    if not isinstance(raw, bool) and isinstance(raw, (int, float)) and raw > 0:
+        return float(raw)
+    print(
+        f"scheduler: job {job_id}: ignoring invalid action_args.task_timeout_sec={raw!r}",
+        file=sys.stderr,
+    )
+    return None
+
+
 def run_skill_action(
     job: ScheduleJob,
     *,
@@ -283,6 +296,7 @@ def run_skill_action(
 
     engine = aa.get("engine") or (persona.fm.engine or None)
     model = aa.get("model") or (persona.fm.model or None)
+    task_timeout_sec = _resolve_task_timeout_sec(job.id, aa.get("task_timeout_sec"))
 
     meta = skill_registry.get(skill_name)
     if meta is None:
@@ -351,6 +365,7 @@ def run_skill_action(
             memory_bytes_audit=memory_bytes_audit,
             skill_name=skill_name,
             permission=aa.get("permission"),
+            task_timeout_sec=task_timeout_sec,
         )
 
     if aa.get("enable_fanout", False):
@@ -375,6 +390,7 @@ def run_skill_action(
         request_id=request_id,
         permission=permission,
         run_result=run_output if aa.get("result_frontmatter", False) else None,
+        task_timeout_sec=task_timeout_sec,
     )
 
     if write_patterns:
@@ -411,6 +427,7 @@ def run_skill_action(
                 exec_done_dir=repo_root / "jobs" / "done",
                 request_id=request_id,
                 permission=permission,
+                task_timeout_sec=task_timeout_sec,
             )
             audit_path = repo_root / "jobs" / "audit.jsonl"
             first_failure: tuple[str, str] | None = None
@@ -475,6 +492,7 @@ def _run_pipeline_action(
     memory_bytes_audit: int,
     skill_name: str,
     permission: str | None,
+    task_timeout_sec: float | None = None,
 ) -> tuple[bool, str]:
     """enable_pipeline: match_pipeline -> compose -> typecheck -> enqueue_dag."""
     import asyncio
@@ -541,6 +559,7 @@ def _run_pipeline_action(
         request_id=request_id,
         skills=skills,
         permission=permission,
+        task_timeout_sec=task_timeout_sec,
     )
 
     if knowledge_count_audit > 0 or memory_bytes_audit > 0:
