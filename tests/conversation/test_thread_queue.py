@@ -5,12 +5,14 @@ drain only returns TurnInput. It does not dispatch.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from mltgnt.config import ConversationConfig
+from mltgnt.config.language import EN, set_language_pack
 from mltgnt.interfaces.turn import TurnInput
 
 
@@ -126,3 +128,91 @@ def test_paths_come_from_conversation_config(tmp_path: Path):
     result = tq.admit("C9:1.0", "hi", message_ts="1.1")
     assert result.status == "accepted"
     assert (root / "C9-1.0" / "state.json").is_file()
+
+
+@pytest.fixture
+def restore_language_pack():
+    yield
+    set_language_pack(EN)
+
+
+def _cancel_pack():
+    return replace(
+        EN,
+        cancel_words=frozenset({"abort"}),
+        composite_header="CUSTOM HEADER: messages arrived while busy.",
+        composite_cancel_suffix="CUSTOM SUFFIX: a cancel was requested.",
+    )
+
+
+def test_default_pack_cancel_words_are_en():
+    from mltgnt.conversation.thread_queue import _is_cancel_instruction
+
+    assert "cancel" in EN.cancel_words
+    for word in EN.cancel_words:
+        assert _is_cancel_instruction(word) is True
+    assert _is_cancel_instruction("abort") is False
+
+
+def test_default_pack_admit_marks_cancel_entry(queue_root: Path):
+    from mltgnt.conversation.thread_queue import admit
+
+    assert admit("C1:171.0000", "first", message_ts="171.0001").proceed
+    assert admit("C1:171.0000", "cancel", message_ts="171.0002").queued
+    inbox = list((queue_root / "C1-171.0000" / "inbox").glob("*.json"))
+    assert len(inbox) == 1
+    payload = json.loads(inbox[0].read_text(encoding="utf-8"))
+    assert payload["kind"] == "cancel"
+
+
+def test_default_pack_composite_instruction_uses_en():
+    from mltgnt.conversation.thread_queue import build_composite_instruction
+
+    plain = build_composite_instruction([{"text": "hello", "kind": "message"}])
+    assert plain.startswith(EN.composite_header)
+    assert "[1] hello" in plain
+    assert EN.composite_cancel_suffix not in plain
+
+    with_cancel = build_composite_instruction(
+        [{"text": "hello", "kind": "message"}, {"text": "cancel", "kind": "cancel"}]
+    )
+    assert with_cancel.startswith(EN.composite_header)
+    assert with_cancel.endswith(EN.composite_cancel_suffix)
+
+
+def test_replaced_pack_changes_cancel_words(restore_language_pack):
+    from mltgnt.conversation.thread_queue import _is_cancel_instruction
+
+    set_language_pack(_cancel_pack())
+    assert _is_cancel_instruction("abort") is True
+    assert _is_cancel_instruction("cancel") is False
+    assert _is_cancel_instruction("stop") is False
+
+
+def test_replaced_pack_admit_marks_cancel_entry(queue_root: Path, restore_language_pack):
+    from mltgnt.conversation.thread_queue import admit
+
+    set_language_pack(_cancel_pack())
+    assert admit("C1:171.0000", "first", message_ts="171.0001").proceed
+    assert admit("C1:171.0000", "abort", message_ts="171.0002").queued
+    assert admit("C1:171.0000", "cancel", message_ts="171.0003").queued
+    inbox = (queue_root / "C1-171.0000" / "inbox").glob("*.json")
+    kinds = {
+        payload["text"]: payload["kind"]
+        for payload in (json.loads(p.read_text(encoding="utf-8")) for p in inbox)
+    }
+    assert kinds == {"abort": "cancel", "cancel": "message"}
+
+
+def test_replaced_pack_changes_composite_instruction(restore_language_pack):
+    from mltgnt.conversation.thread_queue import build_composite_instruction
+
+    pack = _cancel_pack()
+    set_language_pack(pack)
+    out = build_composite_instruction(
+        [{"text": "hello", "kind": "message"}, {"text": "abort", "kind": "cancel"}]
+    )
+    assert out.startswith(pack.composite_header)
+    assert out.endswith(pack.composite_cancel_suffix)
+    assert EN.composite_header not in out
+    assert EN.composite_cancel_suffix not in out
