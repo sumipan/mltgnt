@@ -16,7 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import LanguagePack, get_language_pack
 from mltgnt.interfaces.media import MediaClient, Status
 from mltgnt.media._core.config import MediaConfig
 
@@ -124,7 +124,9 @@ def status_for_done_marker(marker: str) -> Status:
     return Status.FAILED
 
 
-def status_label(status: Status, language: LanguagePack = JA) -> str:
+def status_label(status: Status, language: LanguagePack | None = None) -> str:
+    if language is None:
+        language = get_language_pack()
     return language.status_labels.get(status.value, status.value)
 
 
@@ -140,12 +142,12 @@ class ProgressState:
         *,
         min_interval_sec: float,
         max_lines: int = 1,
-        language: LanguagePack = JA,
+        language: LanguagePack | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._min_interval_sec = min_interval_sec
         self._max_lines = max(1, max_lines)
-        self._language = language
+        self._language = language if language is not None else get_language_pack()
         self._clock = clock
         self._lines: list[str] = []
         self._offset = 0
@@ -256,7 +258,7 @@ def finalize_progress(
     message_id: str | None,
     done_marker: str,
     *,
-    language: LanguagePack = JA,
+    language: LanguagePack | None = None,
 ) -> bool:
     """Replace the progress message with the final status label only."""
     if not message_id:

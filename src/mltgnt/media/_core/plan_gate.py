@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import LanguagePack, get_language_pack
 from mltgnt.media._core.config import MediaConfig
 from mltgnt.media._core.pending import PendingStore
 
@@ -59,8 +59,10 @@ def _contains_word(normalized: str, words: Iterable[str]) -> bool:
     return False
 
 
-def is_approval(text: str, language: LanguagePack = JA) -> bool:
+def is_approval(text: str, language: LanguagePack | None = None) -> bool:
     """True when ``text`` contains an approval word and no cancel word."""
+    if language is None:
+        language = get_language_pack()
     normalized = _normalize(text)
     return _contains_word(normalized, language.approval_words) and not _contains_word(normalized, language.cancel_words)
 
@@ -86,7 +88,7 @@ class PlanGate:
             return replace(self, state=PlanState.EXPIRED)
         return self
 
-    def on_reply(self, text: str, *, now: float, language: LanguagePack = JA) -> PlanGate:
+    def on_reply(self, text: str, *, now: float, language: LanguagePack | None = None) -> PlanGate:
         """Apply a reply: approval words approve, anything else rejects, late replies expire."""
         if self.state is not PlanState.AWAITING:
             return self

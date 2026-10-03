@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 from enum import Enum
 from pathlib import Path
 
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import LanguagePack, get_language_pack
 from mltgnt.interfaces.media import MediaClient, Status
 
 __all__ = ["CancelOutcome", "find_pending_uids", "handle_cancel", "is_cancel_request"]
@@ -26,8 +26,10 @@ class CancelOutcome(str, Enum):
     NOTHING_TO_CANCEL = "nothing_to_cancel"
 
 
-def is_cancel_request(text: str, language: LanguagePack = JA) -> bool:
+def is_cancel_request(text: str, language: LanguagePack | None = None) -> bool:
     """True when ``text`` equals or starts with a cancel word (case-insensitive)."""
+    if language is None:
+        language = get_language_pack()
     stripped = (text or "").strip().casefold()
     if not stripped:
         return False

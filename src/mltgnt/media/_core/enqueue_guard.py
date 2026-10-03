@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import LanguagePack, get_language_pack
 from mltgnt.interfaces.media import MediaClient, Status
 
 __all__ = ["enqueue_or_report"]
@@ -20,7 +20,7 @@ def enqueue_or_report(
     space: str,
     thread: str | None,
     message_id: str,
-    language: LanguagePack = JA,
+    language: LanguagePack | None = None,
     on_failure: Callable[[BaseException], None] | None = None,
 ) -> bool:
     """Call ``enqueue``; mark ``message_id`` WORKING on success.
@@ -34,6 +34,8 @@ def enqueue_or_report(
     except Exception as exc:  # noqa: BLE001 - last line of defence at the entrance
         _log.error("[enqueue_guard] enqueue failed space=%s message_id=%s: %s", space, message_id, exc, exc_info=True)
         client.set_status(message_id, Status.FAILED)
+        if language is None:
+            language = get_language_pack()
         if client.post(language.enqueue_failed_text, space, thread) is None:
             _log.warning("[enqueue_guard] failure notice post failed space=%s", space)
         if on_failure is not None:
