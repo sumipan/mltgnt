@@ -113,12 +113,17 @@ def test_has_work_request_with_synthetic_pack():
 
 
 def test_has_work_request_default_ja():
-    """AC-1: Default JA pack works for Japanese request phrasing."""
+    """AC-1: Omitted pack resolves at call time, so a set JA pack takes effect."""
     from mltgnt.agent.deterministic_gate import has_work_request
-    from mltgnt.config.language import JA
+    from mltgnt.config.language import JA, get_language_pack, set_language_pack
 
-    assert has_work_request(JA.work_request_markers[0]) is True
-    assert has_work_request("hello world") is False
+    previous = get_language_pack()
+    set_language_pack(JA)
+    try:
+        assert has_work_request(JA.work_request_markers[0]) is True
+        assert has_work_request("hello world") is False
+    finally:
+        set_language_pack(previous)
 
 
 def test_persona_config_has_exclude_stems():

@@ -8,16 +8,15 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from mltgnt.config.language import JA, LanguagePack
-
-_WORK_REQUEST_MARKERS: tuple[str, ...] = JA.work_request_markers
-_CREATE_REQUEST_MARKERS: tuple[str, ...] = JA.create_request_markers
-_DEFERRED_PATTERNS: tuple[re.Pattern[str], ...] = JA.deferred_patterns
+from mltgnt.config.language import LanguagePack, get_language_pack
 
 _ARTIFACT_EXTS = ("md", "txt", "docx", "xlsx", "pptx", "pdf", "csv", "tsv")
 _EXT_ALT = "|".join(_ARTIFACT_EXTS)
 
-_URL_RE = re.compile(r"https?://[^\s<>\[\]()（）]+")
+_FULLWIDTH_PARENS = chr(0xFF08) + chr(0xFF09)
+_URL_TRAILING_PUNCT = ".,;:" + chr(0x3001) + chr(0x3002)
+
+_URL_RE = re.compile(rf"https?://[^\s<>\[\](){_FULLWIDTH_PARENS}]+")
 _FILE_RE = re.compile(
     rf"(?:[^\s/]+/)*[^\s/]+\.(?:{_EXT_ALT})",
     re.IGNORECASE,
@@ -31,8 +30,7 @@ def extract_artifact_references(text: str) -> tuple[str, ...]:
 
     spans: list[tuple[int, int, str]] = []
     for m in _URL_RE.finditer(text):
-        # Japanese text intentionally kept for CJK processing test
-        spans.append((m.start(), m.end(), m.group(0).rstrip(".,;:、。")))
+        spans.append((m.start(), m.end(), m.group(0).rstrip(_URL_TRAILING_PUNCT)))
 
     url_ranges = [(s, e) for s, e, _ in spans]
     for m in _FILE_RE.finditer(text):
@@ -53,19 +51,25 @@ def extract_artifact_references(text: str) -> tuple[str, ...]:
 
 
 def has_work_request(text: str, pack: LanguagePack | None = None) -> bool:
-    """Whether text contains request phrasing (co-occurrence is caller's job)."""
+    """Whether text contains request phrasing (co-occurrence is caller's job).
+
+    ``pack`` defaults to the current language pack (``EN`` unless set).
+    """
     if not text:
         return False
-    markers = (pack or JA).work_request_markers
+    markers = (pack or get_language_pack()).work_request_markers
     return any(marker in text for marker in markers)
 
 
 def is_create_request(text: str, pack: LanguagePack | None = None) -> bool:
-    """Whether text contains create-request phrasing (after NFKC normalize)."""
+    """Whether text contains create-request phrasing (after NFKC normalize).
+
+    ``pack`` defaults to the current language pack (``EN`` unless set).
+    """
     if not text:
         return False
     normalized = unicodedata.normalize("NFKC", text)
-    markers = (pack or JA).create_request_markers
+    markers = (pack or get_language_pack()).create_request_markers
     return any(marker in normalized for marker in markers)
 
 
@@ -78,11 +82,14 @@ should_preempt_delegate = should_force_delegate
 
 
 def match_deferred_promise(reply: str, pack: LanguagePack | None = None) -> str | None:
-    """Return the matched async-work-promise substring, or None."""
+    """Return the matched async-work-promise substring, or None.
+
+    ``pack`` defaults to the current language pack (``EN`` unless set).
+    """
     if not reply or not reply.strip():
         return None
     normalized = unicodedata.normalize("NFKC", reply)
-    patterns = (pack or JA).deferred_patterns
+    patterns = (pack or get_language_pack()).deferred_patterns
     for pat in patterns:
         m = pat.search(normalized)
         if m is not None:
