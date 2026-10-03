@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from mltgnt.conversation.types import HistoryMessage, TurnInput
-from mltgnt.config.language import JA
+from mltgnt.config.language import get_language_pack
 
 if TYPE_CHECKING:
     from mltgnt.config import ConversationConfig
@@ -47,15 +47,10 @@ AdmitResult = namedtuple("AdmitResult", ["proceed", "queued", "status"])
 # Test monkeypatch compatibility (also used as pre-configure fallback)
 THREAD_QUEUE_DIR: Path | None = None
 
-_CANCEL_WORDS = JA.cancel_words
-
 _locks_guard = threading.Lock()
 _locks: dict[str, threading.Lock] = {}
 _active_config: ConversationConfig | None = None
 _config_provider: Callable[[], dict[str, int]] | None = None
-
-_COMPOSITE_HEADER = JA.composite_header
-_COMPOSITE_CANCEL_SUFFIX = JA.composite_cancel_suffix
 
 
 def configure(config: ConversationConfig) -> None:
@@ -194,7 +189,7 @@ def _count_inbox(thread_key: str) -> int:
 
 
 def _is_cancel_instruction(instruction: str) -> bool:
-    return instruction.strip() in _CANCEL_WORDS
+    return instruction.strip() in get_language_pack().cancel_words
 
 
 def is_stale(state: dict, stale_after_sec: int) -> bool:
@@ -352,11 +347,12 @@ def finish_turn(thread_key: str) -> list[dict] | None:
 
 
 def build_composite_instruction(entries: list[dict]) -> str:
-    lines = [_COMPOSITE_HEADER, ""]
+    pack = get_language_pack()
+    lines = [pack.composite_header, ""]
     for index, entry in enumerate(entries, 1):
         lines.append(f"[{index}] {entry.get('text', '')}")
     if any(entry.get("kind") == "cancel" for entry in entries):
-        lines.extend(["", _COMPOSITE_CANCEL_SUFFIX])
+        lines.extend(["", pack.composite_cancel_suffix])
     return "\n".join(lines)
 
 
