@@ -10,7 +10,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeVar, overload
 
-from mltgnt.config.language import JA, LanguagePack
+# EN / get_language_pack / set_language_pack are importable from here; adding them
+# to __all__ is deferred until tests/test_all_snapshot.py is updated (#4349).
+from mltgnt.config.language import (
+    EN,
+    JA,
+    LanguagePack,
+    get_language_pack,
+    set_language_pack,
+)
 
 __all__ = [
     "DEFAULT_WEIGHT_MAP",
