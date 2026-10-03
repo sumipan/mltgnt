@@ -14,7 +14,6 @@ from typing import TypeVar, overload
 # to __all__ is deferred until tests/test_all_snapshot.py is updated (#4349).
 from mltgnt.config.language import (
     EN,
-    JA,
     LanguagePack,
     get_language_pack,
     set_language_pack,

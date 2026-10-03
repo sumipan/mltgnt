@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 
 def test_memory_config_instantiation():
     """MemoryConfig instantiates without diary-specific constants."""
@@ -33,7 +35,6 @@ def test_scheduler_config_instantiation():
 def test_memory_config_frozen():
     """MemoryConfig is frozen=True (immutable)."""
     from mltgnt.config import MemoryConfig
-    import pytest
     config = MemoryConfig(chat_dir=Path("/tmp/chat"), chat_memory_dir=Path("/tmp/chat/memory"))
     with pytest.raises((AttributeError, TypeError)):
         config.inject_max_bytes = 999  # type: ignore[misc]
@@ -75,19 +76,88 @@ def test_import_without_tools_dependency():
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def restore_language_pack():
+    """Reset the global language pack to EN after the test."""
+    from mltgnt.config.language import EN, set_language_pack
+
+    yield
+    set_language_pack(EN)
+
+
 def test_language_pack_importable():
-    """LanguagePack and JA constant can be imported from mltgnt.config."""
+    """LanguagePack and EN constant can be imported from mltgnt.config."""
     from mltgnt.config import LanguagePack
-    from mltgnt.config.language import JA
-    assert isinstance(JA, LanguagePack)
+    from mltgnt.config.language import EN
+    assert isinstance(EN, LanguagePack)
 
 
 def test_language_pack_frozen():
     """LanguagePack instances are immutable."""
-    import pytest
-    from mltgnt.config.language import JA
+    from mltgnt.config.language import EN
     with pytest.raises((AttributeError, TypeError)):
-        JA.work_request_markers = ()  # type: ignore[misc]
+        EN.work_request_markers = ()  # type: ignore[misc]
+
+
+def test_get_language_pack_defaults_to_en():
+    """get_language_pack returns EN before set_language_pack is called."""
+    from mltgnt.config.language import EN, get_language_pack
+    assert get_language_pack() is EN
+
+
+def test_set_language_pack_replaces_current(restore_language_pack):
+    """A custom ASCII pack passed to set_language_pack is returned by get_language_pack."""
+    from dataclasses import replace
+
+    from mltgnt.config.language import EN, get_language_pack, set_language_pack
+
+    custom = replace(EN, cancel_words=frozenset({"abort"}))
+    set_language_pack(custom)
+    assert get_language_pack() is custom
+
+
+def test_set_language_pack_rejects_non_pack(restore_language_pack):
+    """set_language_pack raises TypeError for non-LanguagePack values."""
+    from mltgnt.config.language import set_language_pack
+    with pytest.raises(TypeError):
+        set_language_pack("en")  # type: ignore[arg-type]
+
+
+def test_ja_pack_removed_from_language_module():
+    """JA is removed without an alias."""
+    with pytest.raises(ImportError):
+        from mltgnt.config.language import JA  # noqa: F401
+
+
+def test_ja_pack_removed_from_config_package():
+    """JA is not re-exported from mltgnt.config."""
+    with pytest.raises(ImportError):
+        from mltgnt.config import JA  # noqa: F401
+
+
+def test_language_pack_defaults_are_ascii():
+    """Field defaults that used to hold Japanese text now match EN."""
+    import re
+
+    from mltgnt.config import LanguagePack
+    from mltgnt.config.language import EN
+
+    pack = LanguagePack(
+        work_request_markers=(),
+        create_request_markers=(),
+        deferred_patterns=(),
+        compress_prompt_template="{heavy_text}",
+        v21_required_sections=(),
+        v21_example_section="",
+        meta_header_needles=(),
+        dedupe_opener_re=re.compile(r"NOMATCH"),
+        persona_cut_re=re.compile(r"NOMATCH"),
+        exclude_stems=frozenset(),
+    )
+    assert pack.persona_end_re.pattern == EN.persona_end_re.pattern
+    assert pack.cancel_words == EN.cancel_words
+    assert pack.composite_header == EN.composite_header
+    assert pack.composite_cancel_suffix == EN.composite_cancel_suffix
 
 
 def test_has_work_request_with_synthetic_pack():
@@ -112,18 +182,16 @@ def test_has_work_request_with_synthetic_pack():
     assert has_work_request("do this", pack=pack) is False
 
 
-def test_has_work_request_default_ja():
-    """AC-1: Omitted pack resolves at call time, so a set JA pack takes effect."""
-    from mltgnt.agent.deterministic_gate import has_work_request
-    from mltgnt.config.language import JA, get_language_pack, set_language_pack
+def test_has_work_request_default_pack(restore_language_pack):
+    """AC-1: Omitted pack resolves at call time, so a set pack takes effect."""
+    from dataclasses import replace
 
-    previous = get_language_pack()
-    set_language_pack(JA)
-    try:
-        assert has_work_request(JA.work_request_markers[0]) is True
-        assert has_work_request("hello world") is False
-    finally:
-        set_language_pack(previous)
+    from mltgnt.agent.deterministic_gate import has_work_request
+    from mltgnt.config.language import EN, set_language_pack
+
+    set_language_pack(replace(EN, work_request_markers=("kindly",)))
+    assert has_work_request("kindly review") is True
+    assert has_work_request("hello world") is False
 
 
 def test_persona_config_has_exclude_stems():
