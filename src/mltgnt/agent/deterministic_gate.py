@@ -13,7 +13,10 @@ from mltgnt.config.language import LanguagePack, get_language_pack
 _ARTIFACT_EXTS = ("md", "txt", "docx", "xlsx", "pptx", "pdf", "csv", "tsv")
 _EXT_ALT = "|".join(_ARTIFACT_EXTS)
 
-_URL_RE = re.compile(r"https?://[^\s<>\[\]()\uff08\uff09]+")
+_FULLWIDTH_PARENS = chr(0xFF08) + chr(0xFF09)
+_URL_TRAILING_PUNCT = ".,;:" + chr(0x3001) + chr(0x3002)
+
+_URL_RE = re.compile(rf"https?://[^\s<>\[\](){_FULLWIDTH_PARENS}]+")
 _FILE_RE = re.compile(
     rf"(?:[^\s/]+/)*[^\s/]+\.(?:{_EXT_ALT})",
     re.IGNORECASE,
@@ -27,7 +30,7 @@ def extract_artifact_references(text: str) -> tuple[str, ...]:
 
     spans: list[tuple[int, int, str]] = []
     for m in _URL_RE.finditer(text):
-        spans.append((m.start(), m.end(), m.group(0).rstrip(".,;:\u3001\u3002")))
+        spans.append((m.start(), m.end(), m.group(0).rstrip(_URL_TRAILING_PUNCT)))
 
     url_ranges = [(s, e) for s, e, _ in spans]
     for m in _FILE_RE.finditer(text):
