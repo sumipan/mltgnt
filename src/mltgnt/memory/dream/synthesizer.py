@@ -9,7 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from mltgnt.config import MemoryConfig
-from mltgnt.config.language import JA
+from mltgnt.config.language import get_language_pack
 from mltgnt.memory._format import MemoryEntry, assemble_entries_text
 from mltgnt.memory.dream._format import DreamSection, DreamSummary
 from mltgnt.memory.dream.api import read_dream, read_global
@@ -142,7 +142,7 @@ def _list_chat_persona_stems(
     exclude_stems: frozenset[str] | None = None,
 ) -> list[str]:
     """Return stems from persona .md files under chat_dir (persona-layer independent)."""
-    _exclude = JA.exclude_stems if exclude_stems is None else exclude_stems
+    _exclude = get_language_pack().exclude_stems if exclude_stems is None else exclude_stems
     if not chat_dir.is_dir():
         return []
     stems: list[str] = []
