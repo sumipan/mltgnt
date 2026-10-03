@@ -9,7 +9,7 @@ import pytest
 
 _TESTS_ROOT = Path(__file__).parent
 _SRC_ROOT = _TESTS_ROOT.parent / "src" / "mltgnt"
-_SOURCE_EXCEPTIONS = {_SRC_ROOT / "config" / "language.py"}
+_SOURCE_EXCEPTIONS: set[Path] = set()
 _CJK_RANGES = (
     (0x3040, 0x30FF),
     (0x3400, 0x9FFF),
@@ -93,9 +93,8 @@ def test_no_cjk_in_source_modules() -> None:
     assert not violations, "CJK source data found:\n" + "\n".join(violations)
 
 
-def test_source_cjk_exception_is_only_language_pack() -> None:
-    assert {_SRC_ROOT / "config" / "language.py"} == _SOURCE_EXCEPTIONS
-    assert set(_SRC_ROOT.rglob("*.py")) >= _SOURCE_EXCEPTIONS
+def test_source_cjk_exceptions_are_empty() -> None:
+    assert set() == _SOURCE_EXCEPTIONS
 
 
 def test_persona_section_keys_are_canonical_english() -> None:
