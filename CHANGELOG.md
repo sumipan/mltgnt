@@ -12,6 +12,14 @@
 
 - `SlackClientProtocol` (`post_message`): use `MediaClient`. Passing such a client to `adapt_client` (and so to `PersonaScheduler`) emits one `DeprecationWarning` and wraps it (`post` -> `post_message(text, channel=space, thread_ts=thread)`; returns the ts from `post_message_ts` when available, otherwise `""`, and `None` on failure). `SlackClientProtocol.post_message_ts` is added with a default. Removal is planned for the next minor (Y) bump.
 
+### Removed
+
+- **BREAKING: `mltgnt.config.language.JA` is removed** (#4487). No compatibility alias is kept, so `from mltgnt.config.language import JA` raises `ImportError`. This is intentional: callers that relied on the old default fail fast instead of silently switching to English vocabulary.
+- **English pack and current-pack API**: new `EN` (the only pack shipped with mltgnt), `get_language_pack()` and `set_language_pack(pack)` in `mltgnt.config.language`, also re-exported from `mltgnt.config`. `set_language_pack` raises `TypeError` when `pack` is not a `LanguagePack`.
+- **BREAKING: defaults switch from the old built-in locale to the current pack (`EN` unless replaced)**: functions that take `pack=None`; `MediaConfig.language` (defaults to the current pack at construction time); `thread_queue` cancel words and composite message text (read at call time, not fixed at import time); the excluded persona stems in `persona.registry` and `memory.dream.synthesizer` (now `sample`).
+- The CJK exception for `src/mltgnt/config/language.py` is gone: all of `src/` is now covered by the same zero-CJK check as `tests/`.
+- **Host migration (keep this order)**: (1) define your own `LanguagePack` and replace every `JA` import with it; (2) at daemon startup, call `set_language_pack(your_pack)` once, before any `MediaConfig` is built; (3) only then raise the mltgnt version pin. Do not do (3) before (1) and (2).
+
 ### Fixed
 
 - `tests/scheduler/test_chain_every_run.py::test_dependent_fires_again_on_next_upstream_run` raced the runner thread: it issued the second `tick` as soon as the dependent action had appended its output, while the upstream / dependent job ids were still in `_running` (the `finally` that discards them runs after the action), so `_spawn_job` skipped the second chain about one run in three. The test now waits until no job is running before the second tick. No runtime change.
