@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mltgnt.config.language import JA
+from mltgnt.config.language import EN
 from mltgnt.interfaces.media import Status
 from mltgnt.media._core.config import MediaConfig
 from mltgnt.media._core.progress import (
@@ -146,6 +146,6 @@ def test_finalize_uses_status_labels() -> None:
     assert finalize_progress(client, "m", "0") is True
     finalize_progress(client, "m", "CANCELLED")
     finalize_progress(client, "m", "1")
-    labels = JA.status_labels
+    labels = EN.status_labels
     assert [t for _, t in client.updates] == [labels["done"], labels["cancelled"], labels["failed"]]
     assert status_for_done_marker("x") is Status.FAILED

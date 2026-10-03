@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from mltgnt.config.language import JA
+from mltgnt.config.language import EN
 from mltgnt.interfaces.media import Status
 from mltgnt.media._core.enqueue_guard import enqueue_or_report
 
@@ -39,7 +39,7 @@ def test_success_marks_working() -> None:
 def test_failure_replies_enqueue_failed_text_and_reports() -> None:
     client = FakeClient(post_result=None)
     failures: list[BaseException] = []
-    pack = replace(JA, enqueue_failed_text="could not queue")
+    pack = replace(EN, enqueue_failed_text="could not queue")
 
     def boom() -> None:
         raise RuntimeError("ref lock")
@@ -63,4 +63,4 @@ def test_failing_on_failure_does_not_raise() -> None:
         raise ValueError("hook")
 
     assert enqueue_or_report(boom, client=client, space="C", thread=None, message_id="m", on_failure=bad_hook) is False
-    assert client.posts == [(JA.enqueue_failed_text, "C", None)]
+    assert client.posts == [(EN.enqueue_failed_text, "C", None)]
