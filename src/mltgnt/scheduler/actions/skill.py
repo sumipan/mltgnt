@@ -476,7 +476,7 @@ def _run_pipeline_action(
     skill_name: str,
     permission: str | None,
 ) -> tuple[bool, str]:
-    """enable_pipeline: match_pipeline → compose → typecheck → enqueue_dag。"""
+    """enable_pipeline: match_pipeline -> compose -> typecheck -> enqueue_dag."""
     import asyncio
 
     from mltgnt.bridges.ghdag_bridge import compose_pipeline, enqueue_dag, typecheck_dag
