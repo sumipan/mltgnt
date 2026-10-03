@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mltgnt.config.language import JA, get_language_pack
+from mltgnt.config.language import EN
 from mltgnt.interfaces.turn import Attachment
 from mltgnt.media._core.client import MediaClient, Status, adapt_client
 from mltgnt.media._core.config import MediaConfig
@@ -46,7 +46,7 @@ def test_media_config_requires_paths(tmp_path: Path) -> None:
     with pytest.raises(TypeError):
         MediaConfig()  # type: ignore[call-arg]
     cfg = MediaConfig(state_dir=tmp_path / "s", pending_dir=tmp_path / "p", events_dir=tmp_path / "e")
-    assert cfg.language is get_language_pack()
+    assert cfg.language is EN
     assert cfg.progress_min_interval_sec > 0
     assert cfg.approval_ttl_sec > 0
     with pytest.raises(dataclasses.FrozenInstanceError):
@@ -79,7 +79,7 @@ def test_media_packages_export_nothing() -> None:
 
 
 def test_language_pack_media_vocabulary() -> None:
-    assert JA.approval_words
-    assert set(JA.status_labels) == {s.value for s in Status}
-    assert JA.enqueue_failed_text
-    assert JA.progress_line_pattern.pattern
+    assert EN.approval_words
+    assert set(EN.status_labels) == {s.value for s in Status}
+    assert EN.enqueue_failed_text
+    assert EN.progress_line_pattern.pattern
