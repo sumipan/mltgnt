@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import LanguagePack, get_language_pack
 
 __all__ = ["MediaConfig"]
 
@@ -17,6 +17,6 @@ class MediaConfig:
     state_dir: Path
     pending_dir: Path
     events_dir: Path
-    language: LanguagePack = field(default=JA)
+    language: LanguagePack = field(default_factory=get_language_pack)
     progress_min_interval_sec: float = 5.0
     approval_ttl_sec: float = 600.0
