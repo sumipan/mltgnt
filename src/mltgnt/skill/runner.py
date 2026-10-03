@@ -76,7 +76,7 @@ def run(
     Substitute skill-body variables and compose with persona instructions into SkillRunResult.
 
     Returns:
-        SkillRunResult（chat_input / expected_markers / skill_io）。
+        SkillRunResult (chat_input / expected_markers / skill_io).
         chat_input.model: prefer skill.meta.model; else inherit chat_input.model
         chat_input.messages: system prompt (persona + skill body) + original user message
     """
