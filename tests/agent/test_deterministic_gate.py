@@ -51,6 +51,16 @@ def test_extract_artifact_references_empty() -> None:
     assert extract_artifact_references("") == ()
 
 
+def test_extract_artifact_references_url_before_fullwidth_close_paren() -> None:
+    text = "see https://example.com/a" + chr(0xFF09) + " now"
+    assert extract_artifact_references(text) == ("https://example.com/a",)
+
+
+def test_extract_artifact_references_url_with_trailing_ideographic_period() -> None:
+    text = "see https://example.com/a" + chr(0x3002)
+    assert extract_artifact_references(text) == ("https://example.com/a",)
+
+
 def test_has_work_request_empty(ascii_pack) -> None:
     assert has_work_request("", pack=ascii_pack) is False
 
