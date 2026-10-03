@@ -351,7 +351,7 @@ With `engine="claude"` and no model, the LLM matcher uses `claude-haiku-4-5-2025
 | `mltgnt.scheduler` | `PersonaScheduler`, `ScheduleJob`, `SchedulePaths`, `load_schedule_jobs(yaml_path, *, default_timezone="Asia/Tokyo")`, `atomic_write_text` |
 | `mltgnt.daemon` | `DaemonComponent`, `DaemonRunner(*, pid_file, components, logger=None)`, `PidLock(pid_file)`, `SkillWatcherComponent(registry, interval=5.0)` |
 | `mltgnt.config` | `PersonaConfig`, `MemoryConfig`, `SchedulerConfig`, `ConversationConfig`, `DEFAULT_WEIGHT_MAP` |
-| `mltgnt.config.language` | `LanguagePack`, `JA` |
+| `mltgnt.config.language` | `LanguagePack`, `EN`, `get_language_pack`, `set_language_pack` |
 
 ### `mltgnt.interfaces`
 
@@ -500,7 +500,7 @@ Every module under `src/mltgnt/` (package `__init__.py` files re-export the publ
 | `cli/main.py` | argparse entry point and exit-code mapping |
 | `cli/memory.py` | `mltgnt memory dream show` / `forget` |
 | `cli/run.py` | `mltgnt run` component factory loading |
-| `config/language.py` | `LanguagePack`, `JA` |
+| `config/language.py` | `LanguagePack`, `EN`, `get_language_pack`, `set_language_pack` |
 | `conversation/fake_media.py` | Builds `TurnInput` without a real medium |
 | `conversation/session_compact.py` | Automatic compaction of conversation logs |
 | `conversation/session_store.py` | Session ledger and turn log |
@@ -642,7 +642,7 @@ All are frozen dataclasses.
 | `state_dir` | required | State directory of the medium |
 | `pending_dir` | required | Pending records of delegated tasks |
 | `events_dir` | required | Job events JSONL read by the progress watcher |
-| `language` | `JA` | `LanguagePack` used for words, labels, and messages |
+| `language` | current pack (`get_language_pack()`, `EN` by default) at construction time | `LanguagePack` used for words, labels, and messages |
 | `progress_min_interval_sec` | `5.0` | Minimum interval between progress updates |
 | `approval_ttl_sec` | `600.0` | Plan approval deadline |
 
@@ -653,7 +653,7 @@ All are frozen dataclasses.
 
 ### LanguagePack
 
-`mltgnt.config.language.LanguagePack` is a frozen dataclass of locale vocabulary. `JA` is the built-in instance and the default wherever a function takes `pack=None` or a config takes `language`.
+`mltgnt.config.language.LanguagePack` is a frozen dataclass of locale vocabulary. `EN` is the only pack shipped with mltgnt. Wherever a function takes `pack=None` or a config omits `language`, the current pack returned by `get_language_pack()` is used (`EN` unless replaced). Hosts that need another locale define their own `LanguagePack` and inject it once at startup with `set_language_pack(pack)` (before building any `MediaConfig`); passing anything other than a `LanguagePack` raises `TypeError`. `EN`, `get_language_pack` and `set_language_pack` are also re-exported from `mltgnt.config`.
 
 | Group | Fields | Used by |
 |-------|--------|---------|
