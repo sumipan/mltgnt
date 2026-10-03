@@ -19,7 +19,7 @@ from pathlib import Path
 import yaml
 
 from mltgnt.config import PERSONA_SECTION_ALIASES
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import LanguagePack, get_language_pack
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ def compress_heavy_to_light(
         engine: LLM engine name (default: "claude")
         model: Model name. Use engine default when None
         timeout: LLM call timeout seconds
-        pack: Language pack; defaults to JA when None
+        pack: Language pack; defaults to the current pack (get_language_pack(), EN by default) when None
 
     Returns:
         v2.1 text within 1500 chars (lead + required subsections)
@@ -94,7 +94,7 @@ def compress_heavy_to_light(
     if not heavy_text.strip():
         raise RuntimeError("heavy_text is empty. Provide text to compress.")
 
-    prompt = (pack or JA).compress_prompt_template.format(heavy_text=heavy_text)
+    prompt = (pack or get_language_pack()).compress_prompt_template.format(heavy_text=heavy_text)
 
     kwargs: dict = {"engine": engine, "timeout": timeout}
     if model is not None:
@@ -212,12 +212,12 @@ def _validate_v21_light_block(text: str, pack: LanguagePack | None = None) -> No
 
     Args:
         text: Text to validate
-        pack: Language pack; defaults to JA when None
+        pack: Language pack; defaults to the current pack (get_language_pack(), EN by default) when None
 
     Raises:
         ValueError: When format requirements are not met
     """
-    _pack = pack or JA
+    _pack = pack or get_language_pack()
     lines = text.strip().splitlines()
 
     # Lead check: non-empty line required before first ** heading
