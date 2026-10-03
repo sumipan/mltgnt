@@ -177,17 +177,102 @@ def test_validate_persona_no_available_skills(tachikoma_persona_file: Path, agen
 
 
 def test_list_personas(agents_dir: Path) -> None:
-    """list_personas returns valid persona names; EXCLUDE_STEMS drops the sample stem."""
+    """list_personas returns valid persona names; the default pack (EN) drops the sample stem."""
+    from mltgnt.config.language import EN
+
+    assert EN.exclude_stems == frozenset({"sample"})
     (agents_dir / "Alpha.md").write_text("---\npersona:\n  name: Alpha\n---\n", encoding="utf-8")
     (agents_dir / "Beta.md").write_text("---\npersona:\n  name: Beta\n---\n", encoding="utf-8")
-    from mltgnt.config.language import JA
-
-    excluded_stem = next(iter(JA.exclude_stems))
-    (agents_dir / f"{excluded_stem}.md").write_text("---\n---\n", encoding="utf-8")
+    (agents_dir / "sample.md").write_text("---\n---\n", encoding="utf-8")
     result = list_personas(agents_dir)
-    assert "Alpha" in result
-    assert "Beta" in result
-    assert excluded_stem not in result
+    assert result == ["Alpha", "Beta"]
+
+
+@pytest.fixture
+def custom_pack():
+    """Install a non-default pack for the test and restore the previous one afterwards."""
+    from dataclasses import replace
+
+    from mltgnt.config.language import EN, get_language_pack, set_language_pack
+
+    previous = get_language_pack()
+    pack = replace(
+        EN,
+        exclude_stems=frozenset({"template"}),
+        compress_prompt_template="CUSTOM {heavy_text}",
+    )
+    set_language_pack(pack)
+    try:
+        yield pack
+    finally:
+        set_language_pack(previous)
+
+
+def test_list_personas_uses_pack_set_at_call_time(agents_dir: Path, custom_pack) -> None:
+    """exclude_stems=None resolves the pack on each call, so set_language_pack takes effect."""
+    for stem in ("Alpha", "sample", "template"):
+        (agents_dir / f"{stem}.md").write_text("---\n---\n", encoding="utf-8")
+    assert list_personas(agents_dir) == ["Alpha", "sample"]
+
+
+def test_list_personas_explicit_exclude_stems(agents_dir: Path, custom_pack) -> None:
+    """An explicit exclude_stems overrides the current pack."""
+    from mltgnt.persona.registry import list_personas as registry_list_personas
+
+    for stem in ("Alpha", "sample", "template"):
+        (agents_dir / f"{stem}.md").write_text("---\n---\n", encoding="utf-8")
+    only_alpha = frozenset({"Alpha"})
+    assert registry_list_personas(agents_dir, exclude_stems=only_alpha) == ["sample", "template"]
+    assert registry_list_personas(agents_dir, exclude_stems=frozenset()) == [
+        "Alpha",
+        "sample",
+        "template",
+    ]
+
+
+def test_resolve_with_alias_skips_current_pack_exclude_stems(agents_dir: Path, custom_pack) -> None:
+    """resolve_with_alias skips the current pack's exclude_stems during alias scan."""
+    from mltgnt.persona.registry import resolve_with_alias
+
+    alias_fm = "---\npersona:\n  name: x\n  aliases:\n    - shared\n---\n"
+    (agents_dir / "template.md").write_text(alias_fm, encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        resolve_with_alias("shared", agents_dir)
+    found = resolve_with_alias("shared", agents_dir, exclude_stems=frozenset())
+    assert found.stem == "template"
+
+
+def test_compress_uses_pack_set_at_call_time(monkeypatch: pytest.MonkeyPatch, custom_pack) -> None:
+    """compress_heavy_to_light with pack=None builds its prompt from the current pack."""
+    from types import SimpleNamespace
+
+    from mltgnt.bridges import llm_adapter
+    from mltgnt.persona.compress import compress_heavy_to_light
+
+    captured: dict = {}
+
+    def fake_call(prompt: str, **kwargs) -> SimpleNamespace:
+        captured["prompt"] = prompt
+        return SimpleNamespace(success=True, body="LIGHT", stderr="")
+
+    monkeypatch.setattr(llm_adapter, "call_llm", fake_call)
+    assert compress_heavy_to_light("BODY") == "LIGHT"
+    assert captured["prompt"] == "CUSTOM BODY"
+
+
+def test_dedupe_persona_prefix_uses_pack_set_at_call_time(custom_pack) -> None:
+    """dedupe_persona_prefix with pack=None uses the current pack's dedupe_opener_re."""
+    import re
+    from dataclasses import replace
+
+    from mltgnt.config.language import set_language_pack
+    from mltgnt.persona.formatter import dedupe_persona_prefix
+
+    body = "HI first\nHI second"
+    set_language_pack(replace(custom_pack, dedupe_opener_re=re.compile(r"^HI", re.MULTILINE)))
+    assert dedupe_persona_prefix(body) == "HI second"
+    explicit = replace(custom_pack, dedupe_opener_re=re.compile(r"^NOPE", re.MULTILINE))
+    assert dedupe_persona_prefix(body, pack=explicit) == body
 
 
 # ---------------------------------------------------------------------------

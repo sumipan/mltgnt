@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mltgnt.config.language import JA
+from mltgnt.config.language import get_language_pack
 
 EXCLUDE_STEMS: frozenset[str] = frozenset()
 
@@ -42,12 +42,13 @@ def resolve_with_alias(
     2. Otherwise scan all persona aliases for a match
 
     Args:
-        exclude_stems: Stems to skip. When None falls back to JA.exclude_stems.
+        exclude_stems: Stems to skip. When None falls back to the current pack's
+            exclude_stems (get_language_pack(), EN by default).
 
     Raises:
         FileNotFoundError: When neither name nor alias matches
     """
-    _exclude = JA.exclude_stems if exclude_stems is None else exclude_stems
+    _exclude = get_language_pack().exclude_stems if exclude_stems is None else exclude_stems
     # Direct name lookup first
     direct = resolve(name, persona_dir)
     if direct.exists():
@@ -85,10 +86,11 @@ def list_personas(
     """Return valid persona name stems.
 
     - Only `<persona_dir>/*.md` (exclude files in subdirs)
-    - Exclude stems in exclude_stems (defaults to JA.exclude_stems when None)
+    - Exclude stems in exclude_stems (defaults to the current pack's
+      exclude_stems — get_language_pack(), EN by default — when None)
     - Return sorted by name
     """
-    _exclude = JA.exclude_stems if exclude_stems is None else exclude_stems
+    _exclude = get_language_pack().exclude_stems if exclude_stems is None else exclude_stems
     if not persona_dir.is_dir():
         return []
 

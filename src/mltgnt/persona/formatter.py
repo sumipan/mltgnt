@@ -4,12 +4,12 @@ Media- and task-path agnostic. No SDK / engine / artifact-path vocabulary.
 """
 from __future__ import annotations
 
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import LanguagePack, get_language_pack
 
 
 def extract_persona_block_after_meta_headers(s: str, pack: LanguagePack | None = None) -> str:
     """Keep only the body after a 'response as … (stdout-equivalent)' meta heading."""
-    _pack = pack or JA
+    _pack = pack or get_language_pack()
     text = s.strip()
     if not text:
         return text
@@ -49,7 +49,7 @@ def dedupe_persona_prefix(body: str, pack: LanguagePack | None = None) -> str:
     body = body.strip()
     if not body:
         return body
-    opener = (pack or JA).dedupe_opener_re
+    opener = (pack or get_language_pack()).dedupe_opener_re
     matches = list(opener.finditer(body))
     if len(matches) >= 2:
         return body[matches[-1].start() :].strip()
@@ -58,7 +58,7 @@ def dedupe_persona_prefix(body: str, pack: LanguagePack | None = None) -> str:
 
 def format_persona_body(text: str, pack: LanguagePack | None = None) -> str:
     """Persona formatting: meta-heading extract → prefix dedupe → tone-meta cut."""
-    _pack = pack or JA
+    _pack = pack or get_language_pack()
     s = text.strip()
     if not s:
         return ""
