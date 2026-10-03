@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from mltgnt.config import MemoryConfig
-from mltgnt.config.language import JA, LanguagePack
+from mltgnt.config.language import EN, LanguagePack
 from mltgnt.memory import append_memory_entry, memory_file_path, parse_jsonl, persona_memory_lock
 
 
@@ -52,7 +52,7 @@ def test_lock_path_unchanged(tmp_path: Path) -> None:
 
 
 def test_language_pack_trigger_words_default_empty() -> None:
-    assert JA.remember_trigger_words == frozenset()
-    assert JA.forget_trigger_words == frozenset()
+    assert EN.remember_trigger_words == frozenset()
+    assert EN.forget_trigger_words == frozenset()
     fields = LanguagePack.__dataclass_fields__
     assert "remember_trigger_words" in fields and "forget_trigger_words" in fields
