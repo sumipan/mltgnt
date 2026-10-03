@@ -6,7 +6,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from mltgnt.config.language import JA
+from mltgnt.config.language import EN
 from mltgnt.interfaces.media import Status
 from mltgnt.media._core.cancel import CancelOutcome, find_pending_uids, handle_cancel, is_cancel_request
 
@@ -31,7 +31,7 @@ def test_is_cancel_request_uses_language_cancel_words() -> None:
     assert is_cancel_request("  STOP now")
     assert not is_cancel_request("please continue")
     assert not is_cancel_request("")
-    pack = replace(JA, cancel_words=frozenset({"abort"}))
+    pack = replace(EN, cancel_words=frozenset({"abort"}))
     assert is_cancel_request("Abort!", pack)
     assert not is_cancel_request("cancel", pack)
 

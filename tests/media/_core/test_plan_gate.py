@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from mltgnt.config.language import JA
+from mltgnt.config.language import EN
 from mltgnt.media._core.config import MediaConfig
 from mltgnt.media._core.pending import PendingStore
 from mltgnt.media._core.plan_gate import PENDING_KEY, PlanGate, PlanState, expire_pending, is_approval
@@ -47,7 +47,7 @@ def test_is_approval_word_boundaries_and_cancel() -> None:
     assert is_approval("Approve, thanks")
     assert not is_approval("look at this")
     assert not is_approval("ok but cancel")
-    pack = replace(JA, approval_words=frozenset({"go ahead"}))
+    pack = replace(EN, approval_words=frozenset({"go ahead"}))
     assert is_approval("Go  ahead.", pack)
     assert not is_approval("ok", pack)
 
