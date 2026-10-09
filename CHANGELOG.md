@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.125.2
+
 ### Added
 
 - **`mltgnt.agent.work_loop`** (#5002): `run_work_loop` wraps `AgentRunner` with planning, `RepeatGuard`, optional `run_skill` via `SkillRunner` / `GhdagSkillRunner` (`enqueue_and_wait` with `parent_correlation_id`), and `events_sink` callbacks (`work_loop_step` / `work_loop_plan_failed`). Exports include `WorkLoopConfig`, `WorkLoopOutcome`, `WorkLoopDeadline`, `FINISH_TOOL`, `TrackingCaller`, `is_plan_prompt`, `make_skill_tool`, and `run_skill_contract`.
