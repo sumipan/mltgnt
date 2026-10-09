@@ -265,6 +265,32 @@ def _task_timeout_submit_kwargs(task_timeout_sec: float | None) -> dict:
     return {"metadata": {"timeout_sec": task_timeout_sec}}
 
 
+def _request_cancel(exec_done_dir: Path, step_uuid: str) -> str | None:
+    """Ask ghdag to cancel a task by writing ``<jobs>/cancel/<uuid>``.
+
+    The DAG engine picks the marker up on each loop (also after a queued task
+    starts). Return None on success, or the error text on OSError.
+    """
+    try:
+        cancel_dir = Path(exec_done_dir).parent / "cancel"
+        cancel_dir.mkdir(parents=True, exist_ok=True)
+        (cancel_dir / step_uuid).write_text("", encoding="utf-8")
+    except OSError as exc:
+        return str(exc)
+    return None
+
+
+def _timeout_message(timeout: float, exec_done_dir: Path, step_uuid: str) -> str:
+    """Request cancel for a timed-out task and build the timeout message."""
+    msg = f"timeout ({timeout}s)"
+    if not step_uuid:
+        return msg
+    err = _request_cancel(exec_done_dir, step_uuid)
+    if err is not None:
+        msg += f"; cancel failed: {err}"
+    return msg
+
+
 def enqueue_dag(
     steps: list[DagStep],
     timeout: float,
@@ -380,14 +406,18 @@ def enqueue_dag(
 
         remaining = timeout - (time.monotonic() - start)
         if remaining <= 0:
-            results_by_id[step.id] = (False, f"timeout ({timeout}s)")
+            results_by_id[step.id] = (
+                False, _timeout_message(timeout, exec_done_dir, step_uuid)
+            )
             failed_steps.add(step.id)
             continue
 
         try:
             status, first_line = wait_for_result(exec_done_dir, step_uuid, timeout=remaining)
         except TimeoutError:
-            results_by_id[step.id] = (False, f"timeout ({timeout}s)")
+            results_by_id[step.id] = (
+                False, _timeout_message(timeout, exec_done_dir, step_uuid)
+            )
             failed_steps.add(step.id)
             continue
 
@@ -447,7 +477,7 @@ def enqueue_and_wait(
 
     Returns:
         (True, result_content) — success
-        (False, "timeout ({N}s)") — timeout
+        (False, "timeout ({N}s)") — timeout (cancel requested; "; cancel failed: ..." appended on error)
         (False, "{status}: {first_line}") — failure
     """
     from ghdag.pipeline import (
@@ -493,7 +523,7 @@ def enqueue_and_wait(
     try:
         status, first_line = wait_for_result(exec_done_dir, step_uuid, timeout=timeout)
     except TimeoutError:
-        return False, f"timeout ({timeout}s)"
+        return False, _timeout_message(timeout, exec_done_dir, step_uuid)
 
     if status == "success":
         result_filename = _extract_result_filename(skill_line)

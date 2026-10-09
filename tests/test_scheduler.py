@@ -1319,3 +1319,161 @@ def test_skipped_path_format(tmp_path: Path) -> None:
     p = _SchedulePaths(tmp_path / "state")
     result = p.skipped_path("j1", date(2026, 1, 1))
     assert result == tmp_path / "state" / "skipped" / "j1_2026-01-01.skipped"
+
+
+# ---------------------------------------------------------------------------
+# Issue #5034: action exceptions, daily prune, chain collision, prompt stop
+# ---------------------------------------------------------------------------
+
+
+def _wait_until(pred, timeout: float = 2.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pred():
+            return True
+        time.sleep(0.02)
+    return pred()
+
+
+def _raise_boom(job: ScheduleJob) -> tuple[bool, str]:
+    raise RuntimeError("boom")
+
+
+def test_action_exception_marks_failed_and_notifies(tmp_path: Path) -> None:
+    job = ScheduleJob.from_dict({
+        "id": "boom_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "boom",
+        "notify": "slack_secretary",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[job])
+    sch.register_action("boom", _raise_boom)
+    sch.reload_jobs()
+    posted: list[str] = []
+    sch._post = lambda j, text: posted.append(text)  # type: ignore[method-assign]
+    finished: list[bool] = []
+    d = date(2026, 5, 1)
+
+    sch._spawn_job(job, d, on_finish=lambda: finished.append(True))
+
+    assert _wait_until(lambda: finished == [True])
+    failed = sch.paths.failed_path("boom_job", d)
+    assert failed.is_file()
+    assert "RuntimeError: boom" in failed.read_text(encoding="utf-8")
+    assert len(posted) == 1
+    assert "RuntimeError" in posted[0] and "boom" in posted[0]
+    assert "boom_job" not in sch._running
+
+
+def test_interval_action_exception_notifies_without_failed_file(tmp_path: Path) -> None:
+    job = ScheduleJob.from_dict({
+        "id": "boom_interval",
+        "mode": "interval",
+        "interval_minutes": 10,
+        "action": "boom",
+        "notify": "slack_secretary",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[job])
+    sch.register_action("boom", _raise_boom)
+    sch.reload_jobs()
+    posted: list[str] = []
+    sch._post = lambda j, text: posted.append(text)  # type: ignore[method-assign]
+    finished: list[bool] = []
+    d = date(2026, 5, 1)
+
+    sch._spawn_job(job, d, on_finish=lambda: finished.append(True))
+
+    assert _wait_until(lambda: finished == [True])
+    assert not sch.paths.failed_path("boom_interval", d).exists()
+    assert len(posted) == 1
+    assert "boom" in posted[0]
+
+
+def test_tick_prunes_once_per_day(tmp_path: Path) -> None:
+    sch = PersonaScheduler(
+        slack=None, state_dir=tmp_path / "state", jobs=[], state_keep_days=7
+    )
+    sch.reload_jobs()
+    calls: list[tuple[date, int]] = []
+    sch.paths.prune = lambda today, keep_days=30: calls.append((today, keep_days)) or 0  # type: ignore[method-assign]
+
+    sch.tick(dt_jst(2026, 4, 17, 10, 0))
+    sch.tick(dt_jst(2026, 4, 17, 10, 1))
+    assert calls == [(date(2026, 4, 17), 7)]
+
+    sch.tick(dt_jst(2026, 4, 18, 0, 0))
+    assert calls == [(date(2026, 4, 17), 7), (date(2026, 4, 18), 7)]
+
+
+def test_tick_survives_prune_exception(tmp_path: Path) -> None:
+    sch = make_scheduler(tmp_path / "state", [])
+
+    def _bad_prune(today: date, keep_days: int = 30) -> int:
+        raise OSError("nope")
+
+    sch.paths.prune = _bad_prune  # type: ignore[method-assign]
+    sch.tick(dt_jst(2026, 4, 17, 10, 0))  # must not raise
+
+
+def test_tick_prune_removes_old_state(tmp_path: Path) -> None:
+    sch = make_scheduler(tmp_path / "state", [])
+    old = sch.paths.done_path("old_job", date(2026, 1, 1))
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_text("ok", encoding="utf-8")
+    sch.tick(dt_jst(2026, 4, 17, 10, 0))
+    assert not old.exists()
+
+
+def test_chain_every_run_collision_logs_and_writes_no_state(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    upstream = ScheduleJob.from_dict({
+        "id": "probe_up",
+        "mode": "interval",
+        "interval_minutes": 10,
+        "action": "probe",
+        "notify": "silent",
+    })
+    dependent = ScheduleJob.from_dict({
+        "id": "act_down",
+        "mode": "chained",
+        "chain_every_run": True,
+        "depends_on": ["probe_up"],
+        "action": "capture",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(
+        slack=None, state_dir=tmp_path / "state", jobs=[upstream, dependent]
+    )
+    sch.register_action("probe", lambda j: (True, "out"))
+    called: list[str] = []
+    sch.register_action("capture", lambda j: (called.append("x") or (True, "")))
+    sch.reload_jobs()
+    sch._running.add("act_down")  # downstream still running from a previous run
+    finished: list[bool] = []
+    d = date(2026, 4, 17)
+
+    with caplog.at_level("WARNING", logger="mltgnt.scheduler.runner"):
+        sch._spawn_job(upstream, d, on_finish=lambda: finished.append(True))
+        assert _wait_until(lambda: finished == [True])
+
+    assert called == []
+    assert any(
+        "act_down" in r.getMessage() and r.levelname == "WARNING" for r in caplog.records
+    )
+    assert not sch.paths.skipped_path("act_down", d).exists()
+    assert not sch.paths.failed_path("act_down", d).exists()
+    assert not sch.paths.done_path("act_down", d).exists()
+
+
+def test_stop_returns_promptly(tmp_path: Path) -> None:
+    sch = make_scheduler(tmp_path / "state", [])
+    sch.start_background()
+    thread = sch._thread
+    assert thread is not None
+    time.sleep(0.1)
+    started = time.monotonic()
+    sch.stop()
+    assert time.monotonic() - started < 1.0
+    assert not thread.is_alive()

@@ -4,7 +4,6 @@ import json
 import logging
 import random
 import threading
-import time
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -59,6 +58,7 @@ class PersonaScheduler(BaseRunner):
         append_memory_fn: Optional[Callable[..., bool]] = None,
         actions: Optional[dict[str, "ActionFn"]] = None,
         memory_config: Optional["MemoryConfig"] = None,
+        state_keep_days: int = 30,
     ) -> None:
         # When config is provided, take settings from it
         if config is not None:
@@ -81,6 +81,7 @@ class PersonaScheduler(BaseRunner):
         self.repo_root = repo_root or Path(".")
         self.persona_dir = persona_dir or (self.repo_root / "agents")
         self.paths = SchedulePaths(self._state_dir)
+        self._state_keep_days = state_keep_days
         self._jobs_override = jobs
         self._reload_counter = 0
         self._jobs: list[ScheduleJob] = []
@@ -452,6 +453,17 @@ class PersonaScheduler(BaseRunner):
                         )
                         self._post(job, fail_text)
                         self._record_to_memory(job, fail_text, False, fired_at)
+            except Exception as exc:
+                _log.exception("exception: %s", job.id)
+                reason = f"{type(exc).__name__}: {exc}"
+                if marks_state:
+                    self._mark_failed(job, d, reason=reason[:400])
+                fail_text = (
+                    f"[secretary-schedule] Job raised `{job.id}`\n"
+                    f"```\n{reason[-400:]}\n```"
+                )
+                self._post(job, fail_text)
+                self._record_to_memory(job, fail_text, False, fired_at)
             finally:
                 with self._run_lock:
                     self._running.discard(job.id)
@@ -460,6 +472,13 @@ class PersonaScheduler(BaseRunner):
 
         with self._run_lock:
             if job.id in self._running:
+                if upstream_output is not None:
+                    _log.warning(
+                        "chain_every_run dropped: %s is still running; "
+                        "upstream output discarded (%d chars)",
+                        job.id,
+                        len(upstream_output),
+                    )
                 return
             self._running.add(job.id)
         threading.Thread(target=runner, name=f"sec-sched-{job.id}", daemon=True).start()
@@ -483,6 +502,13 @@ class PersonaScheduler(BaseRunner):
             self._calendar_date = tick_date
             self._scheduled_fired_slot.clear()
             self._fuzzy_last_dispatch_slot.clear()
+            try:
+                removed = self.paths.prune(tick_date, self._state_keep_days)
+            except Exception as exc:
+                _log.warning("state prune failed: %s", exc)
+            else:
+                if removed:
+                    _log.info("state prune removed %d file(s)", removed)
 
         for job in jobs:
             if job.chain_every_run:
@@ -624,7 +650,7 @@ class PersonaScheduler(BaseRunner):
                 self.tick()
             except Exception:
                 _log.exception("tick exception")
-            time.sleep(1.0)
+            self._stop.wait(1.0)
 
     def start_background(self) -> None:
         if self._thread and self._thread.is_alive():
