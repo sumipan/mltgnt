@@ -55,6 +55,7 @@ def test_make_skill_tool_allowed_and_errors() -> None:
     assert len(calls) == 1
 
     assert wrapped("run_skill", {}).startswith("[ERROR]")
+    assert wrapped("run_skill", {"skill": 3}).startswith("[ERROR]")
     assert wrapped("other", {"k": 1}) == "inner"
     assert inner_calls == [("other", {"k": 1})]
 
@@ -166,6 +167,24 @@ def test_ghdag_skill_runner_enqueue(tmp_path: Path) -> None:
     assert captured["persona_name"] == "persona-a"
     assert captured["permission"] == "allow"
     assert captured["run_result"] is run_result
+
+    captured.clear()
+    with patch(
+        "mltgnt.agent.work_loop.skill_runner_mod.run",
+        return_value=run_result,
+    ):
+        runner_no_perm = GhdagSkillRunner(
+            {"demo": meta},
+            persona,
+            engine="cursor",
+            model=None,
+            jobs_dir=tmp_path / "jobs",
+            exec_done_dir=tmp_path / "jobs" / "done",
+            timeout=30.0,
+            enqueue=fake_enqueue,
+        )
+        runner_no_perm("demo", "argv", parent_correlation_id=None)
+    assert captured["permission"] is None
 
     runner2 = GhdagSkillRunner(
         {},

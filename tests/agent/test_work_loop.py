@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from unittest.mock import patch
 
 from mltgnt.agent import build_plan_prompt
 from mltgnt.agent.work_loop import (
@@ -185,6 +186,38 @@ def test_max_iterations_and_llm_failed() -> None:
     )
     assert out2.status == "IMPL_FAILED"
     assert out2.reason == "llm_failed"
+
+
+def test_unparseable_response_is_not_reported_as_max_iterations() -> None:
+    def llm_call(prompt: str, *, tool_result: str | None = None) -> str | None:
+        if is_plan_prompt(prompt):
+            return _plan_json()
+        return "not a tool call"
+
+    with patch("mltgnt.agent._runner.time.sleep"):
+        out = run_work_loop(
+            "x",
+            llm_call=llm_call,
+            tools=lambda _t, _a: "ok",
+            cfg=WorkLoopConfig(max_iterations=2),
+        )
+    assert out.status == "BLOCKED"
+    assert out.reason == "unparseable_response"
+
+
+def test_repeat_guard_applies_to_run_skill() -> None:
+    inner_calls: list[str] = []
+
+    def inner(tool: str, args: dict[str, Any]) -> str:
+        inner_calls.append(tool)
+        return "ok"
+
+    guard = RepeatGuard(inner)
+    args = {"skill": "s", "arguments": ""}
+    assert guard("run_skill", args) == "ok"
+    assert guard("run_skill", args) == "ok"
+    assert guard("run_skill", args).startswith("[ERROR]")
+    assert inner_calls == ["run_skill", "run_skill"]
 
 
 def test_repeat_guard_blocks_third_identical_call() -> None:

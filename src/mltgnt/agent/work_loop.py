@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
+from mltgnt.agent._parse import _parse_json_response
 from mltgnt.agent._runner import (
     REFLEXION_EXHAUSTED_TOOL,
     AgentRunner,
@@ -122,6 +123,7 @@ class TrackingCaller:
         self._inner = inner
         self._plan = plan
         self.last_ok: bool = True
+        self.last_raw: str | None = None
         self.llm_calls: int = 0
 
     def __call__(
@@ -136,6 +138,7 @@ class TrackingCaller:
             prompt = f"{prompt}\n\n## Plan progress\n{suffix}"
         raw = self._inner(prompt, tool_result=tool_result)
         self.last_ok = raw is not None
+        self.last_raw = raw
         return raw
 
 
@@ -394,16 +397,17 @@ def run_work_loop(
                 plan=plan,
                 trace=None,
             )
-        if tracking.llm_calls >= cfg.max_iterations:
+        # llm_calls also counts retries, so classify by the last response instead.
+        if tracking.last_raw is None or _parse_json_response(tracking.last_raw) is None:
             return _blocked_outcome(
-                "max_iterations",
-                f"Work loop reached max_iterations ({cfg.max_iterations}).",
+                "unparseable_response",
+                "Could not parse the LLM response as a tool call.",
                 plan,
                 None,
             )
         return _blocked_outcome(
-            "unparseable_response",
-            "Could not parse the LLM response as a tool call.",
+            "max_iterations",
+            f"Work loop reached max_iterations ({cfg.max_iterations}).",
             plan,
             None,
         )

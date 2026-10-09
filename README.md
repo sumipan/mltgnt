@@ -255,6 +255,10 @@ These 23 names are the top-level surface. Everything else is imported from its s
 |-------|---------|
 | `AgentRunner`, `AgentResult`, `DefaultReflexionEvaluator` | Tool-calling loop, result, default evaluator |
 | `run_work_loop`, `WorkLoopConfig`, `WorkLoopOutcome`, `GhdagSkillRunner` | Multi-step work loop with plan + Reflexion; optional `run_skill` via DAG (`mltgnt.agent.work_loop`) |
+| `Plan`, `PlanItem`, `parse_plan`, `build_plan_prompt` | Plan tracking. `PlanItem(id, title, depends=[], status="pending", note="")`; `Plan.apply(updates)`, `Plan.progress() -> (done, total)`; `parse_plan` raises `ValueError` |
+| `DispatchDecision`, `make_dispatch_decision`, `MODE_REPLY`, `MODE_DELEGATE` | Reply-or-delegate decision (`"reply"` / `"delegate"`) |
+| `should_force_delegate`, `should_preempt_delegate`, `has_work_request`, `is_create_request`, `match_deferred_promise`, `extract_artifact_references` | Deterministic request gates driven by the current `LanguagePack` |
+| `PreflightContext`, `run_preflight`, `DirectAgentResult`, `SkillWorkerResult`, `MemoryWorkerResult` | Preflight before dispatch and worker result types |
 
 ```python
 from mltgnt.agent import WorkLoopConfig, run_work_loop
@@ -269,10 +273,6 @@ outcome = run_work_loop(
 )
 # outcome.status: IMPL_DONE | IMPL_FAILED | BLOCKED; outcome.reason is a stable code
 ```
-| `Plan`, `PlanItem`, `parse_plan`, `build_plan_prompt` | Plan tracking. `PlanItem(id, title, depends=[], status="pending", note="")`; `Plan.apply(updates)`, `Plan.progress() -> (done, total)`; `parse_plan` raises `ValueError` |
-| `DispatchDecision`, `make_dispatch_decision`, `MODE_REPLY`, `MODE_DELEGATE` | Reply-or-delegate decision (`"reply"` / `"delegate"`) |
-| `should_force_delegate`, `should_preempt_delegate`, `has_work_request`, `is_create_request`, `match_deferred_promise`, `extract_artifact_references` | Deterministic request gates driven by the current `LanguagePack` |
-| `PreflightContext`, `run_preflight`, `DirectAgentResult`, `SkillWorkerResult`, `MemoryWorkerResult` | Preflight before dispatch and worker result types |
 
 ### `mltgnt.bridges`
 
