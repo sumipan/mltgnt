@@ -9,30 +9,28 @@ from __future__ import annotations
 import json
 import re
 
+from mltgnt.config.language import LanguagePack, get_language_pack
+
 TRIAGE_PROFILE_MAX_CHARS = 6000
 
 
-def extract_triage_section(markdown: str) -> str | None:
+def extract_triage_section(markdown: str, *, pack: LanguagePack | None = None) -> str | None:
     """Return the triage section body from persona Markdown, or None.
 
     Prefer v2 ``## Light``; fall back to v1 ``## Triage``. Legacy localized
-    headings remain readable for existing persona files.
+    headings from ``LanguagePack.persona_section_aliases`` remain readable for
+    existing persona files.
     """
     m = re.search(r"^##\s+Light\s*$", markdown, re.MULTILINE)
     if not m:
         m = re.search(r"^##\s+Triage\s*$", markdown, re.MULTILINE)
     if not m:
-        m = re.search(
-            r"^##\s+\N{CJK UNIFIED IDEOGRAPH-8EFD}\N{CJK UNIFIED IDEOGRAPH-91CF}\s*$",
-            markdown,
-            re.MULTILINE,
-        )
-    if not m:
-        m = re.search(
-            r"^##\s+\N{KATAKANA LETTER TO}\N{KATAKANA LETTER RI}\N{KATAKANA LETTER A}\N{KATAKANA-HIRAGANA PROLONGED SOUND MARK}\N{KATAKANA LETTER ZI}\N{CJK UNIFIED IDEOGRAPH-7528}\s*$",
-            markdown,
-            re.MULTILINE,
-        )
+        aliases = (pack or get_language_pack()).persona_section_aliases
+        legacy = [k for canonical in ("Light", "Triage") for k, v in aliases.items() if v == canonical]
+        for heading in legacy:
+            m = re.search(rf"^##\s+{re.escape(heading)}\s*$", markdown, re.MULTILINE)
+            if m:
+                break
     if not m:
         return None
     after = markdown[m.end() :].lstrip("\n")

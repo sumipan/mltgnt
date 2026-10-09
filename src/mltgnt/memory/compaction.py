@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 if TYPE_CHECKING:
     from mltgnt.config import MemoryConfig
 
+from mltgnt.config.language import LanguagePack, get_language_pack
 from mltgnt.memory._commit import schedule_commit
 from mltgnt.memory._format import MemoryEntry, parse_jsonl, serialize_entry
 
@@ -445,43 +446,31 @@ Output rules (strict):
 {recent_text}"""
 
 
-def _sanitize_phase1_output(text: str) -> str:
+def _sanitize_phase1_output(text: str, *, pack: LanguagePack | None = None) -> str:
     """Strip meta-speech, headings, and meta lines from Phase 1 LLM raw output.
 
     Strip targets:
     - Lines starting with acknowledgment/analysis meta tokens
     - Heading lines starting with ``## ``
     - Lines containing size/stats/analysis bold markers
+
+    ``pack`` (default: ``get_language_pack()``) adds localized prefixes and markers.
     """
     if not text:
         return text
+    pack = pack or get_language_pack()
     kept: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped.startswith(
-            (
-                "\N{CJK UNIFIED IDEOGRAPH-627F}\N{CJK UNIFIED IDEOGRAPH-77E5}",
-                "\N{CJK UNIFIED IDEOGRAPH-5206}\N{CJK UNIFIED IDEOGRAPH-6790}",
-                "\N{CJK UNIFIED IDEOGRAPH-4E86}\N{CJK UNIFIED IDEOGRAPH-89E3}",
-                "\N{CJK UNIFIED IDEOGRAPH-4EE5}\N{CJK UNIFIED IDEOGRAPH-4E0B}",
-            )
-        ):
-            continue
         if stripped.startswith(("Understood", "Analyzing", "Analysis", "Below")):
+            continue
+        if pack.phase1_meta_prefixes and stripped.startswith(pack.phase1_meta_prefixes):
             continue
         if stripped.startswith("## "):
             continue
-        if any(
-            marker in stripped
-            for marker in (
-                "**\N{KATAKANA LETTER SA}\N{KATAKANA LETTER I}\N{KATAKANA LETTER ZU}**",
-                "**\N{CJK UNIFIED IDEOGRAPH-7D71}\N{CJK UNIFIED IDEOGRAPH-8A08}**",
-                "**\N{CJK UNIFIED IDEOGRAPH-5206}\N{CJK UNIFIED IDEOGRAPH-6790}**",
-                "**Size**",
-                "**Statistics**",
-                "**Analysis**",
-            )
-        ):
+        if any(marker in stripped for marker in ("**Size**", "**Statistics**", "**Analysis**")):
+            continue
+        if any(marker in stripped for marker in pack.phase1_meta_markers):
             continue
         kept.append(line)
     return "\n".join(kept)

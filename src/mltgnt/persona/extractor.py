@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
+from mltgnt.config.language import LanguagePack, get_language_pack
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,23 +43,20 @@ def extract(
     *,
     body: str = "",
     name: str = "",
+    pack: LanguagePack | None = None,
 ) -> str:
     """Return text for mode, following fallback rules."""
+    aliases = (pack or get_language_pack()).persona_section_aliases
     if mode == "light":
         if "Light" in sections:
             return sections["Light"]
         if "Background" in sections:
             return sections["Background"]
         # Keep direct callers that have not passed through the loader working.
-        if "\N{CJK UNIFIED IDEOGRAPH-8EFD}\N{CJK UNIFIED IDEOGRAPH-91CF}" in sections:
-            return sections["\N{CJK UNIFIED IDEOGRAPH-8EFD}\N{CJK UNIFIED IDEOGRAPH-91CF}"]
-        if (
-            "\N{CJK UNIFIED IDEOGRAPH-57FA}\N{CJK UNIFIED IDEOGRAPH-672C}\N{CJK UNIFIED IDEOGRAPH-60C5}\N{CJK UNIFIED IDEOGRAPH-5831}"
-            in sections
-        ):
-            return sections[
-                "\N{CJK UNIFIED IDEOGRAPH-57FA}\N{CJK UNIFIED IDEOGRAPH-672C}\N{CJK UNIFIED IDEOGRAPH-60C5}\N{CJK UNIFIED IDEOGRAPH-5831}"
-            ]
+        for canonical in ("Light", "Background"):
+            legacy = next((k for k in sections if aliases.get(k) == canonical), None)
+            if legacy is not None:
+                return sections[legacy]
         logger.warning(
             "Persona '%s': light/basic-info sections not found. Falling back to full body.",
             name,
@@ -65,6 +64,7 @@ def extract(
         return body[:500]
     if "Heavy" in sections:
         return sections["Heavy"]
-    if "\N{CJK UNIFIED IDEOGRAPH-91CD}\N{CJK UNIFIED IDEOGRAPH-91CF}" in sections:
-        return sections["\N{CJK UNIFIED IDEOGRAPH-91CD}\N{CJK UNIFIED IDEOGRAPH-91CF}"]
+    legacy = next((k for k in sections if aliases.get(k) == "Heavy"), None)
+    if legacy is not None:
+        return sections[legacy]
     return body

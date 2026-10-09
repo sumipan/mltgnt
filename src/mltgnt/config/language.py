@@ -54,6 +54,11 @@ class LanguagePack:
     # Memory-tool trigger words (mltgnt.memory.tools); empty by default, injected by callers
     remember_trigger_words: frozenset[str] = frozenset()
     forget_trigger_words: frozenset[str] = frozenset()
+    # Localized legacy persona headings -> canonical English names; empty by default
+    persona_section_aliases: dict[str, str] = field(hash=False, default_factory=dict)
+    # Compaction Phase 1 meta lines to drop, in addition to the English ones
+    phase1_meta_prefixes: tuple[str, ...] = ()
+    phase1_meta_markers: tuple[str, ...] = ()
 
 
 _EN_WORK_REQUEST_MARKERS: tuple[str, ...] = (
@@ -145,6 +150,9 @@ EN = LanguagePack(
     progress_line_pattern=re.compile(r"^\s*\[progress\]:?\s*(?P<text>.+)$", re.MULTILINE),
     remember_trigger_words=frozenset(),
     forget_trigger_words=frozenset(),
+    persona_section_aliases={},
+    phase1_meta_prefixes=(),
+    phase1_meta_markers=(),
 )
 
 _current: LanguagePack = EN

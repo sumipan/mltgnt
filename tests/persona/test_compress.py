@@ -1,6 +1,7 @@
 """Tests for mltgnt.persona.compress — LLM compression, hashing, regeneration, and drift detection."""
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import logging
 import re
@@ -11,8 +12,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mltgnt.config import DEFAULT_WEIGHT_MAP
-from mltgnt.config.language import LanguagePack
-from mltgnt.persona.compress import regenerate_light_block
+from mltgnt.config.language import EN, LanguagePack
+
+# ---------------------------------------------------------------------------
+# Legacy (localized) section headings, represented by ASCII dummies. The
+# localized values live in the host's LanguagePack, not in this repository.
+# ---------------------------------------------------------------------------
+
+_SECT_LIGHT = "Legacy light"
+_SECT_HEAVY = "Legacy heavy"
+_SECT_REF = "Reference"
+_LEGACY_ALIASES = {_SECT_LIGHT: "Light", _SECT_HEAVY: "Heavy"}
+_LEGACY_PACK = dataclasses.replace(EN, persona_section_aliases=_LEGACY_ALIASES)
 
 # ---------------------------------------------------------------------------
 # ASCII LanguagePack for validation tests
@@ -29,23 +40,18 @@ _ASCII_PACK = LanguagePack(
     dedupe_opener_re=re.compile(r"^plan[,]"),
     persona_cut_re=re.compile(r"\n\ntone-body"),
     exclude_stems=frozenset(),
+    persona_section_aliases=_LEGACY_ALIASES,
 )
 
-# ---------------------------------------------------------------------------
-# Product-localized section keys are obtained from product configuration and
-# function constants so this external test repository does not duplicate them.
-# ---------------------------------------------------------------------------
 
-_LOCALIZED_BLOCK_KEYS = tuple(
-    value
-    for value in regenerate_light_block.__code__.co_consts
-    if isinstance(value, str) and len(value) == 2 and not value.isascii()
-)
-_SECT_LIGHT = next(
-    key for key in _LOCALIZED_BLOCK_KEYS if DEFAULT_WEIGHT_MAP.get(key) == "light"
-)
-_SECT_HEAVY = next(key for key in _LOCALIZED_BLOCK_KEYS if key != _SECT_LIGHT)
-_SECT_REF = "Reference"
+@pytest.fixture(autouse=True)
+def _legacy_pack(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mltgnt.config.language._current", _LEGACY_PACK)
+
+
+def test_default_weight_map_maps_legacy_light_heading() -> None:
+    assert DEFAULT_WEIGHT_MAP.get(_SECT_LIGHT) == "light"
+
 
 # ---------------------------------------------------------------------------
 # helpers

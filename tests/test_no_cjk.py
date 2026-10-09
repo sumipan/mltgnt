@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import re
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,7 @@ _CJK_RANGES = (
 )
 _UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
 _BYTE_ESCAPE_RE = re.compile(r"(?:\\x[0-9a-fA-F]{2})+")
+_NAMED_ESCAPE_RE = re.compile(r"\\N\{([^}]+)\}")
 _FIXTURE_SUFFIXES = {".json", ".jsonl", ".md", ".txt", ".yaml", ".yml"}
 
 
@@ -33,6 +36,14 @@ def _decoded_byte_escape(match: re.Match[str]) -> str | None:
         return None
 
 
+def _is_cjk_named_escape(match: re.Match[str]) -> bool:
+    try:
+        character = unicodedata.lookup(match.group(1))
+    except KeyError:
+        return False
+    return _is_cjk(ord(character))
+
+
 def _violations(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     found: list[str] = []
@@ -45,6 +56,8 @@ def _violations(path: Path) -> list[str]:
             decoded = _decoded_byte_escape(match)
             if decoded is not None and any(_is_cjk(ord(character)) for character in decoded):
                 found.append(f"{path}:{lineno}: CJK UTF-8 byte escape")
+        if any(_is_cjk_named_escape(match) for match in _NAMED_ESCAPE_RE.finditer(line)):
+            found.append(f"{path}:{lineno}: CJK named escape")
     return found
 
 
@@ -67,6 +80,7 @@ def _scanned_files(root: Path) -> list[Path]:
             "prefix " + "\\" + "xe3" + "\\" + "x81" + "\\" + "x82",
             "CJK UTF-8 byte escape",
         ),
+        ("prefix " + "\\" + "N{CJK UNIFIED IDEOGRAPH-65E5}", "CJK named escape"),
     ],
 )
 def test_violation_variants_are_detected(tmp_path: Path, payload: str, kind: str) -> None:
@@ -74,6 +88,13 @@ def test_violation_variants_are_detected(tmp_path: Path, payload: str, kind: str
     candidate.write_text(payload, encoding="utf-8")
 
     assert any(kind in violation for violation in _violations(candidate))
+
+
+def test_unknown_named_escape_is_not_a_violation(tmp_path: Path) -> None:
+    candidate = tmp_path / "candidate.py"
+    candidate.write_text("prefix " + "\\" + "N{NOT A REAL NAME}", encoding="utf-8")
+
+    assert _violations(candidate) == []
 
 
 def test_no_cjk_in_tests() -> None:
@@ -105,26 +126,44 @@ def test_persona_section_keys_are_canonical_english() -> None:
     assert all(key.isascii() for key in REQUIRED_SECTIONS)
 
 
-def test_legacy_persona_headings_normalize_to_english() -> None:
-    from mltgnt.config import PERSONA_SECTION_ALIASES
+_DUMMY_ALIASES = {
+    "Legacy heavy": "Heavy",
+    "Legacy background": "Background",
+    "Legacy values": "Values",
+    "Legacy reactions": "Reaction patterns",
+    "Legacy tone": "Tone",
+    "Legacy output": "Output format",
+    "Legacy light": "Light",
+    "Legacy reference": "Reference",
+    "Legacy triage": "Triage",
+}
+
+
+@pytest.fixture
+def dummy_aliases(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    from mltgnt.config.language import EN
+
+    pack = dataclasses.replace(EN, persona_section_aliases=dict(_DUMMY_ALIASES))
+    monkeypatch.setattr("mltgnt.config.language._current", pack)
+    return pack.persona_section_aliases
+
+
+def test_legacy_persona_headings_normalize_to_english(dummy_aliases: dict[str, str]) -> None:
     from mltgnt.persona.loader import _parse_sections
 
-    legacy_heavy = next(legacy for legacy, canonical in PERSONA_SECTION_ALIASES.items() if canonical == "Heavy")
-    legacy_background = next(
-        legacy for legacy, canonical in PERSONA_SECTION_ALIASES.items() if canonical == "Background"
-    )
+    legacy_heavy = next(legacy for legacy, canonical in dummy_aliases.items() if canonical == "Heavy")
+    legacy_background = next(legacy for legacy, canonical in dummy_aliases.items() if canonical == "Background")
     body = f"## {legacy_heavy}\n\n### {legacy_background}\n\nlegacy content"
 
     assert _parse_sections(body) == {"Background": "legacy content"}
 
 
-def test_legacy_required_sections_remain_valid() -> None:
-    from mltgnt.config import PERSONA_SECTION_ALIASES
+def test_legacy_required_sections_remain_valid(dummy_aliases: dict[str, str]) -> None:
     from mltgnt.persona.schema import PersonaFM, REQUIRED_SECTIONS, validate_sections
 
     headings = []
     for canonical in REQUIRED_SECTIONS:
-        legacy = next(alias for alias, mapped in PERSONA_SECTION_ALIASES.items() if mapped == canonical)
+        legacy = next(alias for alias, mapped in dummy_aliases.items() if mapped == canonical)
         headings.append(f"## {legacy}\n\ncontent")
 
     result = validate_sections("\n\n".join(headings), PersonaFM(name="legacy"))

@@ -1,18 +1,30 @@
 """mltgnt.persona.extractor — H2 section parsing (#3318)."""
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 import pytest
 
+from mltgnt.config.language import EN
 from mltgnt.persona.extractor import extract, parse_sections
 
-_PRODUCT_SECTION_KEYS = tuple(
-    value
-    for value in extract.__code__.co_consts
-    if isinstance(value, str) and len(value) <= 4 and not value.isascii()
+_LIGHT_KEY = "Legacy light"
+_BASIC_KEY = "Legacy background"
+_HEAVY_KEY = "Legacy heavy"
+_LEGACY_PACK = dataclasses.replace(
+    EN,
+    persona_section_aliases={
+        _LIGHT_KEY: "Light",
+        _BASIC_KEY: "Background",
+        _HEAVY_KEY: "Heavy",
+    },
 )
-_LIGHT_KEY, _BASIC_KEY, _HEAVY_KEY = _PRODUCT_SECTION_KEYS
+
+
+@pytest.fixture(autouse=True)
+def _legacy_pack(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mltgnt.config.language._current", _LEGACY_PACK)
 
 
 def test_parse_sections_basic() -> None:
