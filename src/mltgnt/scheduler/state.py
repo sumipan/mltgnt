@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -74,3 +74,43 @@ class SchedulePaths:
             except (ValueError, OSError):
                 continue
         return result
+
+    def prune(self, today: date, keep_days: int = 30) -> int:
+        """Delete dated state files older than ``today - keep_days``.
+
+        Covers the done / planned / missed / failed / skipped directories
+        (``<job_id>_<YYYY-MM-DD>.<ext>``). Files whose date cannot be parsed
+        are kept; ``interval_dir`` is never touched. Returns the number of
+        files deleted.
+        """
+        if keep_days < 1:
+            raise ValueError(f"keep_days must be >= 1, got {keep_days}")
+        cutoff = today - timedelta(days=keep_days)
+        removed = 0
+        for d in (
+            self.done_dir,
+            self.planned_dir,
+            self.missed_dir,
+            self.failed_dir,
+            self.skipped_dir,
+        ):
+            if not d.is_dir():
+                continue
+            for p in d.iterdir():
+                _, sep, date_part = p.stem.rpartition("_")
+                if not sep:
+                    continue
+                try:
+                    file_date = date.fromisoformat(date_part)
+                except ValueError:
+                    continue
+                if file_date >= cutoff:
+                    continue
+                try:
+                    if not p.is_file():
+                        continue
+                    p.unlink(missing_ok=True)
+                except OSError:
+                    continue
+                removed += 1
+        return removed
