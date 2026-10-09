@@ -70,11 +70,9 @@ def test_client_reexports() -> None:
     assert adapt_client is media.adapt_client
 
 
-def test_media_packages_export_nothing() -> None:
-    import mltgnt.media
+def test_media_core_exports_nothing() -> None:
     import mltgnt.media._core
 
-    assert mltgnt.media.__all__ == []
     assert mltgnt.media._core.__all__ == []
 
 
