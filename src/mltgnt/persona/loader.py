@@ -18,7 +18,8 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from mltgnt.bridges.files_adapter import md_read
-from mltgnt.config import DEFAULT_WEIGHT_MAP, PERSONA_SECTION_ALIASES, PersonaConfig
+from mltgnt.config import DEFAULT_WEIGHT_MAP, PersonaConfig
+from mltgnt.config.language import get_language_pack
 from mltgnt.persona.schema import PersonaFM, ValidationResult, parse_fm, validate_fm
 
 PromptFilter = Callable[[str, dict[str, Any]], str]
@@ -151,7 +152,7 @@ def load(path: Path, *, config: PersonaConfig | None = None) -> Persona:
     for err in result.errors:
         logger.warning("[persona] %s: %s", path.name, err)
 
-    aliases = config.section_aliases if config else PERSONA_SECTION_ALIASES
+    aliases = config.section_aliases if config else get_language_pack().persona_section_aliases
     sections = _parse_sections(body, section_aliases=aliases)
 
     logger.info(
@@ -186,7 +187,7 @@ def _expand_h3_sections(
     Ignore pre-H3 content before the first H3 (discard if empty).
     """
     result: dict[str, str] = {}
-    aliases = PERSONA_SECTION_ALIASES if section_aliases is None else section_aliases
+    aliases = get_language_pack().persona_section_aliases if section_aliases is None else section_aliases
     parts = re.split(r"^###\s+", section_text, flags=re.MULTILINE)
     for part in parts:
         if not part.strip():
@@ -218,7 +219,7 @@ def _parse_sections(
     current_key: str | None = None
     current_lines: list[str] = []
     skip_current: bool = False
-    aliases = PERSONA_SECTION_ALIASES if section_aliases is None else section_aliases
+    aliases = get_language_pack().persona_section_aliases if section_aliases is None else section_aliases
 
     for line in body.splitlines():
         m = re.match(r"^##\s+(\d+\.\s+)?(.+)", line)

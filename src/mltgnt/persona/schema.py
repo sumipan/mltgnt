@@ -26,7 +26,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from mltgnt.config import PERSONA_SECTION_ALIASES
+from mltgnt.config.language import get_language_pack
 
 # ---------------------------------------------------------------------------
 # Known allowed keys
@@ -198,7 +198,11 @@ def validate_sections(body: str, fm: PersonaFM) -> ValidationResult:
     errors: list[str] = []
 
     for sec in REQUIRED_SECTIONS:
-        aliases = [alias for alias, canonical in PERSONA_SECTION_ALIASES.items() if canonical == sec]
+        aliases = [
+            alias
+            for alias, canonical in get_language_pack().persona_section_aliases.items()
+            if canonical == sec
+        ]
         candidates = (sec, *aliases)
         # Allow both numbered and unnumbered canonical or legacy headings.
         import re

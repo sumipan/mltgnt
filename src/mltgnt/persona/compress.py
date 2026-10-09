@@ -13,12 +13,12 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-from mltgnt.config import PERSONA_SECTION_ALIASES
 from mltgnt.config.language import LanguagePack, get_language_pack
 
 logger = logging.getLogger(__name__)
@@ -151,15 +151,12 @@ def regenerate_light_block(
 
     blocks = _split_h2_blocks(body)
 
-    # Keep these named escapes as a compatibility aid for callers that inspect
-    # the function constants; canonicalization still goes through the alias map.
-    legacy_light = "\N{CJK UNIFIED IDEOGRAPH-8EFD}\N{CJK UNIFIED IDEOGRAPH-91CF}"
-    legacy_heavy = "\N{CJK UNIFIED IDEOGRAPH-91CD}\N{CJK UNIFIED IDEOGRAPH-91CF}"
-    heavy_heading = _heading_for(blocks, "Heavy", fallback=legacy_heavy)
+    aliases = (pack or get_language_pack()).persona_section_aliases
+    heavy_heading = _heading_for(blocks, "Heavy", aliases=aliases)
     if heavy_heading is None:
         raise ValueError(f"Not a v2 persona: {persona_path.name} has no '## Heavy' block")
 
-    light_heading = _heading_for(blocks, "Light", fallback=legacy_light)
+    light_heading = _heading_for(blocks, "Light", aliases=aliases)
     heavy_text = blocks[heavy_heading]
     existing_light = blocks.get(light_heading, "") if light_heading is not None else ""
 
@@ -272,7 +269,7 @@ def _split_h2_blocks(body: str) -> dict[str, str]:
     """Split body by H2 headings into {heading: text}.
 
     V2 expects light, heavy, and reference blocks. Legacy localized headings
-    remain accepted through ``PERSONA_SECTION_ALIASES``.
+    remain accepted through ``LanguagePack.persona_section_aliases``.
     """
     blocks: dict[str, str] = {}
     current_key: str | None = None
@@ -298,14 +295,12 @@ def _heading_for(
     blocks: dict[str, str],
     canonical: str,
     *,
-    fallback: str | None = None,
+    aliases: Mapping[str, str],
 ) -> str | None:
     """Return the existing heading whose canonical form matches ``canonical``."""
     for heading in blocks:
-        if PERSONA_SECTION_ALIASES.get(heading, heading) == canonical:
+        if aliases.get(heading, heading) == canonical:
             return heading
-    if fallback is not None and fallback in blocks:
-        return fallback
     return None
 
 
