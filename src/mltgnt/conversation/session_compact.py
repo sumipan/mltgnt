@@ -67,9 +67,6 @@ def estimate_tokens(turns: list[dict]) -> float:
     return total_chars / 3
 
 
-_estimate_tokens = estimate_tokens  # deprecated alias
-
-
 def needs_compaction(
     conversation_id: str,
     *,
@@ -113,9 +110,6 @@ def format_turns_for_prompt(
     return "\n".join(lines)
 
 
-_format_turns_for_prompt = format_turns_for_prompt  # deprecated alias
-
-
 def build_prompt(turns_to_compact: list[dict], existing_compacted: list[dict]) -> str:
     formatted = format_turns_for_prompt(turns_to_compact, existing_compacted)
     return (
@@ -127,9 +121,6 @@ def build_prompt(turns_to_compact: list[dict], existing_compacted: list[dict]) -
     )
 
 
-_build_prompt = build_prompt  # deprecated alias
-
-
 def audit_path() -> Path:
     if _active_config is not None and _active_config.audit_path is not None:
         return _active_config.audit_path
@@ -138,9 +129,6 @@ def audit_path() -> Path:
     raise RuntimeError(
         "session_compact is not configured; call mltgnt.conversation.configure() first"
     )
-
-
-_audit_path = audit_path  # deprecated alias
 
 
 def compact(

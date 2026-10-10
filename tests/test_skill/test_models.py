@@ -13,7 +13,7 @@ from mltgnt.skill import (
     SkillMeta,
     SkillRunResult,
 )
-from mltgnt.skill.loader import _build_meta
+from mltgnt.skill.loader import build_meta
 from mltgnt.skill.models import (
     ArtifactSpec as ArtifactSpecFromModels,
     ConsumesSpec as ConsumesSpecFromModels,
@@ -143,7 +143,7 @@ class TestBuildMetaSideEffects:
             "description": "desc",
             "side_effects": {"writes": ["jobs/*.jsonl"]},
         }
-        meta = _build_meta(fm, path)
+        meta = build_meta(fm, path)
         assert meta.side_effects == SideEffectsSpec(
             writes=["jobs/*.jsonl"],
             network=[],
@@ -154,7 +154,7 @@ class TestBuildMetaSideEffects:
     def test_build_meta_without_side_effects_key(self) -> None:
         path = Path("/skills/plain/SKILL.md")
         fm = {"name": "plain", "description": "desc"}
-        meta = _build_meta(fm, path)
+        meta = build_meta(fm, path)
         assert meta.side_effects is None
 
 

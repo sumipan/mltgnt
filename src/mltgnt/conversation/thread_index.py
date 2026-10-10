@@ -123,11 +123,6 @@ def write_post_content(uid: str, content: str) -> str:
     return _default_write_post_content(uid, content)
 
 
-# Deprecated alias (removed in the next Y bump). register_bot_post() resolves
-# it at call time, so assigning this module attribute directly still takes effect.
-_write_post_content = write_post_content
-
-
 def register_bot_post(
     conversation_id: str,
     posted_ts: str,
@@ -138,7 +133,7 @@ def register_bot_post(
     order_path: str = "",
 ) -> None:
     if result_path is None and content is not None:
-        result_path = _write_post_content(uid, content)
+        result_path = write_post_content(uid, content)
     append_entry(conversation_id, posted_ts, uid, result_path or "", order_path)
 
 

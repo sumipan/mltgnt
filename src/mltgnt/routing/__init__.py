@@ -26,12 +26,10 @@ __all__ = [
     "evaluate",
     "extract_json_object",
     "extract_triage_section",
-    "find_observers",
     "find_observers_in_space",
     "load_channel_persona_map",
     "prepare_profile_for_triage",
     "resolve_persona",
-    "resolve_responding_persona",
 ]
 
 
@@ -143,10 +141,8 @@ def load_channel_persona_map(
 
 from mltgnt.routing.channel_router import (  # noqa: E402
     detect_nickname,
-    find_observers,
     find_observers_in_space,
     resolve_persona,
-    resolve_responding_persona,
 )
 from mltgnt.routing.triage import (  # noqa: E402
     TRIAGE_PROFILE_MAX_CHARS,

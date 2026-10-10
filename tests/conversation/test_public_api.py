@@ -1,7 +1,4 @@
-"""Public names and injection points of mltgnt.conversation modules (#4024).
-
-Old private names stay as aliases of the same objects for one release.
-"""
+"""Public names and injection points of mltgnt.conversation modules (#4024, #5045)."""
 from __future__ import annotations
 
 import threading
@@ -50,10 +47,9 @@ def config(tmp_path: Path) -> ConversationConfig:
         (thread_index, "write_post_content", "_write_post_content"),
     ],
 )
-def test_private_name_is_alias_of_public(module, public: str, private: str) -> None:
-    assert getattr(module, public) is getattr(module, private)
+def test_private_alias_removed(module, public: str, private: str) -> None:
+    assert not hasattr(module, private)
     assert public in module.__all__
-    assert private not in module.__all__
 
 
 @pytest.mark.parametrize(
@@ -102,14 +98,14 @@ def test_config_provider_is_used_by_admit(
         thread_queue.set_config_provider(None)
 
 
-def test_legacy_config_attribute_replacement_still_works(
+def test_config_attribute_replacement_is_used_by_admit(
     config: ConversationConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(thread_queue, "THREAD_QUEUE_DIR", config.queue_dir)
     monkeypatch.setattr(thread_queue, "_locks", {})
     monkeypatch.setattr(
         thread_queue,
-        "_thread_queue_config",
+        "thread_queue_config",
         lambda: {"stale_after_sec": 3600, "max_queued": 0, "cleanup_ttl_days": 14},
     )
     assert thread_queue.admit("C1:1.0", "a", message_ts="1.1").status == "accepted"
@@ -218,12 +214,3 @@ def test_set_post_content_writer_overrides_and_resets(
     default_path = config.thread_index_dir.parent / "posts" / "uid-2.md"
     assert default_path.read_text(encoding="utf-8") == "body2"
     assert thread_index.lookup_result_path("C1:1.0", "1.2") == str(default_path)
-
-
-def test_legacy_post_writer_attribute_replacement_still_works(
-    config: ConversationConfig, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(thread_index, "_active_config", config)
-    monkeypatch.setattr(thread_index, "_write_post_content", lambda uid, content: "legacy")
-    thread_index.register_bot_post("C1:1.0", "1.1", "uid-1", content="body")
-    assert thread_index.lookup_result_path("C1:1.0", "1.1") == "legacy"
