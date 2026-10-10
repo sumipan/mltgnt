@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Added `mltgnt.config.SkillConfig`** (#5060): frozen dataclass with `passthrough_env: tuple[str, ...] = ()` plus process-wide `get_skill_config()` / `set_skill_config()` (importable from `mltgnt.config`, not in `__all__`). A `str` value raises `TypeError`; other iterables are normalized to a tuple.
+- **BREAKING:** `mltgnt.skill.runner.run` no longer substitutes `$NIKKI_ROOT` implicitly. Only the names declared in `SkillConfig.passthrough_env` are replaced with their environment value (empty when unset); undeclared `$KEY` stay as is. Built-in keys (`$ARGUMENTS` / `$PERSONA` / `$SKILL_DIR` / `$REPO_ROOT` / positional) are unchanged and take precedence. Hosts that relied on the old behavior must declare the names at each process entry point before bumping, e.g.:
+
+  ```python
+  try:
+      from mltgnt.config import SkillConfig, set_skill_config
+  except ImportError:
+      pass
+  else:
+      set_skill_config(SkillConfig(passthrough_env=("NOTES_ROOT", "NIKKI_ROOT")))
+  ```
+
 ## v0.125.3
 
 - **Public API exports** (#5037): `mltgnt.media.__all__` re-exports 27 names from `mltgnt.media._core.*` (without importing `media.slack` / `media.webchat`); `mltgnt.agent` exports `LLMCaller`, `RetryConfig`, `ToolExecutor` and `REFLEXION_EXHAUSTED_TOOL`; `bridges.hooks_adapter` imports `check_pipeline_status` and `default_check_rejected` from public `ghdag.dag`. (`eb16d03`)
