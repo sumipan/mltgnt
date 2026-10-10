@@ -136,7 +136,7 @@ class TestSkillMetaBackwardCompat:
 
 
 class TestBuildMetaSideEffects:
-    def testbuild_meta_parses_side_effects(self) -> None:
+    def test_build_meta_parses_side_effects(self) -> None:
         path = Path("/skills/audit/SKILL.md")
         fm = {
             "name": "audit",
@@ -151,7 +151,7 @@ class TestBuildMetaSideEffects:
             conditional=[],
         )
 
-    def testbuild_meta_without_side_effects_key(self) -> None:
+    def test_build_meta_without_side_effects_key(self) -> None:
         path = Path("/skills/plain/SKILL.md")
         fm = {"name": "plain", "description": "desc"}
         meta = build_meta(fm, path)
