@@ -367,7 +367,7 @@ Memory submodules that declare their own `__all__`:
 | `discover`, `discover_bodies`, `load` | Find and parse skill files |
 | `match` | `(user_input, skills, persona_skills=None, model=None, *, engine="claude") -> SkillMatchResult` |
 | `resolve_skill` | `(user_input, skill_paths, persona_skills=None, entry_file="SKILL.md", matcher_model=None, *, matcher_engine="claude")`. Returns `(SkillFile, arguments)` or `None` |
-| `run` | `(skill, persona, arguments, chat_input, extra_context=None) -> SkillRunResult`. Substitutes `$ARGUMENTS`, `$PERSONA`, `$SKILL_DIR`, `$NIKKI_ROOT`, `$REPO_ROOT`, `$0`, `$1`, ... |
+| `run` | `(skill, persona, arguments, chat_input, extra_context=None) -> SkillRunResult`. Substitutes `$ARGUMENTS`, `$PERSONA`, `$SKILL_DIR`, `$REPO_ROOT`, `$0`, `$1`, ..., plus `$KEY` for each name in `get_skill_config().passthrough_env` (environment value, empty when unset; built-ins win). Other `$KEY` stay as is |
 | `build_extra_context` | Extra prompt context from skill knowledge files and persona memory |
 | `lint_skill_meta` | Validates skill frontmatter |
 | `SkillMeta`, `SkillFile`, `SkillRegistry`, `SkillRunResult`, `SkillMatchResult`, `ArtifactSpec`, `ProducesSpec`, `ConsumesSpec` | Data types |
@@ -554,7 +554,7 @@ mltgnt hardcodes no host paths. Every directory comes from a config object or a 
 
 | Variable | Read by | Default | Effect |
 |----------|---------|---------|--------|
-| `NIKKI_ROOT` | `mltgnt.skill.runner` | empty | Replaces `$NIKKI_ROOT` in skill bodies |
+| names in `SkillConfig.passthrough_env` | `mltgnt.skill.runner` | empty | Replaces `$KEY` in skill bodies. Declare with `mltgnt.config.set_skill_config(SkillConfig(passthrough_env=(...)))`; undeclared names are not substituted |
 | `REPO_ROOT` | `mltgnt.skill.runner` | empty | Replaces `$REPO_ROOT` in skill bodies |
 | `SKILL_IO_TYPECHECK` | `mltgnt.bridges.ghdag_bridge.enqueue_dag` | enabled | `0` turns off the skill I/O type check between DAG steps |
 | `THREAD_PERSONA_TTL_DAYS` | `mltgnt.conversation.thread_persona_store` | `30` | Lifetime of conversation-to-persona bindings. Invalid values fall back to `30`. Ignored once a `ConversationConfig` is configured |

@@ -124,3 +124,38 @@ class SchedulerConfig:
     state_dir: Path
     timezone: str = "Asia/Tokyo"
     salt: str = ""
+
+
+# SkillConfig / get_skill_config / set_skill_config follow the same __all__ policy
+# as set_language_pack (not exported until tests/test_all_snapshot.py is updated).
+@dataclass(frozen=True)
+class SkillConfig:
+    """Host settings for the skill layer.
+
+    passthrough_env: environment variable names whose ``$KEY`` occurrences in a
+    skill body are replaced with ``os.environ.get(KEY, "")`` by
+    ``mltgnt.skill.runner.run``. Built-in keys (ARGUMENTS / PERSONA / SKILL_DIR /
+    REPO_ROOT / positional) take precedence.
+    """
+
+    passthrough_env: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        value = self.passthrough_env
+        if isinstance(value, str):
+            raise TypeError("passthrough_env must be an iterable of names, not a str")
+        object.__setattr__(self, "passthrough_env", tuple(value))
+
+
+_current_skill_config: SkillConfig = SkillConfig()
+
+
+def get_skill_config() -> SkillConfig:
+    """Return the process-wide skill-layer settings."""
+    return _current_skill_config
+
+
+def set_skill_config(config: SkillConfig) -> None:
+    """Replace the process-wide skill-layer settings."""
+    global _current_skill_config
+    _current_skill_config = config

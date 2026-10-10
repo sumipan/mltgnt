@@ -172,14 +172,16 @@ class TestSkillRunResult:
         assert result.skill_io == "legacy"
 
 
-class TestRunEnvVarSubstitution:
-    def test_nikki_root_substitution(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("NIKKI_ROOT", "/path/to/diary")
-        skill = _make_skill("root=$NIKKI_ROOT")
-        result = run(skill, _make_persona(), "", _make_chat_input())
-        sys_content = result.chat_input.messages[0]["content"]
-        assert "/path/to/diary" in sys_content
+@pytest.fixture
+def restore_skill_config():
+    from mltgnt.config import get_skill_config, set_skill_config
 
+    saved = get_skill_config()
+    yield
+    set_skill_config(saved)
+
+
+class TestRunEnvVarSubstitution:
     def test_repo_root_substitution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("REPO_ROOT", "/path/to/nexus")
         skill = _make_skill("root=$REPO_ROOT")
@@ -187,19 +189,58 @@ class TestRunEnvVarSubstitution:
         sys_content = result.chat_input.messages[0]["content"]
         assert "/path/to/nexus" in sys_content
 
-    def test_nikki_root_empty_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("NIKKI_ROOT", raising=False)
-        skill = _make_skill("root=[$NIKKI_ROOT]")
-        result = run(skill, _make_persona(), "", _make_chat_input())
-        sys_content = result.chat_input.messages[0]["content"]
-        assert "root=[]" in sys_content
-
     def test_repo_root_empty_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("REPO_ROOT", raising=False)
         skill = _make_skill("root=[$REPO_ROOT]")
         result = run(skill, _make_persona(), "", _make_chat_input())
         sys_content = result.chat_input.messages[0]["content"]
         assert "root=[]" in sys_content
+
+
+@pytest.mark.usefixtures("restore_skill_config")
+class TestRunPassthroughEnv:
+    def test_declared_key_is_substituted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mltgnt.config import SkillConfig, set_skill_config
+
+        set_skill_config(SkillConfig(passthrough_env=("NOTES_ROOT",)))
+        monkeypatch.setenv("NOTES_ROOT", "/n")
+        monkeypatch.setenv("NIKKI_ROOT", "/k")
+        skill = _make_skill("a=$NOTES_ROOT b=$NIKKI_ROOT")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "a=/n b=$NIKKI_ROOT" in sys_content
+
+    def test_default_substitutes_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mltgnt.config import SkillConfig, set_skill_config
+
+        set_skill_config(SkillConfig())
+        monkeypatch.setenv("NOTES_ROOT", "/n")
+        monkeypatch.setenv("NIKKI_ROOT", "/k")
+        skill = _make_skill("a=$NOTES_ROOT b=$NIKKI_ROOT")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "a=$NOTES_ROOT b=$NIKKI_ROOT" in sys_content
+
+    def test_declared_key_empty_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mltgnt.config import SkillConfig, set_skill_config
+
+        set_skill_config(SkillConfig(passthrough_env=("NOTES_ROOT",)))
+        monkeypatch.delenv("NOTES_ROOT", raising=False)
+        skill = _make_skill("root=[$NOTES_ROOT]")
+        result = run(skill, _make_persona(), "", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "root=[]" in sys_content
+
+    def test_builtin_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mltgnt.config import SkillConfig, set_skill_config
+
+        set_skill_config(SkillConfig(passthrough_env=("ARGUMENTS",)))
+        monkeypatch.setenv("ARGUMENTS", "from-env")
+        skill = _make_skill("args=$ARGUMENTS")
+        result = run(skill, _make_persona(), "from-arg", _make_chat_input())
+        sys_content = result.chat_input.messages[0]["content"]
+        assert "args=from-arg" in sys_content
+        assert "from-env" not in sys_content
 
 
 class TestRunExtraContext:

@@ -243,3 +243,41 @@ def test_memory_config_dream_engine_and_model_defaults():
     config = MemoryConfig(chat_dir=Path("/tmp/chat"))
     assert config.dream_engine == "claude"
     assert config.dream_model == ""
+
+
+@pytest.fixture
+def restore_skill_config():
+    from mltgnt.config import get_skill_config, set_skill_config
+
+    saved = get_skill_config()
+    yield
+    set_skill_config(saved)
+
+
+def test_skill_config_default():
+    """SkillConfig defaults to an empty passthrough_env; get before set returns the default."""
+    from mltgnt.config import SkillConfig, get_skill_config
+
+    assert SkillConfig().passthrough_env == ()
+    assert get_skill_config() == SkillConfig()
+
+
+def test_skill_config_normalizes_iterable_to_tuple():
+    from mltgnt.config import SkillConfig
+
+    assert SkillConfig(passthrough_env=["A", "B"]).passthrough_env == ("A", "B")
+
+
+def test_skill_config_rejects_str():
+    from mltgnt.config import SkillConfig
+
+    with pytest.raises(TypeError):
+        SkillConfig(passthrough_env="NOTES_ROOT")  # type: ignore[arg-type]
+
+
+def test_skill_config_set_and_get(restore_skill_config):
+    from mltgnt.config import SkillConfig, get_skill_config, set_skill_config
+
+    config = SkillConfig(passthrough_env=("NOTES_ROOT",))
+    set_skill_config(config)
+    assert get_skill_config() is config

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from mltgnt.config import get_skill_config
 from mltgnt.interfaces.persona import PersonaProtocol
 from mltgnt.interfaces.types import ChatInput, Message
 from mltgnt.skill.models import SkillFile, SkillRunResult
@@ -41,8 +42,18 @@ def write_result_frontmatter(result_path: Path, run_result: SkillRunResult) -> N
     result_path.write_text(f"---\n{fm_text}---\n{original}", encoding="utf-8")
 
 
-def _substitute(body: str, arguments: str, persona_name: str, skill_dir: str) -> str:
-    """Substitute variables in the skill body."""
+def _substitute(
+    body: str,
+    arguments: str,
+    persona_name: str,
+    skill_dir: str,
+    passthrough_env: tuple[str, ...] = (),
+) -> str:
+    """Substitute variables in the skill body.
+
+    Keys listed in ``passthrough_env`` are replaced with their environment value
+    (empty when unset); built-in keys take precedence. Unknown keys are left as is.
+    """
     args = arguments.split(" ") if arguments else []
 
     def replacer(m: re.Match) -> str:
@@ -53,13 +64,13 @@ def _substitute(body: str, arguments: str, persona_name: str, skill_dir: str) ->
             return persona_name
         if key == "SKILL_DIR":
             return skill_dir
-        if key == "NIKKI_ROOT":
-            return os.environ.get("NIKKI_ROOT", "")
         if key == "REPO_ROOT":
             return os.environ.get("REPO_ROOT", "")
         if key.isdigit():
             idx = int(key)
             return args[idx] if idx < len(args) else ""
+        if key in passthrough_env:
+            return os.environ.get(key, "")
         return m.group(0)
 
     return _VAR_PATTERN.sub(replacer, body)
@@ -86,6 +97,7 @@ def run(
         arguments,
         persona.name,
         skill_dir,
+        passthrough_env=get_skill_config().passthrough_env,
     )
 
     if extra_context is not None:
