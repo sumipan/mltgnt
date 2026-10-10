@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.126.0
+
 - **Added `mltgnt.config.SkillConfig`** (#5060): frozen dataclass with `passthrough_env: tuple[str, ...] = ()` plus process-wide `get_skill_config()` / `set_skill_config()` (importable from `mltgnt.config`, not in `__all__`). A `str` value raises `TypeError`; other iterables are normalized to a tuple.
 - **BREAKING:** `mltgnt.skill.runner.run` no longer substitutes `$NIKKI_ROOT` implicitly. Only the names declared in `SkillConfig.passthrough_env` are replaced with their environment value (empty when unset); undeclared `$KEY` stay as is. Built-in keys (`$ARGUMENTS` / `$PERSONA` / `$SKILL_DIR` / `$REPO_ROOT` / positional) are unchanged and take precedence. Hosts that relied on the old behavior must declare the names at each process entry point before bumping, e.g.:
 
