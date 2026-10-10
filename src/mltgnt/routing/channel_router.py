@@ -9,8 +9,6 @@ Design: Issue #284 / #3285
 """
 from __future__ import annotations
 
-import warnings
-
 from mltgnt.routing import SpacePersonaEntry
 
 
@@ -62,34 +60,6 @@ def resolve_persona(
     return None
 
 
-def resolve_responding_persona(
-    channel: str,
-    text: str,
-    thread_ts: str | None,
-    channel_map: dict[str, list[SpacePersonaEntry]],
-    thread_persona_map: dict[str, str],
-) -> str | None:
-    """Compat wrapper. Calls resolve_persona.
-
-    .. deprecated::
-        Use :func:`resolve_persona` with ``space_id`` / ``conversation_id`` instead.
-    """
-    warnings.warn(
-        "resolve_responding_persona is deprecated; use resolve_persona "
-        "(space_id / conversation_id)",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    conversation_id = f"{channel}:{thread_ts}" if thread_ts else None
-    return resolve_persona(
-        text,
-        space_id=channel,
-        conversation_id=conversation_id,
-        persona_map=channel_map,
-        pinned_personas=thread_persona_map,
-    )
-
-
 def find_observers_in_space(
     space_id: str,
     responding_persona: str | None,
@@ -102,21 +72,3 @@ def find_observers_in_space(
         if entry.name != responding_persona:
             observers.append(entry.name)
     return observers
-
-
-def find_observers(
-    channel: str,
-    responding_persona: str | None,
-    channel_map: dict[str, list[SpacePersonaEntry]],
-) -> list[str]:
-    """Compat wrapper. Calls find_observers_in_space.
-
-    .. deprecated::
-        Use :func:`find_observers_in_space` instead.
-    """
-    warnings.warn(
-        "find_observers is deprecated; use find_observers_in_space",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return find_observers_in_space(channel, responding_persona, channel_map)

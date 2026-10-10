@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mltgnt.bridges.files_adapter import md_read
-from mltgnt.skill.loader import _build_meta, validate_tool_refs
+from mltgnt.skill.loader import build_meta, validate_tool_refs
 from mltgnt.skill.models import SkillLoadError, SkillMeta
 
 
@@ -18,7 +18,7 @@ def _fm_and_meta(yaml_content: str, tmp_path: Path) -> SkillMeta:
     skill_path = tmp_path / "SKILL.md"
     skill_path.write_text(f"---\n{yaml_content}\n---\nbody\n", encoding="utf-8")
     md = md_read(skill_path.name, repo_root=tmp_path)
-    return _build_meta(md.frontmatter, skill_path)
+    return build_meta(md.frontmatter, skill_path)
 
 
 def _meta(name: str, tools: list[str], path: Path | None = None) -> SkillMeta:

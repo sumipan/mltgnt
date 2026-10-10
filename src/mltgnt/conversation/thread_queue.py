@@ -105,11 +105,6 @@ def thread_queue_config() -> dict[str, int]:
     }
 
 
-# Deprecated alias (removed in the next Y bump). admit() resolves it at call
-# time, so assigning this module attribute directly still takes effect.
-_thread_queue_config = thread_queue_config
-
-
 def storage_key(conversation_id: str) -> str:
     """conversation ID → state directory name."""
     return conversation_id.replace(":", "-").replace("/", "_")
@@ -174,9 +169,6 @@ def read_state(thread_key: str) -> dict:
     }
 
 
-_read_state = read_state  # deprecated alias
-
-
 def _write_state(thread_key: str, state: dict) -> None:
     _atomic_write_json(_state_path(thread_key), state)
 
@@ -205,9 +197,6 @@ def is_stale(state: dict, stale_after_sec: int) -> bool:
     if started.tzinfo is None:
         started = started.replace(tzinfo=timezone.utc)
     return datetime.now(timezone.utc) - started > timedelta(seconds=stale_after_sec)
-
-
-_is_stale = is_stale  # deprecated alias
 
 
 def _write_inbox_entry(
@@ -241,7 +230,7 @@ def admit(
     thread_key = storage_key(conversation_id)
     lock = _get_lock(thread_key)
     with lock:
-        cfg = _thread_queue_config()
+        cfg = thread_queue_config()
         state = read_state(thread_key)
 
         if is_stale(state, cfg["stale_after_sec"]):

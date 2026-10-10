@@ -385,7 +385,7 @@ When `engine="claude"` and no model is given, the LLM matcher uses `claude-haiku
 | `detect_nickname` | Detect a mention by persona nickname |
 | `extract_triage_section` | `(markdown, *, pack=None) -> str \| None`. Body of `## Light`, falling back to `## Triage`, then to legacy headings that `pack.persona_section_aliases` maps to `Light` or `Triage` (`pack` defaults to `get_language_pack()`) |
 | `extract_json_object`, `prepare_profile_for_triage`, `TRIAGE_PROFILE_MAX_CHARS` (`6000`) | Other triage helpers |
-| `resolve_responding_persona`, `find_observers`, `ChannelPersonaEntry` | Deprecated. See [Deprecated API](#deprecated-api) |
+| `ChannelPersonaEntry` | Deprecated. See [Deprecated API](#deprecated-api) |
 
 ### `mltgnt.conversation`
 
@@ -714,8 +714,6 @@ Built-in exceptions raised by the public API:
 | Deprecated | Module | Replacement | Warning |
 |------------|--------|-------------|---------|
 | `SlackClientProtocol` (`post_message`) | `mltgnt.interfaces.slack`, `mltgnt.interfaces` | `MediaClient` | One `DeprecationWarning` when such a client goes through `adapt_client` (including `PersonaScheduler(slack=...)`). It is wrapped so that `post` calls `post_message`. Removal is planned for a future minor release |
-| `resolve_responding_persona` | `mltgnt.routing` | `resolve_persona` | `DeprecationWarning` |
-| `find_observers` | `mltgnt.routing` | `find_observers_in_space` | `DeprecationWarning` |
 | `ChannelPersonaEntry` | `mltgnt.routing` | `SpacePersonaEntry` | None (plain alias) |
 
 ## License

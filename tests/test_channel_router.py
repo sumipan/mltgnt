@@ -1,20 +1,18 @@
 """tests/test_channel_router.py
 
 Ported tests for channel_router.py (Issue #284).
-detect_nickname 6 cases + find_observers 4 cases + resolve_responding_persona 11 cases.
+detect_nickname 6 cases + find_observers_in_space 4 cases + resolve_persona 12 cases.
 New API (Issue #3285): resolve_persona / find_observers_in_space / SpacePersonaEntry.
+The legacy resolve_responding_persona / find_observers cases were ported to the
+new API when the deprecated wrappers were removed (Issue #5045).
 """
 from __future__ import annotations
-
-import warnings
 
 from mltgnt.routing import ChannelPersonaEntry, SpacePersonaEntry
 from mltgnt.routing.channel_router import (
     detect_nickname,
-    find_observers,
     find_observers_in_space,
     resolve_persona,
-    resolve_responding_persona,
 )
 
 # ---------------------------------------------------------------------------
@@ -71,42 +69,42 @@ def test_detect_nickname_empty_nickname_entry():
 
 
 # ---------------------------------------------------------------------------
-# find_observers tests (4 cases)
+# find_observers_in_space tests (4 cases)
 # ---------------------------------------------------------------------------
 
 def test_find_observers_excludes_responder():
-    result = find_observers("C_TEST", "persona-a", CHANNEL_MAP_MULTI)
+    result = find_observers_in_space("C_TEST", "persona-a", CHANNEL_MAP_MULTI)
     assert result == ["persona-b", "persona-c"]
 
 
 def test_find_observers_none_responder_returns_all():
-    result = find_observers("C_TEST", None, CHANNEL_MAP_MULTI)
+    result = find_observers_in_space("C_TEST", None, CHANNEL_MAP_MULTI)
     assert result == ["persona-a", "persona-b", "persona-c"]
 
 
 def test_find_observers_unknown_channel_returns_empty():
-    result = find_observers("C_UNKNOWN", "persona-a", CHANNEL_MAP_MULTI)
+    result = find_observers_in_space("C_UNKNOWN", "persona-a", CHANNEL_MAP_MULTI)
     assert result == []
 
 
 def test_find_observers_single_responder_returns_empty():
-    result = find_observers("C_TEST", "persona-a", CHANNEL_MAP_PRIMARY_ONLY)
+    result = find_observers_in_space("C_TEST", "persona-a", CHANNEL_MAP_PRIMARY_ONLY)
     assert result == []
 
 
 # ---------------------------------------------------------------------------
-# resolve_responding_persona tests (AC#1–#10, #12 — 11 cases)
+# resolve_persona tests, ported from resolve_responding_persona (AC#1–#10, #12)
 # ---------------------------------------------------------------------------
 
 def test_nickname_overrides_thread_fixed():
     thread_ts = "1000.0000"
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-a"}
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="yuki, look into this",
-        thread_ts=thread_ts,
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map=thread_persona_map,
+    result = resolve_persona(
+        "yuki, look into this",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:{thread_ts}",
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas=thread_persona_map,
     )
     assert result == "persona-b"
 
@@ -114,12 +112,12 @@ def test_nickname_overrides_thread_fixed():
 def test_thread_fixed_without_nickname():
     thread_ts = "1000.0000"
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-a"}
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="thanks",
-        thread_ts=thread_ts,
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map=thread_persona_map,
+    result = resolve_persona(
+        "thanks",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:{thread_ts}",
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas=thread_persona_map,
     )
     assert result == "persona-a"
 
@@ -127,34 +125,34 @@ def test_thread_fixed_without_nickname():
 def test_nickname_switch_updates_fixed():
     thread_ts = "1000.0000"
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-b"}
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="please continue",
-        thread_ts=thread_ts,
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map=thread_persona_map,
+    result = resolve_persona(
+        "please continue",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:{thread_ts}",
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas=thread_persona_map,
     )
     assert result == "persona-b"
 
 
 def test_new_thread_nickname():
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="haru, please check",
-        thread_ts="2000.0000",
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map={},
+    result = resolve_persona(
+        "haru, please check",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:2000.0000",
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas={},
     )
     assert result == "persona-c"
 
 
 def test_new_thread_primary_fallback():
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="hello",
-        thread_ts="2000.0000",
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map={},
+    result = resolve_persona(
+        "hello",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:2000.0000",
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas={},
     )
     assert result == "persona-a"
 
@@ -162,56 +160,56 @@ def test_new_thread_primary_fallback():
 def test_unknown_nickname_fallback():
     thread_ts = "3000.0000"
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-a"}
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="unknown-nick, please",
-        thread_ts=thread_ts,
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map=thread_persona_map,
+    result = resolve_persona(
+        "unknown-nick, please",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:{thread_ts}",
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas=thread_persona_map,
     )
     assert result == "persona-a"
 
 
 def test_unknown_nickname_fallback_no_thread():
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="unknown-nick, please",
-        thread_ts=None,
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map={},
+    result = resolve_persona(
+        "unknown-nick, please",
+        space_id=CHANNEL,
+        conversation_id=None,
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas={},
     )
     assert result == "persona-a"
 
 
 def test_partial_nickname_match():
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="akiyuki talk",
-        thread_ts=None,
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map={},
+    result = resolve_persona(
+        "akiyuki talk",
+        space_id=CHANNEL,
+        conversation_id=None,
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas={},
     )
     assert result == "persona-a"
 
 
 def test_unknown_channel():
-    result = resolve_responding_persona(
-        channel="C_UNKNOWN",
-        text="yuki, look into this",
-        thread_ts=None,
-        channel_map=CHANNEL_MAP_MULTI,
-        thread_persona_map={},
+    result = resolve_persona(
+        "yuki, look into this",
+        space_id="C_UNKNOWN",
+        conversation_id=None,
+        persona_map=CHANNEL_MAP_MULTI,
+        pinned_personas={},
     )
     assert result is None
 
 
 def test_primary_only_channel_unchanged():
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="hello",
-        thread_ts=None,
-        channel_map=CHANNEL_MAP_PRIMARY_ONLY,
-        thread_persona_map={},
+    result = resolve_persona(
+        "hello",
+        space_id=CHANNEL,
+        conversation_id=None,
+        persona_map=CHANNEL_MAP_PRIMARY_ONLY,
+        pinned_personas={},
     )
     assert result == "persona-a"
 
@@ -219,12 +217,12 @@ def test_primary_only_channel_unchanged():
 def test_primary_only_channel_with_thread_fixed():
     thread_ts = "4000.0000"
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-a"}
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="please continue",
-        thread_ts=thread_ts,
-        channel_map=CHANNEL_MAP_PRIMARY_ONLY,
-        thread_persona_map=thread_persona_map,
+    result = resolve_persona(
+        "please continue",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:{thread_ts}",
+        persona_map=CHANNEL_MAP_PRIMARY_ONLY,
+        pinned_personas=thread_persona_map,
     )
     assert result == "persona-a"
 
@@ -244,12 +242,12 @@ def test_thread_fixed_persona_not_in_channel_falls_through_to_primary():
     # persona-e was incorrectly recorded on the C_TEST thread
     thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-e"}
 
-    result = resolve_responding_persona(
-        channel=CHANNEL,
-        text="please continue",
-        thread_ts=thread_ts,
-        channel_map=merged_map,
-        thread_persona_map=thread_persona_map,
+    result = resolve_persona(
+        "please continue",
+        space_id=CHANNEL,
+        conversation_id=f"{CHANNEL}:{thread_ts}",
+        persona_map=merged_map,
+        pinned_personas=thread_persona_map,
     )
     # persona-e is not in C_TEST entries, so ignore and return primary (persona-a)
     assert result == "persona-a"
@@ -365,53 +363,6 @@ def test_resolve_persona_pinned_not_in_space_falls_to_primary():
     assert result == "persona-a"
 
 
-def test_resolve_responding_persona_compat_matches_and_warns():
-    """AC-5: legacy API returns the same result and emits one DeprecationWarning."""
-    thread_ts = "1000.0000"
-    thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-a"}
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        old = resolve_responding_persona(
-            channel=CHANNEL,
-            text="thanks",
-            thread_ts=thread_ts,
-            channel_map=CHANNEL_MAP_MULTI,
-            thread_persona_map=thread_persona_map,
-        )
-    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert len(dep_warnings) == 1
-
-    new = resolve_persona(
-        "thanks",
-        space_id=CHANNEL,
-        conversation_id=f"{CHANNEL}:{thread_ts}",
-        persona_map=CHANNEL_MAP_MULTI,
-        pinned_personas=thread_persona_map,
-    )
-    assert old == new == "persona-a"
-
-
-def test_resolve_responding_persona_compat_thread_ts_none():
-    """AC-5: thread_ts=None is equivalent to conversation_id=None."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        old = resolve_responding_persona(
-            channel=CHANNEL,
-            text="hello",
-            thread_ts=None,
-            channel_map=CHANNEL_MAP_MULTI,
-            thread_persona_map={},
-        )
-    new = resolve_persona(
-        "hello",
-        space_id=CHANNEL,
-        conversation_id=None,
-        persona_map=CHANNEL_MAP_MULTI,
-        pinned_personas={},
-    )
-    assert old == new == "persona-a"
-
-
 def test_find_observers_in_space_excludes_responder():
     """AC-6: returns persona names other than the responder."""
     result = find_observers_in_space(SPACE, "persona-a", SPACE_MAP_MULTI)
@@ -422,16 +373,6 @@ def test_find_observers_in_space_none_responder_returns_all():
     """AC-6: responding_persona=None returns everyone."""
     result = find_observers_in_space(SPACE, None, SPACE_MAP_MULTI)
     assert result == ["persona-a", "persona-b", "persona-c"]
-
-
-def test_find_observers_compat_warns():
-    """Legacy find_observers emits DeprecationWarning and matches the new API."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        old = find_observers("C_TEST", "persona-a", CHANNEL_MAP_MULTI)
-    dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert len(dep_warnings) == 1
-    assert old == find_observers_in_space("C_TEST", "persona-a", CHANNEL_MAP_MULTI)
 
 
 def test_new_api_identifiers_have_no_slack_channel_thread_ts():
@@ -456,7 +397,7 @@ def test_new_api_identifiers_have_no_slack_channel_thread_ts():
         assert "channel" not in param
         assert "thread_ts" not in param
 
-    # Also check public new API names on the module (exclude compat wrappers)
+    # Also check public new API names on the module
     new_api_names = {"resolve_persona", "find_observers_in_space"}
     for name in new_api_names:
         assert hasattr(mod, name)

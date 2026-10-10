@@ -31,7 +31,6 @@ __all__ = [
 ]
 
 LOCK = threading.Lock()
-_LOCK = LOCK  # deprecated alias
 _active_config: ConversationConfig | None = None
 _store_path_override: Path | None = None
 
@@ -71,9 +70,6 @@ def ttl_days() -> int:
         return 30
 
 
-_ttl_days = ttl_days  # deprecated alias
-
-
 def _parse_ts(ts: str) -> datetime | None:
     try:
         return datetime.fromisoformat(ts)
@@ -91,9 +87,6 @@ def is_expired(ts: str, *, now: datetime | None = None) -> bool:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return now - parsed > timedelta(days=ttl_days())
-
-
-_is_expired = is_expired  # deprecated alias
 
 
 def compact(entries: dict[str, tuple[str, str]]) -> None:
@@ -117,9 +110,6 @@ def compact(entries: dict[str, tuple[str, str]]) -> None:
         os.replace(tmp, path)
     except OSError:
         _log.warning("[thread_persona_store] compaction failed", exc_info=True)
-
-
-_compact = compact  # deprecated alias
 
 
 def load() -> dict[str, str]:

@@ -387,13 +387,12 @@ class TestLayerBoundaryReExports:
 
 
 class TestBuildMetaPublicApi:
-    """AC-2: build_meta Open _build_meta Backward compatibility alias."""
+    """AC-2: build_meta is public (the _build_meta alias was removed in #5045)."""
 
-    def test_build_meta_importable_and_alias(self, tmp_path) -> None:
-        from mltgnt.skill.loader import _build_meta, build_meta
+    def test_build_meta_importable(self, tmp_path) -> None:
+        from mltgnt.skill.loader import build_meta
 
         assert callable(build_meta)
-        assert _build_meta is build_meta
         path = tmp_path / "demo" / "SKILL.md"
         path.parent.mkdir()
         meta = build_meta({"description": "demo skill"}, path)

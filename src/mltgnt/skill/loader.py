@@ -142,9 +142,6 @@ def build_meta(fm: dict, path: Path) -> SkillMeta:
     )
 
 
-_build_meta = build_meta  # backward-compat alias
-
-
 def discover(
     paths: list[Path],
     entry_file: str = "SKILL.md",

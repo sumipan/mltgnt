@@ -16,8 +16,6 @@ from types import ModuleType
 
 import pytest
 
-from mltgnt.routing.channel_router import find_observers, resolve_responding_persona
-
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "mltgnt"
 
 _DEPRECATION_CATEGORIES = {"DeprecationWarning", "FutureWarning"}
@@ -117,16 +115,6 @@ def find_missing_replacements(src_root: Path) -> list[str]:
 
 def test_real_replacements_exist() -> None:
     assert find_missing_replacements(SRC_ROOT) == []
-
-
-def test_resolve_responding_persona_warns() -> None:
-    with pytest.warns(DeprecationWarning, match="use resolve_persona"):
-        resolve_responding_persona("C1", "hello", None, {}, {})
-
-
-def test_find_observers_warns() -> None:
-    with pytest.warns(DeprecationWarning, match="use find_observers_in_space"):
-        assert find_observers("C1", None, {}) == []
 
 
 def test_missing_replacement_is_reported(tmp_path: Path) -> None:

@@ -305,16 +305,16 @@ body
 class TestCreateSkillV1TemplateParse:
     """Issue #1403 AC-3: v1 generation template examples parse correctly"""
 
-    def test_create_skill_template_build_meta(self, tmp_path: Path) -> None:
-        """Validate mltgnt-create-skill §3 v1-template SKILL.md via _build_meta"""
+    def test_create_skill_templatebuild_meta(self, tmp_path: Path) -> None:
+        """Validate mltgnt-create-skill §3 v1-template SKILL.md via build_meta"""
         from mltgnt.bridges.files_adapter import md_read
-        from mltgnt.skill.loader import _build_meta
+        from mltgnt.skill.loader import build_meta
 
         skill_path = tmp_path / "example-skill" / "SKILL.md"
         skill_path.parent.mkdir(parents=True)
         skill_path.write_text(CREATE_SKILL_V1_TEMPLATE_MD, encoding="utf-8")
         md = md_read("SKILL.md", repo_root=skill_path.parent)
-        meta = _build_meta(md.frontmatter, skill_path)
+        meta = build_meta(md.frontmatter, skill_path)
         assert meta.skill_io == "v1"
         assert meta.produces is not None
         assert isinstance(meta.input_schema, dict)
@@ -330,16 +330,16 @@ class TestCreateSkillV1TemplateParse:
         assert meta.produces is not None
         assert isinstance(meta.input_schema, dict)
 
-    def test_create_persona_meta_build_meta(self, tmp_path: Path) -> None:
-        """Validate mltgnt-create-persona v1 frontmatter example via _build_meta"""
+    def test_create_persona_metabuild_meta(self, tmp_path: Path) -> None:
+        """Validate mltgnt-create-persona v1 frontmatter example via build_meta"""
         from mltgnt.bridges.files_adapter import md_read
-        from mltgnt.skill.loader import _build_meta
+        from mltgnt.skill.loader import build_meta
 
         skill_path = tmp_path / "mltgnt-create-persona" / "SKILL.md"
         skill_path.parent.mkdir(parents=True)
         skill_path.write_text(CREATE_PERSONA_META_V1_MD, encoding="utf-8")
         md = md_read("SKILL.md", repo_root=skill_path.parent)
-        meta = _build_meta(md.frontmatter, skill_path)
+        meta = build_meta(md.frontmatter, skill_path)
         assert meta.skill_io == "v1"
         assert meta.produces is not None
         assert isinstance(meta.input_schema, dict)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from mltgnt.skill.loader import _build_meta
+from mltgnt.skill.loader import build_meta
 from mltgnt.bridges.files_adapter import md_read
 
 
@@ -15,7 +15,7 @@ def _fm_and_meta(yaml_content: str, tmp_path: Path, path: Path | None = None) ->
     skill_path = tmp_path / "SKILL.md"
     skill_path.write_text(f"---\n{yaml_content}\n---\nbody\n", encoding="utf-8")
     md = md_read(skill_path.name, repo_root=tmp_path)
-    return _build_meta(md.frontmatter, path or Path("/fake/skills/test/SKILL.md"))
+    return build_meta(md.frontmatter, path or Path("/fake/skills/test/SKILL.md"))
 
 
 def test_ac5_1_triggers_list(tmp_path):

@@ -34,7 +34,7 @@ def queue_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(tq, "_active_config", config)
     monkeypatch.setattr(
         tq,
-        "_thread_queue_config",
+        "thread_queue_config",
         lambda: {"stale_after_sec": 3600, "max_queued": 20, "cleanup_ttl_days": 14},
     )
     return root

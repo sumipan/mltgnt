@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **BREAKING:** Remove the deprecated aliases and wrappers that #4024 / #3285 kept for one release (#5045). Use the replacement on the right:
+  - `mltgnt.conversation.thread_queue`: `_thread_queue_config` → `thread_queue_config`, `_read_state` → `read_state`, `_is_stale` → `is_stale`
+  - `mltgnt.conversation.thread_index`: `_write_post_content` → `write_post_content` (or `set_post_content_writer()`)
+  - `mltgnt.conversation.session_compact`: `_estimate_tokens` → `estimate_tokens`, `_format_turns_for_prompt` → `format_turns_for_prompt`, `_build_prompt` → `build_prompt`, `_audit_path` → `audit_path`
+  - `mltgnt.conversation.session_store`: `_sessions_dir` → `sessions_dir`
+  - `mltgnt.conversation.thread_persona_store`: `_LOCK` → `LOCK`, `_ttl_days` → `ttl_days`, `_is_expired` → `is_expired`, `_compact` → `compact`
+  - `mltgnt.skill.loader`: `_build_meta` → `build_meta`
+  - `mltgnt.routing` / `mltgnt.routing.channel_router`: `resolve_responding_persona(channel, text, thread_ts, channel_map, thread_persona_map)` → `resolve_persona(text, space_id=channel, conversation_id=f"{channel}:{thread_ts}" if thread_ts else None, persona_map=channel_map, pinned_personas=thread_persona_map)`, `find_observers` → `find_observers_in_space`
+
+  `thread_queue.admit()` and `thread_index.register_bot_post()` now look up `thread_queue_config` / `write_post_content` at call time, so patch those public names (or use `set_config_provider()` / `set_post_content_writer()`). `ChannelPersonaEntry` stays as an alias of `SpacePersonaEntry`.
+
 ## v0.126.0
 
 - **Added `mltgnt.config.SkillConfig`** (#5060): frozen dataclass with `passthrough_env: tuple[str, ...] = ()` plus process-wide `get_skill_config()` / `set_skill_config()` (importable from `mltgnt.config`, not in `__all__`). A `str` value raises `TypeError`; other iterables are normalized to a tuple.

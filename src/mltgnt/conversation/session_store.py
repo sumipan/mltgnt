@@ -98,9 +98,6 @@ def sessions_dir() -> Path:
     )
 
 
-_sessions_dir = sessions_dir  # deprecated alias
-
-
 def _ledger_dir() -> Path:
     if _ledger_dir_override is not None:
         return _ledger_dir_override
@@ -234,7 +231,7 @@ def append_turn(
     persona: str | None = None,
     raw_result_path: str | None = None,
 ) -> None:
-    """Append a turn. persona is a backward-compat alias."""
+    """Append a turn. persona is accepted as an older spelling of persona_id."""
     del raw_result_path  # accepted for compatibility, not stored
     path = session_path(conversation_id)
     path.parent.mkdir(parents=True, exist_ok=True)
