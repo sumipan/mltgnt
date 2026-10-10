@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.127.0
+
 - **BREAKING:** Remove the deprecated aliases and wrappers that #4024 / #3285 kept for one release (#5045). Use the replacement on the right:
   - `mltgnt.conversation.thread_queue`: `_thread_queue_config` → `thread_queue_config`, `_read_state` → `read_state`, `_is_stale` → `is_stale`
   - `mltgnt.conversation.thread_index`: `_write_post_content` → `write_post_content` (or `set_post_content_writer()`)
