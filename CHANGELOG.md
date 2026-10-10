@@ -2,241 +2,630 @@
 
 ## Unreleased
 
+## v0.125.3
+
+- **Public API exports** (#5037): `mltgnt.media.__all__` re-exports 27 names from `mltgnt.media._core.*` (without importing `media.slack` / `media.webchat`); `mltgnt.agent` exports `LLMCaller`, `RetryConfig`, `ToolExecutor` and `REFLEXION_EXHAUSTED_TOOL`; `bridges.hooks_adapter` imports `check_pipeline_status` and `default_check_rejected` from public `ghdag.dag`. (`eb16d03`)
+
 ## v0.125.2
 
-### Added
+- Rewrite the README for v0.125.1. (`14ff1ef`)
 
-- **`mltgnt.media` public surface** (#5037): re-exports 27 names from `mltgnt.media._core.*` via `mltgnt.media.__all__` (same objects as the `_core` submodules; does not import `media.slack` / `media.webchat`).
-- **`mltgnt.agent` runner exports** (#5037): `LLMCaller`, `RetryConfig`, `ToolExecutor`, and `REFLEXION_EXHAUSTED_TOOL` are exported from `mltgnt.agent` (re-exported from `_runner`).
-- **`bridges.hooks_adapter`** (#5037): imports `check_pipeline_status` and `default_check_rejected` from public `ghdag.dag` instead of `ghdag.dag._util`.
-- **`mltgnt.agent.work_loop`** (#5002): `run_work_loop` wraps `AgentRunner` with planning, `RepeatGuard`, optional `run_skill` via `SkillRunner` / `GhdagSkillRunner` (`enqueue_and_wait` with `parent_correlation_id`), and `events_sink` callbacks (`work_loop_step` / `work_loop_plan_failed`). Exports include `WorkLoopConfig`, `WorkLoopOutcome`, `WorkLoopDeadline`, `FINISH_TOOL`, `TrackingCaller`, `is_plan_prompt`, `make_skill_tool`, and `run_skill_contract`.
-- **Media layer contract** (#4027): new `mltgnt.interfaces.media` with `Status` (`str` Enum: `RECEIVED` / `WORKING` / `DONE` / `FAILED` / `CANCELLED`), the `MediaClient` Protocol (`post` / `update` / `set_status` / `upload`; failures return `None` / `False`, `upload` defaults to `False`) and `adapt_client(obj)`. New `mltgnt.media` package (`__all__ = []`; import from submodules): `media._core.types` (`MediaEvent`, `OutboundMessage`), `media._core.client` (re-export), `media._core.config` (`MediaConfig`: required `state_dir` / `pending_dir` / `events_dir`, plus `language`, `progress_min_interval_sec`, `approval_ttl_sec`). New extras `mltgnt[slack]` (slack_sdk / slack_bolt) and `mltgnt[webchat]` (fastapi / uvicorn). `.importlinter` adds `media` as a top layer next to `daemon`, forbids core packages from importing `mltgnt.media`, and keeps `media.slack` / `media.webchat` independent. `LanguagePack` gains `approval_words`, `status_labels`, `enqueue_failed_text` and `progress_line_pattern` (ASCII defaults, inherited by `JA`; hosts that want localized values pass their own `LanguagePack`).
-- **Media turn bridge and host hooks** (#4031): new `mltgnt.media._core.hooks.HookRegistry` with four hook kinds, registered with `on_inbound` / `before_dispatch` / `after_post` / `on_result` (usable as decorators) and run in registration order. `on_inbound(event) -> bool` stops the turn on `True`, `before_dispatch(turn) -> TurnInput` replaces the handler input, `after_post(result, message_id)` runs after a reply post, and `on_result(uid, body)` runs when a delegated result is delivered. A hook that raises is logged and skipped. New `mltgnt.media._core.bridge.MediaBridge(client, handler, config, hooks)`. `handle_event(event)` runs `on_inbound`, then `thread_reactions.admit` (a queued or rejected event returns `None` without calling the handler). It then builds a `TurnInput` with `session_store` history, appends the user turn, runs `before_dispatch` and calls `TurnHandler.handle`. A reply is posted to the same thread (`Status.DONE` / `FAILED`, assistant turn appended, `after_post`), and messages queued meanwhile run as the next turn. A task result is saved as a pending record (`state: running`) and set to `Status.WORKING`; the conversation stays running until `deliver_result(uid, body)` (the deliver target for the watchers) posts the body to the thread, appends the assistant turn and fires `on_result`. A failed post keeps the pending record for a retry. A handler exception sets `Status.FAILED` and returns `None`.
-- **Localized legacy persona headings and Phase 1 meta lines come from the language pack** (#5040): `LanguagePack` gains `persona_section_aliases` (localized legacy heading -> canonical English name), `phase1_meta_prefixes` and `phase1_meta_markers` (extra compaction Phase 1 lines to drop on top of the English ones). All three are empty in `EN`. `persona.extractor.extract`, `routing.triage.extract_triage_section` and `memory.compaction._sanitize_phase1_output` take a `pack` keyword argument (default: the current pack). `tests/test_no_cjk.py` now also decodes `\N{...}` named escapes.
-- `PersonaScheduler(slack=...)` accepts a `MediaClient` (notifications use `post(text, space, thread)`). `notify: slack_secretary` / `slack_custom` and `memory: true` behave as before; when persona post kwargs (e.g. `icon_emoji`) are present and the client has `post_message`, that call is kept.
+## v0.125.1
 
-### Deprecated
+- Bump ghdag to v0.101.2. (`7331104`)
 
-- `SlackClientProtocol` (`post_message`): use `MediaClient`. Passing such a client to `adapt_client` (and so to `PersonaScheduler`) emits one `DeprecationWarning` and wraps it (`post` -> `post_message(text, channel=space, thread_ts=thread)`; returns the ts from `post_message_ts` when available, otherwise `""`, and `None` on failure). `SlackClientProtocol.post_message_ts` is added with a default. Removal is planned for the next minor (Y) bump.
+## v0.125.0
 
-### Removed
+- **Localized legacy persona headings and Phase 1 meta lines come from the language pack** (#5040): `LanguagePack` gains `persona_section_aliases`, `phase1_meta_prefixes` and `phase1_meta_markers` (all empty in `EN`); `persona.extractor.extract`, `routing.triage.extract_triage_section` and `memory.compaction._sanitize_phase1_output` take a `pack` keyword argument. **BREAKING:** `mltgnt.config.PERSONA_SECTION_ALIASES` is removed; consumers read `get_language_pack().persona_section_aliases` at run time. (`d9528c4`)
+- Use an ASCII dummy language pack for legacy persona heading tests. (`793c714`)
 
-- **BREAKING: `mltgnt.config.PERSONA_SECTION_ALIASES` is removed** (#5040). Consumers (`DEFAULT_WEIGHT_MAP.get`, `PersonaConfig.section_aliases`, the persona loader / schema / compress / extractor and triage) read `get_language_pack().persona_section_aliases` at run time instead. With `EN`, localized legacy persona headings are no longer recognized; hosts install a pack with `persona_section_aliases` via `set_language_pack` before raising the mltgnt pin.
-- **BREAKING: `mltgnt.config.language.JA` is removed** (#4487). No compatibility alias is kept, so `from mltgnt.config.language import JA` raises `ImportError`. This is intentional: callers that relied on the old default fail fast instead of silently switching to English vocabulary.
-- **English pack and current-pack API**: new `EN` (the only pack shipped with mltgnt), `get_language_pack()` and `set_language_pack(pack)` in `mltgnt.config.language`, also re-exported from `mltgnt.config`. `set_language_pack` raises `TypeError` when `pack` is not a `LanguagePack`.
-- **BREAKING: defaults switch from the old built-in locale to the current pack (`EN` unless replaced)**: functions that take `pack=None`; `MediaConfig.language` (defaults to the current pack at construction time); `thread_queue` cancel words and composite message text (read at call time, not fixed at import time); the excluded persona stems in `persona.registry` and `memory.dream.synthesizer` (now `sample`).
-- The CJK exception for `src/mltgnt/config/language.py` is gone: all of `src/` is now covered by the same zero-CJK check as `tests/`.
-- **Host migration (keep this order)**: (1) define your own `LanguagePack` and replace every `JA` import with it; (2) at daemon startup, call `set_language_pack(your_pack)` once, before any `MediaConfig` is built; (3) only then raise the mltgnt version pin. Do not do (3) before (1) and (2).
+## v0.124.1
 
-### Fixed
+- **Scheduler robustness** (#5034): an exception raised by a job action is logged with a traceback, marks the job failed (`"<ExceptionType>: <message>"`) and posts a `Job raised` notification instead of killing the job thread silently. `ghdag_bridge.enqueue_and_wait` / `enqueue_dag` request a cancel of a timed-out task via the `jobs/cancel/<uuid>` marker. New `SchedulePaths.prune(today, keep_days=30)`, called once per day by `PersonaScheduler` (`state_keep_days=30`). A dropped `chain_every_run` run now logs a warning, and `stop()` no longer waits for the rest of the loop sleep. (`2bb3747`)
 
-- **Scheduler robustness** (#5034): an exception raised by a job action no longer kills the job thread silently. It is logged with a traceback, the job is marked failed with `"<ExceptionType>: <message>"` (scheduled / fuzzy_window / chained jobs only; interval and `chain_every_run` jobs still write no state) and a `Job raised` notification is posted and recorded to memory like other failures. `ghdag_bridge.enqueue_and_wait` / `enqueue_dag` now request a cancel of a timed-out task by writing the `jobs/cancel/<uuid>` marker; the result still starts with `timeout (Ns)` and gets `; cancel failed: <error>` appended when the marker cannot be written. New `SchedulePaths.prune(today, keep_days=30)` deletes dated done / planned / missed / failed / skipped files older than `keep_days` (`interval/*.last` is kept), and `PersonaScheduler` calls it once per calendar day from `tick` (new keyword `state_keep_days=30`; errors are logged and ignored). A `chain_every_run` run dropped because the dependent job is still running now logs a warning instead of discarding the upstream output silently. `stop()` returns without waiting for the remainder of the 1-second loop sleep.
-- `tests/scheduler/test_chain_every_run.py::test_dependent_fires_again_on_next_upstream_run` raced the runner thread: it issued the second `tick` as soon as the dependent action had appended its output, while the upstream / dependent job ids were still in `_running` (the `finally` that discards them runs after the action), so `_spawn_job` skipped the second chain about one run in three. The test now waits until no job is running before the second tick. No runtime change.
+## v0.124.0
 
+- **`mltgnt.agent.work_loop`** (#5002): `run_work_loop` wraps `AgentRunner` with planning, `RepeatGuard`, optional `run_skill` via `SkillRunner` / `GhdagSkillRunner` (`enqueue_and_wait` with `parent_correlation_id`), and `events_sink` callbacks (`work_loop_step` / `work_loop_plan_failed`). Exports include `WorkLoopConfig`, `WorkLoopOutcome`, `WorkLoopDeadline`, `FINISH_TOOL`, `TrackingCaller`, `is_plan_prompt`, `make_skill_tool` and `run_skill_contract`. (`55335ec`)
+- CP2 review fixes for `work_loop`. (`ebc399f`)
 
-### Added
+## v0.123.10
 
-- **Agent work mode** (#3855): `AgentRunner` gains keyword arguments that all default to the current behavior. `history_mode="full_trace"` passes the whole numbered tool trace (old result bodies folded to `[truncated N chars]` past `history_max_chars`) plus `[REFLEXION] <feedback>` lines to the next `llm_call`; `plan` (new `mltgnt.agent.plan.Plan`) is updated in place from `plan_update` in LLM responses and returned as `AgentResult.plan`; `max_reflexions` stops the loop with `AgentResult(tool="__reflexion_exhausted__")` (`REFLEXION_EXHAUSTED_TOOL`); `step_hook(entry)` is called after each trace append (exceptions are logged and ignored). New exports: `Plan`, `PlanItem`, `parse_plan`, `build_plan_prompt`, and `DefaultReflexionEvaluator` (deterministic: `[ERROR]` results, host `failure_markers`, repeated calls).
-- **Debounced git commits of memory files** (nexus #3833): `mltgnt.bridges.files_adapter.commit(paths, message, *, sink="memory", trailers=None)` passes through to the ghdag `ghdag.vcs` sink (absolute paths are made relative to the sink `repo_root`; outside it raises `ValueError`). `append_memory_entry`, `compact` (final write only), `write_dream` and `write_global` schedule a per-path debounced commit (`mltgnt(memory): <persona> <append|compact|dream|global>`) after a successful write; new `MemoryConfig.commit_debounce_sec` (default `300.0`, `<= 0` commits synchronously) and `mltgnt.memory.flush_memory_commits()` (also registered with `atexit`). Commit failures are logged as warnings and never affect the write. Nothing is committed unless `ENABLE_GIT` is truthy (ghdag `get_sink` returns `NullSink`). Requires a ghdag release that ships `ghdag.vcs` (nexus #3831).
-- **`MLTGNT_DEFAULT_ENGINE` host-wide default engine** (#3809): new `mltgnt.persona.schema.system_default_engine()` reads `MLTGNT_DEFAULT_ENGINE` on every call (unset/blank -> `SYSTEM_DEFAULT_ENGINE` = `"claude"`; values outside `VALID_ENGINES` raise `ValueError`). `run_persona_prompt`, `format_result_for_persona(engine="")` and `dispatch_decision._normalize_primary_engine_model` use it when no engine is given; an explicit engine always wins. `SYSTEM_DEFAULT_ENGINE` is kept unchanged for compatibility.
-- **Selectable engine for skill matcher LLM stages** (#3806): `match` / `match_pipeline` accept a keyword-only `engine` (default `"claude"`) used by both the agentic discover stage and the LLM intent-classification stage. `_DEFAULT_MATCHER_MODEL` applies only to claude; other engines get `model=None` (ghdag resolves the engine default; `""` is rejected by its allowlist) unless `model` is given. `resolve_skill` gains `matcher_engine`, and the scheduler `enable_pipeline` path passes the job / persona engine to `match_pipeline`.
-- **`MemoryConfig.dream_engine`**: selects the LLM engine (`"claude"` / `"cursor"` / `"codex"`, default `"claude"`) used by the `memory_dream` schedule action. An empty value is treated as `"claude"`. Hosts that only run cursor or codex no longer fail the daily dream job with `claude: command not found`.
+- Bump ghdag to v0.101.1. (`a315ada`)
 
-- **`chain_every_run` for chained scheduler jobs**: a `mode: chained` job with `chain_every_run: true` fires right after *every* successful run of its `depends_on` job (previously chained jobs fired once per day via date-marked done files, so chaining after an `interval` job never fired). The upstream job's output text is passed as `ScheduleJob.upstream_output`; `action: skill` appends it to the persona's user message. Such jobs never write done / skipped / failed marks and are never time-triggered by `tick()`. Use case: a deterministic interval check script followed by a persona skill run that acts on the check result.
+## v0.123.9
 
-- **`LanguagePack` dataclass for locale-specific vocabulary**（#3382）: `mltgnt.config.language` に `LanguagePack` frozen dataclass と `JA` デフォルトインスタンスを追加。`deterministic_gate` / `persona/compress` / `persona/formatter` のハードコード日本語語彙を `LanguagePack` に移動し、`pack=None` 引数（None 時は `JA`）でロケール差し替えが可能に。`persona/registry` の `EXCLUDE_STEMS` を `frozenset()` に変更し、`list_personas` / `resolve_with_alias` に `exclude_stems` 引数を追加。`memory/dream/synthesizer` の重複 `_EXCLUDE_PERSONA_STEMS` を削除。`PersonaConfig` に `exclude_stems` フィールドを追加
+- Bump ghdag to v0.101.0. (`72b6e5a`)
 
-### Changed
+## v0.123.8
 
-- **`MemoryConfig.dream_model` default is now `""`**: when empty, the `claude` engine falls back to `claude-haiku-4-5-20251001` (same model as before), and other engines use their ghdag default model. An explicit `dream_model` is passed through unchanged for any engine.
+- Bump ghdag to v0.100.8. (`9fbe543`)
 
-### Removed
+## v0.123.7
 
-- `tools/`（`mltgnt_fugu` 試作パッケージ）と `tests/tools/` を削除。`tools/lint-boundary.sh` は `scripts/lint-boundary.sh` へ移動（CI の boundary policy lint は維持）
-- `docs/`（日本語ドキュメント `MLTGNT.md` / `improvement_hub.md`）を削除。設計文書は nexus 側 `docs/MLTGNT.md` に一本化
-- **未使用モジュール削除**（#3321 / #3301 サブ6）: `mltgnt.loops` / `mltgnt.ooda` / `mltgnt.improvement` / `mltgnt.kpi` / `mltgnt.chat` / `mltgnt.execution` を削除。併せて `mltgnt.interfaces.loops` / `ooda` / `chat`（および ooda 専用の `dispatch`）と `LoopsConfig` / `ChatConfig` / トップレベル `run_pipeline` を削除。`BaseRunner` は `mltgnt.scheduler.base_runner` へ移設。loops 専用の `enqueue_step` / `poll_step` も撤去
+- Bump ghdag to v0.100.7. (`125d810`)
+- Bump ghdag to v0.100.7. (`9ea8b3b`)
 
-### Security
+## v0.123.6
 
-- **test: normalize fixtures**（#3337）: Changed tone-cut in `format_persona_body` from a name-specific literal to a generic pattern. Replaced name-specific test data with synthetic identifiers.
+- Bump ghdag to v0.100.5. (`bb79ca6`)
 
-### Added
+## v0.123.5
 
-- **くびれ契約 `TurnInput` / `TurnResult` / `TurnHandler`**（#3286）: `mltgnt.interfaces.turn` に媒体非依存の境界データ型と `TurnHandler` Protocol を追加。パッケージから `TurnInput` / `TurnResult` / `TurnHandler` / `Attachment` / `HistoryMessage` を公開。待機列・台帳の実装は持ち込まない
-- **媒体非依存ルーティング API**（#3285）: `resolve_persona(text, *, space_id, conversation_id, persona_map, pinned_personas)` と `find_observers_in_space` を新設。`SpacePersonaEntry` を正式名とし `ChannelPersonaEntry` は後方互換別名。旧 `resolve_responding_persona` / `find_observers` は互換ラッパとして残し `DeprecationWarning` を出す
-- **discover ガバナンス（柱 5）**（#3041）: lint 失敗スキルの診断を `{base}/_unresolved/{name}.json` に書き出し、次回 discover で解消済みなら削除。V7 が `artifacts[].path` のスキルディレクトリ相対の実在（glob は 1 件以上マッチ）を検査。`skill_io: v1` 時は `write_result_frontmatter()` が result 先頭に `skill_io` / `produces`（content_type / status_markers）を書き込む
-- **スキル結果の `PIPELINE_STATUS` 突合と `CONTRACT_VIOLATION`**（#3040）: `ExitStatus.CONTRACT_VIOLATION = 3` を追加。scheduler が `SkillRunResult.expected_markers` と result 先頭/末尾の `PIPELINE_STATUS:` を突合し、宣言外・欠落は exit 3。`diagnostics` と `event_type: "skill_result"` audit を記録。fanout 各ステップにも audit を伝播。`tests/fixtures/marker_response/` に 3 エンジン × 3 ケースの実応答 fixture を追加
-- **スキルパイプライン合成器 `compose_pipeline`**（#3031）: `list[SkillMatchResult]` → 直線 `DagStep` 列。`scheduler` の `enable_pipeline: true` で `match_pipeline → compose_pipeline → typecheck_dag → enqueue_dag` を配線。`consumes.producer` 不一致は compose 時点で `SkillIOTypeError`（legacy はスキップ）。`enqueue_dag` は upstream result から `PIPELINE_STATUS:` を抽出し `{step_id}_pipeline_status` を下流へ注入、`INVALID_STATE` 時は downstream を投入しない
-- **DagHooks `on_task_cancelled` / `on_task_progress`**（#3023）: `MltgntHooks` が ghdag v0.40.0 以降の Protocol 12 メソッドに準拠。cancel / stream-json 進捗を `jobs/audit.jsonl` に記録する
-- **`mltgnt.skill.loader.build_meta` 公開**（#3023）: フロントマター→`SkillMeta` 構築を公開 API 化。`_build_meta` は後方互換 alias
-- **スケジューラ skill アクションのコンテキスト注入**（#3021）: `skill/runner.run(extra_context=...)` を追加。`run_skill_action` がスキルの `knowledge.md`（末尾 N パラグラフ）と `chat/memory/<persona>.jsonl`（末尾バイト）を読みプロンプトへ注入し、`jobs/audit.jsonl` に `context_injection` を記録する
-- **`skill/context.build_extra_context` + discover knowledge index**（#3030）: `SkillMeta.knowledge_paths` を discover 時に index。`build_extra_context()` に knowledge/memory 組立を集約し scheduler から private 重複を除去。`from mltgnt.skill import build_extra_context` で公開
+- Bump ghdag to v0.100.4. (`fc34b7f`)
 
-### Deprecated
+## v0.123.4
 
-- **`resolve_responding_persona` / `find_observers`**（#3285）: Slack 語彙（`channel` / `thread_ts`）固定のため非推奨。`resolve_persona` / `find_observers_in_space` へ移行すること
+- Bump ghdag to v0.100.3. (`9c1d4aa`)
 
-### Changed
+## v0.123.3
 
-- **コンテキスト注入を opt-in 化 + 記憶 JSONL の整形**（#3173）: `knowledge_count` / `memory_max_bytes` の既定を `5` / `4096` → `0` / `0` に変更（破壊的変更）。`action_args` で明示したジョブのみ注入。記憶は生 JSONL ではなく `- [timestamp] role: content` 形式に整形。`memory_exclude_source_tags` で `source_tag` 完全一致除外。注入量が 0 のとき `context_injection` audit は書かない
-- **スキル結果の status marker 契約を観測既定に**（#3172）: `_resolve_exit_code` は欠落・宣言外でも既定で exit を変えず diagnostics / audit のみ記録。強制は `action_args.enforce_status_markers: true` の opt-in。裸マーカー行（例: `ACCEPTED`）と `REJECTED:` 前方一致も受理。`tests/fixtures/marker_response/*_bare_marker.txt` / 真の `*_no_marker.txt` を再構成
-- **`mltgnt.memory` から `_tail_utf8_bytes` を非公開化**（#3023）: package export は `tail_utf8_bytes` のみ。実装本体は `memory.api` に残す
-- **V7 lint**（#3041）: `produces.artifacts[].path` が str であることに加え、スキルディレクトリ実在時はファイル実在 / glob マッチを検査する
+- Bump ghdag to v0.100.2. (`af80f04`)
 
+## v0.123.2
+
+- Bump ghdag to v0.100.1. (`7fe5b91`)
+
+## v0.123.1
+
+- Rewrite the README for v0.123.0 (#4499). (`7c5475b`)
+
+## v0.123.0
+
+- Forward `action_args.task_timeout_sec` from the scheduler as the ghdag task timeout (#4539). (`d524caf`)
+
+## v0.122.0
+
+- Document the `JA` removal, the `EN` default and the `set_language_pack` migration (#4493). Host migration (keep this order): (1) define your own `LanguagePack` and replace every `JA` import with it; (2) at daemon startup, call `set_language_pack(your_pack)` once, before any `MediaConfig` is built; (3) only then raise the mltgnt version pin. (`4395a6f`)
+
+## v0.121.0
+
+- Bump ghdag to v0.100.0. (`007c9b5`)
+
+## v0.120.0
+
+- **BREAKING: `mltgnt.config.language.JA` is removed** (#4487). No compatibility alias is kept, so `from mltgnt.config.language import JA` raises `ImportError`; defaults now come from the current pack (`EN` unless replaced). The CJK exception for `src/mltgnt/config/language.py` is gone: all of `src/` is covered by the same zero-CJK check as `tests/`. (`480e73a`)
+
+## v0.119.0
+
+- Switch persona directory layout tests in memory from the `JA` to the `EN` pack (#4492). (`89f2191`)
+
+## v0.118.0
+
+- Switch `media/_core` tests from the `JA` to the `EN` language pack (#4491). (`5f5f188`)
+
+## v0.117.0
+
+- Switch media core types tests from the `JA` to the `EN` pack (#4490). (`9f29435`)
+
+## v0.116.0
+
+- Pin the call-time `thread_queue` language pack lookup in tests (#4489). (`a616d65`)
+
+## v0.115.0
+
+- Pin agent URL extraction around full-width parentheses and periods in tests (#4488). (`15396cc`)
+
+## v0.114.0
+
+- Translate the scheduler `enable_pipeline` docstring to ASCII English (#4486). (`53c5a3b`)
+
+## v0.113.0
+
+- `memory.dream.synthesizer` reads its default `exclude_stems` from the current language pack (#4484). (`0b58dfb`)
+
+## v0.112.0
+
+- `thread_queue` cancel words and composite message text are read from the current language pack at call time, not fixed at import time (#4480). (`860a9bd`)
+- Replace CJK punctuation in the skill runner docstring with ASCII (#4482). (`722b3d8`)
+
+## v0.111.0
+
+- Resolve the `deterministic_gate` language pack at call time and drop CJK literals (#4479). (`fea9faa`)
+- Build CJK punctuation via `chr()` and update the default-pack test for call-time resolution (#4479). (`af8939f`)
+
+## v0.110.0
+
+- Persona code resolves the default language pack at call time instead of `JA`, including the excluded persona stems in `persona.registry` (#4477). (`5cffa39`)
+- Follow the `EN` default exclude stem in persona tests and cover call-time pack resolution (#4477). (`bf881ce`)
+
+## v0.109.0
+
+- Media defaults resolve the current language pack at call time instead of `JA`: `MediaConfig.language` defaults to the current pack at construction time. (`028202e`)
+- Align the `MediaConfig` default language test with the current pack (#4475). (`3883c06`)
+
+## v0.108.0
+
+- Bump ghdag to v0.99.0. (`a74d1fc`)
+
+## v0.107.0
+
+- **English pack and current-pack API**: new `EN`, `get_language_pack()` and `set_language_pack(pack)` in `mltgnt.config.language`, also re-exported from `mltgnt.config`. `set_language_pack` raises `TypeError` when `pack` is not a `LanguagePack`. (`a385282`)
+
+## v0.106.0
+
+- Bump ghdag to v0.98.0. (`b67e646`)
+
+## v0.105.0
+
+- Bump ghdag to v0.97.0. (`429767e`)
+
+## v0.104.0
+
+- Bump ghdag to v0.96.0. (`d04c767`)
+
+## v0.103.0
+
+- Bump ghdag to v0.95.0. (`391a5ca`)
+
+## v0.102.0
+
+- Bump ghdag to v0.94.0. (`33d80e5`)
+
+## v0.101.0
+
+- Bump ghdag to v0.93.0. (`5b384f0`)
+
+## v0.100.0
+
+- Bump ghdag to v0.91.0. (`bf9ccce`)
+- Bump ghdag to v0.92.0. (`7f78cb0`)
+
+## v0.99.0
+
+- Bump ghdag to v0.91.0. (`4d77240`)
+
+## v0.98.0
+
+- Bump ghdag to v0.89.0. (`50a14c8`)
+
+## v0.97.0
+
+- Rewrite the README for v0.96.0. (`bbca0c8`)
+
+## v0.96.0
+
+- Update README version references to v0.95.0. (`2164002`)
+
+## v0.95.0
+
+- Update README version references to v0.94.0. (`6263051`)
+
+## v0.94.0
+
+- Rewrite the README for v0.93.0. (`6e25978`)
+
+## v0.93.0
+
+- Bump ghdag to v0.88.0. (`8d28b0c`)
+
+## v0.92.0
+
+- Align README version references with v0.91.0. (`1e90269`)
+
+## v0.91.0
+
+- Rewrite the README for the v0.90.0 public API and media layer. (`a140541`)
+
+## v0.90.0
+
+- Bump ghdag to v0.87.0. (`505df1e`)
+
+## v0.89.0
+
+- Align README version references with the v0.88.0 release. (`477ac94`)
+- Add `TurnResult.post_options` and pass it through the media bridge. (`115dfed`)
+
+## v0.88.0
+
+- Align the WebChat UI with Slack and enrich the SSE stream. (`749b667`)
+
+## v0.87.0
+
+- Extend `SlackClient` with extra kwargs, upload and unreact. (`f445a4d`)
+
+## v0.86.0
+
+- Rewrite the README for v0.85.0. (`0842091`)
+- Add the WebChat 2-pane UI, bookmarks and the cross-media reaction contract. (`fe858a7`)
+- Align the `TurnResult` field test with reactions (#4211). (`a159cda`)
+- CP2 review fixes: WebChat reply counts use the latest snapshot per message, Markdown links only allow safe URL schemes, and the bookmark panel updates live. (`2b3af11`)
+
+## v0.85.0
+
+- Rewrite the README for v0.84.0. (`cbc2687`)
+
+## v0.84.0
+
+- Bump ghdag to v0.86.0. (`51a3e09`)
+
+## v0.83.0
+
+- Rewrite the README for v0.82.0. (`2d0ac25`)
+
+## v0.82.0
+
+- Bump ghdag to v0.85.0. (`f75b65b`)
+
+## v0.81.0
+
+- Bump ghdag to v0.84.0. (`283dae0`)
+
+## v0.80.0
+
+- Add the WebChat medium and cross-media contract tests (#4032). (`c7e70df`)
+
+## v0.79.0
+
+- **Media turn bridge and host hooks** (#4031): new `mltgnt.media._core.hooks.HookRegistry` with `on_inbound` / `before_dispatch` / `after_post` / `on_result` hooks (run in registration order; a raising hook is logged and skipped) and `mltgnt.media._core.bridge.MediaBridge(client, handler, config, hooks)`. `handle_event(event)` admits the event through `thread_reactions`, builds a `TurnInput` with `session_store` history, calls `TurnHandler.handle` and posts the reply to the same thread; a delegated task result is kept as a pending record until `deliver_result(uid, body)` posts it and fires `on_result`. (`30a60d0`)
+
+## v0.78.0
+
+- Add progress, watchers, component, guards and the plan gate to `media._core` (#4030). (`e724a6f`)
+
+## v0.77.0
+
+- Add the semantic memory store, core renderer, memory tools, reflection and archive (#4037). (`8ba4b85`)
+
+## v0.76.0
+
+- Add `media._core` helpers and the Slack media implementation (#4029). (`198bac0`)
+
+## v0.75.0
+
+- **Media layer contract** (#4027): new `mltgnt.interfaces.media` with `Status` (`str` Enum: `RECEIVED` / `WORKING` / `DONE` / `FAILED` / `CANCELLED`), the `MediaClient` Protocol (`post` / `update` / `set_status` / `upload`) and `adapt_client(obj)`, plus the `mltgnt.media` package skeleton (`media._core.types`, `media._core.client`, `media._core.config.MediaConfig`), the `mltgnt[slack]` / `mltgnt[webchat]` extras and `.importlinter` layering for `media`. `PersonaScheduler(slack=...)` accepts a `MediaClient`. `SlackClientProtocol` (`post_message`) is deprecated: `adapt_client` wraps such a client and emits one `DeprecationWarning`; removal is planned for the next minor (Y) bump. (`af69590`)
+- Use ASCII defaults for the `LanguagePack` media vocabulary (`approval_words`, `status_labels`, `enqueue_failed_text`, `progress_line_pattern`) (#4027). (`e9b739c`)
+- Describe the `LanguagePack` media vocabulary defaults accurately in the changelog (#4027). (`a6abf56`)
+
+## v0.74.0
+
+- Expose public names and injection points for host-used private conversation helpers (#4024). (`9aa2519`)
+
+## v0.73.0
+
+- Rewrite the README for v0.72.0. (`dae389b`)
+
+## v0.72.0
+
+- Bump ghdag to v0.83.0. (`aea3fb4`)
+
+## v0.71.0
+
+- **Debounced git commits of memory files** (nexus #3833): `mltgnt.bridges.files_adapter.commit(paths, message, *, sink="memory", trailers=None)` passes through to the ghdag `ghdag.vcs` sink. `append_memory_entry`, `compact` (final write only), `write_dream` and `write_global` schedule a per-path debounced commit after a successful write; new `MemoryConfig.commit_debounce_sec` (default `300.0`, `<= 0` commits synchronously) and `mltgnt.memory.flush_memory_commits()` (also registered with `atexit`). Commit failures are logged and never affect the write, and nothing is committed unless `ENABLE_GIT` is truthy. (`3470731`)
+- Pin ghdag v0.82.0 (the first release with `ghdag.vcs`). (`0791364`)
+
+## v0.70.0
+
+- **Agent work mode** (#3855): `AgentRunner` gains keyword arguments that all default to the previous behavior: `history_mode="full_trace"` (numbered tool trace plus `[REFLEXION] <feedback>` lines, old results folded past `history_max_chars`), `plan` (`mltgnt.agent.plan.Plan`, updated from `plan_update` and returned as `AgentResult.plan`), `max_reflexions` (stops with `REFLEXION_EXHAUSTED_TOOL`) and `step_hook(entry)`. New exports: `Plan`, `PlanItem`, `parse_plan`, `build_plan_prompt` and `DefaultReflexionEvaluator`. (`d1750a4`)
+
+## v0.69.0
+
+- Bump ghdag to v0.81.0. (`5cba7d0`)
+- **`MemoryConfig.dream_engine`**: selects the LLM engine (`"claude"` / `"cursor"` / `"codex"`, default `"claude"`; empty means `"claude"`) used by the `memory_dream` schedule action, so cursor- or codex-only hosts no longer fail the daily dream job. `MemoryConfig.dream_model` now defaults to `""`: `claude` then falls back to `claude-haiku-4-5-20251001` (unchanged), other engines use their ghdag default, and an explicit value is passed through. (`e6636c8`)
+
+## v0.68.0
+
+- **Selectable engine for skill matcher LLM stages** (#3806): `match` / `match_pipeline` accept a keyword-only `engine` (default `"claude"`) used by both the agentic discover stage and the LLM intent-classification stage. `_DEFAULT_MATCHER_MODEL` applies only to claude; other engines get `model=None` unless `model` is given. `resolve_skill` gains `matcher_engine`, and the scheduler `enable_pipeline` path passes the job / persona engine to `match_pipeline`. (`ef5fe37`)
+- Keep added comments and docs ASCII (no CJK in the public repository). (`093dea0`)
+- CP2 review fixes: drop a duplicate CHANGELOG entry with full-width parentheses and use an ASCII arrow in a test docstring. (`5a33c17`)
+
+## v0.67.1
+
+- `tests/scheduler/test_chain_every_run.py::test_dependent_fires_again_on_next_upstream_run` no longer races the runner thread: it waits until no job is in `_running` before the second `tick` (#352). No runtime change. (`60e667a`)
+
+## v0.67.0
+
+- Rewrite the README for v0.66.0. (`cf3132a`)
+- Align the README version with pyproject 0.67.0 (CP2 review fix). (`73e16b4`)
+
+## v0.66.0
+
+- **`MLTGNT_DEFAULT_ENGINE` host-wide default engine** (#3809): new `mltgnt.persona.schema.system_default_engine()` reads `MLTGNT_DEFAULT_ENGINE` on every call (unset/blank -> `SYSTEM_DEFAULT_ENGINE` = `"claude"`; values outside `VALID_ENGINES` raise `ValueError`). `run_persona_prompt`, `format_result_for_persona(engine="")` and `dispatch_decision._normalize_primary_engine_model` use it when no engine is given; an explicit engine always wins. `SYSTEM_DEFAULT_ENGINE` is kept unchanged for compatibility. (`65da7ff`)
+
+## v0.65.0
+
+- Bump ghdag to v0.80.0. (`96804e9`)
+
+## v0.64.0
+
+- Bump ghdag to v0.79.0. (`33ca4b7`)
+
+## v0.63.0
+
+- **`chain_every_run` for chained scheduler jobs** (#347): a `mode: chained` job with `chain_every_run: true` fires right after *every* successful run of its `depends_on` job (previously chained jobs fired once per day via date-marked done files, so chaining after an `interval` job never fired). The upstream job's output text is passed as `ScheduleJob.upstream_output`; `action: skill` appends it to the persona's user message. Such jobs never write done / skipped / failed marks and are never time-triggered by `tick()`. (`4204940`)
+
+## v0.62.0
+
+- Rewrite the README for v0.61.0. (`767679a`)
+- Align README version pins with pyproject 0.62.0 (CP2). (`1f9ae9e`)
+
+## v0.61.0
+
+- Bump ghdag to v0.78.0. (`21d31e7`)
+
+## v0.60.0
+
+- Add structural convention tests (#3573). (`26c3c68`)
+
+## v0.59.0
+
+- Bump ghdag to v0.77.0. (`3943c38`)
+
+## v0.58.0
+
+- Bump ghdag to v0.76.0. (`2962ed2`)
+
+## v0.57.0
+
+- Bump ghdag to v0.75.0. (`ee8f3dc`)
+
+## v0.56.0
+
+- Bump ghdag to v0.74.0. (`b005f98`)
+
+## v0.55.0
+
+- Bump ghdag to v0.73.0. (`75cd1f5`)
+
+## v0.54.0
+
+- Bump ghdag to v0.72.0. (`842af34`)
+
+## v0.53.0
+
+- Bump ghdag to v0.71.0. (`3fc247d`)
+
+## v0.52.0
+
+- Bump ghdag to v0.70.0. (`ca7be7b`)
+
+## v0.51.0
+
+- Bump ghdag to v0.69.0. (`997a6fb`)
+
+## v0.50.0
+
+- Bump ghdag to v0.68.0. (`5959381`)
+
+## v0.49.0
+
+- Bump ghdag to v0.66.0. (`6eff144`)
+
+## v0.48.1
+
+- Bump ghdag to v0.65.1. (`0c5a910`)
+
+## v0.48.0
+
+- Bump ghdag to v0.65.0. (`7fe5c6d`)
+
+## v0.47.0
+
+- Bump the ghdag pin from v0.62.0 to v0.63.0. (`014782a`)
+
+## v0.46.0
+
+- Enforce a recursive CJK gate over the source tree. (`448cb0e`)
+- Encode the excluded sample persona stem. (`19f55cc`)
+
+## v0.45.0
+
+- Remove CJK from structural source keys. (`44d7d9e`)
+
+## v0.44.0
+
+- **Normalize test fixtures** (#3383, #3337): replace CJK test data with ASCII `LanguagePack` fixtures; the tone cut in `format_persona_body` uses a generic pattern instead of a name-specific literal, and name-specific test data is replaced with synthetic identifiers. (`fa692b8`)
+- Enforce a repository-wide CJK fixture gate in tests. (`51cccad`)
+
+## v0.43.0
+
+- Remove `docs/` (the Japanese documents `MLTGNT.md` / `improvement_hub.md`); design documents live only in nexus `docs/MLTGNT.md`. (`3f5d4df`)
+- Remove `tools/` (the `mltgnt_fugu` prototype package) and `tests/tools/`; `tools/lint-boundary.sh` moves to `scripts/lint-boundary.sh` (the CI boundary policy lint is kept). (`3e7bde2`)
+- **`LanguagePack` dataclass for locale-specific vocabulary** (#3382): `mltgnt.config.language` gains the frozen `LanguagePack` dataclass and a default `JA` instance. Hard-coded localized vocabulary in `deterministic_gate` / `persona/compress` / `persona/formatter` moves into `LanguagePack`, and a `pack=None` argument (`JA` when None) lets callers swap the locale. `persona/registry` `EXCLUDE_STEMS` becomes `frozenset()`, and `list_personas` / `resolve_with_alias` gain an `exclude_stems` argument. The duplicate `_EXCLUDE_PERSONA_STEMS` in `memory/dream/synthesizer` is removed, and `PersonaConfig` gains an `exclude_stems` field. (`c13b2d4`)
+- Resolve the ruff SIM300 yoda condition in `test_config.py`. (`59604c3`)
+
+## v0.42.1
+
+- Bump the ghdag pin from v0.61.0 to v0.62.0. (`46ac7b9`)
+
+## v0.42.0
+
+- Translate mltgnt `src` docstrings, log messages and errors to English. (`bb7fe18`)
+
+## v0.41.0
+
+- **Removed unused modules** (#3321 / #3301 sub 6): `mltgnt.loops` / `mltgnt.ooda` / `mltgnt.improvement` / `mltgnt.kpi` / `mltgnt.chat` / `mltgnt.execution` are removed, together with `mltgnt.interfaces.loops` / `ooda` / `chat` (and the ooda-only `dispatch`), `LoopsConfig` / `ChatConfig` and the top-level `run_pipeline`. `BaseRunner` moves to `mltgnt.scheduler.base_runner`. The loops-only `enqueue_step` / `poll_step` are also removed. (`25d94cf`)
+- Scrub nexus persona identifiers from docstrings and `EXCLUDE_STEMS`. (`60f30da`)
+
+## v0.40.0
+
+- Translate the test suite to English for OSS quality (#3339). (`0af5700`)
+- Strip trailing whitespace in tests for ruff W291 (#3339). (`3935222`)
+- Escape the `EXCLUDE_STEMS` sample name in tests for the leak scan (#3339). (`6430617`)
+
+## v0.39.0
+
+- Scrub host persona names from the persona formatter and tests. (`3383204`)
+
+## v0.38.0
+
+- Add media-independent persona and decision layers (#3318). (`595f035`)
+- Collapse a nested `if` in the agent layer for ruff SIM102 (#3318). (`8fea525`)
+
+## v0.37.0
+
+- Add a media-independent conversation layer (#3317). (`4fd0606`)
+- Fix mypy findings (narrow `Optional` in `session_store`, `thread_index` return type). (`50fc574`)
+
+## v0.36.0
+
+- **Waist contract `TurnInput` / `TurnResult` / `TurnHandler`** (#3286): media-independent boundary data types and the `TurnHandler` Protocol in `mltgnt.interfaces.turn`. The package exports `TurnInput` / `TurnResult` / `TurnHandler` / `Attachment` / `HistoryMessage`. Queue and ledger implementations are not brought in. (`a905123`)
+
+## v0.35.0
+
+- **Media-agnostic routing API** (#3285): new `resolve_persona(text, *, space_id, conversation_id, persona_map, pinned_personas)` and `find_observers_in_space`. `SpacePersonaEntry` is the canonical name and `ChannelPersonaEntry` stays as a backward-compatible alias. The old `resolve_responding_persona` / `find_observers` are deprecated (they are tied to Slack vocabulary such as `channel` / `thread_ts`) and kept as compatibility wrappers that emit `DeprecationWarning`; migrate to `resolve_persona` / `find_observers_in_space`. (`d4dbe26`)
+
+## v0.34.1
+
+- Pin ghdag to v0.61.0. (`197c577`)
+
+## v0.34.0
+
+- Pin ghdag to v0.55.0. (`2f324d3`)
+- Align the fanout integration test with the ghdag v0.55.0 API. (`e37db85`)
 ## v0.33.0
 
 ### Changed
 
-- **柱 5 を opt-in に戻す**（#3179）: V7 は型検査のみ（出力物の実在は検査しない）。診断ファイルは `discover(diagnostics_dir=...)` の opt-in（未指定時は `{base}/_unresolved/` へ書かない）。result frontmatter は `action_args.result_frontmatter: true` の opt-in（既定は `run_result=None`）
+- **Pillar 5 back to opt-in** (#3179): V7 only checks types (it does not check that output artifacts exist). Diagnostic files are opt-in via `discover(diagnostics_dir=...)` (when unset, nothing is written to `{base}/_unresolved/`). Result frontmatter is opt-in via `action_args.result_frontmatter: true` (default is `run_result=None`)
 
 ## v0.20.0
 
 ### Added
 
-- **loops Phase 3（実行力）**: `kind: action` サブタスクとホスト向け `ActionRequest` / `ActionResult` / `ActionExecutor`。公開 `action_schemas` に適合する決定論的 action を冪等キー付きで同期実行
-- **ペルソナメモリ**: 任意 `MemoryAppender` による計画承認・iteration 完了・done/failed の短文要約追記（dedupe key で二重防止）
-- **LLM / watch / replan 予算**: `llm_call_budget_per_loop`（既定 200）/ `llm_call_budget_per_day`（既定 1000, JST 共有）/ `max_watch_subtasks_per_loop`（既定 50）/ `max_replans_per_loop`（既定 20）。超過時は `paused`、完全一致の「再開」で `budget_override`
-- **イベント**: `action_executed` / `memory_appended` / `memory_append_failed` / `budget_resumed`
+- **loops Phase 3 (execution)**: `kind: action` subtasks and host-facing `ActionRequest` / `ActionResult` / `ActionExecutor`. Deterministic actions that match the public `action_schemas` run synchronously with an idempotency key
+- **Persona memory**: an optional `MemoryAppender` appends short summaries on plan approval, iteration completion and done/failed (a dedupe key prevents double appends)
+- **LLM / watch / replan budgets**: `llm_call_budget_per_loop` (default 200) / `llm_call_budget_per_day` (default 1000, shared per JST day) / `max_watch_subtasks_per_loop` (default 50) / `max_replans_per_loop` (default 20). Exceeding a budget moves the loop to `paused`; an exact-match "resume" message grants a `budget_override`
+- **Events**: `action_executed` / `memory_appended` / `memory_append_failed` / `budget_resumed`
 
 ### Compatibility
 
-- `schema_version: 1` 維持。旧 state は新フィールドを既定値で復元可能。`ActionExecutor` / `MemoryAppender` は省略可能で既存ホスト構築を壊さない
-- 既存 `auto` / `human` / `watch`、承認、コメント対話、deliverable 経路は非破壊
+- `schema_version: 1` is kept. Old state restores new fields with defaults. `ActionExecutor` / `MemoryAppender` are optional and do not break existing host construction
+- Existing `auto` / `human` / `watch`, approval, comment dialogue and deliverable paths are non-breaking
 
 ## v0.19.6
 
 ### Added
 
-- **loops Phase 2（対話）**: inbox `kind=comment` を決定論的 status 判定・LLM 分類（`status` / `instruction` / `question` / `chitchat`）で処理。進捗照会は `post_progress` で即答、修正指示は既存 `replanning` へ、質問はペルソナ回答、雑談は `clarification_context` に補足
-- **設定**: `comment_model` / `max_comments_per_tick`（既定 10）/ `comment_reply_budget_per_hour`（既定 10）/ `comment_reply_max_chars`（既定 800）
-- **イベント**: `comment_classified`（`source`: deterministic / llm / budget_fallback）/ `comment_replied` / `comment_warning`
-- **`render_progress_summary`**: LLM なしの人間向け進捗サマリ
+- **loops Phase 2 (dialogue)**: inbox `kind=comment` is handled with a deterministic status check and LLM classification (`status` / `instruction` / `question` / `chitchat`). Progress queries are answered immediately with `post_progress`, change instructions go to the existing `replanning`, questions get a persona answer, and chitchat is appended to `clarification_context`
+- **Settings**: `comment_model` / `max_comments_per_tick` (default 10) / `comment_reply_budget_per_hour` (default 10) / `comment_reply_max_chars` (default 800)
+- **Events**: `comment_classified` (`source`: deterministic / llm / budget_fallback) / `comment_replied` / `comment_warning`
+- **`render_progress_summary`**: human-readable progress summary without an LLM
 
 ### Compatibility
 
-- `HumanChannel` / Phase 1 の watch・replan・承認ゲートは非破壊。`schema_version: 1` 維持
-- 旧 `comment_received` 一括補足経路は対話処理に置換（chitchat / LLM 失敗時のみ補足追記）
+- `HumanChannel` and the Phase 1 watch / replan / approval gate are non-breaking. `schema_version: 1` is kept
+- The old bulk `comment_received` supplement path is replaced by dialogue handling (supplements are appended only for chitchat or LLM failure)
 
 ## v0.19.5
 
 ### Added
 
-- **loops Phase 1（反応性）**: `kind: watch` サブタスク、`depends` DAG、ローカル `path_exists` / `path_changed` 評価（`PathConditionEvaluator`）、ホスト向け `ConditionEvaluator` / `WatchVerdict`
-- **watch 失敗時の即時 replan**: `replanning` 状態と `max_replans_per_iteration`（既定 3）。running / success は keep 必須
-- **計画承認ゲート**: Objective `plan_approval`（未指定時は `LoopsConfig.plan_approval_default`、既定 true）と `awaiting_plan_approval`。承認語は `ok` / `承認` / `進めて` / `go` の全文一致。人間修正は `max_plan_revisions`（既定 3）まで、`replan_count` は消費しない
-- **設定**: `watch_root` / `max_replans_per_iteration` / `max_plan_revisions` / `plan_approval_default`
-- **イベント**: `watch_polled` / `replan_triggered` / `plan_proposed` / `plan_approved` / `plan_revised`
+- **loops Phase 1 (reactivity)**: `kind: watch` subtasks, a `depends` DAG, local `path_exists` / `path_changed` evaluation (`PathConditionEvaluator`), and host-facing `ConditionEvaluator` / `WatchVerdict`
+- **Immediate replan on watch failure**: `replanning` state and `max_replans_per_iteration` (default 3). running / success must be kept
+- **Plan approval gate**: Objective `plan_approval` (when unset, `LoopsConfig.plan_approval_default`, default true) and `awaiting_plan_approval`. Approval words are exact full-text matches of `ok` / "approve" / "proceed" / `go`. Human revisions are allowed up to `max_plan_revisions` (default 3) and do not consume `replan_count`
+- **Settings**: `watch_root` / `max_replans_per_iteration` / `max_plan_revisions` / `plan_approval_default`
+- **Events**: `watch_polled` / `replan_triggered` / `plan_proposed` / `plan_approved` / `plan_revised`
 
 ### Compatibility
 
-- `schema_version: 1` を維持。v0.19.4 state（追加キーなし）は既定値でロード可能。depends キー欠落時は逐次依存へ正規化
-- 既存 `auto` / `human` の submit→poll→evaluate 経路は非破壊。GitHub Issue/PR/label 評価はホスト（#2585）側
+- `schema_version: 1` is kept. v0.19.4 state (without the added keys) loads with defaults. A missing depends key is normalized to sequential dependencies
+- The existing `auto` / `human` submit -> poll -> evaluate path is non-breaking. GitHub Issue/PR/label evaluation lives on the host side (#2585)
 
 ## v0.19.4
 
 ### Added
 
-- **loops 単一 deliverable 契約**: `state_dir/<loop_id>/deliverable.md` を正規成果物とし、`start_loop` で Objective 本文から初期化。auto サブタスクは同ファイルを段階編集し、evaluate は `result_summary` と deliverable 抜粋を入力に使う
-- **`HumanChannel.post_progress` / `post_deliverable`**: 計画・進捗・成果物案内のホスト通知契約（`progress_notify` で進捗のみ抑止可）
-- **観測イベント**: `state_change` / `question_asked` / `subtask_submitted` / `subtask_done` / `deliverable_updated`
-- **`Subtask.result_summary` / `result_filename`**: 評価・通知用の後方互換フィールド（旧 state は空文字で復元）
+- **loops single deliverable contract**: `state_dir/<loop_id>/deliverable.md` is the canonical deliverable, initialized from the Objective body by `start_loop`. auto subtasks edit the same file step by step, and evaluate uses `result_summary` and a deliverable excerpt as input
+- **`HumanChannel.post_progress` / `post_deliverable`**: host notification contract for plan, progress and deliverable notices (`progress_notify` can suppress progress only)
+- **Observation events**: `state_change` / `question_asked` / `subtask_submitted` / `subtask_done` / `deliverable_updated`
+- **`Subtask.result_summary` / `result_filename`**: backward-compatible fields for evaluation and notification (old state restores them as empty strings)
 
 ### Compatibility
 
-- 既存 `result` / `submission` / HumanChannel メソッド・状態名・ schema_version=1 は維持。nexus 側 Slack/diary 実装は #2582
+- Existing `result` / `submission` / HumanChannel methods, state names and schema_version=1 are kept. The nexus-side Slack/diary implementation is #2582
 
 ## v0.19.3
 
 ### Fixed
 
-- **loops failed 終端で `close_thread` 漏れ**: 連続エラー等で `failed` に遷移したとき、done / cancelled と同じ finalize 経路で `HumanChannel.close_thread` を必ず呼び、ホスト側 pending スレッドが残らないようにした
-- **inbox `kind: "comment"` の取り込み**: 質問待ち以外のユーザー発言を `clarification_context` に `補足: <text>` として追記し、`comment_received` イベントを記録する（同一 message_id は二重消費しない）
+- **Missing `close_thread` on loops failed termination**: when a loop moves to `failed` (e.g. after consecutive errors), `HumanChannel.close_thread` is always called through the same finalize path as done / cancelled, so no pending thread is left on the host side
+- **Ingest inbox `kind: "comment"`**: user messages outside a pending question are appended to `clarification_context` as `Supplement: <text>` and a `comment_received` event is recorded (the same message_id is never consumed twice)
 
 ## v0.19.0
 
 ### BREAKING
 
-- **Objective 配置による自動起動を廃止**: `objectives_dir` へ `.md` を置いただけでは loop state を作成しない。起動は `state_dir/requests/*.json` の依頼消費のみ。
-- **移行順序**: 本リリース（mltgnt consumer）を先に入れ、nexus 側の request producer / Slack 配線（#2560）は **後から** 切り替えること。
+- **Auto-start by placing an Objective is removed**: placing a `.md` in `objectives_dir` no longer creates loop state. Loops start only by consuming requests in `state_dir/requests/*.json`.
+- **Migration order**: install this release (the mltgnt consumer) first, and switch the nexus-side request producer / Slack wiring (#2560) **afterwards**.
 
 ### Added
 
-- **`ensure_frontmatter`**: 欠落した `id` / `title` / `status` / `max_iterations` だけを決定論的に補完（`agent` は補完しない）
-- **`mltgnt.loops.requests`**: 起動依頼 JSON の検証・列挙・`consumed/` / `corrupt/` 隔離
-- **`LoopsEngine.start_loop(..., thread=)`**: 依頼スレッド（`HumanThreadRef`）を初回 state に継承。既存の `start_loop(objective)` は互換維持
-- **`store.archive_terminal_state`**: 終端 state を `state_dir/archive/` へ退避し、再依頼で新規起動可能にする
+- **`ensure_frontmatter`**: deterministically fills only missing `id` / `title` / `status` / `max_iterations` (`agent` is not filled)
+- **`mltgnt.loops.requests`**: validation and listing of start-request JSON, with isolation into `consumed/` / `corrupt/`
+- **`LoopsEngine.start_loop(..., thread=)`**: the request thread (`HumanThreadRef`) is carried into the initial state. The existing `start_loop(objective)` stays compatible
+- **`store.archive_terminal_state`**: moves terminal state to `state_dir/archive/` so a new request can start the loop again
 
 ### Compatibility
 
-- 非終端 state の復元、Objective 削除 / `status: cancelled` による取消、content hash 変更警告は維持。
-- 公開 Protocol（`interfaces/loops.py`）と `LoopsConfig` のフィールドは変更なし。
+- Restoring non-terminal state, cancellation by deleting the Objective / `status: cancelled`, and the content hash change warning are kept.
+- The public Protocols (`interfaces/loops.py`) and `LoopsConfig` fields are unchanged.
 
 ## v0.18.0
 
 ### Added
 
-- **`mltgnt.loops`**: Objective 駆動ループ実行（clarify → decompose → execute → evaluate）
-- **`LoopsComponent`**: `DaemonComponent` 準拠の Objective snapshot ポーリング（既定 10 秒）
-- **`LoopsConfig`**: objectives/state/status/jobs パス、LLM/subtask エンジン、上限値
-- **`HumanChannel` / `SubtaskExecutor` Protocol**: Slack/ghdag 実装はホスト（nexus #2512）側
-- **`enqueue_step` / `poll_step`**: ghdag_bridge の非ブロックサブタスク投入・完了確認
-- **status Markdown**: `<status_dir>/<loop_id>.md` に人間向け現在状態を出力
+- **`mltgnt.loops`**: Objective-driven loop execution (clarify -> decompose -> execute -> evaluate)
+- **`LoopsComponent`**: Objective snapshot polling compliant with `DaemonComponent` (default 10 seconds)
+- **`LoopsConfig`**: objectives/state/status/jobs paths, LLM/subtask engines, limits
+- **`HumanChannel` / `SubtaskExecutor` Protocol**: Slack/ghdag implementations live on the host (nexus #2512) side
+- **`enqueue_step` / `poll_step`**: non-blocking subtask enqueue and completion check in ghdag_bridge
+- **status Markdown**: writes the human-readable current state to `<status_dir>/<loop_id>.md`
 
 ### Compatibility
 
-- 後方互換。既存 scheduler / chat / OODA API に変更なし。
-- nexus ホスト配線は #2512 で別途実装。
+- Backward compatible. No changes to the existing scheduler / chat / OODA APIs.
+- nexus host wiring is implemented separately in #2512.
 
 ### Operational limits
 
-- `max_iterations`: 1..10（既定 5）
-- `max_clarify_rounds`: 1..3（既定 3）
-- `max_subtasks_per_iteration`: 1..5（既定 5）
-- `subtask_timeout_sec`: 1800 秒（30 分）
+- `max_iterations`: 1..10 (default 5)
+- `max_clarify_rounds`: 1..3 (default 3)
+- `max_subtasks_per_iteration`: 1..5 (default 5)
+- `subtask_timeout_sec`: 1800 seconds (30 minutes)
 
 ## Phase Progress
 
 ### Phase D: exit_code routing ✓
-- SkillRunResult.exit_code → ExitStatus enum 変換 実装済み
+- SkillRunResult.exit_code -> ExitStatus enum conversion implemented
 - scheduler permission pass-through (v0.15.1)
-- ⚠️ enqueue_dag() 子タスクへの exit_code 伝播は未対応（#2235）
+- ⚠️ exit_code propagation to enqueue_dag() child tasks is not supported yet (#2235)
 
 ### Phase E: side_effects audit ⚠️ In Progress
-- SkillMeta.side_effects 宣言は存在。実測 audit ラッパは未実装（#2234）
-- BaseRunner ABC 抽出・ActDispatcher Protocol 統一 (v0.16.0)
-- deprecated compact() / needs_compaction() 公開 API 削除（予定）
+- SkillMeta.side_effects declaration exists. The measuring audit wrapper is not implemented (#2234)
+- BaseRunner ABC extraction and ActDispatcher Protocol unification (v0.16.0)
+- Removal of the deprecated compact() / needs_compaction() public APIs (planned)
 
 ### Phase F: pipe composition runtime ⚠️ Not Started
-- typecheck_dag() は存在するが skill_io != "v1" で全スキップ（silent compatibility mode）
-- skill_io: v1 明示化・型検証の強制化は未着手
+- typecheck_dag() exists but skips everything when skill_io != "v1" (silent compatibility mode)
+- Making skill_io: v1 explicit and enforcing type checks has not started
 
 ## v0.15.1
 
 ### Added
 
-- scheduler permission pass-through: `action_args.permission` を `enqueue_and_wait` → `StepConfig.permission` へ透過
+- scheduler permission pass-through: `action_args.permission` is passed through `enqueue_and_wait` to `StepConfig.permission`
 
 ## v0.10.0
 
-### BREAKING: 非推奨 API の削除
+### Removed (BREAKING): deprecated APIs
 
-v0.9.x で DeprecationWarning を発行していた以下の API を削除しました。
+The following APIs, which emitted DeprecationWarning in v0.9.x, have been removed.
 
-**chat モジュール**
-- `mltgnt.chat.models` → `mltgnt.interfaces.types` から直接 import してください
-- `mltgnt.chat.run_chat()` → `run_pipeline()` を使用してください
+**chat module**
+- `mltgnt.chat.models` -> import directly from `mltgnt.interfaces.types`
+- `mltgnt.chat.run_chat()` -> use `run_pipeline()`
 
-**memory モジュール**
-- `mltgnt.memory.read_memory_agentic()` → `read_memory_iterative()` を使用してください
-- `mltgnt.memory._compaction` → `mltgnt.memory.compaction` から直接 import してください
-- `mltgnt.memory.api.normalize_source_prefix()` → 削除（呼び出し元でインライン化してください）
+**memory module**
+- `mltgnt.memory.read_memory_agentic()` -> use `read_memory_iterative()`
+- `mltgnt.memory._compaction` -> import directly from `mltgnt.memory.compaction`
+- `mltgnt.memory.api.normalize_source_prefix()` -> removed (inline it at the call site)
 
-**persona / agent モジュール**
-- `mltgnt.agent._parse` の args キーなし JSON 受理 → `{"tool": str, "args": dict}` 形式を必須化
-- `mltgnt.persona.schema` の flat キー (`chat_model`, `slack`) → `ops:` namespace を使用
-- `mltgnt.persona.schema` の `ops.chat_model` → `ops.engine` / `ops.model` を使用
-- `Persona.WEIGHT_MAP` / `Persona.ops_config` / `Persona.slack_post_kwargs()` / `Persona.delegate_ack()` → 削除
-- `validate_persona()` / `validate_fm()` の `legacy_keys` 警告 → 削除
+**persona / agent modules**
+- `mltgnt.agent._parse` acceptance of JSON without an args key -> the `{"tool": str, "args": dict}` form is required
+- flat keys (`chat_model`, `slack`) in `mltgnt.persona.schema` -> use the `ops:` namespace
+- `ops.chat_model` in `mltgnt.persona.schema` -> use `ops.engine` / `ops.model`
+- `Persona.WEIGHT_MAP` / `Persona.ops_config` / `Persona.slack_post_kwargs()` / `Persona.delegate_ack()` -> removed
+- `legacy_keys` warning in `validate_persona()` / `validate_fm()` -> removed
 
-**scheduler モジュール**
-- `mltgnt.scheduler.ghdag_bridge` → `mltgnt.bridges.ghdag_bridge` から直接 import してください
+**scheduler module**
+- `mltgnt.scheduler.ghdag_bridge` -> import directly from `mltgnt.bridges.ghdag_bridge`
