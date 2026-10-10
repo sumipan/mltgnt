@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ghdag.dag._util import check_pipeline_status, default_check_rejected
+from ghdag.dag import check_pipeline_status, default_check_rejected
 from ghdag.pipeline.audit import write_task_exit_audit
 
 if TYPE_CHECKING:

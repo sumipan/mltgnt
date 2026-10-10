@@ -2,7 +2,14 @@
 
 Design: Issue #287 / #3318
 """
-from mltgnt.agent._runner import AgentResult, AgentRunner
+from mltgnt.agent._runner import (
+    REFLEXION_EXHAUSTED_TOOL,
+    AgentResult,
+    AgentRunner,
+    LLMCaller,
+    RetryConfig,
+    ToolExecutor,
+)
 from mltgnt.agent.deterministic_gate import (
     extract_artifact_references,
     has_work_request,
@@ -48,6 +55,7 @@ __all__ = [
     "DirectAgentResult",
     "FINISH_TOOL",
     "GhdagSkillRunner",
+    "LLMCaller",
     "DispatchDecision",
     "MemoryWorkerResult",
     "MODE_DELEGATE",
@@ -55,9 +63,12 @@ __all__ = [
     "Plan",
     "PlanItem",
     "PreflightContext",
+    "REFLEXION_EXHAUSTED_TOOL",
     "RepeatGuard",
+    "RetryConfig",
     "SkillWorkerResult",
     "SkillRunner",
+    "ToolExecutor",
     "TrackingCaller",
     "WorkLoopConfig",
     "WorkLoopDeadline",
