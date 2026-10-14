@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.128.0
+
+- **WebChat looks like a Slack channel**: dark theme, channel header and tabs (`channel_name`, default `"general"`), message grouping and day dividers, hover actions (reply in thread / save), Slack-style thread summary and a thread pane that goes full screen on narrow screens. The page loads the latest 300 root messages across days (`GET /messages?limit=`). Enter no longer sends while an IME is composing.
+- **WebChat image attachments**: `POST /files?name=` stores a PNG / JPEG / GIF / WebP body (`max_upload_bytes`, default 20 MiB) under `files_dir` (default `<store_dir>/../files`) and returns `{id, name, content_type, size}`; `GET /files/{day}/{name}` serves it. `POST /messages` accepts `files: [{"id", "name"}]` (text may then be empty); the row keeps `files` across status / update revisions and the `MediaEvent` carries them as `attachments` with the local path in `uri`. `WebChatClient.upload` now posts an image instead of returning `False`.
+- **WebChat avatars by URL**: an `avatars` value may be an `http(s)://` URL instead of a file under `assets_dir`.
+- `WebChatStore.enrich_many` / `recent`; `read` / `read_all` / `thread` read the day files once per call instead of once per row.
+
 ## v0.127.0
 
 - **BREAKING:** Remove the deprecated aliases and wrappers that #4024 / #3285 kept for one release (#5045). Use the replacement on the right:

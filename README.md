@@ -473,11 +473,12 @@ Dependency-free DTOs and Protocols that every layer shares.
 | Module | Main names | Purpose |
 |--------|------------|---------|
 | `config` | `WebChatMediaConfig` | See [Media settings](#media-settings) |
-| `client` | `WebChatClient` | `WebChatClient(config, *, store=None, author="assistant")` |
+| `client` | `WebChatClient` | `WebChatClient(config, *, store=None, files=None, author="assistant")`. `upload(path, space, thread)` posts a PNG / JPEG / GIF / WebP image as a message |
+| `files` | `WebChatFiles`, `CONTENT_TYPES`, `content_type_for` | Message images under `<files_dir>/<YYYY-MM-DD>/<hex>.<ext>`; the relative path is the file id |
 | `store` | `WebChatStore`, `KINDS`, `MESSAGE_KINDS` | Daily JSONL of message snapshots. `KINDS = ("message", "update", "status", "bookmark", "reaction")` |
-| `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /`, `GET /config`, `GET /assets/{name}`, `GET /messages`, `POST /messages`, `GET /threads/{thread_id}`, `POST /messages/{message_id}/bookmark`, `GET /bookmarks`, and `GET /stream` (SSE). `serve(app, config)` listens on `config.host:config.port` |
-| `inbound` | `to_media_event`, `DEFAULT_AUTHOR` | Converts a `POST /messages` body to a `MediaEvent` |
-| `ui` | `INDEX_HTML` | Single-page UI served at `GET /` |
+| `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, files=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /`, `GET /config`, `GET /assets/{name}`, `GET /messages` (`?day=` or `?limit=`), `POST /messages` (`text` and/or `files: [{"id", "name"}]`; files become `MediaEvent.attachments` with the local path as `uri`), `POST /files?name=` (raw image body), `GET /files/{day}/{name}`, `GET /threads/{thread_id}`, `POST /messages/{message_id}/bookmark`, `GET /bookmarks`, and `GET /stream` (SSE). `serve(app, config)` listens on `config.host:config.port` |
+| `inbound` | `to_media_event`, `file_entries`, `DEFAULT_AUTHOR`, `MAX_FILES` | Converts a `POST /messages` body to a `MediaEvent` |
+| `ui` | `INDEX_HTML` | Single-page UI served at `GET /`: dark, Slack-like single channel with a thread pane, image attach (button / drag and drop / paste) and a lightbox |
 
 ## Protocols / Extension Points
 
@@ -598,6 +599,7 @@ Every Python module under `src/mltgnt/` (132 modules at `v0.127.3`). "Depends to
 | `mltgnt.media.webchat.app` | FastAPI app of the WebChat medium. FastAPI / uvicorn are imported lazily. | L1 → L2–L5 |
 | `mltgnt.media.webchat.client` | WebChatClient: MediaClient implementation over the WebChat store. | L1 → L2–L5 |
 | `mltgnt.media.webchat.config` | WebChat-specific media settings. | L1 → L2–L5 |
+| `mltgnt.media.webchat.files` | Image files attached to WebChat messages. | L1 → L2–L5 |
 | `mltgnt.media.webchat.inbound` | WebChat ``POST /messages`` body -> MediaEvent. | L1 → L2–L5 |
 | `mltgnt.media.webchat.store` | Append-only message store: one ``YYYY-MM-DD.jsonl`` file per day, one JSON row per line. | L1 → L2–L5 |
 | `mltgnt.media.webchat.ui` | Static single-page UI of the WebChat medium (served by ``GET /``). | L1 → L2–L5 |
@@ -742,7 +744,7 @@ All of them are frozen dataclasses.
 | Subclass | Extra fields (default) |
 |----------|------------------------|
 | `SlackMediaConfig` | `bot_token_env` (`"SLACK_BOT_TOKEN"`), `app_token_env` (`"SLACK_APP_TOKEN"`), `status_reactions` (`DEFAULT_STATUS_REACTIONS`), `chunk_max_chars` (`3000`, must be positive) |
-| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`), `display_names` (`{}`) |
+| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`; author -> file under `assets_dir` or an `http(s)://` URL), `display_names` (`{}`; author -> name. The browser user posts as `"user"`), `channel_name` (`"general"`), `files_dir` (`None` = `<store_dir>/../files`), `max_upload_bytes` (20 MiB) |
 
 ### LanguagePack
 

@@ -1,7 +1,9 @@
 """FastAPI app of the WebChat medium. FastAPI / uvicorn are imported lazily.
 
-Endpoints: ``GET /`` (UI), ``GET /config``, ``GET /assets/{name}``, ``GET /messages?day=``,
-``POST /messages``, ``GET /threads/{thread_id}``, ``POST /messages/{id}/bookmark``,
+Endpoints: ``GET /`` (UI), ``GET /config``, ``GET /assets/{name}``, ``GET /messages?day=``
+(or ``?limit=`` for the latest root messages across days), ``POST /messages``,
+``POST /files?name=`` (raw image body; returns the entry to pass in ``files``),
+``GET /files/{day}/{name}``, ``GET /threads/{thread_id}``, ``POST /messages/{id}/bookmark``,
 ``GET /bookmarks`` and ``GET /stream`` (SSE of enriched message / update / status /
 bookmark / reaction rows; the UI replaces the element with the same message_id).
 SSE event ids are ``<day>:<byte offset>`` so a reconnect resumes via ``Last-Event-ID``.
@@ -21,7 +23,8 @@ from typing import Any, Protocol
 from mltgnt.media._core import id_map
 from mltgnt.media._core.types import MediaEvent
 from mltgnt.media.webchat.config import WebChatMediaConfig
-from mltgnt.media.webchat.inbound import to_media_event
+from mltgnt.media.webchat.files import WebChatFiles
+from mltgnt.media.webchat.inbound import file_entries, to_media_event
 from mltgnt.media.webchat.store import WebChatStore
 from mltgnt.media.webchat.ui import INDEX_HTML
 
@@ -84,6 +87,7 @@ def create_app(
     bridge: EventHandler,
     *,
     store: WebChatStore | None = None,
+    files: WebChatFiles | None = None,
     poll_interval_sec: float = 0.5,
     stream_timeout_sec: float | None = None,
 ) -> Any:
@@ -99,6 +103,7 @@ def create_app(
         raise ImportError(_EXTRA_HINT) from exc
 
     store = store if store is not None else WebChatStore(config.store_dir)
+    files = files if files is not None else WebChatFiles(config.resolved_files_dir, max_bytes=config.max_upload_bytes)
     app = FastAPI(title="mltgnt webchat")
 
     @app.get("/", response_class=HTMLResponse)
@@ -110,6 +115,8 @@ def create_app(
         return {
             "avatars": dict(config.avatars),
             "display_names": dict(config.display_names),
+            "channel_name": config.channel_name,
+            "max_upload_bytes": files.max_bytes,
         }
 
     @app.get("/assets/{name}")
@@ -123,8 +130,33 @@ def create_app(
         return FileResponse(path, media_type=media_type)
 
     @app.get("/messages")
-    def list_messages(day: date | None = None) -> list[dict[str, Any]]:
+    def list_messages(day: date | None = None, limit: int | None = None) -> list[dict[str, Any]]:
+        if day is None and limit is not None:
+            return store.recent(max(0, min(limit, 1000)))
         return store.read(day or store.today())
+
+    @app.post("/files", status_code=201)
+    async def upload_file(request: Request, name: str | None = None) -> dict[str, Any]:
+        length = request.headers.get("content-length")
+        if length is not None and length.isdigit() and int(length) > files.max_bytes:
+            raise HTTPException(status_code=413, detail="file too large")
+        data = await request.body()
+        try:
+            return files.save(data, content_type=request.headers.get("content-type", ""), name=name)
+        except ValueError as exc:
+            status = 413 if len(data) > files.max_bytes else 415 if data else 422
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        except OSError as exc:
+            _log.warning("[webchat] file save failed: %s", exc)
+            raise HTTPException(status_code=503, detail="store unavailable") from exc
+
+    @app.get("/files/{day}/{name}")
+    def get_file(day: str, name: str) -> Any:
+        path = files.path(f"{day}/{name}")
+        if path is None:
+            raise HTTPException(status_code=404)
+        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=86400"})
 
     @app.get("/bookmarks")
     def list_bookmarks() -> list[dict[str, Any]]:
@@ -138,13 +170,16 @@ def create_app(
             raise HTTPException(status_code=422, detail="body must be JSON") from exc
         message_id = uuid.uuid4().hex
         try:
-            event = to_media_event(body, space_id=config.space_id, message_id=message_id)
+            event = to_media_event(body, space_id=config.space_id, message_id=message_id, files=files)
+            entries = file_entries(body, files)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         thread = id_map.resolve(event.conversation_id)[1]
         thread_ts = None if thread == message_id else thread
         try:
-            store.append(message_id=message_id, author=event.author, text=event.text, thread_ts=thread_ts)
+            store.append(
+                message_id=message_id, author=event.author, text=event.text, thread_ts=thread_ts, files=entries
+            )
         except OSError as exc:
             _log.warning("[webchat] store append failed: %s", exc)
             raise HTTPException(status_code=503, detail="store unavailable") from exc

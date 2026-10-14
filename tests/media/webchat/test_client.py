@@ -104,3 +104,21 @@ def test_post_ignores_extra(tmp_path: Path) -> None:
     assert message_id is not None
     row = client.store.latest(message_id)
     assert row is not None and row["text"] == "hello"
+
+
+def test_upload_posts_an_image_message(tmp_path: Path) -> None:
+    image = tmp_path / "chart.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n0000")
+    client = WebChatClient(_config(tmp_path), author="bot")
+    assert client.upload(str(image), "webchat", thread="root") is True
+    (row,) = [r for r in client.store.read_all() if r.get("files")]
+    assert row["author"] == "bot"
+    assert row["text"] == ""
+    assert row["thread_ts"] == "root"
+    (entry,) = row["files"]
+    assert entry["name"] == "chart.png"
+    assert entry["content_type"] == "image/png"
+
+
+def test_upload_missing_file_is_false(tmp_path: Path) -> None:
+    assert WebChatClient(_config(tmp_path)).upload(str(tmp_path / "nope.png"), "webchat") is False

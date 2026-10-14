@@ -1,7 +1,8 @@
 """Append-only message store: one ``YYYY-MM-DD.jsonl`` file per day, one JSON row per line.
 
 Every row is a full snapshot of one message (``ts`` / ``message_id`` / ``author`` /
-``text`` / ``thread_ts`` / ``kind`` / ``status`` / ``task_uuid``). ``kind`` says why
+``text`` / ``thread_ts`` / ``kind`` / ``status`` / ``task_uuid``, plus ``files`` when
+the message carries images). ``kind`` says why
 the row was written: ``message`` (new), ``update`` (text changed), ``status``,
 ``bookmark`` or ``reaction``. Rows are only appended under ``fcntl.flock``; the latest
 row of a message_id wins for display kinds. Bookmark and reaction rows are append-only
@@ -43,6 +44,30 @@ def _latest_per_id(rows: Iterable[dict[str, Any]], *, kinds: tuple[str, ...] | N
     return list(latest.values())
 
 
+def _enrich_row(
+    row: dict[str, Any],
+    bookmarks: dict[str, bool],
+    reactions: dict[str, list[str]],
+    summaries: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    message_id = row.get("message_id")
+    if not isinstance(message_id, str):
+        return row
+    out = dict(row)
+    out["bookmarked"] = bookmarks.get(message_id, False)
+    out["reactions"] = list(reactions.get(message_id, []))
+    if row.get("thread_ts"):
+        out["reply_count"] = 0
+        out["last_reply_ts"] = None
+        out["participants"] = []
+    else:
+        summary = summaries.get(message_id, {})
+        out["reply_count"] = int(summary.get("reply_count", 0))
+        out["last_reply_ts"] = summary.get("last_reply_ts")
+        out["participants"] = list(summary.get("participants", []))
+    return out
+
+
 class WebChatStore:
     """Day-file JSONL store under ``store_dir``. ``clock`` decides ``ts`` and the day file."""
 
@@ -69,6 +94,7 @@ class WebChatStore:
         task_uuid: str | None = None,
         bookmarked: bool | None = None,
         reaction: str | None = None,
+        files: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Append one row to today's file and return it. OSError propagates to the caller."""
         if kind not in KINDS:
@@ -88,6 +114,8 @@ class WebChatStore:
             row["bookmarked"] = bookmarked
         if reaction is not None:
             row["reaction"] = reaction
+        if files:
+            row["files"] = [dict(f) for f in files]
         line = json.dumps(row, ensure_ascii=False) + "\n"
         path = self.path_for(now.date())
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +144,7 @@ class WebChatStore:
                 thread_ts=fields["thread_ts"],
                 status=fields["status"],
                 task_uuid=fields["task_uuid"],
+                files=current.get("files"),
             )
 
     def read_from(self, day: date, offset: int = 0) -> tuple[list[tuple[int, dict[str, Any]]], int]:
@@ -211,35 +240,31 @@ class WebChatStore:
 
     def enrich(self, row: dict[str, Any]) -> dict[str, Any]:
         """Add derived ``reply_count``, ``last_reply_ts``, ``participants``, ``bookmarked`` and ``reactions``."""
-        message_id = row.get("message_id")
-        if not isinstance(message_id, str):
-            return row
+        return self.enrich_many([row])[0]
+
+    def enrich_many(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """``enrich`` for several rows, reading the day files once."""
+        if not rows:
+            return []
         bookmarks = self._bookmark_state()
         reactions = self._reaction_state()
         summaries = self._thread_summaries()
-        out = dict(row)
-        out["bookmarked"] = bookmarks.get(message_id, False)
-        out["reactions"] = list(reactions.get(message_id, []))
-        if row.get("thread_ts"):
-            out["reply_count"] = 0
-            out["last_reply_ts"] = None
-            out["participants"] = []
-        else:
-            summary = summaries.get(message_id, {})
-            out["reply_count"] = int(summary.get("reply_count", 0))
-            out["last_reply_ts"] = summary.get("last_reply_ts")
-            out["participants"] = list(summary.get("participants", []))
-        return out
+        return [_enrich_row(row, bookmarks, reactions, summaries) for row in rows]
 
     def read(self, day: date) -> list[dict[str, Any]]:
         """Messages of ``day``: the last row of each message_id, with derived fields."""
-        rows = _latest_per_id(self._rows(day), kinds=MESSAGE_KINDS)
-        return [self.enrich(row) for row in rows]
+        return self.enrich_many(_latest_per_id(self._rows(day), kinds=MESSAGE_KINDS))
 
     def read_all(self) -> list[dict[str, Any]]:
         """Messages of every day: the last row of each message_id, with derived fields."""
+        return self.enrich_many(_latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS))
+
+    def recent(self, limit: int) -> list[dict[str, Any]]:
+        """The last ``limit`` root messages across every day, oldest first, with derived fields."""
+        if limit <= 0:
+            return []
         rows = _latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS)
-        return [self.enrich(row) for row in rows]
+        return self.enrich_many([row for row in rows if not row.get("thread_ts")][-limit:])
 
     def latest(self, message_id: str) -> dict[str, Any] | None:
         """Last display row of ``message_id`` searching the newest day first."""
@@ -254,12 +279,11 @@ class WebChatStore:
 
     def thread(self, thread_id: str) -> list[dict[str, Any]]:
         """The thread's root message and its replies."""
-        rows = [
+        return [
             row
             for row in self.read_all()
             if row.get("message_id") == thread_id or row.get("thread_ts") == thread_id
         ]
-        return [self.enrich(row) for row in rows]
 
     def set_bookmark(self, message_id: str, bookmarked: bool) -> dict[str, Any] | None:
         """Append a bookmark row for a root message. None when the id is unknown or a reply."""
