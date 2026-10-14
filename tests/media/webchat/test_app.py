@@ -226,13 +226,20 @@ def test_config_endpoint_returns_avatars(tmp_path: Path) -> None:
         pending_dir=tmp_path / "p",
         events_dir=tmp_path / "e",
         store_dir=tmp_path / "w",
-        avatars={"u1": "avatar.png"},
+        avatars={"u1": "avatar.png", "bot": "https://example.com/bot.png"},
         display_names={"u1": "User One"},
+        channel_name="audit",
+        max_upload_bytes=1024,
     )
     client = TestClient(create_app(config, RecordingBridge()))
     resp = client.get("/config")
     assert resp.status_code == 200
-    assert resp.json() == {"avatars": {"u1": "avatar.png"}, "display_names": {"u1": "User One"}}
+    assert resp.json() == {
+        "avatars": {"u1": "avatar.png", "bot": "https://example.com/bot.png"},
+        "display_names": {"u1": "User One"},
+        "channel_name": "audit",
+        "max_upload_bytes": 1024,
+    }
 
 
 def test_assets_serves_direct_file(tmp_path: Path) -> None:
@@ -326,7 +333,7 @@ def test_stream_emits_bookmark_and_reaction(tmp_path: Path) -> None:
 
 def test_ui_uses_container_scoped_message_ids_and_safe_links() -> None:
     assert 'var id = container.id + "-m-" + row.message_id' in INDEX_HTML
-    assert 'nodes[i].id === "log-m-" + rootId' in INDEX_HTML
+    assert 'nodes[i].id === "log-m-" + threadTs' in INDEX_HTML
     assert "panel-body-m-" in INDEX_HTML
     assert "noopener noreferrer" in INDEX_HTML
     assert "mailto:" in INDEX_HTML
@@ -386,3 +393,126 @@ def test_index_html_removed_legacy_elements() -> None:
         "base.reactions.push",
     ):
         assert token not in INDEX_HTML
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+
+
+def test_upload_then_post_message_with_files(tmp_path: Path) -> None:
+    client, store, bridge = _app(tmp_path)
+    resp = client.post("/files?name=shot.png", content=PNG, headers={"Content-Type": "image/png"})
+    assert resp.status_code == 201
+    entry = resp.json()
+    assert entry["name"] == "shot.png"
+    assert entry["content_type"] == "image/png"
+    assert entry["size"] == len(PNG)
+    got = client.get("/files/" + entry["id"])
+    assert got.status_code == 200
+    assert got.content == PNG
+    assert got.headers["content-type"] == "image/png"
+
+    posted = client.post("/messages", json={"text": "", "files": [{"id": entry["id"], "name": "shot.png"}]})
+    assert posted.status_code == 202
+    message_id = posted.json()["message_id"]
+    row = store.latest(message_id)
+    assert row is not None
+    assert row["files"] == [{"id": entry["id"], "name": "shot.png", "content_type": "image/png", "size": len(PNG)}]
+    (event,) = bridge.events
+    assert event.text == ""
+    (attachment,) = event.attachments
+    assert attachment.name == "shot.png"
+    assert attachment.content_type == "image/png"
+    assert attachment.uri == str(tmp_path / "files" / entry["id"])
+
+
+def test_files_survive_status_revision(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    entry = client.post("/files", content=PNG, headers={"Content-Type": "image/png"}).json()
+    message_id = client.post("/messages", json={"text": "see", "files": [{"id": entry["id"]}]}).json()["message_id"]
+    store.revise(message_id, "status", status="done")
+    row = store.latest(message_id)
+    assert row is not None and row["status"] == "done"
+    assert [f["id"] for f in row["files"]] == [entry["id"]]
+
+
+@pytest.mark.parametrize(
+    ("content", "ctype", "status"),
+    [(PNG, "text/plain", 415), (b"", "image/png", 422), (b"0" * 2048, "image/png", 413)],
+)
+def test_upload_rejects_bad_files(tmp_path: Path, content: bytes, ctype: str, status: int) -> None:
+    config = WebChatMediaConfig(
+        state_dir=tmp_path / "s",
+        pending_dir=tmp_path / "p",
+        events_dir=tmp_path / "e",
+        store_dir=tmp_path / "w",
+        max_upload_bytes=1024,
+    )
+    client = TestClient(create_app(config, RecordingBridge()))
+    resp = client.post("/files", content=content, headers={"Content-Type": ctype})
+    assert resp.status_code == status
+    assert not (tmp_path / "files").exists() or not any((tmp_path / "files").rglob("*.png"))
+
+
+@pytest.mark.parametrize(
+    "files",
+    [[{"id": "2026-01-05/" + "0" * 32 + ".png"}], [{"id": "../w/2026-01-05.jsonl"}], "x", [1]],
+)
+def test_post_message_rejects_unknown_files(tmp_path: Path, files: Any) -> None:
+    client, store, bridge = _app(tmp_path)
+    resp = client.post("/messages", json={"text": "hi", "files": files})
+    assert resp.status_code == 422
+    assert store.read(DAY) == []
+    assert bridge.events == []
+
+
+@pytest.mark.parametrize("path", ["/files/2026-01-05/nothing.png", "/files/..%2F..%2Fetc/passwd", "/files/x/y"])
+def test_get_file_404_for_unknown_or_unsafe(tmp_path: Path, path: str) -> None:
+    client, _store, _bridge = _app(tmp_path)
+    assert client.get(path).status_code == 404
+
+
+def test_messages_limit_returns_recent_roots_across_days(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    clock = FakeClock()
+    store._clock = clock
+    store.append(message_id="d1", author="u", text="day one")
+    clock.now = clock.now + timedelta(days=1)
+    store.append(message_id="d2a", author="u", text="day two a")
+    store.append(message_id="d2r", author="a", text="reply", thread_ts="d2a")
+    store.append(message_id="d2b", author="u", text="day two b")
+    rows = client.get("/messages?limit=2").json()
+    assert [r["message_id"] for r in rows] == ["d2a", "d2b"]
+    assert rows[0]["reply_count"] == 1
+    assert [r["message_id"] for r in client.get("/messages?limit=10").json()] == ["d1", "d2a", "d2b"]
+
+
+def test_ui_supports_avatar_urls_and_image_upload() -> None:
+    for token in ("https?:\\/\\/|data:image\\/", 'fetch("files?name="', 'id="file-input"', "addEventListener(\"paste\"", "e.isComposing"):
+        assert token in INDEX_HTML
+
+
+def test_messages_before_pages_back_through_days(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    clock = FakeClock()
+    store._clock = clock
+    for i in range(5):
+        store.append(message_id=f"m{i}", author="u", text=str(i))
+        clock.now = clock.now + timedelta(hours=12)
+    page = client.get("/messages?limit=2").json()
+    assert [r["message_id"] for r in page] == ["m3", "m4"]
+    older = client.get("/messages", params={"limit": 2, "before": page[0]["ts"]}).json()
+    assert [r["message_id"] for r in older] == ["m1", "m2"]
+    oldest = client.get("/messages", params={"limit": 2, "before": older[0]["ts"]}).json()
+    assert [r["message_id"] for r in oldest] == ["m0"]
+
+
+def test_messages_before_accepts_plus_decoded_as_space(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    store.append(message_id="m0", author="u", text="x")
+    resp = client.get("/messages?limit=5&before=2099-01-01T00:00:00 09:00")
+    assert [r["message_id"] for r in resp.json()] == ["m0"]
+
+
+def test_messages_before_rejects_bad_timestamp(tmp_path: Path) -> None:
+    client, _store, _bridge = _app(tmp_path)
+    assert client.get("/messages?limit=5&before=yesterday").status_code == 422

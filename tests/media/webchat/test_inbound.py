@@ -50,3 +50,13 @@ def test_blank_optional_fields_fall_back() -> None:
     event = to_media_event({"text": "x", "thread_ts": " ", "author": ""}, space_id="webchat", message_id="m1")
     assert event.conversation_id == "webchat:m1"
     assert event.author == DEFAULT_AUTHOR
+
+
+def test_blank_text_without_files_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        to_media_event({"text": "  ", "files": []}, space_id="webchat", message_id="m1")
+
+
+def test_files_without_a_file_store_are_rejected() -> None:
+    with pytest.raises(ValueError):
+        to_media_event({"text": "x", "files": [{"id": "a"}]}, space_id="webchat", message_id="m1")
