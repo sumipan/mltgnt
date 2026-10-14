@@ -44,6 +44,20 @@ def _latest_per_id(rows: Iterable[dict[str, Any]], *, kinds: tuple[str, ...] | N
     return list(latest.values())
 
 
+def _posted_before(row: dict[str, Any], before: datetime) -> bool:
+    ts = row.get("ts")
+    if not isinstance(ts, str):
+        return False
+    try:
+        posted = datetime.fromisoformat(ts)
+    except ValueError:
+        return False
+    if (posted.tzinfo is None) != (before.tzinfo is None):
+        posted = posted.replace(tzinfo=None)
+        before = before.replace(tzinfo=None)
+    return posted < before
+
+
 def _enrich_row(
     row: dict[str, Any],
     bookmarks: dict[str, bool],
@@ -259,12 +273,17 @@ class WebChatStore:
         """Messages of every day: the last row of each message_id, with derived fields."""
         return self.enrich_many(_latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS))
 
-    def recent(self, limit: int) -> list[dict[str, Any]]:
-        """The last ``limit`` root messages across every day, oldest first, with derived fields."""
+    def recent(self, limit: int, *, before: datetime | None = None) -> list[dict[str, Any]]:
+        """The last ``limit`` root messages across every day, oldest first, with derived fields.
+
+        With ``before``, only roots posted strictly earlier than it (to page back through history).
+        """
         if limit <= 0:
             return []
-        rows = _latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS)
-        return self.enrich_many([row for row in rows if not row.get("thread_ts")][-limit:])
+        rows = [row for row in _latest_per_id(self._all_rows(), kinds=MESSAGE_KINDS) if not row.get("thread_ts")]
+        if before is not None:
+            rows = [row for row in rows if _posted_before(row, before)]
+        return self.enrich_many(rows[-limit:])
 
     def latest(self, message_id: str) -> dict[str, Any] | None:
         """Last display row of ``message_id`` searching the newest day first."""

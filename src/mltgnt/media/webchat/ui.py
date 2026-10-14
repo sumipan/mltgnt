@@ -52,6 +52,10 @@ INDEX_HTML = r"""<!doctype html>
   .tab.active { color: var(--text-strong); border-bottom-color: var(--text-strong); }
   .scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
   #log { padding: 8px 0 12px; }
+  .channel-intro { padding: 40px 20px 12px; }
+  .channel-intro .title { font-size: 22px; font-weight: 900; color: var(--text-strong); }
+  .channel-intro .sub { color: var(--muted); margin-top: 4px; }
+  .history-loading { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 0; }
   .day-divider { position: sticky; top: 0; z-index: 2; display: flex; justify-content: center; margin: 16px 0 4px; }
   .day-divider::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--border); z-index: -1; }
   .day-pill { background: var(--bg); border: 1px solid var(--border); border-radius: 24px; padding: 2px 16px; font-size: 13px; font-weight: 700; color: var(--text-strong); }
@@ -258,6 +262,10 @@ INDEX_HTML = r"""<!doctype html>
   var stick = { "log": true, "panel-body": true };
   var touch = window.matchMedia && window.matchMedia("(hover: none)").matches;
   var GROUP_MS = 5 * 60 * 1000;
+  var PAGE = 100;
+  var logOrder = [];
+  var rebuilding = false;
+  var backlog = { loading: false, more: true };
   var IMAGE_TYPES = /^image\/(png|jpeg|gif|webp)$/;
   var AVATAR_COLORS = ["#7c5cfc", "#2bac76", "#e8912d", "#1d9bd1", "#e01e5a", "#9b59b6", "#4a9b8e", "#c7743c"];
   var EMOJI = {
@@ -406,7 +414,10 @@ INDEX_HTML = r"""<!doctype html>
   function atBottom(c) { return c.scrollHeight - c.scrollTop - c.clientHeight < 80; }
   function scrollBottom(c) { c.scrollTop = c.scrollHeight; }
   [log, panelBody].forEach(function (c) {
-    c.addEventListener("scroll", function () { stick[c.id] = atBottom(c); });
+    c.addEventListener("scroll", function () {
+      stick[c.id] = atBottom(c);
+      if (c === log && c.scrollTop < 300) { loadOlder(); }
+    });
   });
 
   function renderState(meta, status) {
@@ -667,10 +678,75 @@ INDEX_HTML = r"""<!doctype html>
     }
     fillMessage(el, row, container);
     el.classList.toggle("selected", panelMode === "thread" && threadTs === row.message_id && container === log);
-    if (created) {
+    if (created && !rebuilding) {
+      if (container === log) { logOrder.push(row.message_id); }
       updateMemberCount();
       if (stick[container.id]) { scrollBottom(container); }
     }
+  }
+
+  function channelIntro() {
+    var box = document.createElement("div");
+    box.className = "channel-intro";
+    var title = document.createElement("div");
+    title.className = "title";
+    title.textContent = "# " + config.channel_name;
+    var sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = "This is the very beginning of the #" + config.channel_name + " channel.";
+    box.appendChild(title);
+    box.appendChild(sub);
+    return box;
+  }
+
+  function rebuildLog() {
+    rebuilding = true;
+    log.textContent = "";
+    if (!backlog.more) { log.appendChild(channelIntro()); }
+    logOrder.forEach(function (id) {
+      if (rowsById[id]) { render(rowsById[id], log); }
+    });
+    rebuilding = false;
+    updateMemberCount();
+  }
+
+  function addRoots(rows) {
+    var ids = [];
+    rows.forEach(function (row) {
+      if (row.thread_ts || logOrder.indexOf(row.message_id) !== -1 || ids.indexOf(row.message_id) !== -1) { return; }
+      rowsById[row.message_id] = row;
+      ids.push(row.message_id);
+    });
+    return ids;
+  }
+
+  function loadOlder() {
+    if (backlog.loading || !backlog.more || !logOrder.length) { return; }
+    var oldest = rowsById[logOrder[0]];
+    if (!oldest || !oldest.ts) { return; }
+    backlog.loading = true;
+    var spinner = document.createElement("div");
+    spinner.className = "history-loading";
+    spinner.textContent = "Loading older messages...";
+    log.insertBefore(spinner, log.firstChild);
+    fetch("messages?limit=" + PAGE + "&before=" + encodeURIComponent(oldest.ts)).then(function (r) {
+      if (!r.ok) { throw new Error("HTTP " + r.status); }
+      return r.json();
+    }).then(function (rows) {
+      var ids = addRoots(rows);
+      if (rows.length < PAGE) { backlog.more = false; }
+      var height = log.scrollHeight;
+      var top = log.scrollTop;
+      logOrder = ids.concat(logOrder);
+      rebuildLog();
+      log.scrollTop = log.scrollHeight - height + top;
+      markSelected();
+    }).catch(function () {
+      spinner.remove();
+    }).then(function () {
+      backlog.loading = false;
+      if (backlog.more && log.scrollHeight <= log.clientHeight) { loadOlder(); }
+    });
   }
 
   function renderThreadDivider(count) {
@@ -1068,14 +1144,13 @@ INDEX_HTML = r"""<!doctype html>
 
   fetch("config").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (c) {
     applyConfig(c);
-    return fetch("messages?limit=300").then(function (r) { return r.json(); });
+    return fetch("messages?limit=" + PAGE).then(function (r) { return r.json(); });
   }).then(function (rows) {
-    log.textContent = "";
-    rows.filter(function (row) { return !row.thread_ts; }).forEach(function (row) {
-      rowsById[row.message_id] = row;
-      render(row, log);
-    });
+    logOrder = addRoots(rows);
+    backlog.more = rows.length >= PAGE;
+    rebuildLog();
     scrollBottom(log);
+    if (backlog.more && log.scrollHeight <= log.clientHeight) { loadOlder(); }
     if (!touch) { mainComposer.input.focus(); }
     var source = new EventSource("stream");
     ["message", "update", "status", "bookmark", "reaction"].forEach(function (kind) {

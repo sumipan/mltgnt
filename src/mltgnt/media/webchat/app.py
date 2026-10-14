@@ -1,7 +1,7 @@
 """FastAPI app of the WebChat medium. FastAPI / uvicorn are imported lazily.
 
 Endpoints: ``GET /`` (UI), ``GET /config``, ``GET /assets/{name}``, ``GET /messages?day=``
-(or ``?limit=`` for the latest root messages across days), ``POST /messages``,
+(or ``?limit=[&before=<ts>]`` for the latest root messages across days, paging back with ``before``), ``POST /messages``,
 ``POST /files?name=`` (raw image body; returns the entry to pass in ``files``),
 ``GET /files/{day}/{name}``, ``GET /threads/{thread_id}``, ``POST /messages/{id}/bookmark``,
 ``GET /bookmarks`` and ``GET /stream`` (SSE of enriched message / update / status /
@@ -16,7 +16,7 @@ import mimetypes
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -130,9 +130,17 @@ def create_app(
         return FileResponse(path, media_type=media_type)
 
     @app.get("/messages")
-    def list_messages(day: date | None = None, limit: int | None = None) -> list[dict[str, Any]]:
+    def list_messages(
+        day: date | None = None, limit: int | None = None, before: str | None = None
+    ) -> list[dict[str, Any]]:
         if day is None and limit is not None:
-            return store.recent(max(0, min(limit, 1000)))
+            cutoff = None
+            if before:
+                try:
+                    cutoff = datetime.fromisoformat(before.replace(" ", "+"))
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail="before must be an ISO timestamp") from exc
+            return store.recent(max(0, min(limit, 1000)), before=cutoff)
         return store.read(day or store.today())
 
     @app.post("/files", status_code=201)

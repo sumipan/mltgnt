@@ -489,3 +489,30 @@ def test_messages_limit_returns_recent_roots_across_days(tmp_path: Path) -> None
 def test_ui_supports_avatar_urls_and_image_upload() -> None:
     for token in ("https?:\\/\\/|data:image\\/", 'fetch("files?name="', 'id="file-input"', "addEventListener(\"paste\"", "e.isComposing"):
         assert token in INDEX_HTML
+
+
+def test_messages_before_pages_back_through_days(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    clock = FakeClock()
+    store._clock = clock
+    for i in range(5):
+        store.append(message_id=f"m{i}", author="u", text=str(i))
+        clock.now = clock.now + timedelta(hours=12)
+    page = client.get("/messages?limit=2").json()
+    assert [r["message_id"] for r in page] == ["m3", "m4"]
+    older = client.get("/messages", params={"limit": 2, "before": page[0]["ts"]}).json()
+    assert [r["message_id"] for r in older] == ["m1", "m2"]
+    oldest = client.get("/messages", params={"limit": 2, "before": older[0]["ts"]}).json()
+    assert [r["message_id"] for r in oldest] == ["m0"]
+
+
+def test_messages_before_accepts_plus_decoded_as_space(tmp_path: Path) -> None:
+    client, store, _bridge = _app(tmp_path)
+    store.append(message_id="m0", author="u", text="x")
+    resp = client.get("/messages?limit=5&before=2099-01-01T00:00:00 09:00")
+    assert [r["message_id"] for r in resp.json()] == ["m0"]
+
+
+def test_messages_before_rejects_bad_timestamp(tmp_path: Path) -> None:
+    client, _store, _bridge = _app(tmp_path)
+    assert client.get("/messages?limit=5&before=yesterday").status_code == 422
