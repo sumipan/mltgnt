@@ -14,9 +14,9 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.127.3)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.128.2)-orange)
 
-Pre-1.0. The current release is `0.127.3` (tag `v0.127.3`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.128.2` (tag `v0.128.2`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
 ## Not
 
@@ -32,23 +32,23 @@ Pre-1.0. The current release is `0.127.3` (tag `v0.127.3`). A minor release may 
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.127.3"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.127.3"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.127.3"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.127.3"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
 ```
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.127.3` |
+| Distribution | `mltgnt` `0.128.2` |
 | Python | `>=3.10` |
-| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.103.0` |
+| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.103.3` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
 | Extra `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
@@ -523,7 +523,7 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/` (132 modules at `v0.127.3`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Every Python module under `src/mltgnt/` (133 modules at `v0.128.2`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
@@ -849,7 +849,7 @@ Built-in exceptions raised by the public API:
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.127.3`.
+- Pin an exact tag in production, for example `@v0.128.2`.
 
 ## Deprecated API
 
