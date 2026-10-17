@@ -603,7 +603,7 @@ Every Python module under `src/mltgnt/` (133 modules at `v0.128.2`). "Depends to
 | `mltgnt.media._core.hooks` | Host hook points around one media turn. Hooks of one kind run in registration order. An exception from a hook is logg... | L1 → L2–L5 |
 | `mltgnt.media._core.id_map` | Opaque conversation id <-> (space, thread) mapping. Only media implementations split a conversation id; everything in... | L1 → L2–L5 |
 | `mltgnt.media._core.pending` | Pending-request metadata store (one JSON file per request id). | L1 → L2–L5 |
-| `mltgnt.media._core.plan_gate` | Plan approval state machine: ``awaiting -> approved | rejected | expired``. Approval words come from ``LanguagePack.a... | L1 → L2–L5 |
+| `mltgnt.media._core.plan_gate` | Plan approval state machine: ``awaiting -> approved \| rejected \| expired``. Approval words come from ``LanguagePack.a... | L1 → L2–L5 |
 | `mltgnt.media._core.progress` | Summarize a job's events JSONL into a progress message and rewrite it in place. Labels come from ``LanguagePack.statu... | L1 → L2–L5 |
 | `mltgnt.media._core.sanitizer` | Pure helpers that strip internal markers from an agent result before posting. Every pattern is supplied by the caller... | L1 → L2–L5 |
 | `mltgnt.media._core.thread_reactions` | Reaction layer of the conversation wait queue: admit result -> message status. | L1 → L2–L5 |
@@ -660,20 +660,20 @@ Every Python module under `src/mltgnt/` (133 modules at `v0.128.2`). "Depends to
 | `mltgnt.persona.runner` | mltgnt.persona.runner Run a prompt against an LLM with persona context and return the reply. Public API: run_persona_... | L3 → L4–L5 |
 | `mltgnt.persona.schema` | mltgnt.persona.schema Schema definition and validation for persona frontmatter. FM structure: spec_version: str # opt... | L3 → L4–L5 |
 | `mltgnt.persona.types` | mltgnt.persona.types — persona-layer boundary data (#3318). No media-specific terms (channel / thread_ts, etc.). | L3 → L4–L5 |
-| `mltgnt.routing.__init__` | mltgnt.routing — space → persona routing (media-agnostic). Origin: ChannelPersonaEntry and load_channel_persona_map()... | L3 → L4–L5 |
-| `mltgnt.routing.agentic_discover` | mltgnt.routing.agentic_discover — skill discovery via AgenticSkillDiscoverer. Lives in routing because it spans both ... | L3 → L4–L5 |
-| `mltgnt.routing.channel_router` | src/mltgnt/routing/channel_router.py Multi-space (media-agnostic) agent routing logic. Functions that decide who shou... | L3 → L4–L5 |
-| `mltgnt.routing.triage` | mltgnt.routing.triage Slack triage preprocessing utilities. Moved from persona/triage.py (Issue #911). | L3 → L4–L5 |
-| `mltgnt.scheduler.__init__` | mltgnt.scheduler — job dispatch core + YAML parser. Origin: core + YAML parser from tools/secretary/scheduler.py Take... | L3 → L4–L5 |
-| `mltgnt.scheduler.actions.__init__` | Implementation module. | L3 → L4–L5 |
-| `mltgnt.scheduler.actions.dream` | mltgnt.scheduler.actions.dream — memory_dream schedule action. | L3 → L4–L5 |
-| `mltgnt.scheduler.actions.skill` | Implementation module. | L3 → L4–L5 |
-| `mltgnt.scheduler.base_runner` | mltgnt.scheduler.base_runner — shared ABC for the tick loop. | L3 → L4–L5 |
-| `mltgnt.scheduler.fanout` | Implementation module. | L3 → L4–L5 |
-| `mltgnt.scheduler.loader` | Implementation module. | L3 → L4–L5 |
-| `mltgnt.scheduler.models` | Implementation module. | L3 → L4–L5 |
-| `mltgnt.scheduler.runner` | Implementation module. | L3 → L4–L5 |
-| `mltgnt.scheduler.state` | Implementation module. | L3 → L4–L5 |
+| `mltgnt.routing.__init__` | mltgnt.routing — space → persona routing (media-agnostic). Origin: ChannelPersonaEntry and load_channel_persona_map()... | L2 → L3–L5 |
+| `mltgnt.routing.agentic_discover` | mltgnt.routing.agentic_discover — skill discovery via AgenticSkillDiscoverer. Lives in routing because it spans both ... | L2 → L3–L5 |
+| `mltgnt.routing.channel_router` | src/mltgnt/routing/channel_router.py Multi-space (media-agnostic) agent routing logic. Functions that decide who shou... | L2 → L3–L5 |
+| `mltgnt.routing.triage` | mltgnt.routing.triage Slack triage preprocessing utilities. Moved from persona/triage.py (Issue #911). | L2 → L3–L5 |
+| `mltgnt.scheduler.__init__` | mltgnt.scheduler — job dispatch core + YAML parser. Origin: core + YAML parser from tools/secretary/scheduler.py Take... | L2 → L3–L5 |
+| `mltgnt.scheduler.actions.__init__` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.actions.dream` | mltgnt.scheduler.actions.dream — memory_dream schedule action. | L2 → L3–L5 |
+| `mltgnt.scheduler.actions.skill` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.base_runner` | mltgnt.scheduler.base_runner — shared ABC for the tick loop. | L2 → L3–L5 |
+| `mltgnt.scheduler.fanout` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.loader` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.models` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.runner` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.state` | Implementation module. | L2 → L3–L5 |
 | `mltgnt.skill.__init__` | mltgnt.skill — load and run Markdown-based skill files. Design: Issue #124 Public API: discover, load, match, run, es... | L3 → L4–L5 |
 | `mltgnt.skill._registry` | mltgnt.skill._registry — skill registry. Threading model: - SkillWatcherComponent background thread calls reload() - ... | L3 → L4–L5 |
 | `mltgnt.skill.context` | mltgnt.skill.context — build extra_context from knowledge + memory. Design: Issue #3030 / #3173 | L3 → L4–L5 |
