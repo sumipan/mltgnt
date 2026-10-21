@@ -15,6 +15,7 @@ from mltgnt.interfaces.turn import (
     TurnInput,
     TurnResult,
 )
+from mltgnt.interfaces.hub import HubAddress, HubMessage, HubTransport
 
 __all__ = [
     "SlackClientProtocol",
@@ -30,4 +31,7 @@ __all__ = [
     "TurnHandler",
     "TurnInput",
     "TurnResult",
+    "HubAddress",
+    "HubMessage",
+    "HubTransport",
 ]
