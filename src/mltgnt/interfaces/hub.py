@@ -14,21 +14,6 @@ __all__ = ["HubAddress", "HubMessage", "HubTransport"]
 
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _HUB_KINDS = frozenset({"message", "status", "update"})
-_ROW_CORE_KEYS = frozenset(
-    {
-        "ts",
-        "message_id",
-        "author",
-        "text",
-        "thread_ts",
-        "kind",
-        "status",
-        "task_uuid",
-        "bookmarked",
-        "reaction",
-        "files",
-    }
-)
 
 
 def _validate_identifier(value: str, *, field: str) -> str:

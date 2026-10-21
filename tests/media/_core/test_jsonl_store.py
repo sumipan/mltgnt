@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from mltgnt.media._core.jsonl_store import JsonlMessageStore
+from mltgnt.media.webchat.store import WebChatStore
 
 DAY = date(2026, 1, 5)
 
@@ -40,6 +44,17 @@ def test_append_extra_merged_into_row(tmp_path: Path) -> None:
     assert line["hop"] == 2
 
 
+def test_append_extra_cannot_override_reserved_fields(tmp_path: Path) -> None:
+    store, _clock = _store(tmp_path)
+    with pytest.raises(ValueError, match="reserved keys"):
+        store.append(
+            message_id="m1",
+            author="host-a/persona-x",
+            text="hi",
+            extra={"kind": "unknown"},
+        )
+
+
 def test_revise_carries_extra_fields(tmp_path: Path) -> None:
     store, _clock = _store(tmp_path)
     store.append(
@@ -54,6 +69,10 @@ def test_revise_carries_extra_fields(tmp_path: Path) -> None:
     assert revised["hop"] == 2
     assert revised["kind"] == "status"
     assert revised["status"] == "working"
+    reaction = store.add_reaction("m1", "eyes")
+    assert reaction is not None
+    assert reaction["room"] == "r1"
+    assert reaction["hop"] == 2
 
 
 def test_append_rolls_to_next_day_file(tmp_path: Path) -> None:
@@ -82,3 +101,19 @@ def test_concurrent_appends_under_flock(tmp_path: Path) -> None:
         t.join()
     lines = store.path_for(store.today()).read_text(encoding="utf-8").splitlines()
     assert len(lines) == 100
+
+
+def test_webchat_append_keeps_legacy_signature() -> None:
+    assert list(inspect.signature(WebChatStore.append).parameters) == [
+        "self",
+        "message_id",
+        "author",
+        "text",
+        "thread_ts",
+        "kind",
+        "status",
+        "task_uuid",
+        "bookmarked",
+        "reaction",
+        "files",
+    ]

@@ -152,7 +152,10 @@ class JsonlMessageStore:
         if files:
             row["files"] = [dict(f) for f in files]
         if extra:
-            row.update(dict(extra))
+            overlap = extra.keys() & (_ROW_FIELD_KEYS | _DERIVED_ROW_KEYS)
+            if overlap:
+                raise ValueError(f"extra contains reserved keys: {sorted(overlap)!r}")
+            row.update(extra)
         line = json.dumps(row, ensure_ascii=False) + "\n"
         path = self.path_for(now.date())
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +178,8 @@ class JsonlMessageStore:
                 k: current.get(k) for k in ("author", "text", "thread_ts", "status", "task_uuid")
             }
             fields.update(changes)
-            return self.append(
+            return JsonlMessageStore.append(
+                self,
                 message_id=message_id,
                 kind=kind,
                 author=str(fields["author"] or ""),
@@ -319,7 +323,8 @@ class JsonlMessageStore:
         current = self.latest(message_id)
         if current is None or current.get("thread_ts"):
             return None
-        return self.append(
+        return JsonlMessageStore.append(
+            self,
             message_id=message_id,
             author=str(current.get("author") or ""),
             text=str(current.get("text") or ""),
@@ -333,7 +338,8 @@ class JsonlMessageStore:
         current = self.latest(message_id)
         if current is None:
             return None
-        return self.append(
+        return JsonlMessageStore.append(
+            self,
             message_id=message_id,
             author=str(current.get("author") or ""),
             text=str(current.get("text") or ""),

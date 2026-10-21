@@ -89,20 +89,19 @@ class _FullTransport:
         return [], 0
 
 
-class _MissingSend:
-    def revise(self, room: str, message_id: str, **kwargs: Any) -> bool:
-        return False
-
-    def poll(self, room: str, after: str | None, *, limit: int = 100) -> Any:
-        return None
-
-    def guard_context(self, room: str, thread: str | None) -> Any:
-        return None
-
-
 def test_hub_transport_isinstance() -> None:
     assert isinstance(_FullTransport(), HubTransport)
-    assert not isinstance(_MissingSend(), HubTransport)
+
+
+@pytest.mark.parametrize("missing", ["send", "revise", "poll", "guard_context"])
+def test_hub_transport_rejects_each_missing_method(missing: str) -> None:
+    methods = {
+        name: (lambda self, *args, **kwargs: None)
+        for name in ("send", "revise", "poll", "guard_context")
+        if name != missing
+    }
+    incomplete = type("IncompleteTransport", (), methods)()
+    assert not isinstance(incomplete, HubTransport)
 
 
 def test_hub_address_accepts_valid() -> None:
