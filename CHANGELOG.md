@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.130.0
+
 - **Hub message contract**: `HubMessage` / `HubAddress` in `mltgnt.interfaces.hub` with JSONL row mapping and a `HubTransport` protocol for send, poll, revise, and guard context.
 - **JsonlMessageStore**: shared append / revise / read helpers in `mltgnt.media._core.jsonl_store` for per-room hub logs.
 - **`mltgnt hub serve`**: YAML-driven FastAPI hub (`mltgnt.media.hub.server`) with bearer auth, guard checks, and room polling.
