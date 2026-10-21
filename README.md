@@ -69,6 +69,7 @@ pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.103.3` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
+| Extra `hub` | `fastapi>=0.100`, `uvicorn>=0.20`, `PyYAML>=6.0` |
 | Extra `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
 | Console script | `mltgnt` -> `mltgnt.cli.main:main` (`python -m mltgnt` does the same) |
 | Typing | Ships `py.typed` |
@@ -190,6 +191,7 @@ The CLI is defined in `src/mltgnt/cli/main.py` (`run`) and `src/mltgnt/cli/memor
 | `mltgnt run` | Start host-provided daemon components under a PID lock |
 | `mltgnt memory dream show` | Print a persona's dream summary |
 | `mltgnt memory dream forget` | Delete one category from a persona's dream summary |
+| `mltgnt hub serve` | Run the multi-host hub relay server from a YAML config |
 
 ### `mltgnt run`
 
@@ -229,6 +231,16 @@ Deletes one category from the dream summary and rewrites `dream.json`.
 | `--chat-dir PATH` | yes | Parent directory of the persona directories |
 
 Exits with `0` on success. Exits with `1` if the summary or the category does not exist.
+
+### `mltgnt hub serve`
+
+Loads a hub server YAML config and runs the FastAPI relay (requires the `hub` extra).
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `config` | yes | Path to hub server YAML (`store_dir`, `rooms`, `token_env`, optional `guard` / `ttl_days`) |
+
+Bearer tokens are read from environment variables named in `token_env` (never embedded in the YAML). Exits with `2` on `ConfigError` (missing token env, invalid rooms, and similar). Exits with `3` when `fastapi` / `uvicorn` are not installed (`pip install 'mltgnt[hub]'`).
 
 ## Public API
 

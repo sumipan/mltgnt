@@ -2,6 +2,7 @@ import argparse
 import sys
 from typing import Optional
 
+from mltgnt.cli import hub as hub_module
 from mltgnt.cli import memory as memory_module
 from mltgnt.cli import run as run_module
 from mltgnt.exceptions import ConfigError, DependencyError, MltgntError
@@ -29,6 +30,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     )
 
     memory_module.register(subparsers)
+    hub_module.register(subparsers)
 
     args = parser.parse_args(argv)
 
@@ -51,3 +53,6 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     if args.subcommand == "memory":
         raise SystemExit(memory_module.execute(args))
+
+    if args.subcommand == "hub":
+        raise SystemExit(hub_module.execute(args))

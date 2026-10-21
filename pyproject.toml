@@ -36,6 +36,11 @@ webchat = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
 ]
+hub = [
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "PyYAML>=6.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/sumipan/mltgnt"
