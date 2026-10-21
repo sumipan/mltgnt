@@ -14,6 +14,7 @@ pytest.importorskip("httpx")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from mltgnt.exceptions import ConfigError  # noqa: E402
+from mltgnt.media._core.jsonl_store import JsonlMessageStore  # noqa: E402
 from mltgnt.media.hub.guard import GuardConfig  # noqa: E402
 from mltgnt.media.hub.server import (  # noqa: E402
     HubServerConfig,
@@ -111,9 +112,29 @@ def test_sender_host_mismatch_is_403(tmp_path: Path) -> None:
     assert client.post("/rooms/lobby/messages", json=body, headers=_auth("secret-a")).status_code == 403
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        _post_body(sender={"host": "host-a", "extra": True}),
+        _post_body(attachments=[{"name": "a.txt", "extra": True}]),
+    ],
+)
+def test_post_rejects_extra_nested_fields(tmp_path: Path, body: dict[str, object]) -> None:
+    client = _client(tmp_path)
+    assert client.post("/rooms/lobby/messages", json=body, headers=_auth()).status_code == 422
+
+
 def test_unknown_room_is_404(tmp_path: Path) -> None:
     client = _client(tmp_path)
     assert client.get("/rooms/missing/messages", headers=_auth()).status_code == 404
+
+
+def test_store_read_error_is_503(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    with patch.object(JsonlMessageStore, "read_from", side_effect=OSError("disk unavailable")):
+        resp = client.get("/rooms/lobby/messages", headers=_auth())
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "store unavailable"
 
 
 def test_post_creates_message(tmp_path: Path) -> None:
@@ -186,6 +207,17 @@ def test_patch_unknown_id_is_404(tmp_path: Path) -> None:
         headers=_auth(),
     )
     assert resp.status_code == 404
+
+
+def test_patch_rejects_unknown_status(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    assert client.post("/rooms/lobby/messages", json=_post_body(), headers=_auth()).status_code == 201
+    resp = client.patch(
+        "/rooms/lobby/messages/msg-1",
+        json={"kind": "status", "status": "not-a-status"},
+        headers=_auth(),
+    )
+    assert resp.status_code == 422
 
 
 def test_list_messages_cursor_and_limits(tmp_path: Path) -> None:
@@ -289,6 +321,32 @@ token_env:
         load_server_config(cfg, environ={})
 
 
+@pytest.mark.parametrize(
+    "guard",
+    [
+        "hop_limit: -1",
+        "max_agent_run: 0",
+        "min_interval_sec: -0.1",
+        "room_daily_limit: 0",
+    ],
+)
+def test_load_server_config_rejects_invalid_guard_values(tmp_path: Path, guard: str) -> None:
+    cfg = tmp_path / "hub.yaml"
+    cfg.write_text(
+        f"""
+store_dir: /tmp/hub
+rooms: ["lobby"]
+token_env:
+  host-a: TOKEN_A
+guard:
+  {guard}
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="guard"):
+        load_server_config(cfg, environ={"TOKEN_A": "x"})
+
+
 def test_parse_cursor() -> None:
     assert parse_cursor("2026-01-05:0") == (DAY, 0)
     assert parse_cursor("garbage") is None
@@ -306,3 +364,21 @@ def test_messages_follow_next_day(tmp_path: Path) -> None:
         headers=_auth(),
     ).json()
     assert {row["message_id"] for row in listed["messages"]} == {"d1", "d2"}
+
+
+def test_messages_do_not_skip_intermediate_days(tmp_path: Path) -> None:
+    clock = FakeClock(datetime(2026, 1, 5, 23, 59, tzinfo=timezone.utc))
+    client = _client(tmp_path, clock=clock)
+    client.post("/rooms/lobby/messages", json=_post_body(id="d1"), headers=_auth())
+    clock.now = datetime(2026, 1, 6, 12, 0, tzinfo=timezone.utc)
+    client.post("/rooms/lobby/messages", json=_post_body(id="d2"), headers=_auth())
+    clock.now = datetime(2026, 1, 7, 0, 1, tzinfo=timezone.utc)
+    client.post("/rooms/lobby/messages", json=_post_body(id="d3"), headers=_auth())
+
+    listed = client.get(
+        "/rooms/lobby/messages",
+        params={"after": "2026-01-05:0", "limit": 10},
+        headers=_auth(),
+    ).json()
+
+    assert [row["message_id"] for row in listed["messages"]] == ["d1", "d2", "d3"]

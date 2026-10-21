@@ -52,6 +52,8 @@ _POST_BODY_KEYS = frozenset(
     }
 )
 _PATCH_BODY_KEYS = frozenset({"kind", "text", "status"})
+_ADDRESS_KEYS = frozenset({"host", "persona"})
+_ATTACHMENT_KEYS = frozenset({"name", "content_type", "uri"})
 
 
 def _validate_identifier(value: str, *, field: str) -> str:
@@ -120,7 +122,7 @@ def _guard_from_mapping(data: Any) -> GuardConfig:
     if not isinstance(data, dict):
         raise ConfigError("guard must be a mapping")
     try:
-        return GuardConfig(
+        config = GuardConfig(
             hop_limit=int(data.get("hop_limit", 3)),
             max_agent_run=int(data.get("max_agent_run", 4)),
             min_interval_sec=float(data.get("min_interval_sec", 5.0)),
@@ -128,6 +130,15 @@ def _guard_from_mapping(data: Any) -> GuardConfig:
         )
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"invalid guard: {exc}") from exc
+    if config.hop_limit < 0:
+        raise ConfigError("guard.hop_limit must be >= 0")
+    if config.max_agent_run < 1:
+        raise ConfigError("guard.max_agent_run must be >= 1")
+    if config.min_interval_sec < 0:
+        raise ConfigError("guard.min_interval_sec must be >= 0")
+    if config.room_daily_limit < 1:
+        raise ConfigError("guard.room_daily_limit must be >= 1")
+    return config
 
 
 def load_server_config(
@@ -227,14 +238,22 @@ def _attachments_from_body(items: Any) -> tuple[Attachment, ...]:
     for item in items:
         if not isinstance(item, dict):
             raise ValueError("invalid attachments")
+        if set(item) - _ATTACHMENT_KEYS:
+            raise ValueError("unexpected attachment fields")
         name = item.get("name")
         if not isinstance(name, str):
+            raise ValueError("invalid attachments")
+        content_type = item.get("content_type")
+        uri = item.get("uri")
+        if content_type is not None and not isinstance(content_type, str):
+            raise ValueError("invalid attachments")
+        if uri is not None and not isinstance(uri, str):
             raise ValueError("invalid attachments")
         out.append(
             Attachment(
                 name=name,
-                content_type=item.get("content_type"),
-                uri=item.get("uri"),
+                content_type=content_type,
+                uri=uri,
             )
         )
     return tuple(out)
@@ -245,6 +264,8 @@ def _address_from_body(data: Any, *, field: str) -> HubAddress | None:
         return None
     if not isinstance(data, dict):
         raise ValueError(f"invalid {field}")
+    if set(data) - _ADDRESS_KEYS:
+        raise ValueError(f"unexpected {field} fields")
     host = data.get("host")
     if not isinstance(host, str):
         raise ValueError(f"invalid {field}")
@@ -363,12 +384,23 @@ def _iter_from_cursor(
                 break
         if len(out) >= limit:
             break
-        today = store.today()
-        if today > day:
-            day, offset = today, 0
+        next_day = _next_store_day(store, day)
+        if next_day is not None:
+            day, offset = next_day, 0
             continue
         break
     return out, last_cursor
+
+
+def _next_store_day(store: JsonlMessageStore, day: date) -> date | None:
+    """Return the next readable day without skipping retained intermediate files."""
+    today = store.today()
+    candidates = [candidate for candidate in store.days() if day < candidate <= today]
+    if candidates:
+        return candidates[0]
+    if day < today:
+        return today
+    return None
 
 
 async def _tail(
@@ -384,12 +416,12 @@ async def _tail(
     deadline = None if timeout_sec is None else monotonic() + timeout_sec
     yield "retry: 1000\n\n"
     while True:
-        today = store.today()
         rows, offset = store.read_from(day, offset)
         for end, row in rows:
             yield _sse(row, f"{day.isoformat()}:{end}")
-        if today > day:
-            day, offset = today, 0
+        next_day = _next_store_day(store, day)
+        if next_day is not None:
+            day, offset = next_day, 0
             continue
         if deadline is not None and monotonic() >= deadline:
             return
@@ -423,6 +455,11 @@ def create_app(
         stores[room] = store
 
     app = FastAPI(title="mltgnt hub")
+
+    @app.exception_handler(OSError)
+    async def store_os_error(_request: Request, exc: OSError) -> JSONResponse:
+        _log.warning("[hub] store operation failed: %s", exc)
+        return JSONResponse(status_code=503, content={"detail": "store unavailable"})
 
     def _auth_host(request: Request) -> str:
         header = request.headers.get("authorization")
@@ -543,11 +580,9 @@ def create_app(
             status_val = body.get("status")
             if status_val is None:
                 raise HTTPException(status_code=422, detail="status is required")
-            if isinstance(status_val, Status):
-                status_str = status_val.value
-            elif isinstance(status_val, str):
-                status_str = status_val
-            else:
+            try:
+                status_str = Status(status_val).value
+            except (TypeError, ValueError):
                 raise HTTPException(status_code=422, detail="invalid status")
             changes = {"status": status_str}
         try:
