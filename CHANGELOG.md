@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.130.0
+
+- **Hub message contract**: `HubMessage` / `HubAddress` in `mltgnt.interfaces.hub` with JSONL row mapping and a `HubTransport` protocol for send, poll, revise, and guard context.
+- **JsonlMessageStore**: shared append / revise / read helpers in `mltgnt.media._core.jsonl_store` for per-room hub logs.
+- **`mltgnt hub serve`**: YAML-driven FastAPI hub (`mltgnt.media.hub.server`) with bearer auth, guard checks, and room polling.
+- **`HubClient`**: `MediaClient` over the hub HTTP API with outbound guard pre-checks and optional `outbound_filter` (`mltgnt.media.hub.client`).
+- **`HubSubscriber`**: `DaemonComponent` that polls configured rooms, persists cursors, and delivers inbound `MediaEvent`s (`mltgnt.media.hub.subscriber`).
+
 ## v0.128.0
 
 - **WebChat looks like a Slack channel**: dark theme, channel header and tabs (`channel_name`, default `"general"`), message grouping and day dividers, hover actions (reply in thread / save), Slack-style thread summary and a thread pane that goes full screen on narrow screens. The page loads the latest 100 root messages across days and pages older ones in when scrolled to the top, Slack-style, ending with a channel intro (`GET /messages?limit=&before=<ts>`); a reload no longer drops earlier days. Enter no longer sends while an IME is composing.
