@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import secrets
 import time
 from collections.abc import AsyncIterator, Callable, Mapping, MutableMapping
@@ -16,7 +17,7 @@ import yaml
 
 from mltgnt import __version__
 from mltgnt.exceptions import ConfigError
-from mltgnt.interfaces.hub import HubAddress, HubMessage, _validate_identifier
+from mltgnt.interfaces.hub import HubAddress, HubMessage
 from mltgnt.interfaces.media import Status
 from mltgnt.interfaces.turn import Attachment
 from mltgnt.media._core.jsonl_store import JsonlMessageStore, MESSAGE_KINDS
@@ -32,6 +33,7 @@ __all__ = [
 ]
 
 _log = logging.getLogger(__name__)
+_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _EXTRA_HINT = "fastapi is not installed; install the extra: pip install 'mltgnt[hub]'"
 _SSE_KINDS = frozenset(MESSAGE_KINDS)
 _POST_BODY_KEYS = frozenset(
@@ -50,6 +52,14 @@ _POST_BODY_KEYS = frozenset(
     }
 )
 _PATCH_BODY_KEYS = frozenset({"kind", "text", "status"})
+
+
+def _validate_identifier(value: str, *, field: str) -> str:
+    if not _IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(f"invalid {field}: {value!r}")
+    if ".." in value:
+        raise ValueError(f"invalid {field}: {value!r}")
+    return value
 
 
 def parse_cursor(value: str | None) -> tuple[date, int] | None:
