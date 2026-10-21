@@ -196,6 +196,22 @@ def test_corrupt_cursor_is_quarantined(tmp_path: Path) -> None:
     assert path.with_suffix(".json.corrupt").is_file()
 
 
+def test_structurally_invalid_cursor_is_quarantined(tmp_path: Path) -> None:
+    cursor_dir = tmp_path / "s" / "hub-cursors"
+    cursor_dir.mkdir(parents=True)
+    path = cursor_dir / "r1.json"
+    path.write_text('{"cursor": 12, "recent_ids": ["m1"]}', encoding="utf-8")
+    sub = HubSubscriber(
+        _config(tmp_path),
+        RecordingHandler(),
+        transport=ScriptedTransport([([], None)]),
+    )
+    sub.start()
+    _wait_for(lambda: path.with_suffix(".json.corrupt").is_file())
+    sub.stop()
+    assert not path.exists()
+
+
 def test_poll_failure_backoff_and_stop(tmp_path: Path) -> None:
     transport = ScriptedTransport([None, ([], None)])
     handler = RecordingHandler()

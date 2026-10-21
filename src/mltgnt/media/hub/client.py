@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import urllib.error
 import urllib.parse
@@ -86,6 +87,8 @@ class UrllibTransport:
         timeout_sec: float = 30.0,
         environ: Mapping[str, str] | None = None,
     ) -> None:
+        if not math.isfinite(timeout_sec) or timeout_sec <= 0:
+            raise ValueError("timeout_sec must be a positive finite number")
         self._config = config
         self._timeout_sec = timeout_sec
         self._environ = environ if environ is not None else os.environ
@@ -137,8 +140,10 @@ class UrllibTransport:
         status, payload = result
         if status not in (200, 201):
             return None
-        if isinstance(payload, dict) and isinstance(payload.get("id"), str):
-            return payload["id"]
+        if isinstance(payload, dict):
+            message_id = payload.get("id")
+            if isinstance(message_id, str):
+                return message_id
         return None
 
     def revise(
@@ -290,7 +295,11 @@ class HubClient:
         except ValueError as exc:
             _log.warning("hub client: invalid extra: %s", exc)
             return None
-        filtered = self._config.outbound_filter(text) if self._config.outbound_filter is not None else text
+        try:
+            filtered = self._config.outbound_filter(text) if self._config.outbound_filter is not None else text
+        except Exception as exc:
+            _log.warning("hub client: outbound_filter failed: %s", exc)
+            return None
         if filtered is None:
             return None
         if self._pending_id is None:
@@ -311,7 +320,11 @@ class HubClient:
             kind="message",
             status=None,
         )
-        ctx = self._transport.guard_context(room, thread)
+        try:
+            ctx = self._transport.guard_context(room, thread)
+        except Exception as exc:
+            _log.warning("hub client: guard_context failed room=%s: %s", room, exc)
+            return None
         if ctx is None:
             _log.warning("hub client: guard_context unavailable room=%s", room)
             return None

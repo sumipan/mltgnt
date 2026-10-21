@@ -11,7 +11,7 @@ import pytest
 
 from mltgnt.interfaces.hub import HubAddress, HubMessage, HubTransport
 from mltgnt.interfaces.media import MediaClient, Status
-from mltgnt.media.hub.client import HubClient
+from mltgnt.media.hub.client import HubClient, UrllibTransport
 from mltgnt.media.hub.config import HubMediaConfig
 from mltgnt.media.hub.guard import GuardConfig
 
@@ -42,6 +42,7 @@ class FakeTransport:
         self.revise_calls: list[tuple[str, str, str, dict[str, Any]]] = []
         self.raise_on_send = False
         self.raise_on_revise = False
+        self.raise_on_guard = False
 
     def send(self, message: HubMessage) -> str | None:
         if self.raise_on_send:
@@ -80,6 +81,8 @@ class FakeTransport:
         thread: str | None,
     ) -> tuple[list[Mapping[str, Any]], int] | None:
         self.guard_calls.append((room, thread))
+        if self.raise_on_guard:
+            raise RuntimeError("guard boom")
         if self.fail_guard:
             return None
         return self.thread_rows, self.room_today_count
@@ -180,6 +183,30 @@ def test_transport_exceptions_are_swallowed(tmp_path: Path) -> None:
     transport.raise_on_revise = True
     assert client.update(message_id, "v3") is False
     assert client.set_status(message_id, Status.FAILED) is False
+
+
+def test_guard_and_filter_exceptions_are_swallowed(tmp_path: Path) -> None:
+    transport = FakeTransport()
+    transport.raise_on_guard = True
+    client = HubClient(_config(tmp_path), persona=None, transport=transport)
+    assert client.post("v1", "hub.r1") is None
+    assert transport.sent == []
+
+    def broken_filter(_text: str) -> str | None:
+        raise RuntimeError("filter boom")
+
+    filtered_client = HubClient(
+        _config(tmp_path, outbound_filter=broken_filter),
+        persona=None,
+        transport=FakeTransport(),
+    )
+    assert filtered_client.post("v2", "hub.r1") is None
+
+
+@pytest.mark.parametrize("timeout_sec", [0, -1, float("inf"), float("nan")])
+def test_transport_rejects_non_finite_or_non_positive_timeout(tmp_path: Path, timeout_sec: float) -> None:
+    with pytest.raises(ValueError, match="positive finite"):
+        UrllibTransport(_config(tmp_path), timeout_sec=timeout_sec)
 
 
 def test_upload_and_react_unsupported(tmp_path: Path) -> None:

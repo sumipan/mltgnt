@@ -54,6 +54,7 @@ class HubSubscriber:
         if self._started and self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
+        self._backoff_index = 0
         self._thread = threading.Thread(target=self._run, name="hub-subscriber", daemon=True)
         self._thread.start()
         self._started = True
@@ -74,7 +75,16 @@ class HubSubscriber:
             return None, []
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            if not isinstance(data, dict):
+                raise ValueError("state must be an object")
+            cursor = data.get("cursor")
+            if cursor is not None and not isinstance(cursor, str):
+                raise ValueError("cursor must be a string or null")
+            recent = data.get("recent_ids")
+            if not isinstance(recent, list) or not all(isinstance(rid, str) for rid in recent):
+                raise ValueError("recent_ids must be a list of strings")
+            recent_ids = recent[-_RECENT_ID_CAP:]
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
             _log.warning("hub subscriber: corrupt cursor for room=%s: %s", room, exc)
             corrupt = path.with_suffix(path.suffix + ".corrupt")
             try:
@@ -82,15 +92,6 @@ class HubSubscriber:
             except OSError:
                 pass
             return None, []
-        if not isinstance(data, dict):
-            return None, []
-        cursor = data.get("cursor")
-        if cursor is not None and not isinstance(cursor, str):
-            cursor = None
-        recent = data.get("recent_ids")
-        if not isinstance(recent, list):
-            recent = []
-        recent_ids = [rid for rid in recent if isinstance(rid, str)]
         return cursor, recent_ids
 
     def _save_state(self, room: str, cursor: str | None, recent_ids: list[str]) -> None:
