@@ -387,8 +387,9 @@ Persona section headings are canonical English (`Background`, `Values`, `Reactio
 | Commits | `flush_memory_commits` |
 | Chroma (optional) | `get_collection`, `query_similar`, `upsert_entry`. `get_collection` returns `None` when `chromadb` is not installed |
 | Constants | `MEMORY_CORRUPT_THRESHOLD_BYTES` (`10`), `MEMORY_DEDUPE_SCAN_BYTES` (`32768`), `MEMORY_DEDUPE_SCAN_LINES` (`200`) |
+| Internal compatibility exports | `_ensure_jsonl`, `_resolve_memory_dir`, `_scan_tail_for_dedupe_key`, `_search_and_score` (underscore-prefixed and unsupported) |
 
-`mltgnt.memory.__all__` also lists some names that start with an underscore. They are internal and unsupported.
+`mltgnt.memory.__all__` includes the internal compatibility exports above so the table remains an exact inventory. They are not supported public API despite appearing in `__all__`.
 
 Compaction drops meta lines from the Phase 1 LLM output: lines that start with `Understood`, `Analyzing`, `Analysis`, or `Below`, `## ` headings, and lines that contain `**Size**`, `**Statistics**`, or `**Analysis**`. `LanguagePack.phase1_meta_prefixes` and `LanguagePack.phase1_meta_markers` add localized prefixes and markers to these.
 
@@ -447,6 +448,7 @@ When `engine="claude"` and no model is given, the LLM matcher uses `claude-haiku
 | `SchedulePaths` | `SchedulePaths(state_dir)`. Per-day state files (`done`, `planned`, `missed`, `failed`, `skipped`) |
 | `load_schedule_jobs` | `(yaml_path, *, default_timezone="Asia/Tokyo")` |
 | `atomic_write_text` | Atomic file write used for state files |
+| `_hash_offset` | Internal compatibility export; underscore-prefixed and unsupported |
 
 `SchedulePaths.prune(today, keep_days=30) -> int` deletes state files named `<job_id>_<YYYY-MM-DD>.<ext>` whose date is older than `today - keep_days`, and returns how many it deleted. Files whose date does not parse, and the interval directory, are left alone. `keep_days < 1` raises `ValueError`. `PersonaScheduler` calls it once per calendar day with `state_keep_days`. A prune failure is logged and does not stop the tick.
 
@@ -457,6 +459,8 @@ When `engine="claude"` and no model is given, the LLM matcher uses `claude-haiku
 | `mltgnt.daemon` | `DaemonComponent`, `DaemonRunner(*, pid_file, components, logger=None)`, `PidLock(pid_file)`, `SkillWatcherComponent(registry, interval=5.0)` |
 | `mltgnt.config` | `PersonaConfig`, `MemoryConfig`, `SchedulerConfig`, `ConversationConfig`, `DEFAULT_WEIGHT_MAP` |
 | `mltgnt.config.language` | `LanguagePack`, `EN`, `get_language_pack`, `set_language_pack`. The last three can also be imported from `mltgnt.config` |
+
+`mltgnt.daemon.__all__` is exactly `DaemonComponent`, `DaemonRunner`, `PidLock`, and `SkillWatcherComponent`.
 
 ### `mltgnt.interfaces`
 
@@ -547,7 +551,7 @@ Hub envelopes live in `mltgnt.interfaces.hub` (`HubAddress`, `HubMessage`, `HubT
 | `EventHandler` | `mltgnt.media.webchat.app` | `handle_event(event: MediaEvent)` | `create_app`. `MediaBridge` satisfies it |
 | `DaemonComponent` | `mltgnt.daemon` | `name` property, non-blocking `start()`, `stop()` | `DaemonRunner`, `mltgnt run` |
 | `HubTransport` | `mltgnt.interfaces.hub` | `send`, `poll`, `revise`, `guard_context` for hub HTTP relay | `HubClient`, `UrllibTransport`, `HubSubscriber` |
-| `HubSubscriber.EventHandler` | `mltgnt.media.hub.subscriber` | `handle_event(event: MediaEvent)` | `HubSubscriber` polls rooms and delivers inbound events |
+| `EventHandler` | `mltgnt.media.hub.subscriber` | `handle_event(event: MediaEvent)` | `HubSubscriber` polls rooms and delivers inbound events |
 | `LLMCaller` | `mltgnt.agent._runner` | `(prompt, *, tool_result=None) -> str \| None` | `AgentRunner(llm_call=...)`, `run_work_loop(llm_call=...)` |
 | `ToolExecutor` | `mltgnt.agent._runner` | `(tool_name, tool_args) -> str`. `MemoryToolExecutor` is a built-in implementation | `AgentRunner(tool_executor=...)`, `run_work_loop(tools=...)` |
 | `ReflexionEvaluator` | `mltgnt.agent._runner` | `(prompt, tool_name, tool_args, tool_result, tool_trace) -> ReflexionVerdict` | `AgentRunner(evaluator=...)` |
