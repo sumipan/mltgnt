@@ -16,17 +16,17 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.128.2)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.130.1)-orange)
 
-Pre-1.0. The current release is `0.128.2` (tag `v0.128.2`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.130.1` (tag `v0.130.1`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
-## Source inventory (`v0.128.2`)
+## Source inventory (`v0.130.1`)
 
-Regenerated from the `v0.128.2` tree (`package 0.128.2`, ghdag pin `v0.103.3`) on 2026-10-17. Row counts below match the tables in this file.
+Regenerated from the `v0.130.1` tree (`package 0.130.1`, ghdag pin `v0.104.5`) on 2026-10-24. Row counts below match the tables in this file.
 
 | Inventory item | Count |
 |----------------|------:|
-| Python modules under `src/mltgnt/` | 133 |
+| Python modules under `src/mltgnt/` | 143 |
 | `mltgnt.__all__` exports | 23 |
 | `mltgnt.agent.__all__` exports | 38 |
 | `mltgnt.media.__all__` exports | 27 |
@@ -34,7 +34,7 @@ Regenerated from the `v0.128.2` tree (`package 0.128.2`, ghdag pin `v0.103.3`) o
 | `SkillConfig.passthrough_env` keys | host-declared at startup |
 | Exceptions in [Error Reference](#error-reference) | 9 |
 | Rows in [Deprecated API](#deprecated-api) | 2 |
-| CLI commands documented | 3 (`run`, `memory dream show`, `memory dream forget`) |
+| CLI commands documented | 4 (`run`, `memory dream show`, `memory dream forget`, `hub serve`) |
 
 ## Not
 
@@ -50,23 +50,26 @@ Regenerated from the `v0.128.2` tree (`package 0.128.2`, ghdag pin `v0.103.3`) o
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
+
+# Hub relay server (mltgnt.media.hub; mltgnt hub serve)
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.128.2"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 ```
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.128.2` |
+| Distribution | `mltgnt` `0.130.1` |
 | Python | `>=3.10` |
-| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.103.3` |
+| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.104.5` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
 | Extra `hub` | `fastapi>=0.100`, `uvicorn>=0.20`, `PyYAML>=6.0` |
@@ -182,9 +185,9 @@ media.set_status(media.post("hello", "general"), Status.DONE)
 
 ## CLI Reference
 
-Inventory source: `src/mltgnt/cli/main.py` and `src/mltgnt/cli/memory.py` (`argparse`) at `v0.128.2`.
+Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.130.1`.
 
-The CLI is defined in `src/mltgnt/cli/main.py` (`run`) and `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`). Running `mltgnt` with no subcommand prints help and exits with `0`.
+The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
 
 | Command | Purpose |
 |---------|---------|
@@ -240,11 +243,17 @@ Loads a hub server YAML config and runs the FastAPI relay (requires the `hub` ex
 |----------|----------|-------------|
 | `config` | yes | Path to hub server YAML (`store_dir`, `rooms`, `token_env`, optional `guard` / `ttl_days`) |
 
-Bearer tokens are read from environment variables named in `token_env` (never embedded in the YAML). Exits with `2` on `ConfigError` (missing token env, invalid rooms, and similar). Exits with `3` when `fastapi` / `uvicorn` are not installed (`pip install 'mltgnt[hub]'`).
+Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` default `127.0.0.1`, `port` default `8790`, `rooms`, `token_env` host→env-var map, optional `guard`, `ttl_days` default `7`). Bearer tokens are read from the environment variables named in `token_env` (values are never stored in the YAML).
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Normal shutdown (SIGINT / SIGTERM) |
+| `2` | `ConfigError` (missing token env, invalid rooms, bad YAML, and similar) |
+| `3` | `ImportError` when `fastapi` / `uvicorn` are not installed, or `DependencyError` from the server (`pip install 'mltgnt[hub]'`) |
 
 ## Public API
 
-Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.128.2` (23 top-level names).
+Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.130.1` (23 top-level names).
 
 ### Top level: `mltgnt.__all__`
 
@@ -378,8 +387,9 @@ Persona section headings are canonical English (`Background`, `Values`, `Reactio
 | Commits | `flush_memory_commits` |
 | Chroma (optional) | `get_collection`, `query_similar`, `upsert_entry`. `get_collection` returns `None` when `chromadb` is not installed |
 | Constants | `MEMORY_CORRUPT_THRESHOLD_BYTES` (`10`), `MEMORY_DEDUPE_SCAN_BYTES` (`32768`), `MEMORY_DEDUPE_SCAN_LINES` (`200`) |
+| Internal compatibility exports | `_ensure_jsonl`, `_resolve_memory_dir`, `_scan_tail_for_dedupe_key`, `_search_and_score` (underscore-prefixed and unsupported) |
 
-`mltgnt.memory.__all__` also lists some names that start with an underscore. They are internal and unsupported.
+`mltgnt.memory.__all__` includes the internal compatibility exports above so the table remains an exact inventory. They are not supported public API despite appearing in `__all__`.
 
 Compaction drops meta lines from the Phase 1 LLM output: lines that start with `Understood`, `Analyzing`, `Analysis`, or `Below`, `## ` headings, and lines that contain `**Size**`, `**Statistics**`, or `**Analysis**`. `LanguagePack.phase1_meta_prefixes` and `LanguagePack.phase1_meta_markers` add localized prefixes and markers to these.
 
@@ -438,6 +448,7 @@ When `engine="claude"` and no model is given, the LLM matcher uses `claude-haiku
 | `SchedulePaths` | `SchedulePaths(state_dir)`. Per-day state files (`done`, `planned`, `missed`, `failed`, `skipped`) |
 | `load_schedule_jobs` | `(yaml_path, *, default_timezone="Asia/Tokyo")` |
 | `atomic_write_text` | Atomic file write used for state files |
+| `_hash_offset` | Internal compatibility export; underscore-prefixed and unsupported |
 
 `SchedulePaths.prune(today, keep_days=30) -> int` deletes state files named `<job_id>_<YYYY-MM-DD>.<ext>` whose date is older than `today - keep_days`, and returns how many it deleted. Files whose date does not parse, and the interval directory, are left alone. `keep_days < 1` raises `ValueError`. `PersonaScheduler` calls it once per calendar day with `state_keep_days`. A prune failure is logged and does not stop the tick.
 
@@ -449,13 +460,15 @@ When `engine="claude"` and no model is given, the LLM matcher uses `claude-haiku
 | `mltgnt.config` | `PersonaConfig`, `MemoryConfig`, `SchedulerConfig`, `ConversationConfig`, `DEFAULT_WEIGHT_MAP` |
 | `mltgnt.config.language` | `LanguagePack`, `EN`, `get_language_pack`, `set_language_pack`. The last three can also be imported from `mltgnt.config` |
 
+`mltgnt.daemon.__all__` is exactly `DaemonComponent`, `DaemonRunner`, `PidLock`, and `SkillWatcherComponent`.
+
 ### `mltgnt.interfaces`
 
 Dependency-free DTOs and Protocols that every layer shares.
 
 | Module | Names |
 |--------|-------|
-| `mltgnt.interfaces` | `PersonaProtocol`, `PersonaFMBase`, `Message`, `ChatInput`, `ChatOutput`, `ChatInputBase`, `ChatOutputBase`, `TurnHandler`, `TurnInput`, `TurnResult`, `Attachment`, `HistoryMessage`, `SlackClientProtocol` (deprecated) |
+| `mltgnt.interfaces` | `PersonaProtocol`, `PersonaFMBase`, `Message`, `ChatInput`, `ChatOutput`, `ChatInputBase`, `ChatOutputBase`, `TurnHandler`, `TurnInput`, `TurnResult`, `Attachment`, `HistoryMessage`, `HubAddress`, `HubMessage`, `HubTransport`, `SlackClientProtocol` (deprecated) |
 | `mltgnt.interfaces.media` | `Status`, `MediaClient`, `adapt_client` |
 
 | Name | Contract |
@@ -509,10 +522,24 @@ Dependency-free DTOs and Protocols that every layer shares.
 | `config` | `WebChatMediaConfig` | See [Media settings](#media-settings) |
 | `client` | `WebChatClient` | `WebChatClient(config, *, store=None, files=None, author="assistant")`. `upload(path, space, thread)` posts a PNG / JPEG / GIF / WebP image as a message |
 | `files` | `WebChatFiles`, `CONTENT_TYPES`, `content_type_for` | Message images under `<files_dir>/<YYYY-MM-DD>/<hex>.<ext>`; the relative path is the file id |
-| `store` | `WebChatStore`, `KINDS`, `MESSAGE_KINDS` | Daily JSONL of message snapshots. `KINDS = ("message", "update", "status", "bookmark", "reaction")` |
+| `store` | `WebChatStore`, `KINDS`, `MESSAGE_KINDS` | `WebChatStore` subclasses `JsonlMessageStore` (`mltgnt.media._core.jsonl_store`). Daily JSONL of message snapshots. `KINDS = ("message", "update", "status", "bookmark", "reaction")` |
 | `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, files=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /`, `GET /config`, `GET /assets/{name}`, `GET /messages` (`?day=`, or `?limit=` with optional `&before=<ISO ts>` to page back), `POST /messages` (`text` and/or `files: [{"id", "name"}]`; files become `MediaEvent.attachments` with the local path as `uri`), `POST /files?name=` (raw image body), `GET /files/{day}/{name}`, `GET /threads/{thread_id}`, `POST /messages/{message_id}/bookmark`, `GET /bookmarks`, and `GET /stream` (SSE). `serve(app, config)` listens on `config.host:config.port` |
 | `inbound` | `to_media_event`, `file_entries`, `DEFAULT_AUTHOR`, `MAX_FILES` | Converts a `POST /messages` body to a `MediaEvent` |
 | `ui` | `INDEX_HTML` | Single-page UI served at `GET /`: dark, Slack-like single channel with a thread pane, image attach (button / drag and drop / paste) and a lightbox |
+
+
+`mltgnt.media.hub` (requires the `hub` extra):
+
+| Module | Main names | Purpose |
+|--------|------------|---------|
+| `config` | `HubMediaConfig` | Remote hub client settings: `hub_url`, `host_id`, `token_env`, `rooms`, `cursor_dir`, `poll_interval_sec`, `space_prefix`, `guard`, optional `outbound_filter` |
+| `guard` | `GuardConfig`, `GuardVerdict`, `check` | Pure hop / rate / agent-run limits before posting (`hop_limit`, `max_agent_run`, `min_interval_sec`, `room_daily_limit`) |
+| `client` | `HubClient`, `UrllibTransport` | `MediaClient` over the hub HTTP API; `UrllibTransport` implements `HubTransport` |
+| `inbound` | `to_media_event` | Hub poll payload → `MediaEvent` (uses `space_prefix` + room id) |
+| `subscriber` | `HubSubscriber` | `DaemonComponent` that polls rooms, persists cursors under `cursor_dir`, and calls `handle_event` |
+| `server` | `HubServerConfig`, `load_server_config`, `create_app`, `serve`, `parse_cursor`, `purge_expired_daily_files` | FastAPI relay with per-room `JsonlMessageStore`, bearer auth from `token_env`, guard checks, SSE poll |
+
+Hub envelopes live in `mltgnt.interfaces.hub` (`HubAddress`, `HubMessage`, `HubTransport`) so core layers never import `mltgnt.media.hub`.
 
 ## Protocols / Extension Points
 
@@ -523,6 +550,8 @@ Dependency-free DTOs and Protocols that every layer shares.
 | `HookRegistry` hooks | `mltgnt.media._core.hooks` | `OnInbound(event) -> bool` (`True` stops the turn), `BeforeDispatch(turn) -> TurnInput`, `AfterPost(result, message_id)`, `OnResult(uid, body)` | `MediaBridge` |
 | `EventHandler` | `mltgnt.media.webchat.app` | `handle_event(event: MediaEvent)` | `create_app`. `MediaBridge` satisfies it |
 | `DaemonComponent` | `mltgnt.daemon` | `name` property, non-blocking `start()`, `stop()` | `DaemonRunner`, `mltgnt run` |
+| `HubTransport` | `mltgnt.interfaces.hub` | `send`, `poll`, `revise`, `guard_context` for hub HTTP relay | `HubClient`, `UrllibTransport`, `HubSubscriber` |
+| `EventHandler` | `mltgnt.media.hub.subscriber` | `handle_event(event: MediaEvent)` | `HubSubscriber` polls rooms and delivers inbound events |
 | `LLMCaller` | `mltgnt.agent._runner` | `(prompt, *, tool_result=None) -> str \| None` | `AgentRunner(llm_call=...)`, `run_work_loop(llm_call=...)` |
 | `ToolExecutor` | `mltgnt.agent._runner` | `(tool_name, tool_args) -> str`. `MemoryToolExecutor` is a built-in implementation | `AgentRunner(tool_executor=...)`, `run_work_loop(tools=...)` |
 | `ReflexionEvaluator` | `mltgnt.agent._runner` | `(prompt, tool_name, tool_args, tool_result, tool_trace) -> ReflexionVerdict` | `AgentRunner(evaluator=...)` |
@@ -541,12 +570,12 @@ All packages live under `src/mltgnt/`.
 |---------|------|
 | `agent` | Tool-calling loop, work loop with `run_skill`, dispatch decision, Reflexion, plan tracking |
 | `bridges` | ghdag integration: LLM calls, DAG submission and cancel requests, file I/O, VCS commits, audit hooks |
-| `cli` | `mltgnt` console entry point (`run`, `memory dream`) |
+| `cli` | `mltgnt` console entry point (`run`, `memory dream`, `hub serve`) |
 | `config` | Frozen config dataclasses and `LanguagePack` |
 | `conversation` | Per-conversation queue, session ledger, thread index, persona bindings |
 | `daemon` | `DaemonRunner`, PID lock, `SkillWatcherComponent` |
-| `interfaces` | Dependency-free DTOs and Protocols |
-| `media` | `MediaBridge` core (`_core`) plus the `slack` and `webchat` adapters |
+| `interfaces` | Dependency-free DTOs and Protocols (`media`, `turn`, `hub` envelopes) |
+| `media` | `MediaBridge` core (`_core`, shared `jsonl_store`) plus `slack`, `webchat`, and `hub` adapters |
 | `memory` | Episodic log, compaction, semantic store, dream summaries (`dream`), search |
 | `persona` | Markdown persona loading, validation, compression, prompt execution |
 | `routing` | Space-to-persona resolution, triage helpers, agentic skill discovery |
@@ -557,126 +586,136 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/` (133 modules at `v0.128.2`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Every Python module under `src/mltgnt/` (143 modules at `v0.130.1`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
 | `mltgnt.__init__` | mltgnt — type contracts and chat I/O for persona × secretary (OSS core). | entry |
 | `mltgnt.__main__` | Implementation module. | entry |
-| `mltgnt.agent.__init__` | mltgnt.agent — generic agent loop + decision-layer skeleton (#3318). Design: Issue #287 / #3318 | L2 → L3–L5 |
+| `mltgnt.agent.__init__` | mltgnt.agent — generic agent loop + decision-layer skeleton (#3318). | L2 → L3–L5 |
 | `mltgnt.agent._parse` | mltgnt.agent._parse — parse JSON from an LLM response. | L2 → L3–L5 |
 | `mltgnt.agent._runner` | mltgnt.agent._runner — generic agent loop. | L2 → L3–L5 |
 | `mltgnt.agent.action_classifier` | mltgnt.agent.action_classifier — auto-classify tool side-effect levels. | L2 → L3–L5 |
-| `mltgnt.agent.deterministic_gate` | Deterministic gate (no side effects, medium-agnostic) (#3318). Pure functions for co-occurrence of request phrasing w... | L2 → L3–L5 |
-| `mltgnt.agent.dispatch_decision` | Dispatch decision skeleton (#3318). Agent execution, session ledger, and tool-name checks are host-injected. Prompt b... | L2 → L3–L5 |
-| `mltgnt.agent.dispatch_preflight` | Preflight skeleton before dispatch (#3318). Memory, skill, profile, and note implementations are host-injected. Promp... | L2 → L3–L5 |
-| `mltgnt.agent.plan` | mltgnt.agent.plan — work plan data structure and JSON contract (#3855). Standard library only; must not import ``mltg... | L2 → L3–L5 |
+| `mltgnt.agent.deterministic_gate` | Deterministic gate (no side effects, medium-agnostic) (#3318). | L2 → L3–L5 |
+| `mltgnt.agent.dispatch_decision` | Dispatch decision skeleton (#3318). | L2 → L3–L5 |
+| `mltgnt.agent.dispatch_preflight` | Preflight skeleton before dispatch (#3318). | L2 → L3–L5 |
+| `mltgnt.agent.plan` | mltgnt.agent.plan — work plan data structure and JSON contract (#3855). | L2 → L3–L5 |
 | `mltgnt.agent.reflexion` | mltgnt.agent.reflexion — deterministic default Reflexion evaluator (#3855). | L2 → L3–L5 |
 | `mltgnt.agent.work_loop` | mltgnt.agent.work_loop — generic work loop with optional skill delegation. | L2 → L3–L5 |
 | `mltgnt.bridges.__init__` | Implementation module. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.audit_adapter` | Implementation module. | L4 → L5 (+ ghdag) |
-| `mltgnt.bridges.files_adapter` | mltgnt.bridges.files_adapter L2 bridge: thin wrappers around ghdag.files md_read / md_write and the ghdag.vcs sink co... | L4 → L5 (+ ghdag) |
-| `mltgnt.bridges.ghdag_bridge` | mltgnt.bridges.ghdag_bridge — wrapper around LLMPipelineAPI + wait_for_result. Called from scheduler action: skill; k... | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.files_adapter` | mltgnt.bridges.files_adapter | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.ghdag_bridge` | mltgnt.bridges.ghdag_bridge — wrapper around LLMPipelineAPI + wait_for_result. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.hooks_adapter` | mltgnt.bridges.hooks_adapter — audit_writer callback factory for AgentRunner + DagHooks adapter. | L4 → L5 (+ ghdag) |
-| `mltgnt.bridges.llm_adapter` | mltgnt.bridges.llm_adapter L2 bridge: thin wrapper around ghdag.llm.call_text. Isolates L3 (domain) from direct L0 (g... | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.llm_adapter` | mltgnt.bridges.llm_adapter | L4 → L5 (+ ghdag) |
 | `mltgnt.cli.__init__` | Implementation module. | entry (CLI) |
+| `mltgnt.cli.hub` | mltgnt.cli.hub — hub serve subcommand. | entry (CLI) |
 | `mltgnt.cli.main` | Implementation module. | entry (CLI) |
 | `mltgnt.cli.memory` | mltgnt.cli.memory — memory dream show/forget subcommands. | entry (CLI) |
 | `mltgnt.cli.run` | Implementation module. | entry (CLI) |
-| `mltgnt.config.__init__` | mltgnt.config — diary-independent configuration dataclasses. Design: Issue #118 §4.1, Issue #123 §4.1 | cross-cutting (any layer) |
+| `mltgnt.config.__init__` | mltgnt.config — diary-independent configuration dataclasses. | cross-cutting (any layer) |
 | `mltgnt.config.language` | mltgnt.config.language — language-pack dataclass for locale-specific vocabulary. | cross-cutting (any layer) |
-| `mltgnt.conversation.__init__` | mltgnt.conversation — media-agnostic conversation layer (#3317). Queue, session ledger, thread binding, compaction. N... | L3 → L4–L5 |
-| `mltgnt.conversation.fake_media` | Fake media layer — build TurnInput without Slack (#3317). For tests and migration checks inside the conversation laye... | L3 → L4–L5 |
-| `mltgnt.conversation.session_compact` | Automatic compaction of conversation logs (#3317). Keyed by conversation ID. LLM calls are injected callbacks. No ext... | L3 → L4–L5 |
-| `mltgnt.conversation.session_store` | Conversation-layer session ledger and turn log (#3317). Keyed by opaque conversation ID. No engine SDK dependency. Re... | L3 → L4–L5 |
-| `mltgnt.conversation.thread_index` | Conversation-layer thread index (#3317). Keyed by conversation ID. No external engine SDK dependency. Storage is inje... | L3 → L4–L5 |
-| `mltgnt.conversation.thread_persona_store` | JSONL persistence for conversation-bound personas (#3317). Keyed by conversation ID. In-memory map updates are inject... | L3 → L4–L5 |
-| `mltgnt.conversation.thread_queue` | Conversation-layer wait queue (#3317). Keyed by conversation ID; drain only returns TurnInput. No Slack API / dispatc... | L3 → L4–L5 |
-| `mltgnt.conversation.types` | Conversation-layer boundary types — re-export mltgnt.interfaces.turn (#3317). Avoid duplicate type defs; neck contrac... | L3 → L4–L5 |
+| `mltgnt.conversation.__init__` | mltgnt.conversation — media-agnostic conversation layer (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.fake_media` | Fake media layer — build TurnInput without Slack (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.session_compact` | Automatic compaction of conversation logs (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.session_store` | Conversation-layer session ledger and turn log (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.thread_index` | Conversation-layer thread index (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.thread_persona_store` | JSONL persistence for conversation-bound personas (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.thread_queue` | Conversation-layer wait queue (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.types` | Conversation-layer boundary types — re-export mltgnt.interfaces.turn (#3317). | L3 → L4–L5 |
 | `mltgnt.daemon.__init__` | Implementation module. | L1 → L2–L5 |
 | `mltgnt.daemon._pidlock` | Implementation module. | L1 → L2–L5 |
 | `mltgnt.daemon._runner` | Implementation module. | L1 → L2–L5 |
-| `mltgnt.daemon._skill_watcher` | mltgnt.daemon._skill_watcher — DaemonComponent that watches skills/ and hot-reloads. Design: - No external libs: poll... | L1 → L2–L5 |
-| `mltgnt.exceptions` | mltgnt.exceptions — shared exception type hierarchy. Design: diary Issue #1252 | shared |
+| `mltgnt.daemon._skill_watcher` | mltgnt.daemon._skill_watcher — DaemonComponent that watches skills/ and hot-reloads. | L1 → L2–L5 |
+| `mltgnt.exceptions` | mltgnt.exceptions — shared exception type hierarchy. | shared |
 | `mltgnt.interfaces.__init__` | Implementation module. | L5 (no inward deps) |
-| `mltgnt.interfaces.media` | Media-agnostic client contract (MediaClient / Status) and the legacy adapter. Lives in the lowest layer so that core ... | L5 (no inward deps) |
+| `mltgnt.interfaces.hub` | Hub envelope types and transport boundary (no media-layer imports). | L5 (no inward deps) |
+| `mltgnt.interfaces.media` | Media-agnostic client contract (MediaClient / Status) and the legacy adapter. | L5 (no inward deps) |
 | `mltgnt.interfaces.persona` | Implementation module. | L5 (no inward deps) |
 | `mltgnt.interfaces.slack` | Implementation module. | L5 (no inward deps) |
-| `mltgnt.interfaces.turn` | Conversation-layer boundary types (neck: TurnInput / TurnResult) and TurnHandler Protocol. Media-agnostic. No media-l... | L5 (no inward deps) |
-| `mltgnt.interfaces.types` | L1 DTO — type definitions for the interfaces layer. No dependency on L3 (domain); keep type compatibility with L3 con... | L5 (no inward deps) |
+| `mltgnt.interfaces.turn` | Conversation-layer boundary types (neck: TurnInput / TurnResult) and TurnHandler Protocol. | L5 (no inward deps) |
+| `mltgnt.interfaces.types` | L1 DTO — type definitions for the interfaces layer. | L5 (no inward deps) |
 | `mltgnt.media.__init__` | Media layer (Slack / WebChat implementations live in submodules). | L1 → L2–L5 |
 | `mltgnt.media._core.__init__` | Media-agnostic core shared by media implementations. | L1 → L2–L5 |
-| `mltgnt.media._core.bridge` | Media-agnostic flow of one turn: MediaEvent -> admit -> TurnHandler -> post -> finalize. A reply is posted to the eve... | L1 → L2–L5 |
-| `mltgnt.media._core.cancel` | Cancel a conversation's jobs from the thread. Cancel words are ``LanguagePack.cancel_words``; stopping a job is the h... | L1 → L2–L5 |
+| `mltgnt.media._core.bridge` | Media-agnostic flow of one turn: MediaEvent -> admit -> TurnHandler -> post -> finalize. | L1 → L2–L5 |
+| `mltgnt.media._core.cancel` | Cancel a conversation's jobs from the thread. | L1 → L2–L5 |
 | `mltgnt.media._core.client` | Re-export of the MediaClient contract defined in ``mltgnt.interfaces.media``. | L1 → L2–L5 |
-| `mltgnt.media._core.component` | Supervise a media bridge: run it, report each exit, restart with backoff. Auditing and alerting stay in the host: eve... | L1 → L2–L5 |
+| `mltgnt.media._core.component` | Supervise a media bridge: run it, report each exit, restart with backoff. | L1 → L2–L5 |
 | `mltgnt.media._core.config` | Settings shared by media implementations. Implementations subclass MediaConfig. | L1 → L2–L5 |
 | `mltgnt.media._core.enqueue_guard` | Guard a job enqueue: a failure is reported in the thread instead of being dropped. | L1 → L2–L5 |
-| `mltgnt.media._core.hooks` | Host hook points around one media turn. Hooks of one kind run in registration order. An exception from a hook is logg... | L1 → L2–L5 |
-| `mltgnt.media._core.id_map` | Opaque conversation id <-> (space, thread) mapping. Only media implementations split a conversation id; everything in... | L1 → L2–L5 |
+| `mltgnt.media._core.hooks` | Host hook points around one media turn. | L1 → L2–L5 |
+| `mltgnt.media._core.id_map` | Opaque conversation id <-> (space, thread) mapping. | L1 → L2–L5 |
+| `mltgnt.media._core.jsonl_store` | Append-only JSONL message store (one file per day). Shared by webchat and hub. | L1 → L2–L5 |
 | `mltgnt.media._core.pending` | Pending-request metadata store (one JSON file per request id). | L1 → L2–L5 |
-| `mltgnt.media._core.plan_gate` | Plan approval state machine: ``awaiting -> approved \| rejected \| expired``. Approval words come from ``LanguagePack.a... | L1 → L2–L5 |
-| `mltgnt.media._core.progress` | Summarize a job's events JSONL into a progress message and rewrite it in place. Labels come from ``LanguagePack.statu... | L1 → L2–L5 |
-| `mltgnt.media._core.sanitizer` | Pure helpers that strip internal markers from an agent result before posting. Every pattern is supplied by the caller... | L1 → L2–L5 |
+| `mltgnt.media._core.plan_gate` | Plan approval state machine: ``awaiting -> approved \| rejected \| expired``. | L1 → L2–L5 |
+| `mltgnt.media._core.progress` | Summarize a job's events JSONL into a progress message and rewrite it in place. | L1 → L2–L5 |
+| `mltgnt.media._core.sanitizer` | Pure helpers that strip internal markers from an agent result before posting. | L1 → L2–L5 |
 | `mltgnt.media._core.thread_reactions` | Reaction layer of the conversation wait queue: admit result -> message status. | L1 → L2–L5 |
 | `mltgnt.media._core.types` | Media-agnostic inbound / outbound message types. | L1 → L2–L5 |
-| `mltgnt.media._core.watchers` | Job completion detection, startup catch-up, delivery reconciliation and progress polling. Directories come from ``Med... | L1 → L2–L5 |
+| `mltgnt.media._core.watchers` | Job completion detection, startup catch-up, delivery reconciliation and progress polling. | L1 → L2–L5 |
+| `mltgnt.media.hub.__init__` | Hub medium: multi-host JSONL message relay (no slack/webchat imports). | L1 → L2–L5 |
+| `mltgnt.media.hub.client` | HubClient (MediaClient) and urllib-based HubTransport. | L1 → L2–L5 |
+| `mltgnt.media.hub.config` | Hub media client / subscriber settings (stdlib only; no FastAPI import). | L1 → L2–L5 |
+| `mltgnt.media.hub.guard` | Pure guard checks for hub message posting (no I/O). | L1 → L2–L5 |
+| `mltgnt.media.hub.inbound` | Hub envelope rows -> MediaEvent (no FastAPI). | L1 → L2–L5 |
+| `mltgnt.media.hub.server` | FastAPI hub server: per-room JSONL stores and bearer auth. | L1 → L2–L5 |
+| `mltgnt.media.hub.subscriber` | Poll hub rooms and deliver inbound messages to a host handler. | L1 → L2–L5 |
 | `mltgnt.media.slack.__init__` | Slack media implementation. Import from the submodules (requires the ``slack`` extra at runtime). | L1 → L2–L5 |
 | `mltgnt.media.slack.app` | Slack Bolt App factory and Socket Mode start-up. Bolt is imported lazily. | L1 → L2–L5 |
-| `mltgnt.media.slack.client` | SlackClient: MediaClient implementation over a Slack WebClient. API failures are logged and reported as None / False.... | L1 → L2–L5 |
+| `mltgnt.media.slack.client` | SlackClient: MediaClient implementation over a Slack WebClient. | L1 → L2–L5 |
 | `mltgnt.media.slack.config` | Slack-specific media settings. | L1 → L2–L5 |
 | `mltgnt.media.slack.history` | Text extraction from Slack messages (blocks / attachments / tables) and thread fetch. | L1 → L2–L5 |
 | `mltgnt.media.slack.inbound` | Slack event dict -> MediaEvent. | L1 → L2–L5 |
-| `mltgnt.media.slack.media_store` | Download image files attached to a Slack event and store them locally. Layout: ``<dest_root>/<channel>/<YYYY-MM-DD>/<... | L1 → L2–L5 |
+| `mltgnt.media.slack.media_store` | Download image files attached to a Slack event and store them locally. | L1 → L2–L5 |
 | `mltgnt.media.slack.mrkdwn` | Markdown -> Slack mrkdwn conversion. | L1 → L2–L5 |
 | `mltgnt.media.webchat.__init__` | WebChat media implementation. Import from the submodules (the app requires the ``webchat`` extra). | L1 → L2–L5 |
-| `mltgnt.media.webchat.app` | FastAPI app of the WebChat medium. FastAPI / uvicorn are imported lazily. Endpoints: ``GET /`` (UI), ``GET /config``,... | L1 → L2–L5 |
-| `mltgnt.media.webchat.client` | WebChatClient: MediaClient implementation over the WebChat store. ``post`` appends a new message, ``update`` / ``set_... | L1 → L2–L5 |
+| `mltgnt.media.webchat.app` | FastAPI app of the WebChat medium. FastAPI / uvicorn are imported lazily. | L1 → L2–L5 |
+| `mltgnt.media.webchat.client` | WebChatClient: MediaClient implementation over the WebChat store. | L1 → L2–L5 |
 | `mltgnt.media.webchat.config` | WebChat-specific media settings. | L1 → L2–L5 |
-| `mltgnt.media.webchat.files` | Image files attached to WebChat messages. Layout: ``<files_dir>/<YYYY-MM-DD>/<32 hex>.<ext>``. The file id is the pat... | L1 → L2–L5 |
-| `mltgnt.media.webchat.inbound` | WebChat ``POST /messages`` body -> MediaEvent. The text is kept as typed: an ``@name`` call stays in ``text`` and in ... | L1 → L2–L5 |
-| `mltgnt.media.webchat.store` | Append-only message store: one ``YYYY-MM-DD.jsonl`` file per day, one JSON row per line. Every row is a full snapshot... | L1 → L2–L5 |
-| `mltgnt.media.webchat.ui` | Static single-page UI of the WebChat medium (served by ``GET /``). One channel in a dark, Slack-like layout: channel ... | L1 → L2–L5 |
+| `mltgnt.media.webchat.files` | Image files attached to WebChat messages. | L1 → L2–L5 |
+| `mltgnt.media.webchat.inbound` | WebChat ``POST /messages`` body -> MediaEvent. | L1 → L2–L5 |
+| `mltgnt.media.webchat.store` | Append-only message store: one ``YYYY-MM-DD.jsonl`` file per day, one JSON row per line. | L1 → L2–L5 |
+| `mltgnt.media.webchat.ui` | Static single-page UI of the WebChat medium (served by ``GET /``). | L1 → L2–L5 |
 | `mltgnt.memory.__init__` | mltgnt.memory — re-export hub. | L3 → L4–L5 |
 | `mltgnt.memory._chroma` | Semantic search backend using a Chroma vector DB. | L3 → L4–L5 |
-| `mltgnt.memory._commit` | mltgnt.memory._commit — debounced git commits of memory files (nexus #3833). Each written path is committed through t... | L3 → L4–L5 |
-| `mltgnt.memory._format` | mltgnt.memory._format — parse and format memory files. Design: Issue #823 (JSONL unification) | L3 → L4–L5 |
-| `mltgnt.memory._iterative` | mltgnt.memory._iterative — iterative retrieval using judge_sufficiency. Design: Issue #913 | L3 → L4–L5 |
+| `mltgnt.memory._commit` | mltgnt.memory._commit — debounced git commits of memory files (nexus #3833). | L3 → L4–L5 |
+| `mltgnt.memory._format` | mltgnt.memory._format — parse and format memory files. | L3 → L4–L5 |
+| `mltgnt.memory._iterative` | mltgnt.memory._iterative — iterative retrieval using judge_sufficiency. | L3 → L4–L5 |
 | `mltgnt.memory._scoring` | Scoring via cosine similarity. | L3 → L4–L5 |
-| `mltgnt.memory._sufficiency` | mltgnt.memory._sufficiency — LLM-based sufficiency judgment. Design: Issue #197 Phase 2/3 | L3 → L4–L5 |
+| `mltgnt.memory._sufficiency` | mltgnt.memory._sufficiency — LLM-based sufficiency judgment. | L3 → L4–L5 |
 | `mltgnt.memory._tfidf` | TF-IDF-based text vectorization. | L3 → L4–L5 |
 | `mltgnt.memory.api` | mltgnt.memory.api — path resolve, lock, append, read (CRUD). | L3 → L4–L5 |
-| `mltgnt.memory.archive` | mltgnt.memory.archive — move old episodes to monthly archive files. ``<persona_dir>/episodes.jsonl`` lines older than... | L3 → L4–L5 |
-| `mltgnt.memory.compaction` | mltgnt.memory.compaction — memory compaction (per-section cap). Design: Issue #123, #137, #823, #1135 Issue #1135: up... | L3 → L4–L5 |
-| `mltgnt.memory.core_render` | mltgnt.memory.core_render — render the always-loaded memory core. caveat and commitment entries are always included (... | L3 → L4–L5 |
+| `mltgnt.memory.archive` | mltgnt.memory.archive — move old episodes to monthly archive files. | L3 → L4–L5 |
+| `mltgnt.memory.compaction` | mltgnt.memory.compaction — memory compaction (per-section cap). | L3 → L4–L5 |
+| `mltgnt.memory.core_render` | mltgnt.memory.core_render — render the always-loaded memory core. | L3 → L4–L5 |
 | `mltgnt.memory.dream.__init__` | mltgnt.memory.dream — dream.json synthesis API. | L3 → L4–L5 |
 | `mltgnt.memory.dream._format` | mltgnt.memory.dream._format — DreamSection / DreamSummary and JSON conversion. | L3 → L4–L5 |
 | `mltgnt.memory.dream.api` | mltgnt.memory.dream.api — read/write dream.json. | L3 → L4–L5 |
 | `mltgnt.memory.dream.selector` | mltgnt.memory.dream.selector — select personas for synthesis. | L3 → L4–L5 |
 | `mltgnt.memory.dream.synthesizer` | mltgnt.memory.dream.synthesizer — synthesize DreamSummary via LLM. | L3 → L4–L5 |
-| `mltgnt.memory.reflection` | mltgnt.memory.reflection — reflection prompt, parser and applier. No LLM call lives here: the caller builds the promp... | L3 → L4–L5 |
+| `mltgnt.memory.reflection` | mltgnt.memory.reflection — reflection prompt, parser and applier. | L3 → L4–L5 |
 | `mltgnt.memory.search` | mltgnt.memory.search — relevance search, sufficiency, iterative retrieval. | L3 → L4–L5 |
-| `mltgnt.memory.semantic` | mltgnt.memory.semantic — semantic memory store (``semantic.jsonl``). One entry per line:: {"id": "m_2026-09-26_0042",... | L3 → L4–L5 |
-| `mltgnt.memory.tools` | mltgnt.memory.tools — ``remember`` / ``recall`` / ``forget`` tool executor. ``MemoryToolExecutor`` has the ``mltgnt.a... | L3 → L4–L5 |
-| `mltgnt.persona.__init__` | mltgnt.persona — persona management module Public API: load_persona(name, *, persona_dir) -> Persona list_personas(pe... | L3 → L4–L5 |
-| `mltgnt.persona.compress` | mltgnt.persona.compress Generate a light block from a heavy block via LLM compression and persist it in the persona f... | L3 → L4–L5 |
+| `mltgnt.memory.semantic` | mltgnt.memory.semantic — semantic memory store (``semantic.jsonl``). | L3 → L4–L5 |
+| `mltgnt.memory.tools` | mltgnt.memory.tools — ``remember`` / ``recall`` / ``forget`` tool executor. | L3 → L4–L5 |
+| `mltgnt.persona.__init__` | mltgnt.persona — persona management module | L3 → L4–L5 |
+| `mltgnt.persona.compress` | mltgnt.persona.compress | L3 → L4–L5 |
 | `mltgnt.persona.extractor` | mltgnt.persona.extractor — H2 section parse and light/heavy text extract (#3318). | L3 → L4–L5 |
-| `mltgnt.persona.formatter` | mltgnt.persona.formatter — tone formatting and persona prefixes (#3318). Media- and task-path agnostic. No SDK / engi... | L3 → L4–L5 |
-| `mltgnt.persona.frontmatter` | mltgnt.persona.frontmatter Parse optional YAML frontmatter at the start of persona Markdown. | L3 → L4–L5 |
-| `mltgnt.persona.loader` | mltgnt.persona.loader Load and interpret agent files. Only load() is public. Callers use mltgnt.persona.load_persona(). | L3 → L4–L5 |
-| `mltgnt.persona.memory` | mltgnt.persona.memory — media-agnostic helpers for persona memory (#3318). Read/write (paths, locks, LLM) are host-in... | L3 → L4–L5 |
-| `mltgnt.persona.phrases` | mltgnt.persona.phrases — read ops.phrases (#3318). Read PersonaFM-unsupported extension keys from raw YAML. Storage v... | L3 → L4–L5 |
-| `mltgnt.persona.registry` | mltgnt.persona.registry List personas in a directory and resolve names (including aliases). - Return only leaf files ... | L3 → L4–L5 |
-| `mltgnt.persona.resolve` | mltgnt.persona.resolve — choose responder and PersonaContext (#3318). Routing / host-specific loaders are injected by... | L3 → L4–L5 |
-| `mltgnt.persona.result_format` | mltgnt.persona.result_format — LLM call skeleton for persona formatting (#3318). Prompt body, LLM call, and media pos... | L3 → L4–L5 |
-| `mltgnt.persona.runner` | mltgnt.persona.runner Run a prompt against an LLM with persona context and return the reply. Public API: run_persona_... | L3 → L4–L5 |
-| `mltgnt.persona.schema` | mltgnt.persona.schema Schema definition and validation for persona frontmatter. FM structure: spec_version: str # opt... | L3 → L4–L5 |
-| `mltgnt.persona.types` | mltgnt.persona.types — persona-layer boundary data (#3318). No media-specific terms (channel / thread_ts, etc.). | L3 → L4–L5 |
-| `mltgnt.routing.__init__` | mltgnt.routing — space → persona routing (media-agnostic). Origin: ChannelPersonaEntry and load_channel_persona_map()... | L2 → L3–L5 |
-| `mltgnt.routing.agentic_discover` | mltgnt.routing.agentic_discover — skill discovery via AgenticSkillDiscoverer. Lives in routing because it spans both ... | L2 → L3–L5 |
-| `mltgnt.routing.channel_router` | src/mltgnt/routing/channel_router.py Multi-space (media-agnostic) agent routing logic. Functions that decide who shou... | L2 → L3–L5 |
-| `mltgnt.routing.triage` | mltgnt.routing.triage Slack triage preprocessing utilities. Moved from persona/triage.py (Issue #911). | L2 → L3–L5 |
-| `mltgnt.scheduler.__init__` | mltgnt.scheduler — job dispatch core + YAML parser. Origin: core + YAML parser from tools/secretary/scheduler.py Take... | L2 → L3–L5 |
+| `mltgnt.persona.formatter` | mltgnt.persona.formatter — tone formatting and persona prefixes (#3318). | L3 → L4–L5 |
+| `mltgnt.persona.frontmatter` | mltgnt.persona.frontmatter | L3 → L4–L5 |
+| `mltgnt.persona.loader` | mltgnt.persona.loader | L3 → L4–L5 |
+| `mltgnt.persona.memory` | mltgnt.persona.memory — media-agnostic helpers for persona memory (#3318). | L3 → L4–L5 |
+| `mltgnt.persona.phrases` | mltgnt.persona.phrases — read ops.phrases (#3318). | L3 → L4–L5 |
+| `mltgnt.persona.registry` | mltgnt.persona.registry | L3 → L4–L5 |
+| `mltgnt.persona.resolve` | mltgnt.persona.resolve — choose responder and PersonaContext (#3318). | L3 → L4–L5 |
+| `mltgnt.persona.result_format` | mltgnt.persona.result_format — LLM call skeleton for persona formatting (#3318). | L3 → L4–L5 |
+| `mltgnt.persona.runner` | mltgnt.persona.runner | L3 → L4–L5 |
+| `mltgnt.persona.schema` | mltgnt.persona.schema | L3 → L4–L5 |
+| `mltgnt.persona.types` | mltgnt.persona.types — persona-layer boundary data (#3318). | L3 → L4–L5 |
+| `mltgnt.routing.__init__` | mltgnt.routing — space → persona routing (media-agnostic). | L2 → L3–L5 |
+| `mltgnt.routing.agentic_discover` | mltgnt.routing.agentic_discover — skill discovery via AgenticSkillDiscoverer. | L2 → L3–L5 |
+| `mltgnt.routing.channel_router` | src/mltgnt/routing/channel_router.py | L2 → L3–L5 |
+| `mltgnt.routing.triage` | mltgnt.routing.triage | L2 → L3–L5 |
+| `mltgnt.scheduler.__init__` | mltgnt.scheduler — job dispatch core + YAML parser. | L2 → L3–L5 |
 | `mltgnt.scheduler.actions.__init__` | Implementation module. | L2 → L3–L5 |
 | `mltgnt.scheduler.actions.dream` | mltgnt.scheduler.actions.dream — memory_dream schedule action. | L2 → L3–L5 |
 | `mltgnt.scheduler.actions.skill` | Implementation module. | L2 → L3–L5 |
@@ -686,18 +725,19 @@ Every Python module under `src/mltgnt/` (133 modules at `v0.128.2`). "Depends to
 | `mltgnt.scheduler.models` | Implementation module. | L2 → L3–L5 |
 | `mltgnt.scheduler.runner` | Implementation module. | L2 → L3–L5 |
 | `mltgnt.scheduler.state` | Implementation module. | L2 → L3–L5 |
-| `mltgnt.skill.__init__` | mltgnt.skill — load and run Markdown-based skill files. Design: Issue #124 Public API: discover, load, match, run, es... | L3 → L4–L5 |
-| `mltgnt.skill._registry` | mltgnt.skill._registry — skill registry. Threading model: - SkillWatcherComponent background thread calls reload() - ... | L3 → L4–L5 |
-| `mltgnt.skill.context` | mltgnt.skill.context — build extra_context from knowledge + memory. Design: Issue #3030 / #3173 | L3 → L4–L5 |
-| `mltgnt.skill.lint` | mltgnt.skill.lint — structural validation of SKILL.md frontmatter (V1–V14). Design: Issue #1383 U3, Issue #1832 (V10–... | L3 → L4–L5 |
-| `mltgnt.skill.loader` | mltgnt.skill.loader — glob SKILL.md and parse frontmatter. Design: Issue #124 §6.2 | L3 → L4–L5 |
-| `mltgnt.skill.matcher` | mltgnt.skill.matcher — skill matching (slash / literal / triggers / LLM). Design: Issue #124 §6.3, Issue #208, Issue ... | L3 → L4–L5 |
-| `mltgnt.skill.models` | mltgnt.skill.models — SkillMeta / SkillFile dataclass definitions. Design: Issue #124 §6.1, Issue #1382 U1 (SKILL I/O... | L3 → L4–L5 |
-| `mltgnt.skill.runner` | mltgnt.skill.runner — variable substitution and prompt composition. Design: Issue #124 §6.4 | L3 → L4–L5 |
+| `mltgnt.skill.__init__` | mltgnt.skill — load and run Markdown-based skill files. | L3 → L4–L5 |
+| `mltgnt.skill._registry` | mltgnt.skill._registry — skill registry. | L3 → L4–L5 |
+| `mltgnt.skill.context` | mltgnt.skill.context — build extra_context from knowledge + memory. | L3 → L4–L5 |
+| `mltgnt.skill.lint` | mltgnt.skill.lint — structural validation of SKILL.md frontmatter (V1–V14). | L3 → L4–L5 |
+| `mltgnt.skill.loader` | mltgnt.skill.loader — glob SKILL.md and parse frontmatter. | L3 → L4–L5 |
+| `mltgnt.skill.matcher` | mltgnt.skill.matcher — skill matching (slash / literal / triggers / LLM). | L3 → L4–L5 |
+| `mltgnt.skill.models` | mltgnt.skill.models — SkillMeta / SkillFile dataclass definitions. | L3 → L4–L5 |
+| `mltgnt.skill.runner` | mltgnt.skill.runner — variable substitution and prompt composition. | L3 → L4–L5 |
+
 
 ## Configuration
 
-Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.128.2`.
+Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.130.1`.
 
 mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
 
@@ -755,6 +795,7 @@ All of them are frozen dataclasses.
 |----------|------------------------|
 | `SlackMediaConfig` | `bot_token_env` (`"SLACK_BOT_TOKEN"`), `app_token_env` (`"SLACK_APP_TOKEN"`), `status_reactions` (`DEFAULT_STATUS_REACTIONS`), `chunk_max_chars` (`3000`, must be positive) |
 | `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`; author -> file under `assets_dir` or an `http(s)://` URL), `display_names` (`{}`; author -> name. The browser user posts as `"user"`), `channel_name` (`"general"`), `files_dir` (`None` = `<store_dir>/../files`), `max_upload_bytes` (20 MiB) |
+| `HubMediaConfig` | `hub_url`, `host_id`, `token_env`, `rooms` (required, keyword-only), `cursor_dir` (`None`), `poll_interval_sec` (`2.0`), `space_prefix` (`"hub."`), `guard` (`GuardConfig()`), `outbound_filter` (`None`) |
 
 ### LanguagePack
 
@@ -833,7 +874,7 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 
 ## Error Reference
 
-Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.128.2`.
+Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.130.1`.
 
 | Exception | Module | Base | Raised when |
 |-----------|--------|------|-------------|
@@ -859,13 +900,13 @@ Built-in exceptions raised by the public API:
 ## Public API Stability
 
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
-- The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
+- The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.128.2`.
+- Pin an exact tag in production, for example `@v0.130.1`.
 
 ## Deprecated API
 
-Inventory source: `CHANGELOG.md` entries from `v0.126.0` through `v0.128.2` (removed aliases are not listed as current API).
+Inventory source: `CHANGELOG.md` entries from `v0.126.0` through `v0.130.1` (removed aliases are not listed as current API).
 
 | Deprecated | Module | Replacement | Warning |
 |------------|--------|-------------|---------|
