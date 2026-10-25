@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from mltgnt.conversation import session_store, thread_queue
-from mltgnt.interfaces.turn import HistoryMessage, TurnHandler, TurnInput, TurnResult
+from mltgnt.interfaces.turn import Attachment, HistoryMessage, TurnHandler, TurnInput, TurnResult
 from mltgnt.media._core.bridge import MediaBridge
 from mltgnt.media._core.hooks import HookRegistry
 from mltgnt.media._core.pending import PendingStore
@@ -241,6 +241,27 @@ def test_queued_message_runs_after_delivery(tmp_path: Path) -> None:
     assert len(handler.turns) == 2
     assert [p["text"] for p in web.calls_of("chat_postMessage")] == ["job done", "r2"]
     assert thread_queue.read_state(thread_queue.storage_key(CID))["status"] == "idle"
+
+
+def test_queued_attachment_runs_after_delivery(tmp_path: Path) -> None:
+    attachment = Attachment(name="shot.png", content_type="image/png", uri="https://example/shot")
+    handler = RecordingHandler(TurnResult(kind="task", task_ref=UID), TurnResult(kind="reply", text="r2"))
+    bridge, _web = _bridge(tmp_path, handler)
+    bridge.handle_event(_event("first", "100.0"))
+    bridge.handle_event(
+        MediaEvent(
+            space_id="C1",
+            conversation_id=CID,
+            message_id="101.0",
+            author="U1",
+            text="save this image",
+            attachments=(attachment,),
+        )
+    )
+    bridge.deliver_result(UID, "job done")
+    assert len(handler.turns) == 2
+    assert handler.turns[1].attachments == (attachment,)
+    assert "[attachments: 1]" in handler.turns[1].text
 
 
 def test_handler_exception_marks_failed_and_releases(tmp_path: Path) -> None:

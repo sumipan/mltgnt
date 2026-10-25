@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Thread queue attachments**: messages queued while a conversation is running now persist `Attachment` metadata in the inbox JSON, restore them on drain (`drained_attachments`, `TurnInput.attachments`), and mark composite lines with `[attachments: n]`. `MediaBridge` forwards event attachments through `thread_reactions.admit` and into finalized turns. Default `composite_header` no longer implies work is still in progress.
+
 ## v0.132.0
 
 - **WebChat channel URLs**: `GET /` redirects to `/c/<channel_slug>`; thread, permalink, and bookmarks views use `/c/<slug>/t/<id>`, `/p/<id>`, and `/bookmarks`. `WebChatMediaConfig.channel_slug` (default `"general"`) is exposed in `GET /config`; the UI syncs panel state with `history.pushState` / `popstate` and adds Copy link on messages.

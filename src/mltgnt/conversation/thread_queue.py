@@ -12,10 +12,12 @@ import tempfile
 import threading
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from mltgnt.conversation.types import HistoryMessage, TurnInput
+from mltgnt.interfaces.turn import Attachment
 from mltgnt.config.language import get_language_pack
 
 if TYPE_CHECKING:
@@ -30,6 +32,7 @@ __all__ = [
     "build_composite_instruction",
     "configure",
     "drain_to_turn_input",
+    "drained_attachments",
     "drained_entries_meta",
     "finish_turn",
     "is_stale",
@@ -199,6 +202,42 @@ def is_stale(state: dict, stale_after_sec: int) -> bool:
     return datetime.now(timezone.utc) - started > timedelta(seconds=stale_after_sec)
 
 
+def _attachments_payload(attachments: Sequence[Attachment]) -> list[dict]:
+    return [
+        {
+            "name": attachment.name,
+            "content_type": attachment.content_type,
+            "uri": attachment.uri,
+        }
+        for attachment in attachments
+    ]
+
+
+def drained_attachments(entries: list[dict]) -> tuple[Attachment, ...]:
+    """Collect attachments from drained inbox entries in entry order."""
+    result: list[Attachment] = []
+    for entry in entries:
+        raw = entry.get("attachments")
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            if not name or not str(name).strip():
+                continue
+            content_type = item.get("content_type")
+            uri = item.get("uri")
+            result.append(
+                Attachment(
+                    name=str(name),
+                    content_type=content_type if isinstance(content_type, str) else None,
+                    uri=uri if isinstance(uri, str) else None,
+                )
+            )
+    return tuple(result)
+
+
 def _write_inbox_entry(
     thread_key: str,
     *,
@@ -207,6 +246,7 @@ def _write_inbox_entry(
     author: str,
     instruction: str,
     kind: str,
+    attachments: Sequence[Attachment] = (),
 ) -> None:
     payload = {
         "kind": kind,
@@ -215,6 +255,7 @@ def _write_inbox_entry(
         "user": author,
         "text": instruction,
         "received_at": _utc_now_iso(),
+        "attachments": _attachments_payload(attachments),
     }
     _atomic_write_json(_inbox_dir(thread_key) / f"{message_ts}.json", payload)
 
@@ -225,6 +266,7 @@ def admit(
     *,
     message_ts: str,
     author: str = "",
+    attachments: Sequence[Attachment] = (),
 ) -> AdmitResult:
     """idle→accepted / running→queued / over limit→rejected. No reactions."""
     thread_key = storage_key(conversation_id)
@@ -263,6 +305,7 @@ def admit(
             author=author,
             instruction=instruction,
             kind=kind,
+            attachments=attachments,
         )
         return AdmitResult(proceed=False, queued=True, status="queued")
 
@@ -339,7 +382,12 @@ def build_composite_instruction(entries: list[dict]) -> str:
     pack = get_language_pack()
     lines = [pack.composite_header, ""]
     for index, entry in enumerate(entries, 1):
-        lines.append(f"[{index}] {entry.get('text', '')}")
+        text = entry.get("text", "")
+        attachment_count = len(drained_attachments([entry]))
+        if attachment_count:
+            lines.append(f"[{index}] {text} [attachments: {attachment_count}]")
+        else:
+            lines.append(f"[{index}] {text}")
     if any(entry.get("kind") == "cancel" for entry in entries):
         lines.extend(["", pack.composite_cancel_suffix])
     return "\n".join(lines)
@@ -364,6 +412,7 @@ def drain_to_turn_input(
     return TurnInput(
         conversation_id=conversation_id,
         text=text,
+        attachments=drained_attachments(entries),
         history=history,
         persona_id=persona_id,
     )

@@ -160,6 +160,19 @@ def test_language_pack_defaults_are_ascii():
     assert pack.composite_cancel_suffix == EN.composite_cancel_suffix
 
 
+def test_default_composite_header_avoids_ongoing_work_wording():
+    from mltgnt.config import LanguagePack
+    from mltgnt.config.language import EN
+
+    forbidden = ("while", "processing", "working", "still")
+    field_default = LanguagePack.__dataclass_fields__["composite_header"].default
+    for text in (field_default, EN.composite_header):
+        lowered = text.lower()
+        for word in forbidden:
+            assert word not in lowered, f"{word!r} found in {text!r}"
+    assert field_default == EN.composite_header
+
+
 def test_has_work_request_with_synthetic_pack():
     """AC-3: Synthetic pack injection — 'please' returns True; Japanese text returns False."""
     import re
