@@ -113,7 +113,7 @@ def create_app(
     files = files if files is not None else WebChatFiles(config.resolved_files_dir, max_bytes=config.max_upload_bytes)
     push_active = push_enabled(config)
     subscription_store = push_store if push_store is not None else PushSubscriptionStore(config.store_dir)
-    worker = push_worker
+    worker = push_worker if push_active else None
     if worker is None and push_active:
         worker = PushWorker(
             store,

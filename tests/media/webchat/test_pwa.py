@@ -73,6 +73,13 @@ def test_default_pwa_icons_ship_as_package_data() -> None:
         assert assets.joinpath(name).is_file()
 
 
+def test_push_extra_and_icon_package_data_are_declared() -> None:
+    pyproject = Path(__file__).resolve().parents[3] / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    assert 'webchat-push = [\n    "fastapi>=0.100",\n    "uvicorn>=0.20",\n    "pywebpush",\n]' in text
+    assert '"mltgnt.media.webchat" = ["assets/*.png"]' in text
+
+
 def test_default_pwa_icons_are_png_with_expected_size(tmp_path: Path) -> None:
     client = TestClient(create_app(_config(tmp_path), _Bridge()))
     for path, size in (("/pwa/icon-192.png", 192), ("/pwa/icon-512.png", 512)):

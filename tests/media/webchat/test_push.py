@@ -96,6 +96,36 @@ def test_push_enabled_requires_all_conditions(tmp_path: Path, enable_pywebpush: 
     assert push_enabled(_base_config(tmp_path, push=bad_subject)) is False
 
 
+class _RecordingWorker:
+    def __init__(self) -> None:
+        self.starts = 0
+        self.stops = 0
+
+    def start(self) -> None:
+        self.starts += 1
+
+    def stop(self) -> None:
+        self.stops += 1
+
+
+def test_app_starts_injected_worker_only_when_push_enabled(tmp_path: Path, enable_pywebpush: None) -> None:
+    disabled_worker = _RecordingWorker()
+    with TestClient(create_app(_base_config(tmp_path), _Bridge(), push_worker=disabled_worker)):
+        pass
+    assert (disabled_worker.starts, disabled_worker.stops) == (0, 0)
+
+    enabled_worker = _RecordingWorker()
+    with TestClient(
+        create_app(
+            _base_config(tmp_path, push=_enabled_push()),
+            _Bridge(),
+            push_worker=enabled_worker,
+        )
+    ):
+        pass
+    assert (enabled_worker.starts, enabled_worker.stops) == (1, 1)
+
+
 def test_push_disabled_hides_api_routes(tmp_path: Path) -> None:
     client = TestClient(create_app(_base_config(tmp_path), _Bridge()))
     assert client.get("/config").json()["push_enabled"] is False
@@ -148,6 +178,27 @@ def test_subscription_validation_rejects_oversized_keys() -> None:
             {
                 "endpoint": "https://push.example/x",
                 "keys": {"p256dh": long_key, "auth": "b"},
+            }
+        )
+
+
+def test_subscription_validation_rejects_missing_and_oversized_fields() -> None:
+    with pytest.raises(ValueError, match="keys required"):
+        validate_subscription({"endpoint": "https://push.example/x"})
+    with pytest.raises(ValueError, match="keys.auth required"):
+        validate_subscription({"endpoint": "https://push.example/x", "keys": {"p256dh": "a"}})
+    with pytest.raises(ValueError, match="key too long"):
+        validate_subscription(
+            {
+                "endpoint": "https://push.example/x",
+                "keys": {"p256dh": "a", "auth": "x" * 1025},
+            }
+        )
+    with pytest.raises(ValueError, match="endpoint too long"):
+        validate_subscription(
+            {
+                "endpoint": "https://push.example/" + "x" * 4096,
+                "keys": {"p256dh": "a", "auth": "b"},
             }
         )
 
@@ -340,6 +391,36 @@ def test_push_worker_start_and_stop_are_idempotent(tmp_path: Path) -> None:
     worker.stop()
     assert worker._thread is not None
     assert not worker._thread.is_alive()
+
+
+def test_push_worker_stop_uses_bounded_join(tmp_path: Path) -> None:
+    class _Thread:
+        def __init__(self) -> None:
+            self.timeouts: list[float | None] = []
+
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:
+            self.timeouts.append(timeout)
+
+    stop = threading.Event()
+    worker = PushWorker(
+        WebChatStore(tmp_path / "w", clock=FakeClock()),
+        PushSubscriptionStore(tmp_path / "w"),
+        _enabled_push(),
+        channel_slug="general",
+        display_names={},
+        stop_event=stop,
+        send=lambda _sub, _payload: None,
+        join_timeout_sec=0.25,
+    )
+    thread = _Thread()
+    worker._started = True
+    worker._thread = thread  # type: ignore[assignment]
+    worker.stop()
+    assert stop.is_set()
+    assert thread.timeouts == [0.25]
 
 
 def test_push_disabled_when_pywebpush_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

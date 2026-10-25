@@ -37,6 +37,8 @@ webchat = [
     "uvicorn>=0.20",
 ]
 webchat-push = [
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
     "pywebpush",
 ]
 hub = [
