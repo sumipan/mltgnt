@@ -10,7 +10,22 @@ from types import MappingProxyType
 
 from mltgnt.media._core.config import MediaConfig
 
-__all__ = ["WebChatMediaConfig"]
+__all__ = ["WebChatMediaConfig", "WebPushConfig"]
+
+
+def _default_push_body_text() -> str:
+    return "".join(map(chr, (0x8FD4, 0x4FE1, 0x304C, 0x3042, 0x308A, 0x307E, 0x3057, 0x305F)))
+
+
+@dataclass(frozen=True)
+class WebPushConfig:
+    """VAPID keys and notification copy for Web Push (optional ``webchat-push`` extra)."""
+
+    enabled: bool = False
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    vapid_subject: str = "mailto:admin@example.invalid"
+    body_text: str = field(default_factory=_default_push_body_text)
 
 
 @dataclass(frozen=True)
@@ -34,6 +49,9 @@ class WebChatMediaConfig(MediaConfig):
     channel_slug: str = "general"
     files_dir: Path | None = None
     max_upload_bytes: int = 20 * 1024 * 1024
+    push: WebPushConfig = field(default_factory=WebPushConfig)
+    pwa_icon_192: str | None = None
+    pwa_icon_512: str | None = None
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[a-z0-9-]+", self.channel_slug):

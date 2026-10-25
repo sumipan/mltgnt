@@ -58,6 +58,9 @@ pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 # WebChat medium (mltgnt.media.webchat)
 pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 
+# WebChat Web Push (pywebpush; optional, with webchat)
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.133.0"
+
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
 pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 
@@ -72,6 +75,7 @@ pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.104.5` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
+| Extra `webchat-push` | `pywebpush` (install with `webchat`; enables VAPID push when `WebChatMediaConfig.push` is configured) |
 | Extra `hub` | `fastapi>=0.100`, `uvicorn>=0.20`, `PyYAML>=6.0` |
 | Extra `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
 | Console script | `mltgnt` -> `mltgnt.cli.main:main` (`python -m mltgnt` does the same) |
@@ -519,11 +523,13 @@ Dependency-free DTOs and Protocols that every layer shares.
 
 | Module | Main names | Purpose |
 |--------|------------|---------|
-| `config` | `WebChatMediaConfig` | See [Media settings](#media-settings) |
+| `config` | `WebChatMediaConfig`, `WebPushConfig` | See [Media settings](#media-settings) |
+| `pwa` | `manifest`, `service_worker_source`, `resolve_pwa_icon` | PWA manifest, service worker source, and icon paths |
+| `push` | `PushSubscriptionStore`, `PushWorker`, `push_enabled` | Web Push subscription JSONL store and tail worker |
 | `client` | `WebChatClient` | `WebChatClient(config, *, store=None, files=None, author="assistant")`. `upload(path, space, thread)` posts a PNG / JPEG / GIF / WebP image as a message |
 | `files` | `WebChatFiles`, `CONTENT_TYPES`, `content_type_for` | Message images under `<files_dir>/<YYYY-MM-DD>/<hex>.<ext>`; the relative path is the file id |
 | `store` | `WebChatStore`, `KINDS`, `MESSAGE_KINDS` | `WebChatStore` subclasses `JsonlMessageStore` (`mltgnt.media._core.jsonl_store`). Daily JSONL of message snapshots. `KINDS = ("message", "update", "status", "bookmark", "reaction")` |
-| `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, files=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /`, `GET /config`, `GET /assets/{name}`, `GET /messages` (`?day=`, or `?limit=` with optional `&before=<ISO ts>` to page back), `POST /messages` (`text` and/or `files: [{"id", "name"}]`; files become `MediaEvent.attachments` with the local path as `uri`), `POST /files?name=` (raw image body), `GET /files/{day}/{name}`, `GET /threads/{thread_id}`, `POST /messages/{message_id}/bookmark`, `GET /bookmarks`, and `GET /stream` (SSE). `serve(app, config)` listens on `config.host:config.port` |
+| `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, files=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /`, `GET /config` (includes `push_enabled`), PWA routes (`/manifest.webmanifest`, `/sw.js`, `/pwa/icon-192.png`, `/pwa/icon-512.png`), optional push routes when enabled (`/push/vapid-public-key`, `/push/subscriptions`), `GET /assets/{name}`, `GET /messages` (`?day=`, or `?limit=` with optional `&before=<ISO ts>` to page back), `POST /messages` (`text` and/or `files: [{"id", "name"}]`; files become `MediaEvent.attachments` with the local path as `uri`), `POST /files?name=` (raw image body), `GET /files/{day}/{name}`, `GET /threads/{thread_id}`, `POST /messages/{message_id}/bookmark`, `GET /bookmarks`, and `GET /stream` (SSE). `serve(app, config)` listens on `config.host:config.port` |
 | `inbound` | `to_media_event`, `file_entries`, `DEFAULT_AUTHOR`, `MAX_FILES` | Converts a `POST /messages` body to a `MediaEvent` |
 | `ui` | `INDEX_HTML` | Single-page UI served at `GET /`: dark, Slack-like single channel with a thread pane, image attach (button / drag and drop / paste) and a lightbox |
 
@@ -794,7 +800,8 @@ All of them are frozen dataclasses.
 | Subclass | Extra fields (default) |
 |----------|------------------------|
 | `SlackMediaConfig` | `bot_token_env` (`"SLACK_BOT_TOKEN"`), `app_token_env` (`"SLACK_APP_TOKEN"`), `status_reactions` (`DEFAULT_STATUS_REACTIONS`), `chunk_max_chars` (`3000`, must be positive) |
-| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`; author -> file under `assets_dir` or an `http(s)://` URL), `display_names` (`{}`; author -> name. The browser user posts as `"user"`), `channel_name` (`"general"`), `channel_slug` (`"general"`; URL segment under `/c/<slug>/`), `files_dir` (`None` = `<store_dir>/../files`), `max_upload_bytes` (20 MiB) |
+| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`; author -> file under `assets_dir` or an `http(s)://` URL), `display_names` (`{}`; author -> name. The browser user posts as `"user"`), `channel_name` (`"general"`), `channel_slug` (`"general"`; URL segment under `/c/<slug>/`), `files_dir` (`None` = `<store_dir>/../files`), `max_upload_bytes` (20 MiB), `push` (`WebPushConfig`; VAPID keys and `enabled` flag), `pwa_icon_192` / `pwa_icon_512` (optional basename under `assets_dir` for PWA icons) |
+| `WebPushConfig` | `enabled` (`False`), `vapid_public_key` / `vapid_private_key` (`None`), `vapid_subject` (`mailto:admin@example.invalid`), `body_text` (fixed notification body; message text is never sent). Requires `pip install mltgnt[webchat-push]` and a valid subject (`mailto:` or `https://`) for `push_enabled` |
 | `HubMediaConfig` | `hub_url`, `host_id`, `token_env`, `rooms` (required, keyword-only), `cursor_dir` (`None`), `poll_interval_sec` (`2.0`), `space_prefix` (`"hub."`), `guard` (`GuardConfig()`), `outbound_filter` (`None`) |
 
 ### LanguagePack

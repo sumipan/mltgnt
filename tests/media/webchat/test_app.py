@@ -240,6 +240,7 @@ def test_config_endpoint_returns_avatars(tmp_path: Path) -> None:
         "channel_name": "audit",
         "channel_slug": "general",
         "max_upload_bytes": 1024,
+        "push_enabled": False,
     }
 
 

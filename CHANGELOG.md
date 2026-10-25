@@ -4,6 +4,7 @@
 
 ## v0.133.0
 
+- **WebChat PWA and Web Push**: installable manifest (`/manifest.webmanifest`), service worker (`/sw.js`), and default icons; optional `webchat-push` extra with VAPID-backed subscription APIs and a tail worker that sends a fixed-body agent-reply notification (no message text in the payload) for agent replies only. `GET /config` exposes `push_enabled`; the UI registers push from a header control when supported (iOS requires Add to Home Screen).
 - **Thread queue attachments**: messages queued while a conversation is running now persist `Attachment` metadata in the inbox JSON, restore them on drain (`drained_attachments`, `TurnInput.attachments`), and mark composite lines with `[attachments: n]`. `MediaBridge` forwards event attachments through `thread_reactions.admit` and into finalized turns. Default `composite_header` no longer implies work is still in progress.
 
 ## v0.132.0
