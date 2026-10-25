@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.133.0
+
 - **Thread queue attachments**: messages queued while a conversation is running now persist `Attachment` metadata in the inbox JSON, restore them on drain (`drained_attachments`, `TurnInput.attachments`), and mark composite lines with `[attachments: n]`. `MediaBridge` forwards event attachments through `thread_reactions.admit` and into finalized turns. Default `composite_header` no longer implies work is still in progress.
 
 ## v0.132.0
