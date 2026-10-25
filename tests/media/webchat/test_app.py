@@ -74,7 +74,7 @@ def _frames(text: str) -> list[dict[str, str]]:
 
 def test_index_serves_ascii_html(tmp_path: Path) -> None:
     client, _store, _bridge = _app(tmp_path)
-    resp = client.get("/")
+    resp = client.get("/c/general")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
     assert resp.text == INDEX_HTML
@@ -238,8 +238,21 @@ def test_config_endpoint_returns_avatars(tmp_path: Path) -> None:
         "avatars": {"u1": "avatar.png", "bot": "https://example.com/bot.png"},
         "display_names": {"u1": "User One"},
         "channel_name": "audit",
+        "channel_slug": "general",
         "max_upload_bytes": 1024,
     }
+
+
+@pytest.mark.parametrize("channel_slug", ["", "General", "a/b", "a b"])
+def test_channel_slug_validation_rejects_invalid(tmp_path: Path, channel_slug: str) -> None:
+    with pytest.raises(ValueError, match="channel_slug"):
+        WebChatMediaConfig(
+            state_dir=tmp_path / "s",
+            pending_dir=tmp_path / "p",
+            events_dir=tmp_path / "e",
+            store_dir=tmp_path / "w",
+            channel_slug=channel_slug,
+        )
 
 
 def test_assets_serves_direct_file(tmp_path: Path) -> None:
@@ -487,7 +500,7 @@ def test_messages_limit_returns_recent_roots_across_days(tmp_path: Path) -> None
 
 
 def test_ui_supports_avatar_urls_and_image_upload() -> None:
-    for token in ("https?:\\/\\/|data:image\\/", 'fetch("files?name="', 'id="file-input"', "addEventListener(\"paste\"", "e.isComposing"):
+    for token in ("https?:\\/\\/|data:image\\/", 'fetch("/files?name="', 'id="file-input"', "addEventListener(\"paste\"", "e.isComposing"):
         assert token in INDEX_HTML
 
 

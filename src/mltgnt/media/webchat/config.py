@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,10 +31,13 @@ class WebChatMediaConfig(MediaConfig):
     avatars: Mapping[str, str] = field(default_factory=dict, hash=False)
     display_names: Mapping[str, str] = field(default_factory=dict, hash=False)
     channel_name: str = "general"
+    channel_slug: str = "general"
     files_dir: Path | None = None
     max_upload_bytes: int = 20 * 1024 * 1024
 
     def __post_init__(self) -> None:
+        if not re.fullmatch(r"[a-z0-9-]+", self.channel_slug):
+            raise ValueError("channel_slug must match [a-z0-9-]+")
         if not isinstance(self.avatars, MappingProxyType):
             object.__setattr__(self, "avatars", MappingProxyType(dict(self.avatars)))
         if not isinstance(self.display_names, MappingProxyType):

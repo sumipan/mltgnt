@@ -98,7 +98,7 @@ def create_app(
     """
     try:
         from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-        from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+        from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
     except ImportError as exc:
         raise ImportError(_EXTRA_HINT) from exc
 
@@ -106,9 +106,32 @@ def create_app(
     files = files if files is not None else WebChatFiles(config.resolved_files_dir, max_bytes=config.max_upload_bytes)
     app = FastAPI(title="mltgnt webchat")
 
-    @app.get("/", response_class=HTMLResponse)
-    def index() -> HTMLResponse:
+    slug = config.channel_slug
+
+    def _channel_page(requested_slug: str, tail: str = "") -> Any:
+        if requested_slug != slug:
+            return RedirectResponse(f"/c/{slug}{tail}", status_code=302)
         return HTMLResponse(INDEX_HTML)
+
+    @app.get("/")
+    def index() -> RedirectResponse:
+        return RedirectResponse(f"/c/{slug}", status_code=302)
+
+    @app.get("/c/{requested_slug}")
+    def channel_index(requested_slug: str) -> Any:
+        return _channel_page(requested_slug)
+
+    @app.get("/c/{requested_slug}/t/{message_id}")
+    def channel_thread(requested_slug: str, message_id: str) -> Any:
+        return _channel_page(requested_slug, f"/t/{message_id}")
+
+    @app.get("/c/{requested_slug}/p/{message_id}")
+    def channel_permalink(requested_slug: str, message_id: str) -> Any:
+        return _channel_page(requested_slug, f"/p/{message_id}")
+
+    @app.get("/c/{requested_slug}/bookmarks")
+    def channel_bookmarks(requested_slug: str) -> Any:
+        return _channel_page(requested_slug, "/bookmarks")
 
     @app.get("/config")
     def get_config() -> dict[str, Any]:
@@ -116,6 +139,7 @@ def create_app(
             "avatars": dict(config.avatars),
             "display_names": dict(config.display_names),
             "channel_name": config.channel_name,
+            "channel_slug": config.channel_slug,
             "max_upload_bytes": files.max_bytes,
         }
 
