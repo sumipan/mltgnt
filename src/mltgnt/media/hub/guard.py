@@ -90,7 +90,9 @@ def check(
     if room_today_count >= cfg.room_daily_limit:
         return GuardVerdict(ok=False, reason="room_daily_limit")
 
-    if message.sender.persona is not None:
+    # The agent-run limit stops persona ping-pong inside one thread. A root post
+    # (thread is None) starts a new thread, so other threads' rows do not count.
+    if message.sender.persona is not None and message.thread is not None:
         run = _persona_run_after_human(thread_rows)
         if run >= cfg.max_agent_run:
             return GuardVerdict(ok=False, reason="agent_run_exceeded")

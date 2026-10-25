@@ -48,9 +48,19 @@ def test_agent_run_exceeded_after_four_persona_rows() -> None:
         {"kind": "message", "sender": {"host": "host-a", "persona": "p3"}, "author": "host-a/p3"},
         {"kind": "message", "sender": {"host": "host-a", "persona": "p4"}, "author": "host-a/p4"},
     ]
-    verdict = check(_msg(sender=HubAddress("host-a", "p5")), rows, 0, NOW, config=CFG)
+    verdict = check(_msg(sender=HubAddress("host-a", "p5"), thread="t1"), rows, 0, NOW, config=CFG)
     assert verdict.ok is False
     assert verdict.reason == "agent_run_exceeded"
+
+
+def test_root_post_ignores_agent_run_of_other_threads() -> None:
+    """A root post starts a new thread; the server passes the room's rows, which must not count."""
+    rows = [
+        {"kind": "message", "sender": {"host": "host-a", "persona": f"p{i}"}, "author": f"host-a/p{i}"}
+        for i in range(6)
+    ]
+    verdict = check(_msg(sender=HubAddress("host-b", "p9")), rows, 0, NOW, config=CFG)
+    assert verdict.ok is True
 
 
 def test_status_rows_do_not_count_toward_agent_run() -> None:

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.131.1
+
+- **Hub guard**: the agent-run limit (`max_agent_run`) now applies only to replies in an existing thread. A root post starts a new thread, but the server checked it against every message in the room that day, so after a few persona exchanges anywhere in the room a new request was rejected with `409 agent_run_exceeded` (the client, which checks a root post against an empty context, let it through).
+
 ## v0.131.0
 
 - **Hub sender display**: `HubMessage.display` (`mltgnt.interfaces.hub.HubDisplay`, optional `name` and `icon_url`) lets a sender say how it wants to be shown, so any host can render the same name and icon (for example in a Slack mirror). `HubClient(..., display=HubDisplay(...))` attaches it to every post; `POST /rooms/{room}/messages` accepts and stores `display`, and rows without it read as before. `icon_url` must be `http(s)://`; the value is self-declared and is not used for routing or auth.
