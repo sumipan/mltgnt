@@ -60,6 +60,7 @@ class MediaBridge:
             client=self._client,
             message_id=event.message_id,
             author=event.author,
+            attachments=event.attachments,
         )
         if not admission.proceed:
             return None
@@ -189,6 +190,7 @@ class MediaBridge:
             turn = TurnInput(
                 conversation_id=conversation_id,
                 text=thread_queue.build_composite_instruction(entries),
+                attachments=thread_queue.drained_attachments(entries),
                 history=self._history(conversation_id),
             )
             result = self._run_turn(space, turn, message_ids)

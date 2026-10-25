@@ -31,7 +31,8 @@ class LanguagePack:
     persona_end_re: re.Pattern[str] = re.compile(r"\n-{3,}\s*\n\s*\(end\)")
     cancel_words: frozenset[str] = frozenset({"cancel", "stop"})
     composite_header: str = (
-        "The following messages arrived while you were working. Take them into account."
+        "The following messages arrived after your previous reply. "
+        "Take them into account in this reply."
     )
     composite_cancel_suffix: str = (
         "Note: a stop request is included. Stop the current work and report that you stopped."
@@ -133,7 +134,8 @@ EN = LanguagePack(
     persona_end_re=re.compile(r"\n-{3,}\s*\n\s*\(end\)"),
     cancel_words=frozenset({"cancel", "stop"}),
     composite_header=(
-        "The following messages arrived while you were working. Take them into account."
+        "The following messages arrived after your previous reply. "
+        "Take them into account in this reply."
     ),
     composite_cancel_suffix=(
         "Note: a stop request is included. Stop the current work and report that you stopped."

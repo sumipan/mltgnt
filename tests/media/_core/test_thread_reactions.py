@@ -9,6 +9,7 @@ import pytest
 from mltgnt.conversation import thread_queue
 from mltgnt.conversation.thread_queue import AdmitResult
 from mltgnt.interfaces.media import Status
+from mltgnt.interfaces.turn import Attachment
 from mltgnt.media._core import thread_reactions
 
 
@@ -59,6 +60,27 @@ def test_admit_skips_unknown_status(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeClient()
     thread_reactions.admit("C:T", "x", client=client, message_id="1")
     assert client.statuses == []
+
+
+def test_admit_forwards_attachments_to_thread_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[tuple[object, ...]] = []
+
+    def fake_admit(*args: object, **kwargs: object) -> AdmitResult:
+        captured.append((args, kwargs))
+        return AdmitResult(proceed=True, queued=False, status="accepted")
+
+    monkeypatch.setattr(thread_queue, "admit", fake_admit)
+    attachment = Attachment(name="a.png", content_type="image/png", uri="https://example/a")
+    client = FakeClient()
+    thread_reactions.admit(
+        "C:T",
+        "save",
+        client=client,
+        message_id="1.0",
+        attachments=(attachment,),
+    )
+    assert captured
+    assert captured[0][1]["attachments"] == (attachment,)
 
 
 def test_acknowledge_drained_marks_working() -> None:

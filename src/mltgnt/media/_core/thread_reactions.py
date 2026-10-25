@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from mltgnt.conversation import thread_queue
 from mltgnt.conversation.thread_queue import AdmitResult
 from mltgnt.interfaces.media import MediaClient, Status
+from mltgnt.interfaces.turn import Attachment
 
 __all__ = ["acknowledge_drained", "admit", "status_for_admission"]
 
@@ -29,9 +30,16 @@ def admit(
     client: MediaClient,
     message_id: str,
     author: str = "",
+    attachments: Sequence[Attachment] = (),
 ) -> AdmitResult:
     """``thread_queue.admit`` and show the outcome on ``message_id``."""
-    result = thread_queue.admit(conversation_id, instruction, message_ts=message_id, author=author)
+    result = thread_queue.admit(
+        conversation_id,
+        instruction,
+        message_ts=message_id,
+        author=author,
+        attachments=attachments,
+    )
     status = status_for_admission(result)
     if status is not None:
         client.set_status(message_id, status)

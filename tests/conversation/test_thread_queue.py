@@ -13,7 +13,7 @@ import pytest
 
 from mltgnt.config import ConversationConfig
 from mltgnt.config.language import EN, set_language_pack
-from mltgnt.interfaces.turn import TurnInput
+from mltgnt.interfaces.turn import Attachment, TurnInput
 
 
 @pytest.fixture
@@ -202,6 +202,118 @@ def test_replaced_pack_admit_marks_cancel_entry(queue_root: Path, restore_langua
         for payload in (json.loads(p.read_text(encoding="utf-8")) for p in inbox)
     }
     assert kinds == {"abort": "cancel", "cancel": "message"}
+
+
+def test_admit_while_running_persists_attachments(queue_root: Path):
+    from mltgnt.conversation.thread_queue import admit
+
+    assert admit("C1:171.0000", "first", message_ts="171.0001").proceed
+    attachment = Attachment(name="a.png", content_type="image/png", uri="https://example/a")
+    assert admit(
+        "C1:171.0000",
+        "save this",
+        message_ts="171.0002",
+        attachments=(attachment,),
+    ).queued
+    payload = json.loads(
+        next((queue_root / "C1-171.0000" / "inbox").glob("*.json")).read_text(encoding="utf-8")
+    )
+    assert payload["attachments"] == [
+        {"name": "a.png", "content_type": "image/png", "uri": "https://example/a"}
+    ]
+
+
+def test_drain_to_turn_input_includes_attachments(queue_root: Path):
+    from mltgnt.conversation.thread_queue import admit, drain_to_turn_input
+
+    attachment = Attachment(name="a.png", content_type="image/png", uri="https://example/a")
+    assert admit("C1:171.0000", "first", message_ts="171.0001").proceed
+    assert admit(
+        "C1:171.0000",
+        "with file",
+        message_ts="171.0002",
+        attachments=(attachment,),
+    ).queued
+    turn = drain_to_turn_input("C1:171.0000")
+    assert turn is not None
+    assert turn.attachments == (attachment,)
+
+
+def test_drained_attachments_concatenates_in_entry_order():
+    from mltgnt.conversation.thread_queue import drained_attachments
+
+    a1 = Attachment(name="one.png", content_type="image/png", uri="https://example/1")
+    a2 = Attachment(name="two.png", content_type="image/png", uri="https://example/2")
+    a3 = Attachment(name="three.png", content_type="image/png", uri="https://example/3")
+    entries = [
+        {
+            "ts": "1.0",
+            "attachments": [
+                {"name": "one.png", "content_type": "image/png", "uri": "https://example/1"}
+            ],
+        },
+        {
+            "ts": "2.0",
+            "attachments": [
+                {"name": "two.png", "content_type": "image/png", "uri": "https://example/2"},
+                {"name": "three.png", "content_type": "image/png", "uri": "https://example/3"},
+            ],
+        },
+    ]
+    assert drained_attachments(entries) == (a1, a2, a3)
+
+
+def test_drained_attachments_tolerates_legacy_and_malformed_entries():
+    from mltgnt.conversation.thread_queue import drained_attachments
+
+    entries = [
+        {"text": "legacy", "kind": "message"},
+        {"text": "bad", "attachments": "not-a-list"},
+        {"text": "mixed", "attachments": [{"name": ""}, "x", {"name": "ok.png", "uri": 1}]},
+    ]
+    assert drained_attachments(entries) == (
+        Attachment(name="ok.png", content_type=None, uri=None),
+    )
+    assert drained_attachments([]) == ()
+
+
+def test_drain_legacy_inbox_entry_without_attachments_key(queue_root: Path):
+    from mltgnt.conversation.thread_queue import admit, drain_to_turn_input
+
+    assert admit("C1:171.0000", "first", message_ts="171.0001").proceed
+    inbox = queue_root / "C1-171.0000" / "inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    legacy = {
+        "kind": "message",
+        "ts": "171.0002",
+        "conversation_id": "C1:171.0000",
+        "user": "U1",
+        "text": "old format",
+        "received_at": datetime.now(timezone.utc).isoformat(),
+    }
+    (inbox / "171.0002.json").write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+    turn = drain_to_turn_input("C1:171.0000")
+    assert turn is not None
+    assert turn.attachments == ()
+    assert "[1] old format" in turn.text
+
+
+def test_build_composite_instruction_marks_attachment_lines():
+    from mltgnt.conversation.thread_queue import build_composite_instruction
+
+    out = build_composite_instruction(
+        [
+            {"text": "plain", "kind": "message"},
+            {
+                "text": "with files",
+                "kind": "message",
+                "attachments": [{"name": "a.png", "content_type": "image/png", "uri": "u"}],
+            },
+        ]
+    )
+    assert "[1] plain" in out
+    assert "[2] with files [attachments: 1]" in out
+    assert "[attachments:" not in out.split("[1] plain")[0]
 
 
 def test_replaced_pack_changes_composite_instruction(restore_language_pack):

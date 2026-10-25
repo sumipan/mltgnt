@@ -273,6 +273,7 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "build_composite_instruction",
         "configure",
         "drain_to_turn_input",
+        "drained_attachments",
         "drained_entries_meta",
         "finish_turn",
         "is_stale",
