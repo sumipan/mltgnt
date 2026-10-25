@@ -58,8 +58,8 @@ pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 # WebChat medium (mltgnt.media.webchat)
 pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 
-# WebChat Web Push (pywebpush; optional, with webchat)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.133.0"
+# WebChat Web Push (includes the webchat dependencies and pywebpush)
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.134.0"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
 pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
@@ -75,7 +75,7 @@ pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.130.1"
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.104.5` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
-| Extra `webchat-push` | `pywebpush` (install with `webchat`; enables VAPID push when `WebChatMediaConfig.push` is configured) |
+| Extra `webchat-push` | `fastapi>=0.100`, `uvicorn>=0.20`, `pywebpush` (enables VAPID push when `WebChatMediaConfig.push` is configured) |
 | Extra `hub` | `fastapi>=0.100`, `uvicorn>=0.20`, `PyYAML>=6.0` |
 | Extra `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `pytest-cov>=4.0`, `freezegun>=1.2`, `import-linter>=2.0`, `mypy>=1.10`, `ruff>=0.4` |
 | Console script | `mltgnt` -> `mltgnt.cli.main:main` (`python -m mltgnt` does the same) |
