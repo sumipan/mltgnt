@@ -16,6 +16,11 @@ INDEX_HTML = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1a1d21">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/pwa/icon-192.png">
 <title>general</title>
 <style>
   :root {
@@ -166,7 +171,8 @@ INDEX_HTML = r"""<!doctype html>
       <span class="spacer"></span>
       <span class="hicon hide-narrow" title="Members"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.3c2 .7 3.5 2.7 3.5 5.7"/></svg><span class="count" id="member-count">1</span></span>
       <span class="hicon hide-narrow" title="Huddle"><svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg></span>
-      <span class="hicon" title="Notifications"><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg></span>
+      <button type="button" class="hicon hide-narrow" id="push-btn" title="Notifications" hidden><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span class="count" id="push-label"></span></button>
+      <span id="push-ios-hint" class="hide-narrow" style="font-size:12px;color:var(--muted);max-width:180px;display:none;"></span>
       <span class="hicon" title="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg></span>
       <span class="hicon" title="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></span>
     </div>
@@ -257,7 +263,15 @@ INDEX_HTML = r"""<!doctype html>
   var lightbox = document.getElementById("lightbox");
   var threadTs = null;
   var panelMode = null;
-  var config = { avatars: {}, display_names: {}, channel_name: "general", channel_slug: "general", max_upload_bytes: 20971520 };
+  var config = { avatars: {}, display_names: {}, channel_name: "general", channel_slug: "general", max_upload_bytes: 20971520, push_enabled: false };
+  var PUSH_ENABLE = String.fromCharCode(0x901a, 0x77e5, 0x3092, 0x53d7, 0x3051, 0x53d6, 0x308b);
+  var PUSH_DISABLE = String.fromCharCode(0x901a, 0x77e5, 0x3092, 0x6b62, 0x3081, 0x308b);
+  var PUSH_IOS_HINT = String.fromCharCode(
+    0x30db, 0x30fc, 0x30e0, 0x753b, 0x9762, 0x306b, 0x8ffd, 0x52a0, 0x3059, 0x308b, 0x3068,
+    0x901a, 0x77e5, 0x3092, 0x53d7, 0x3051, 0x53d6, 0x308c, 0x307e, 0x3059
+  );
+  var PUSH_DENIED = String.fromCharCode(0x901a, 0x77e5, 0x304c, 0x62d2, 0x5426, 0x3055, 0x308c, 0x307e, 0x3057, 0x305f);
+  var PUSH_FAIL = String.fromCharCode(0x901a, 0x77e5, 0x306e, 0x66f4, 0x65b0, 0x306b, 0x5931, 0x6557, 0x3057, 0x305f);
   var restoring = false;
   var rowsById = {};
   var stick = { "log": true, "panel-body": true };
@@ -1260,10 +1274,159 @@ INDEX_HTML = r"""<!doctype html>
     config.channel_name = c.channel_name || "general";
     config.channel_slug = c.channel_slug || "general";
     config.max_upload_bytes = c.max_upload_bytes || config.max_upload_bytes;
+    config.push_enabled = !!c.push_enabled;
     document.title = config.channel_name;
     document.getElementById("channel-name").textContent = config.channel_name;
     mainComposer.input.placeholder = "Message #" + config.channel_name;
   }
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var raw = atob(base64);
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) { out[i] = raw.charCodeAt(i); }
+    return out;
+  }
+
+  function initServiceWorker() {
+    if (!("serviceWorker" in navigator)) { return; }
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(function () {});
+    navigator.serviceWorker.addEventListener("message", function (event) {
+      var data = event.data;
+      if (!data || data.type !== "open-thread" || !data.url) { return; }
+      var parsed;
+      try { parsed = new URL(data.url, location.origin); } catch (e) { return; }
+      if (parsed.origin !== location.origin) { return; }
+      var prefix = "/c/" + channelSlug() + "/t/";
+      if (parsed.pathname.indexOf(prefix) !== 0) { return; }
+      var id = parsed.pathname.slice(prefix.length);
+      if (!id) { return; }
+      openThread(id, { push: true });
+    });
+  }
+
+  function initPushUi() {
+    var btn = document.getElementById("push-btn");
+    var label = document.getElementById("push-label");
+    var hint = document.getElementById("push-ios-hint");
+    if (!config.push_enabled) {
+      btn.hidden = true;
+      hint.style.display = "none";
+      return;
+    }
+    var iosNoStandalone = /iPhone|iPad|iPod/.test(navigator.userAgent || "")
+      && !window.navigator.standalone
+      && (!window.PushManager || !("Notification" in window));
+    if (iosNoStandalone) {
+      btn.hidden = true;
+      hint.textContent = PUSH_IOS_HINT;
+      hint.style.display = "inline";
+      return;
+    }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      btn.hidden = true;
+      return;
+    }
+    btn.hidden = false;
+    hint.style.display = "none";
+    var pushReady = navigator.serviceWorker.ready;
+    var subscribed = false;
+    var busy = false;
+
+    function setLabel() {
+      label.textContent = subscribed ? PUSH_DISABLE : PUSH_ENABLE;
+      btn.title = subscribed ? PUSH_DISABLE : PUSH_ENABLE;
+    }
+
+    function refreshSubscription() {
+      return pushReady.then(function (reg) {
+        return reg.pushManager.getSubscription().then(function (sub) {
+          subscribed = !!sub;
+          setLabel();
+        });
+      }).catch(function () {
+        subscribed = false;
+        setLabel();
+      });
+    }
+
+    function subscribeFlow() {
+      if (busy) { return; }
+      busy = true;
+      return Notification.requestPermission().then(function (perm) {
+        if (perm !== "granted") {
+          notice(mainComposer, PUSH_DENIED);
+          busy = false;
+          return;
+        }
+        return fetch("/push/vapid-public-key").then(function (r) {
+          if (!r.ok) { throw new Error("vapid"); }
+          return r.json();
+        }).then(function (data) {
+          return pushReady.then(function (reg) {
+            return reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(data.public_key)
+            });
+          });
+        }).then(function (sub) {
+          var json = sub.toJSON();
+          return fetch("/push/subscriptions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(json)
+          }).then(function (r) {
+            if (!r.ok) { throw new Error("upsert"); }
+            subscribed = true;
+            setLabel();
+          });
+        });
+      }).catch(function () {
+        notice(mainComposer, PUSH_FAIL);
+      }).then(function () {
+        busy = false;
+      });
+    }
+
+    function unsubscribeFlow() {
+      if (busy) { return; }
+      busy = true;
+      return pushReady.then(function (reg) {
+        return reg.pushManager.getSubscription();
+      }).then(function (sub) {
+        if (!sub) {
+          subscribed = false;
+          setLabel();
+          busy = false;
+          return;
+        }
+        var endpoint = sub.endpoint;
+        return fetch("/push/subscriptions", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: endpoint })
+        }).then(function (r) {
+          if (!r.ok) { throw new Error("delete"); }
+          return sub.unsubscribe().then(function () {
+            subscribed = false;
+            setLabel();
+          });
+        });
+      }).catch(function () {
+        notice(mainComposer, PUSH_FAIL);
+      }).then(function () {
+        busy = false;
+      });
+    }
+
+    btn.addEventListener("click", function () {
+      if (subscribed) { unsubscribeFlow(); } else { subscribeFlow(); }
+    });
+    refreshSubscription();
+  }
+
+  initServiceWorker();
 
   window.addEventListener("popstate", function () {
     restoreFromPath();
@@ -1271,6 +1434,7 @@ INDEX_HTML = r"""<!doctype html>
 
   fetch("/config").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (c) {
     applyConfig(c);
+    initPushUi();
     return fetch("/messages?limit=" + PAGE).then(function (r) { return r.json(); });
   }).then(function (rows) {
     logOrder = addRoots(rows);

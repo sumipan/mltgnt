@@ -13,18 +13,23 @@ import asyncio
 import json
 import logging
 import mimetypes
+import threading
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from mltgnt.media._core import id_map
 from mltgnt.media._core.types import MediaEvent
 from mltgnt.media.webchat.config import WebChatMediaConfig
 from mltgnt.media.webchat.files import WebChatFiles
 from mltgnt.media.webchat.inbound import file_entries, to_media_event
+from mltgnt.media.webchat.pwa import manifest as pwa_manifest
+from mltgnt.media.webchat.pwa import resolve_pwa_icon, service_worker_source
+from mltgnt.media.webchat.push import PushSubscriptionStore, PushWorker, push_enabled, validate_delete_body, validate_subscription
 from mltgnt.media.webchat.store import WebChatStore
 from mltgnt.media.webchat.ui import INDEX_HTML
 
@@ -90,6 +95,8 @@ def create_app(
     files: WebChatFiles | None = None,
     poll_interval_sec: float = 0.5,
     stream_timeout_sec: float | None = None,
+    push_worker: PushWorker | None = None,
+    push_store: PushSubscriptionStore | None = None,
 ) -> Any:
     """Build the FastAPI app. ``POST /messages`` stores the message, then runs the turn in the background.
 
@@ -98,13 +105,35 @@ def create_app(
     """
     try:
         from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-        from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+        from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
     except ImportError as exc:
         raise ImportError(_EXTRA_HINT) from exc
 
     store = store if store is not None else WebChatStore(config.store_dir)
     files = files if files is not None else WebChatFiles(config.resolved_files_dir, max_bytes=config.max_upload_bytes)
-    app = FastAPI(title="mltgnt webchat")
+    push_active = push_enabled(config)
+    subscription_store = push_store if push_store is not None else PushSubscriptionStore(config.store_dir)
+    worker = push_worker if push_active else None
+    if worker is None and push_active:
+        worker = PushWorker(
+            store,
+            subscription_store,
+            config.push,
+            channel_slug=config.channel_slug,
+            display_names=config.display_names,
+            stop_event=threading.Event(),
+            poll_interval_sec=poll_interval_sec,
+        )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if worker is not None:
+            worker.start()
+        yield
+        if worker is not None:
+            worker.stop()
+
+    app = FastAPI(title="mltgnt webchat", lifespan=lifespan)
 
     slug = config.channel_slug
 
@@ -141,7 +170,81 @@ def create_app(
             "channel_name": config.channel_name,
             "channel_slug": config.channel_slug,
             "max_upload_bytes": files.max_bytes,
+            "push_enabled": push_active,
         }
+
+    @app.get("/manifest.webmanifest")
+    def get_manifest() -> JSONResponse:
+        return JSONResponse(pwa_manifest(config), media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    def get_service_worker() -> PlainTextResponse:
+        return PlainTextResponse(
+            service_worker_source(),
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+        )
+
+    def _pwa_icon(size: Literal[192, 512]) -> Any:
+        path = resolve_pwa_icon(config, size)
+        if path is None:
+            raise HTTPException(status_code=404)
+        return FileResponse(path, media_type="image/png")
+
+    @app.get("/pwa/icon-192.png")
+    def get_pwa_icon_192() -> Any:
+        return _pwa_icon(192)
+
+    @app.get("/pwa/icon-512.png")
+    def get_pwa_icon_512() -> Any:
+        return _pwa_icon(512)
+
+    if push_active:
+
+        @app.get("/push/vapid-public-key")
+        def get_vapid_public_key() -> dict[str, str]:
+            key = config.push.vapid_public_key
+            if not key:
+                raise HTTPException(status_code=404)
+            return {"public_key": key}
+
+        @app.post("/push/subscriptions", status_code=204)
+        async def upsert_push_subscription(request: Request) -> Response:
+            try:
+                body = await request.json()
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="body must be JSON") from exc
+            if not isinstance(body, dict):
+                raise HTTPException(status_code=422, detail="body must be a JSON object")
+            try:
+                validate_subscription(body)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            try:
+                subscription_store.upsert(body)
+            except OSError as exc:
+                _log.warning("[webchat] push subscription upsert failed: %s", exc)
+                raise HTTPException(status_code=503, detail="store unavailable") from exc
+            return Response(status_code=204)
+
+        @app.delete("/push/subscriptions", status_code=204)
+        async def delete_push_subscription(request: Request) -> Response:
+            try:
+                body = await request.json()
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="body must be JSON") from exc
+            if not isinstance(body, dict):
+                raise HTTPException(status_code=422, detail="body must be a JSON object")
+            try:
+                endpoint = validate_delete_body(body)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            try:
+                subscription_store.delete(endpoint)
+            except OSError as exc:
+                _log.warning("[webchat] push subscription delete failed: %s", exc)
+                raise HTTPException(status_code=503, detail="store unavailable") from exc
+            return Response(status_code=204)
 
     @app.get("/assets/{name}")
     def get_asset(name: str) -> Any:

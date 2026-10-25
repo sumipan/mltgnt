@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.133.0"
+version = "0.134.0"
 description = "マルチエージェントの型契約とチャット入出力"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,11 @@ webchat = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
 ]
+webchat-push = [
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "pywebpush",
+]
 hub = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
@@ -55,6 +60,7 @@ include = ["mltgnt*"]
 
 [tool.setuptools.package-data]
 "mltgnt" = ["py.typed"]
+"mltgnt.media.webchat" = ["assets/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
