@@ -36,6 +36,9 @@ webchat = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
 ]
+webchat-push = [
+    "pywebpush",
+]
 hub = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
@@ -55,6 +58,7 @@ include = ["mltgnt*"]
 
 [tool.setuptools.package-data]
 "mltgnt" = ["py.typed"]
+"mltgnt.media.webchat" = ["assets/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

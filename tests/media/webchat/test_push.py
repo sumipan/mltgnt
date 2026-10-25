@@ -124,30 +124,45 @@ def test_push_api_when_enabled(tmp_path: Path, enable_pywebpush: None) -> None:
 
 
 @pytest.mark.parametrize(
-    "body",
+    "endpoint",
     [
-        {"endpoint": "http://insecure", "keys": {"p256dh": "a", "auth": "b"}},
-        {"endpoint": "https://ok", "keys": {"p256dh": "", "auth": "b"}},
-        "not-json",
+        "http://insecure",
+        "https://",
+        "https:///path",
     ],
 )
-def test_subscription_validation_errors(body: Any) -> None:
-    if isinstance(body, dict):
-        with pytest.raises(ValueError):
-            validate_subscription(body)
-    else:
-        pytest.skip("handled by HTTP layer")
-
-
-def test_subscription_validation_rejects_bad_endpoint() -> None:
+def test_subscription_validation_rejects_bad_endpoint(endpoint: str) -> None:
     with pytest.raises(ValueError, match="https"):
-        validate_subscription({"endpoint": "http://x", "keys": {"p256dh": "a", "auth": "b"}})
+        validate_subscription({"endpoint": endpoint, "keys": {"p256dh": "a", "auth": "b"}})
+
+
+def test_subscription_validation_rejects_empty_keys() -> None:
+    with pytest.raises(ValueError):
+        validate_subscription({"endpoint": "https://push.example/x", "keys": {"p256dh": "", "auth": "b"}})
+
+
+def test_subscription_validation_rejects_oversized_keys() -> None:
+    long_key = "x" * 1025
+    with pytest.raises(ValueError, match="key too long"):
+        validate_subscription(
+            {
+                "endpoint": "https://push.example/x",
+                "keys": {"p256dh": long_key, "auth": "b"},
+            }
+        )
+
+
+def test_api_invalid_json_returns_422(tmp_path: Path, enable_pywebpush: None) -> None:
+    client = TestClient(create_app(_base_config(tmp_path, push=_enabled_push()), _Bridge()))
+    assert client.post("/push/subscriptions", content=b"not-json", headers={"content-type": "application/json"}).status_code == 422
 
 
 def test_api_validation_422(tmp_path: Path, enable_pywebpush: None) -> None:
     client = TestClient(create_app(_base_config(tmp_path, push=_enabled_push()), _Bridge()))
     assert client.post("/push/subscriptions", json={"endpoint": "http://bad", "keys": {"p256dh": "a", "auth": "b"}}).status_code == 422
+    assert client.post("/push/subscriptions", json={"endpoint": "https://", "keys": {"p256dh": "a", "auth": "b"}}).status_code == 422
     assert client.request("DELETE", "/push/subscriptions", json={"endpoint": "http://bad"}).status_code == 422
+    assert client.request("DELETE", "/push/subscriptions", json={"endpoint": "https:///x"}).status_code == 422
 
 
 def test_subscription_store_recovers_from_broken_lines(tmp_path: Path) -> None:
@@ -300,3 +315,33 @@ def test_validate_delete_body() -> None:
     assert validate_delete_body({"endpoint": "https://x"}) == "https://x"
     with pytest.raises(ValueError):
         validate_delete_body({"endpoint": "http://x"})
+    with pytest.raises(ValueError):
+        validate_delete_body({"endpoint": "https://"})
+
+
+def test_push_worker_start_and_stop_are_idempotent(tmp_path: Path) -> None:
+    store = WebChatStore(tmp_path / "w", clock=FakeClock())
+    subs = PushSubscriptionStore(tmp_path / "w")
+    stop = threading.Event()
+    worker = PushWorker(
+        store,
+        subs,
+        _enabled_push(),
+        channel_slug="general",
+        display_names={},
+        stop_event=stop,
+        send=lambda _sub, _payload: None,
+        poll_interval_sec=0.01,
+        join_timeout_sec=1.0,
+    )
+    worker.start()
+    worker.start()
+    worker.stop()
+    worker.stop()
+    assert worker._thread is not None
+    assert not worker._thread.is_alive()
+
+
+def test_push_disabled_when_pywebpush_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mltgnt.media.webchat.push._pywebpush_available", lambda: False)
+    assert push_enabled(_base_config(tmp_path, push=_enabled_push())) is False

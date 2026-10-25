@@ -65,6 +65,14 @@ def test_manifest_and_sw_routes(tmp_path: Path) -> None:
     assert "fetch" not in sw.text
 
 
+def test_default_pwa_icons_ship_as_package_data() -> None:
+    from importlib.resources import files
+
+    assets = files("mltgnt.media.webchat.assets")
+    for name in ("pwa-icon-192.png", "pwa-icon-512.png"):
+        assert assets.joinpath(name).is_file()
+
+
 def test_default_pwa_icons_are_png_with_expected_size(tmp_path: Path) -> None:
     client = TestClient(create_app(_config(tmp_path), _Bridge()))
     for path, size in (("/pwa/icon-192.png", 192), ("/pwa/icon-512.png", 512)):

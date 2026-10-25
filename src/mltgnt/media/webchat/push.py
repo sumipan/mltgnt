@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from mltgnt.media.webchat.config import WebChatMediaConfig, WebPushConfig
 from mltgnt.media.webchat.inbound import DEFAULT_AUTHOR
@@ -27,6 +28,14 @@ _log = logging.getLogger(__name__)
 
 _ENDPOINT_MAX = 4096
 _KEY_MAX = 1024
+
+
+def _validate_https_endpoint(endpoint: str) -> None:
+    if not endpoint.startswith("https://"):
+        raise ValueError("endpoint must be https")
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("endpoint must be https")
 
 
 def _pywebpush_available() -> bool:
@@ -58,8 +67,7 @@ def validate_subscription(body: Mapping[str, object]) -> dict[str, object]:
     endpoint = endpoint.strip()
     if len(endpoint) > _ENDPOINT_MAX:
         raise ValueError("endpoint too long")
-    if not endpoint.startswith("https://"):
-        raise ValueError("endpoint must be https")
+    _validate_https_endpoint(endpoint)
     keys = body.get("keys")
     if not isinstance(keys, Mapping):
         raise ValueError("keys required")
@@ -83,8 +91,7 @@ def validate_delete_body(body: Mapping[str, object]) -> str:
     endpoint = endpoint.strip()
     if len(endpoint) > _ENDPOINT_MAX:
         raise ValueError("endpoint too long")
-    if not endpoint.startswith("https://"):
-        raise ValueError("endpoint must be https")
+    _validate_https_endpoint(endpoint)
     return endpoint
 
 
