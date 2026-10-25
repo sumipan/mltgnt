@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **WebChat channel URLs**: `GET /` redirects to `/c/<channel_slug>`; thread, permalink, and bookmarks views use `/c/<slug>/t/<id>`, `/p/<id>`, and `/bookmarks`. `WebChatMediaConfig.channel_slug` (default `"general"`) is exposed in `GET /config`; the UI syncs panel state with `history.pushState` / `popstate` and adds Copy link on messages.
+
 ## v0.131.1
 
 - **Hub guard**: the agent-run limit (`max_agent_run`) now applies only to replies in an existing thread. A root post starts a new thread, but the server checked it against every message in the room that day, so after a few persona exchanges anywhere in the room a new request was rejected with `409 agent_run_exceeded` (the client, which checks a root post against an empty context, let it through).

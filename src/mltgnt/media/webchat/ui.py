@@ -257,7 +257,8 @@ INDEX_HTML = r"""<!doctype html>
   var lightbox = document.getElementById("lightbox");
   var threadTs = null;
   var panelMode = null;
-  var config = { avatars: {}, display_names: {}, channel_name: "general", max_upload_bytes: 20971520 };
+  var config = { avatars: {}, display_names: {}, channel_name: "general", channel_slug: "general", max_upload_bytes: 20971520 };
+  var restoring = false;
   var rowsById = {};
   var stick = { "log": true, "panel-body": true };
   var touch = window.matchMedia && window.matchMedia("(hover: none)").matches;
@@ -290,6 +291,37 @@ INDEX_HTML = r"""<!doctype html>
   var ICON_THREAD = '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>';
   var ICON_SAVE = '<svg viewBox="0 0 24 24"><path d="M7 4h10v16l-5-4-5 4z"/></svg>';
   var ICON_X = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+  function channelSlug() {
+    return config.channel_slug || "general";
+  }
+
+  function channelPath() {
+    return "/c/" + channelSlug();
+  }
+
+  function threadPath(id) {
+    return channelPath() + "/t/" + id;
+  }
+
+  function messagePath(id) {
+    return channelPath() + "/p/" + id;
+  }
+
+  function bookmarksPath() {
+    return channelPath() + "/bookmarks";
+  }
+
+  function pushPath(path) {
+    if (restoring) { return; }
+    if (location.pathname === path) { return; }
+    history.pushState(null, "", path);
+  }
+
+  function replacePath(path) {
+    if (location.pathname === path) { return; }
+    history.replaceState(null, "", path);
+  }
 
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -340,7 +372,7 @@ INDEX_HTML = r"""<!doctype html>
     var file = config.avatars[author];
     if (!file) { return ""; }
     if (/^(https?:\/\/|data:image\/)/i.test(file)) { return file; }
-    return "assets/" + encodeURIComponent(file);
+    return "/assets/" + encodeURIComponent(file);
   }
 
   function avatarColor(author) {
@@ -470,7 +502,7 @@ INDEX_HTML = r"""<!doctype html>
       label.className = "file-name";
       label.textContent = (f.name || "image") + " \u25BE";
       var img = document.createElement("img");
-      img.src = "files/" + f.id;
+      img.src = "/files/" + f.id;
       img.alt = f.name || "";
       img.loading = "lazy";
       img.addEventListener("load", function () {
@@ -530,11 +562,27 @@ INDEX_HTML = r"""<!doctype html>
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       var current = rowsById[row.message_id] || row;
-      fetch("messages/" + current.message_id + "/bookmark", {
+      fetch("/messages/" + current.message_id + "/bookmark", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bookmarked: !current.bookmarked })
       });
+    });
+    bar.appendChild(btn);
+  }
+
+  function renderCopyLink(bar, row) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy-link";
+    btn.textContent = "Link";
+    btn.title = "Copy link";
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var url = location.origin + messagePath(row.message_id);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url);
+      }
     });
     bar.appendChild(btn);
   }
@@ -606,6 +654,7 @@ INDEX_HTML = r"""<!doctype html>
       bar.appendChild(reply);
     }
     renderSave(bar, row);
+    renderCopyLink(bar, row);
     if (bar.childNodes.length) { el.appendChild(bar); }
   }
 
@@ -646,7 +695,7 @@ INDEX_HTML = r"""<!doctype html>
   }
 
   function refreshParent(threadId) {
-    fetch("threads/" + threadId).then(function (r) { return r.json(); }).then(function (rows) {
+    fetch("/threads/" + threadId).then(function (r) { return r.json(); }).then(function (rows) {
       rows.forEach(function (row) {
         if (row.message_id === threadId) {
           rowsById[row.message_id] = row;
@@ -729,7 +778,7 @@ INDEX_HTML = r"""<!doctype html>
     spinner.className = "history-loading";
     spinner.textContent = "Loading older messages...";
     log.insertBefore(spinner, log.firstChild);
-    fetch("messages?limit=" + PAGE + "&before=" + encodeURIComponent(oldest.ts)).then(function (r) {
+    fetch("/messages?limit=" + PAGE + "&before=" + encodeURIComponent(oldest.ts)).then(function (r) {
       if (!r.ok) { throw new Error("HTTP " + r.status); }
       return r.json();
     }).then(function (rows) {
@@ -778,14 +827,27 @@ INDEX_HTML = r"""<!doctype html>
     messagesTab.classList.toggle("active", mode !== "saved");
   }
 
-  function openThread(rootId) {
+  function highlightMessage(id) {
+    var el = document.getElementById("log-m-" + id) || document.getElementById("panel-body-m-" + id);
+    if (!el) { return; }
+    el.classList.add("selected");
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  function openThread(rootId, opts) {
+    opts = opts || {};
     threadTs = rootId;
     openPanel("thread", "Thread");
     panelForm.classList.remove("hidden");
     clearComposer(panelComposer);
     markSelected();
-    fetch("threads/" + rootId).then(function (r) { return r.json(); }).then(function (rows) {
+    fetch("/threads/" + rootId).then(function (r) { return r.json(); }).then(function (rows) {
       if (threadTs !== rootId) { return; }
+      if (!rows.length) {
+        closePanel({ push: false });
+        replacePath(channelPath());
+        return;
+      }
       panelBody.textContent = "";
       var replyCount = 0;
       rows.forEach(function (row) {
@@ -804,10 +866,13 @@ INDEX_HTML = r"""<!doctype html>
       });
       scrollBottom(panelBody);
       if (!touch) { panelComposer.input.focus(); }
+      if (opts.push !== false && !restoring) { pushPath(threadPath(rootId)); }
+      if (opts.onReady) { opts.onReady(); }
     });
   }
 
-  function closePanel() {
+  function closePanel(opts) {
+    opts = opts || {};
     threadTs = null;
     panelMode = null;
     panel.classList.remove("open");
@@ -817,21 +882,78 @@ INDEX_HTML = r"""<!doctype html>
     messagesTab.classList.add("active");
     markSelected();
     if (!touch) { mainComposer.input.focus(); }
+    if (opts.push !== false && !restoring) { pushPath(channelPath()); }
   }
 
-  function loadSaved() {
+  function loadSaved(opts) {
+    opts = opts || {};
     threadTs = null;
     openPanel("saved", "Saved items");
     panelForm.classList.add("hidden");
     markSelected();
-    fetch("bookmarks").then(function (r) { return r.json(); }).then(function (rows) {
+    fetch("/bookmarks").then(function (r) { return r.json(); }).then(function (rows) {
       panelBody.textContent = "";
       rows.forEach(function (row) {
         rowsById[row.message_id] = row;
         render(row, panelBody);
       });
       panelBody.scrollTop = 0;
+      if (opts.push !== false && !restoring) { pushPath(bookmarksPath()); }
     });
+  }
+
+  function restoreFromPath() {
+    restoring = true;
+    var path = location.pathname;
+    var base = channelPath();
+    if (path === base || path === base + "/") {
+      closePanel({ push: false });
+      restoring = false;
+      return;
+    }
+    var match = path.match(/^\/c\/[^/]+\/t\/([^/]+)$/);
+    if (match) {
+      openThread(match[1], { push: false });
+      restoring = false;
+      return;
+    }
+    if (/^\/c\/[^/]+\/bookmarks$/.test(path)) {
+      loadSaved({ push: false });
+      restoring = false;
+      return;
+    }
+    match = path.match(/^\/c\/[^/]+\/p\/([^/]+)$/);
+    if (match) {
+      var messageId = match[1];
+      fetch("/threads/" + messageId).then(function (r) { return r.json(); }).then(function (rows) {
+        var row = null;
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].message_id === messageId) { row = rows[i]; break; }
+        }
+        if (!row) {
+          replacePath(channelPath());
+          restoring = false;
+          return;
+        }
+        if (row.thread_ts) {
+          openThread(row.thread_ts, {
+            push: false,
+            onReady: function () { highlightMessage(messageId); }
+          });
+        } else if (logOrder.indexOf(messageId) !== -1) {
+          highlightMessage(messageId);
+        } else {
+          openThread(messageId, { push: false });
+        }
+        restoring = false;
+      }).catch(function () {
+        replacePath(channelPath());
+        restoring = false;
+      });
+      return;
+    }
+    replacePath(channelPath());
+    restoring = false;
   }
 
   function openLightbox(src, caption) {
@@ -940,7 +1062,7 @@ INDEX_HTML = r"""<!doctype html>
   }
 
   function uploadOne(c, item) {
-    fetch("files?name=" + encodeURIComponent(item.name), {
+    fetch("/files?name=" + encodeURIComponent(item.name), {
       method: "POST",
       headers: { "Content-Type": item.file.type },
       body: item.file
@@ -1001,7 +1123,7 @@ INDEX_HTML = r"""<!doctype html>
     if (c.threaded) { body.thread_ts = threadTs; }
     c.sending = true;
     updateSend(c);
-    fetch("messages", {
+    fetch("/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -1136,23 +1258,29 @@ INDEX_HTML = r"""<!doctype html>
     config.avatars = c.avatars || {};
     config.display_names = c.display_names || {};
     config.channel_name = c.channel_name || "general";
+    config.channel_slug = c.channel_slug || "general";
     config.max_upload_bytes = c.max_upload_bytes || config.max_upload_bytes;
     document.title = config.channel_name;
     document.getElementById("channel-name").textContent = config.channel_name;
     mainComposer.input.placeholder = "Message #" + config.channel_name;
   }
 
-  fetch("config").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (c) {
+  window.addEventListener("popstate", function () {
+    restoreFromPath();
+  });
+
+  fetch("/config").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (c) {
     applyConfig(c);
-    return fetch("messages?limit=" + PAGE).then(function (r) { return r.json(); });
+    return fetch("/messages?limit=" + PAGE).then(function (r) { return r.json(); });
   }).then(function (rows) {
     logOrder = addRoots(rows);
     backlog.more = rows.length >= PAGE;
     rebuildLog();
     scrollBottom(log);
     if (backlog.more && log.scrollHeight <= log.clientHeight) { loadOlder(); }
+    restoreFromPath();
     if (!touch) { mainComposer.input.focus(); }
-    var source = new EventSource("stream");
+    var source = new EventSource("/stream");
     ["message", "update", "status", "bookmark", "reaction"].forEach(function (kind) {
       source.addEventListener(kind, function (e) {
         var row = JSON.parse(e.data);
