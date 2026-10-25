@@ -200,6 +200,24 @@ def test_guard_rejection_returns_409(tmp_path: Path) -> None:
     assert resp.json()["detail"]["reason"] == "hop_exceeded"
 
 
+def test_root_post_after_persona_exchange_is_accepted(tmp_path: Path) -> None:
+    clock = FakeClock(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc))
+    client = _client(tmp_path, clock=clock)
+    for i in range(4):
+        clock.now += timedelta(seconds=10)
+        token, host = ("secret-a", "host-a") if i % 2 == 0 else ("secret-b", "host-b")
+        body = _post_body(id=f"m{i}" if i else "root", sender={"host": host, "persona": "p"}, thread="root" if i else None)
+        assert client.post("/rooms/lobby/messages", json=body, headers=_auth(token)).status_code == 201
+    clock.now += timedelta(seconds=10)
+    new_root = _post_body(id="m-new", sender={"host": "host-b", "persona": "p"})
+    assert client.post("/rooms/lobby/messages", json=new_root, headers=_auth("secret-b")).status_code == 201
+    clock.now += timedelta(seconds=10)
+    in_thread = _post_body(id="m-5", sender={"host": "host-a", "persona": "p"}, thread="root")
+    resp = client.post("/rooms/lobby/messages", json=in_thread, headers=_auth())
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["reason"] == "agent_run_exceeded"
+
+
 def test_patch_update_and_status(tmp_path: Path) -> None:
     client = _client(tmp_path)
     assert client.post("/rooms/lobby/messages", json=_post_body(), headers=_auth()).status_code == 201
