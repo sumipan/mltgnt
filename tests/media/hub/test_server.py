@@ -146,6 +146,30 @@ def test_post_creates_message(tmp_path: Path) -> None:
     assert data["ts"]
 
 
+def test_post_stores_display_and_rejects_invalid(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    display = {"name": "Staff A", "icon_url": "https://example.com/a.png"}
+    resp = client.post("/rooms/lobby/messages", json=_post_body(display=display), headers=_auth())
+    assert resp.status_code == 201
+    rows = client.get("/rooms/lobby/messages", headers=_auth()).json()
+    rows = rows["messages"] if isinstance(rows, dict) else rows
+    assert rows[-1]["display"] == display
+    again = client.post("/rooms/lobby/messages", json=_post_body(display=display), headers=_auth())
+    assert again.status_code == 200
+    changed = client.post(
+        "/rooms/lobby/messages",
+        json=_post_body(display={"name": "Other"}),
+        headers=_auth(),
+    )
+    assert changed.status_code == 409
+    bad = client.post(
+        "/rooms/lobby/messages",
+        json=_post_body(id="msg-2", display={"icon_url": "javascript:x"}),
+        headers=_auth(),
+    )
+    assert bad.status_code == 422
+
+
 def test_idempotent_resend_returns_200(tmp_path: Path) -> None:
     client = _client(tmp_path)
     body = _post_body()

@@ -10,10 +10,13 @@ from typing import Any, Literal, Protocol, runtime_checkable
 from mltgnt.interfaces.media import Status
 from mltgnt.interfaces.turn import Attachment
 
-__all__ = ["HubAddress", "HubMessage", "HubTransport"]
+__all__ = ["HubAddress", "HubDisplay", "HubMessage", "HubTransport"]
 
 _IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _HUB_KINDS = frozenset({"message", "status", "update"})
+_DISPLAY_NAME_MAX = 80
+_ICON_URL_MAX = 2048
+_DISPLAY_KEYS = frozenset({"name", "icon_url"})
 
 
 def _validate_identifier(value: str, *, field: str) -> str:
@@ -84,6 +87,48 @@ class HubAddress:
 
 
 @dataclass(frozen=True)
+class HubDisplay:
+    """How the sender wants to be shown (self-declared; not used for routing or auth)."""
+
+    name: str | None = None
+    icon_url: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.name is not None and (
+            not isinstance(self.name, str)
+            or not self.name.strip()
+            or len(self.name) > _DISPLAY_NAME_MAX
+            or any(ch in self.name for ch in "\r\n")
+        ):
+            raise ValueError(f"invalid display name: {self.name!r}")
+        if self.icon_url is not None and (
+            not isinstance(self.icon_url, str)
+            or len(self.icon_url) > _ICON_URL_MAX
+            or not self.icon_url.startswith(("https://", "http://"))
+            or any(ch.isspace() for ch in self.icon_url)
+        ):
+            raise ValueError(f"invalid display icon_url: {self.icon_url!r}")
+
+    def to_mapping(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        if self.name is not None:
+            out["name"] = self.name
+        if self.icon_url is not None:
+            out["icon_url"] = self.icon_url
+        return out
+
+    @classmethod
+    def from_mapping(cls, data: Any) -> HubDisplay | None:
+        if data is None:
+            return None
+        if not isinstance(data, Mapping) or set(data) - _DISPLAY_KEYS:
+            raise ValueError(f"invalid display mapping: {data!r}")
+        if not data:
+            return None
+        return cls(name=data.get("name"), icon_url=data.get("icon_url"))
+
+
+@dataclass(frozen=True)
 class HubMessage:
     id: str
     ts: str | None
@@ -97,6 +142,7 @@ class HubMessage:
     origin_id: str | None
     kind: Literal["message", "status", "update"]
     status: str | None
+    display: HubDisplay | None = None
 
     def to_row(self) -> dict[str, Any]:
         _validate_identifier(self.room, field="room")
@@ -121,6 +167,8 @@ class HubMessage:
             row["to"] = _address_to_mapping(self.to)
         if self.origin_id is not None:
             row["origin_id"] = self.origin_id
+        if self.display is not None and self.display.to_mapping():
+            row["display"] = self.display.to_mapping()
         if self.attachments:
             row["files"] = [
                 {
@@ -210,6 +258,7 @@ class HubMessage:
             origin_id=origin_id,
             kind=kind,
             status=status,
+            display=HubDisplay.from_mapping(row.get("display")),
         )
 
 

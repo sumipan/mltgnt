@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from mltgnt.interfaces.hub import HubAddress, HubMessage, HubTransport
+from mltgnt.interfaces.hub import HubAddress, HubDisplay, HubMessage, HubTransport
 from mltgnt.interfaces.media import Status
 from mltgnt.interfaces.turn import Attachment
 from mltgnt.media.hub.config import HubMediaConfig
@@ -74,6 +74,8 @@ def _message_to_post_body(message: HubMessage) -> dict[str, Any]:
         body["origin_id"] = message.origin_id
     if message.attachments:
         body["attachments"] = _attachments_to_body(message.attachments)
+    if message.display is not None and message.display.to_mapping():
+        body["display"] = message.display.to_mapping()
     return body
 
 
@@ -238,9 +240,11 @@ class HubClient:
         *,
         persona: str | None,
         transport: HubTransport | None = None,
+        display: HubDisplay | None = None,
     ) -> None:
         self._config = config
         self._persona = persona
+        self._display = display
         self._transport = transport if transport is not None else UrllibTransport(config)
         self._known: dict[str, tuple[str, str]] = {}
         self._pending_id: str | None = None
@@ -319,6 +323,7 @@ class HubClient:
             origin_id=origin_id,
             kind="message",
             status=None,
+            display=self._display,
         )
         try:
             ctx = self._transport.guard_context(room, thread)
