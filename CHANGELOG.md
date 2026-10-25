@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.131.0
+
+- **Hub sender display**: `HubMessage.display` (`mltgnt.interfaces.hub.HubDisplay`, optional `name` and `icon_url`) lets a sender say how it wants to be shown, so any host can render the same name and icon (for example in a Slack mirror). `HubClient(..., display=HubDisplay(...))` attaches it to every post; `POST /rooms/{room}/messages` accepts and stores `display`, and rows without it read as before. `icon_url` must be `http(s)://`; the value is self-declared and is not used for routing or auth.
+
 ## v0.130.0
 
 - **Hub message contract**: `HubMessage` / `HubAddress` in `mltgnt.interfaces.hub` with JSONL row mapping and a `HubTransport` protocol for send, poll, revise, and guard context.

@@ -155,3 +155,46 @@ def test_human_sender_author() -> None:
     row = m.to_row()
     assert row["author"] == "host-a/user"
     assert HubMessage.from_row(row).sender == HubAddress("host-a", None)
+
+
+def test_display_round_trips_and_is_optional() -> None:
+    from mltgnt.interfaces.hub import HubDisplay
+
+    plain = _base_message()
+    assert "display" not in plain.to_row()
+    assert HubMessage.from_row(plain.to_row()).display is None
+
+    shown = _base_message(display=HubDisplay(name="Staff A", icon_url="https://example.com/a.png"))
+    row = shown.to_row()
+    assert row["display"] == {"name": "Staff A", "icon_url": "https://example.com/a.png"}
+    assert HubMessage.from_row(row) == shown
+
+    name_only = _base_message(display=HubDisplay(name="Staff A"))
+    assert name_only.to_row()["display"] == {"name": "Staff A"}
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"name": ""},
+        {"name": "a\nb"},
+        {"name": "x" * 81},
+        {"icon_url": "ftp://example.com/a.png"},
+        {"icon_url": "javascript:alert(1)"},
+        {"icon_url": "https://example.com/a b.png"},
+    ],
+)
+def test_display_rejects_invalid(kwargs: dict[str, str]) -> None:
+    from mltgnt.interfaces.hub import HubDisplay
+
+    with pytest.raises(ValueError):
+        HubDisplay(**kwargs)
+
+
+def test_display_from_mapping_rejects_unknown_keys() -> None:
+    from mltgnt.interfaces.hub import HubDisplay
+
+    with pytest.raises(ValueError):
+        HubDisplay.from_mapping({"name": "a", "color": "red"})
+    assert HubDisplay.from_mapping({}) is None
+    assert HubDisplay.from_mapping(None) is None

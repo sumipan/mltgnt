@@ -213,3 +213,21 @@ def test_upload_and_react_unsupported(tmp_path: Path) -> None:
     client = HubClient(_config(tmp_path), persona=None, transport=FakeTransport())
     assert client.upload("x", "hub.r1") is False
     assert client.react("id", "thumbsup") is False
+
+
+def test_post_carries_display(tmp_path: Path) -> None:
+    from mltgnt.interfaces.hub import HubDisplay
+    from mltgnt.media.hub.client import _message_to_post_body
+
+    display = HubDisplay(name="Staff A", icon_url="https://example.com/a.png")
+    transport = FakeTransport()
+    client = HubClient(_config(tmp_path), persona="persona-x", transport=transport, display=display)
+    assert client.post("hi", "hub.r1") is not None
+    msg = transport.sent[0]
+    assert msg.display == display
+    assert _message_to_post_body(msg)["display"] == {"name": "Staff A", "icon_url": "https://example.com/a.png"}
+
+    bare = FakeTransport()
+    HubClient(_config(tmp_path), persona="persona-x", transport=bare).post("hi", "hub.r1")
+    assert bare.sent[0].display is None
+    assert "display" not in _message_to_post_body(bare.sent[0])

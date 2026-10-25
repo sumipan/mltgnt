@@ -17,7 +17,7 @@ import yaml
 
 from mltgnt import __version__
 from mltgnt.exceptions import ConfigError
-from mltgnt.interfaces.hub import HubAddress, HubMessage
+from mltgnt.interfaces.hub import HubAddress, HubDisplay, HubMessage
 from mltgnt.interfaces.media import Status
 from mltgnt.interfaces.turn import Attachment
 from mltgnt.media._core.jsonl_store import JsonlMessageStore, MESSAGE_KINDS
@@ -49,6 +49,7 @@ _POST_BODY_KEYS = frozenset(
         "origin_id",
         "kind",
         "status",
+        "display",
     }
 )
 _PATCH_BODY_KEYS = frozenset({"kind", "text", "status"})
@@ -320,6 +321,7 @@ def _hub_message_from_post(body: dict[str, Any], *, room: str) -> HubMessage:
         origin_id=origin_id,
         kind=kind,
         status=status,
+        display=HubDisplay.from_mapping(body.get("display")),
     )
 
 
@@ -336,6 +338,7 @@ def _normalized_row_signature(row: Mapping[str, Any]) -> dict[str, Any]:
         "kind": msg.kind,
         "status": msg.status,
         "attachments": tuple((a.name, a.content_type, a.uri) for a in msg.attachments),
+        "display": (msg.display.to_mapping() or None) if msg.display else None,
     }
 
 
@@ -351,6 +354,7 @@ def _message_signature(message: HubMessage) -> dict[str, Any]:
         "kind": message.kind,
         "status": message.status,
         "attachments": tuple((a.name, a.content_type, a.uri) for a in message.attachments),
+        "display": (message.display.to_mapping() or None) if message.display else None,
     }
 
 
