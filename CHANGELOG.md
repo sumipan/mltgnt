@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.134.5
+
 - **Testing policy**: add TESTING.md with what tests protect, ten rules (T1-T9 and T12), and how to remove tests.
 
 ## v0.134.0
