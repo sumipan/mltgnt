@@ -68,6 +68,8 @@ pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.134.0"
 pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.134.0"
 ```
 
+See [TESTING.md](./TESTING.md) for what tests should and should not pin.
+
 | Item | Value |
 |------|-------|
 | Distribution | `mltgnt` `0.134.0` |

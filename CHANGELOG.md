@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.134.5
+
+- **Testing policy**: add TESTING.md with what tests protect, ten rules (T1-T9 and T12), and how to remove tests.
+
 ## v0.134.0
 
 - **WebChat PWA and Web Push**: installable manifest (`/manifest.webmanifest`), service worker (`/sw.js`), and default icons; optional `webchat-push` extra with VAPID-backed subscription APIs and a tail worker that sends a fixed-body agent-reply notification (no message text in the payload) for agent replies only. `GET /config` exposes `push_enabled`; the UI registers push from a header control when supported (iOS requires Add to Home Screen).
