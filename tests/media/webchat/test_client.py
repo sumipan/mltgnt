@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+import pytest
 
 from mltgnt.interfaces.media import MediaClient, Status
 from mltgnt.media.webchat.client import WebChatClient
@@ -104,6 +107,68 @@ def test_post_ignores_extra(tmp_path: Path) -> None:
     assert message_id is not None
     row = client.store.latest(message_id)
     assert row is not None and row["text"] == "hello"
+
+
+def test_post_extra_author_and_display_are_written_to_the_row(tmp_path: Path) -> None:
+    """Issue #5956 AC1."""
+    client = WebChatClient(_config(tmp_path))
+    message_id = client.post(
+        "hi",
+        "webchat",
+        extra={
+            "author": "remote/persona-a",
+            "display": {"name": "Persona A", "icon_url": "https://example.test/a.png"},
+        },
+    )
+    assert message_id is not None
+    row = client.store.latest(message_id)
+    assert row is not None
+    assert row["author"] == "remote/persona-a"
+    assert row["display"] == {"name": "Persona A", "icon_url": "https://example.test/a.png"}
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"display": "Persona A"},
+        {"display": {"name": "A", "icon_url": "javascript:alert(1)"}},
+    ],
+)
+def test_post_extra_invalid_display_is_dropped_with_warning(
+    tmp_path: Path, extra: dict[str, object], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Issue #5956 AC2."""
+    caplog.set_level(logging.WARNING)
+    client = WebChatClient(_config(tmp_path))
+    message_id = client.post("hi", "webchat", extra=extra)
+    assert message_id is not None
+    row = client.store.latest(message_id)
+    assert row is not None
+    assert "display" not in row
+    assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
+
+
+def test_post_extra_display_drops_unknown_keys(tmp_path: Path) -> None:
+    client = WebChatClient(_config(tmp_path))
+    message_id = client.post("hi", "webchat", extra={"display": {"name": "Persona A", "color": "red"}})
+    assert message_id is not None
+    row = client.store.latest(message_id)
+    assert row is not None
+    assert row["display"] == {"name": "Persona A"}
+
+
+def test_post_extra_non_str_author_falls_back_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Issue #5956 AC3."""
+    caplog.set_level(logging.WARNING)
+    client = WebChatClient(_config(tmp_path))
+    message_id = client.post("hi", "webchat", extra={"author": 123})
+    assert message_id is not None
+    row = client.store.latest(message_id)
+    assert row is not None
+    assert row["author"] == "assistant"
+    assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
 
 
 def test_upload_posts_an_image_message(tmp_path: Path) -> None:

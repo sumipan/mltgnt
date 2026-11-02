@@ -107,3 +107,16 @@ def test_index_html_routing_client_strings() -> None:
         "navigator.clipboard",
     ):
         assert token in INDEX_HTML
+
+
+def test_index_html_prefers_row_display() -> None:
+    """Issue #5956 AC6."""
+    for token in (
+        "function rowName(row)",
+        "function rowAvatar(row, tiny)",
+        "row.display",
+        "/^https?:\\/\\//i",
+        "rowAvatar(row, false)",
+        "rowName(row)",
+    ):
+        assert token in INDEX_HTML

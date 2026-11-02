@@ -233,3 +233,20 @@ def test_thread_summary_ignores_revisions_and_side_effects(tmp_path: Path) -> No
     assert root["reply_count"] == 1
     assert root["last_reply_ts"] == reply_message["ts"]
     assert root["participants"] == ["bot"]
+
+
+def test_display_extra_survives_revise_and_reaction(tmp_path: Path) -> None:
+    """Issue #5956 AC4."""
+    store, _clock = _store(tmp_path)
+    display = {"name": "A"}
+    store.append(message_id="m1", author="u", text="v1", extra={"display": display})
+    store.revise("m1", "update", text="v2")
+    store.add_reaction("m1", "eyes")
+    row = store.latest("m1")
+    assert row is not None
+    assert row["display"] == display
+    path = tmp_path / "store" / "2026-01-05.jsonl"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    reaction_rows = [r for r in rows if r.get("kind") == "reaction"]
+    assert len(reaction_rows) == 1
+    assert reaction_rows[0]["display"] == display

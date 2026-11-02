@@ -11,6 +11,7 @@ events that derive ``bookmarked`` and ``reactions`` on the target message.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from mltgnt.media._core.jsonl_store import KINDS, MESSAGE_KINDS, JsonlMessageStore
@@ -21,7 +22,7 @@ __all__ = ["KINDS", "MESSAGE_KINDS", "WebChatStore"]
 class WebChatStore(JsonlMessageStore):
     """Day-file JSONL store under ``store_dir``. ``clock`` decides ``ts`` and the day file."""
 
-    def append(  # type: ignore[override]  # legacy API intentionally excludes JsonlMessageStore.extra
+    def append(
         self,
         *,
         message_id: str,
@@ -34,6 +35,7 @@ class WebChatStore(JsonlMessageStore):
         bookmarked: bool | None = None,
         reaction: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        extra: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Append a webchat row while preserving the legacy public signature."""
         return super().append(
@@ -47,4 +49,5 @@ class WebChatStore(JsonlMessageStore):
             bookmarked=bookmarked,
             reaction=reaction,
             files=files,
+            extra=extra,
         )
