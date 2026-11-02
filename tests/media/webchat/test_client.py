@@ -148,6 +148,15 @@ def test_post_extra_invalid_display_is_dropped_with_warning(
     assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
 
 
+def test_post_extra_display_drops_unknown_keys(tmp_path: Path) -> None:
+    client = WebChatClient(_config(tmp_path))
+    message_id = client.post("hi", "webchat", extra={"display": {"name": "Persona A", "color": "red"}})
+    assert message_id is not None
+    row = client.store.latest(message_id)
+    assert row is not None
+    assert row["display"] == {"name": "Persona A"}
+
+
 def test_post_extra_non_str_author_falls_back_with_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

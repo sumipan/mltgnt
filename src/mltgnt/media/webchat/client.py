@@ -41,7 +41,7 @@ def _display_from_extra(extra: Mapping[str, Any] | None) -> dict[str, str] | Non
         _log.warning("webchat client: ignoring invalid extra display=%r", raw)
         return None
     try:
-        display = HubDisplay.from_mapping(raw)
+        display = HubDisplay.from_mapping({k: raw[k] for k in ("name", "icon_url") if k in raw})
     except ValueError:
         _log.warning("webchat client: ignoring invalid extra display=%r", raw)
         return None
