@@ -413,6 +413,38 @@ INDEX_HTML = r"""<!doctype html>
     return el;
   }
 
+  function rowName(row) {
+    if (row.display && typeof row.display.name === "string" && row.display.name) {
+      return row.display.name;
+    }
+    return displayName(row.author);
+  }
+
+  function rowAvatar(row, tiny) {
+    var icon = row.display && row.display.icon_url;
+    if (typeof icon === "string" && /^https?:\/\//i.test(icon)) {
+      var img = document.createElement("img");
+      img.className = "avatar" + (tiny ? " tiny" : "");
+      img.src = icon;
+      img.alt = "";
+      return img;
+    }
+    var src = avatarSrc(row.author);
+    if (src) {
+      var img2 = document.createElement("img");
+      img2.className = "avatar" + (tiny ? " tiny" : "");
+      img2.src = src;
+      img2.alt = "";
+      return img2;
+    }
+    var el = document.createElement("div");
+    el.className = "avatar initial" + (tiny ? " tiny" : "");
+    el.style.background = avatarColor(row.author);
+    var name = rowName(row);
+    el.textContent = name ? name.charAt(0).toUpperCase() : "?";
+    return el;
+  }
+
   function pad2(n) { return String(n).padStart(2, "0"); }
 
   function sameDay(a, b) {
@@ -622,7 +654,7 @@ INDEX_HTML = r"""<!doctype html>
       gt.textContent = formatClock(row.ts);
       gutter.appendChild(gt);
     } else {
-      gutter.appendChild(makeAvatar(row.author, false));
+      gutter.appendChild(rowAvatar(row, false));
     }
     var content = document.createElement("div");
     content.className = "content";
@@ -631,7 +663,7 @@ INDEX_HTML = r"""<!doctype html>
     if (!cont) {
       var name = document.createElement("span");
       name.className = "name";
-      name.textContent = displayName(row.author);
+      name.textContent = rowName(row);
       meta.appendChild(name);
       var time = document.createElement("span");
       time.className = "time";

@@ -98,6 +98,20 @@ def test_post_message_stores_and_runs_the_turn(tmp_path: Path) -> None:
     assert client.get("/messages", params={"day": "2026-01-04"}).json() == []
 
 
+def test_messages_api_returns_row_display(tmp_path: Path) -> None:
+    """Issue #5956 AC5."""
+    client, store, _bridge = _app(tmp_path)
+    store.append(
+        message_id="m-display",
+        author="remote/persona-a",
+        text="hi",
+        extra={"display": {"name": "Persona A", "icon_url": "https://example.test/a.png"}},
+    )
+    rows = client.get("/messages").json()
+    (row,) = [r for r in rows if r["message_id"] == "m-display"]
+    assert row["display"] == {"name": "Persona A", "icon_url": "https://example.test/a.png"}
+
+
 def test_reply_in_thread_and_thread_endpoint(tmp_path: Path) -> None:
     client, _store, bridge = _app(tmp_path)
     root = client.post("/messages", json={"text": "first"}).json()["message_id"]

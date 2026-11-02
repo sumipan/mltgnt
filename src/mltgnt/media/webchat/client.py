@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from mltgnt.interfaces.hub import HubDisplay
 from mltgnt.interfaces.media import Status
 from mltgnt.media.webchat.config import WebChatMediaConfig
 from mltgnt.media.webchat.files import WebChatFiles
@@ -20,6 +21,38 @@ from mltgnt.media.webchat.store import WebChatStore
 __all__ = ["WebChatClient"]
 
 _log = logging.getLogger(__name__)
+
+
+def _author_from_extra(extra: Mapping[str, Any] | None, default: str) -> str:
+    if extra is None or "author" not in extra:
+        return default
+    raw = extra["author"]
+    if isinstance(raw, str) and raw.strip():
+        return raw
+    _log.warning("webchat client: ignoring invalid extra author=%r", raw)
+    return default
+
+
+def _display_from_extra(extra: Mapping[str, Any] | None) -> dict[str, str] | None:
+    if extra is None or "display" not in extra:
+        return None
+    raw = extra["display"]
+    if not isinstance(raw, Mapping):
+        _log.warning("webchat client: ignoring invalid extra display=%r", raw)
+        return None
+    try:
+        display = HubDisplay.from_mapping(raw)
+    except ValueError:
+        _log.warning("webchat client: ignoring invalid extra display=%r", raw)
+        return None
+    if display is None:
+        _log.warning("webchat client: ignoring empty extra display=%r", raw)
+        return None
+    mapping = display.to_mapping()
+    if not mapping:
+        _log.warning("webchat client: ignoring empty extra display=%r", raw)
+        return None
+    return mapping
 
 
 class WebChatClient:
@@ -55,8 +88,19 @@ class WebChatClient:
         extra: Mapping[str, Any] | None = None,
     ) -> str | None:
         message_id = uuid.uuid4().hex
+        author = _author_from_extra(extra, self._author)
+        append_extra: dict[str, Any] = {}
+        display = _display_from_extra(extra)
+        if display is not None:
+            append_extra["display"] = display
         try:
-            self._store.append(message_id=message_id, author=self._author, text=text, thread_ts=thread or None)
+            self._store.append(
+                message_id=message_id,
+                author=author,
+                text=text,
+                thread_ts=thread or None,
+                extra=append_extra or None,
+            )
         except OSError as exc:
             _log.warning("webchat client: post failed space=%s: %s", space, exc)
             return None
