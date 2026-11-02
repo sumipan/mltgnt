@@ -116,4 +116,5 @@ def test_webchat_append_keeps_legacy_signature() -> None:
         "bookmarked",
         "reaction",
         "files",
+        "extra",
     ]
