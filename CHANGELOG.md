@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Testing policy**: split oversized test modules (T8) into focused files without changing test names (Issue #5968).
+
 ## v0.134.8
 
 - **Testing policy**: remove T1-T5 anti-pattern tests and consolidate behavior-focused coverage (Issue #5963).
