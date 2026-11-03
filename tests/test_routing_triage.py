@@ -15,15 +15,6 @@ from mltgnt.routing.triage import (
 logger = logging.getLogger(__name__)
 
 
-def _triage_heading(index: int) -> str:
-    patterns = [
-        value
-        for value in extract_triage_section.__code__.co_consts
-        if isinstance(value, str) and value.startswith("^##")
-    ]
-    return patterns[index].split(r"\s+")[1].split(r"\s*")[0]
-
-
 # ---------------------------------------------------------------------------
 # extract_json_object
 # ---------------------------------------------------------------------------
@@ -60,14 +51,14 @@ def test_extract_json_object_not_json():
 
 def test_extract_triage_section_v2():
     """Returns the body of the lightweight triage section (product header is Japanese)."""
-    md = f"## {_triage_heading(0)}\ncontent"
+    md = "## Light\ncontent"
     result = extract_triage_section(md)
     assert result == "content"
 
 
 def test_extract_triage_section_v1_fallback():
     """Falls back to the v1 triage section when the v2 lightweight header is absent."""
-    md = f"## {_triage_heading(1)}\n\ntriage content\n\n## Other\n\ncontent"
+    md = "## Triage\n\ntriage content\n\n## Other\n\ncontent"
     result = extract_triage_section(md)
     assert result is not None
     assert "triage content" in result
@@ -82,8 +73,8 @@ def test_extract_triage_section_none_when_missing():
 def test_extract_triage_section_v2_wins_over_v1():
     """v2 lightweight section wins when both v1 and v2 triage headers exist."""
     md = (
-        f"## {_triage_heading(0)}\n\nv2content\n\n"
-        f"## {_triage_heading(1)}\n\nv1content"
+        "## Light\n\nv2content\n\n"
+        "## Triage\n\nv1content"
     )
     result = extract_triage_section(md)
     assert result is not None

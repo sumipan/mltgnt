@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
-
 import pytest
 
 from mltgnt.agent.dispatch_decision import (
@@ -19,10 +17,6 @@ from mltgnt.agent.dispatch_preflight import (
     run_preflight,
 )
 from mltgnt.conversation.session_store import SessionRecord
-
-# Synthetic host-specific prompt that must not leak into agent source modules.
-_SECRETARY_PROMPT = "synthetic-secretary-instruction"
-
 
 def _preflight(
     selected_skill: str | None = None,
@@ -168,14 +162,6 @@ def test_make_dispatch_decision_resume_three_engines() -> None:
             "engine": engine,
             "session_id_prefix": session_id[:8],
         }
-
-
-def test_agent_modules_have_no_hardcoded_prompts() -> None:
-    root = Path(__file__).resolve().parents[2] / "src" / "mltgnt" / "agent"
-    for name in ("dispatch_preflight.py", "dispatch_decision.py", "deterministic_gate.py"):
-        src = (root / name).read_text(encoding="utf-8")
-        assert _SECRETARY_PROMPT not in src
-        assert "slack_sdk" not in src
 
 
 @pytest.mark.parametrize("engine", ["claude", "cursor", "codex"])

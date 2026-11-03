@@ -30,29 +30,6 @@ def config(tmp_path: Path) -> ConversationConfig:
 
 
 @pytest.mark.parametrize(
-    "module,public,private",
-    [
-        (thread_queue, "thread_queue_config", "_thread_queue_config"),
-        (thread_queue, "read_state", "_read_state"),
-        (thread_queue, "is_stale", "_is_stale"),
-        (thread_persona_store, "LOCK", "_LOCK"),
-        (thread_persona_store, "ttl_days", "_ttl_days"),
-        (thread_persona_store, "is_expired", "_is_expired"),
-        (thread_persona_store, "compact", "_compact"),
-        (session_compact, "estimate_tokens", "_estimate_tokens"),
-        (session_compact, "format_turns_for_prompt", "_format_turns_for_prompt"),
-        (session_compact, "build_prompt", "_build_prompt"),
-        (session_compact, "audit_path", "_audit_path"),
-        (session_store, "sessions_dir", "_sessions_dir"),
-        (thread_index, "write_post_content", "_write_post_content"),
-    ],
-)
-def test_private_alias_removed(module, public: str, private: str) -> None:
-    assert not hasattr(module, private)
-    assert public in module.__all__
-
-
-@pytest.mark.parametrize(
     "module,name",
     [
         (thread_queue, "set_lock_registry"),

@@ -77,22 +77,13 @@ def _make_llm_responses(*responses: str):
 # ---------------------------------------------------------------------------
 
 
-def test_ac3_import_iterative_retriever() -> None:
+def test_iterative_retriever_importable() -> None:
     """AC3: from mltgnt.memory._iterative import IterativeRetriever success."""
     assert IterativeRetriever is not None
 
 
-def test_issue_ac1_no_skill_import_in_iterative() -> None:
-    """AC1: _iterative.py Home mltgnt.skill Do not import directly."""
-    import mltgnt.memory._iterative as iterative_mod
 
-    source_path = Path(iterative_mod.__file__)
-    source = source_path.read_text(encoding="utf-8")
-    assert "from mltgnt.skill" not in source
-    assert "import mltgnt.skill" not in source
-
-
-def test_issue_ac4_callback_injection(tmp_path: Path) -> None:
+def test_search_skills_callback_injection(tmp_path: Path) -> None:
     """AC4: search_skills via callback skill Search results are merged."""
     config = make_config(tmp_path)
     _write_memory(
@@ -161,7 +152,7 @@ def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_ac6_agentic_retriever_import_error() -> None:
+def test_agentic_retriever_import_error() -> None:
     """AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError."""
     with pytest.raises(ImportError):
         from mltgnt.memory._agentic import AgenticRetriever  # noqa: F401

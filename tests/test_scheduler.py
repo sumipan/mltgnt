@@ -337,6 +337,31 @@ def _skill_job(**overrides) -> ScheduleJob:
 
 _ENQUEUE = "mltgnt.bridges.ghdag_bridge.enqueue_and_wait"
 
+def _enqueue_side_effect(return_value=(True, "")):
+    captured: list[dict] = []
+
+    def _fake(**kwargs):
+        captured.append(kwargs)
+        return return_value
+
+    return captured, _fake
+
+
+def _dag_side_effect(return_value=None):
+    if return_value is None:
+        return_value = [(True, "ok")]
+    captured: list[dict] = []
+    positional: list = []
+
+    def _fake(*args, **kwargs):
+        if args:
+            positional.append(args[0])
+        captured.append(kwargs)
+        return return_value
+
+    return captured, positional, _fake
+
+
 
 def test_skill_action_success(tmp_path: Path) -> None:
     """skill action: enqueue_and_wait Home (True, stdout) → (True, stdout) """
@@ -344,12 +369,13 @@ def test_skill_action_success(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "Response text")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, "Response text"))
+    with patch(_ENQUEUE, side_effect=_fake):
         ok, msg = sch.execute_action(job)
 
+    _enqueue_kw = _capt[-1]
     assert ok is True
     assert msg == "Response text"
-    mock_enqueue.assert_called_once()
 
 
 def test_skill_action_persona_in_prompt(tmp_path: Path) -> None:
@@ -358,10 +384,12 @@ def test_skill_action_persona_in_prompt(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    prompt = mock_enqueue.call_args.kwargs["prompt"]
+    _enqueue_kw = _capt[-1]
+    prompt = _enqueue_kw["prompt"]
     assert "persona body" in prompt
     assert "skill body" in prompt
     assert prompt.index("persona body") < prompt.index("skill body")
@@ -373,10 +401,12 @@ def test_skill_action_engine_explicit(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "engine": "gemini"})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert mock_enqueue.call_args.kwargs["engine"] == "gemini"
+    _enqueue_kw = _capt[-1]
+    assert _enqueue_kw["engine"] == "gemini"
 
 
 def test_skill_action_model_explicit(tmp_path: Path) -> None:
@@ -385,10 +415,12 @@ def test_skill_action_model_explicit(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "model": "claude-opus-4-6"})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert mock_enqueue.call_args.kwargs["model"] == "claude-opus-4-6"
+    _enqueue_kw = _capt[-1]
+    assert _enqueue_kw["model"] == "claude-opus-4-6"
 
 
 def test_skill_action_engine_fallback_to_persona(tmp_path: Path) -> None:
@@ -397,10 +429,12 @@ def test_skill_action_engine_fallback_to_persona(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a", engine="gemini", model="gemini-2.5-flash")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert mock_enqueue.call_args.kwargs["engine"] == "gemini"
+    _enqueue_kw = _capt[-1]
+    assert _enqueue_kw["engine"] == "gemini"
 
 
 def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
@@ -409,10 +443,12 @@ def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a", engine="gemini", model="gemini-2.5-pro")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert mock_enqueue.call_args.kwargs["model"] == "gemini-2.5-pro"
+    _enqueue_kw = _capt[-1]
+    assert _enqueue_kw["model"] == "gemini-2.5-pro"
 
 
 def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
@@ -423,12 +459,14 @@ def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "argv": ["morning"]})
 
-    with patch(_ENQUEUE, return_value=(True, "Result")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, "Result"))
+    with patch(_ENQUEUE, side_effect=_fake):
         ok, msg = sch.execute_action(job)
 
+    _enqueue_kw = _capt[-1]
     assert ok is True
     assert msg == "Result"
-    assert "morning Processing" in mock_enqueue.call_args.kwargs["prompt"]
+    assert "morning Processing" in _enqueue_kw["prompt"]
 
 
 def test_skill_action_no_argv(tmp_path: Path) -> None:
@@ -437,10 +475,12 @@ def test_skill_action_no_argv(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a"})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert "Argument:" not in mock_enqueue.call_args.kwargs["prompt"]
+    _enqueue_kw = _capt[-1]
+    assert "Argument:" not in _enqueue_kw["prompt"]
 
 
 def test_skill_action_engine_error(tmp_path: Path) -> None:
@@ -501,10 +541,12 @@ def test_skill_action_idempotency_key_format(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    key = mock_enqueue.call_args.kwargs["idempotency_key"]
+    _enqueue_kw = _capt[-1]
+    key = _enqueue_kw["idempotency_key"]
     assert key.startswith(f"scheduler:{job.id}:")
 
 
@@ -521,10 +563,12 @@ def test_skill_action_request_id_uuid_v4(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    request_id = mock_enqueue.call_args.kwargs["request_id"]
+    _enqueue_kw = _capt[-1]
+    request_id = _enqueue_kw["request_id"]
     assert re.match(_UUID_V4_RE, request_id)
 
 
@@ -538,12 +582,13 @@ def test_skill_action_request_id_shared_with_fanout(tmp_path: Path) -> None:
         "enable_fanout": True,
     })
 
-    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)) as mock_enqueue, \
-         patch(_ENQUEUE_DAG, return_value=[(True, "ok1"), (True, "ok2")]) as mock_dag:
+    _capt, _fake = _enqueue_side_effect((True, _FANOUT_RESPONSE))
+    _dag_capt, _dag_pos, _dag_fake = _dag_side_effect([(True, "ok1"), (True, "ok2")])
+    with patch(_ENQUEUE, side_effect=_fake), patch(_ENQUEUE_DAG, side_effect=_dag_fake):
         sch.execute_action(job)
 
-    wait_rid = mock_enqueue.call_args.kwargs["request_id"]
-    dag_rid = mock_dag.call_args.kwargs["request_id"]
+    wait_rid = _capt[-1]["request_id"]
+    dag_rid = _dag_capt[-1]["request_id"]
     assert wait_rid == dag_rid
     assert wait_rid is not None
 
@@ -622,12 +667,14 @@ def test_skill_action_substitutes_skill_dir(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
+    _enqueue_kw = _capt[-1]
     skill_dir_path = (tmp_path / "skills" / "test-skill").resolve()
     expected = str(skill_dir_path) + "/scripts/run.py Run"
-    assert expected in mock_enqueue.call_args.kwargs["prompt"]
+    assert expected in _enqueue_kw["prompt"]
 
 
 def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
@@ -638,10 +685,12 @@ def test_skill_action_substitutes_arguments(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "argv": ["hello", "world"]})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert "hello world → hello world" in mock_enqueue.call_args.kwargs["prompt"]
+    _enqueue_kw = _capt[-1]
+    assert "hello world → hello world" in _enqueue_kw["prompt"]
 
 
 def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
@@ -652,10 +701,12 @@ def test_skill_action_substitutes_persona_name(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert "Assignee: persona-a" in mock_enqueue.call_args.kwargs["prompt"]
+    _enqueue_kw = _capt[-1]
+    assert "Assignee: persona-a" in _enqueue_kw["prompt"]
 
 
 def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
@@ -666,10 +717,12 @@ def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert "Argument: []" in mock_enqueue.call_args.kwargs["prompt"]
+    _enqueue_kw = _capt[-1]
+    assert "Argument: []" in _enqueue_kw["prompt"]
 
 
 def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
@@ -680,10 +733,12 @@ def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job()
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    prompt = mock_enqueue.call_args.kwargs["prompt"]
+    _enqueue_kw = _capt[-1]
+    prompt = _enqueue_kw["prompt"]
     # Product prompt template strings (src Englishization is out of scope).
     assert "You are the following character" in prompt
     assert "--- User instruction ---" in prompt
@@ -698,10 +753,12 @@ def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "model": "opus"})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert mock_enqueue.call_args.kwargs["model"] == "sonnet"
+    _enqueue_kw = _capt[-1]
+    assert _enqueue_kw["model"] == "sonnet"
 
 
 def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> None:
@@ -712,10 +769,12 @@ def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> 
     _make_persona(tmp_path, "persona-a")
     job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "model": "opus"})
 
-    with patch(_ENQUEUE, return_value=(True, "")) as mock_enqueue:
+    _capt, _fake = _enqueue_side_effect((True, ""))
+    with patch(_ENQUEUE, side_effect=_fake):
         sch.execute_action(job)
 
-    assert mock_enqueue.call_args.kwargs["model"] == "opus"
+    _enqueue_kw = _capt[-1]
+    assert _enqueue_kw["model"] == "opus"
 
 # ---------------------------------------------------------------------------
 # Issue #242: skill Success _post() Call / _post() Text Overwrite Prevention
@@ -741,8 +800,8 @@ def _command_job(**overrides) -> ScheduleJob:
     return ScheduleJob.from_dict(defaults)
 
 
-def test_ac1_spawn_job_skill_success_calls_post(tmp_path: Path) -> None:
-    """AC-1: _spawn_job() Home skill With success path _post() is called Slack Posted in"""
+def test_spawn_job_skill_success_posts_message(tmp_path: Path) -> None:
+    """Skill success with notify posts the enqueue result via _post."""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary")
     sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
@@ -750,17 +809,22 @@ def test_ac1_spawn_job_skill_success_calls_post(tmp_path: Path) -> None:
     sch._skill_registry = {"test-skill": meta}
     _make_persona(tmp_path, "persona-a")
     sch.reload_jobs()
+
+    post_calls: list[tuple[ScheduleJob, str]] = []
+
+    def _capture_post(j: ScheduleJob, text: str) -> None:
+        post_calls.append((j, text))
 
     with patch(_ENQUEUE, return_value=(True, "hello")):
-        with patch.object(sch, "_post", wraps=sch._post) as mock_post:
+        with patch.object(sch, "_post", side_effect=_capture_post):
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
 
-    mock_post.assert_called_once_with(job, "hello")
+    assert post_calls[-1] == (job, "hello")
 
 
-def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
-    """AC-2: skill Success msg empty _post() not called."""
+def test_spawn_job_skill_empty_result_skips_post(tmp_path: Path) -> None:
+    """Skill success with empty message does not call _post."""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary")
     sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
@@ -769,31 +833,40 @@ def test_ac2_skill_success_empty_msg_no_post(tmp_path: Path) -> None:
     _make_persona(tmp_path, "persona-a")
     sch.reload_jobs()
 
+    post_calls: list[tuple[ScheduleJob, str]] = []
+
+    def _capture_post(j: ScheduleJob, text: str) -> None:
+        post_calls.append((j, text))
+
     with patch(_ENQUEUE, return_value=(True, "")):
-        with patch.object(sch, "_post", wraps=sch._post) as mock_post:
+        with patch.object(sch, "_post", side_effect=_capture_post):
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
 
-    mock_post.assert_not_called()
+    assert post_calls == []
 
 
-def test_ac3_command_success_posts_when_msg_present(tmp_path: Path) -> None:
-    """AC-3: command Success msg If you have _post() Contact UsPR #15 ification)."""
+def test_spawn_job_command_success_posts_stdout(tmp_path: Path) -> None:
+    """Command success with output posts via _post."""
     slack = _make_slack_mock()
     job = _command_job(notify="slack_secretary")
     sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
     sch.reload_jobs()
 
-    # Base class command Since the action is not implemented execute_action
+    post_calls: list[tuple[ScheduleJob, str]] = []
+
+    def _capture_post(j: ScheduleJob, text: str) -> None:
+        post_calls.append((j, text))
+
     with patch.object(sch, "execute_action", return_value=(True, "stdout output")):
-        with patch.object(sch, "_post", wraps=sch._post) as mock_post:
+        with patch.object(sch, "_post", side_effect=_capture_post):
             sch._spawn_job(job, date(2026, 4, 23))
             time.sleep(0.5)
 
-    mock_post.assert_called_once_with(job, "stdout output")
+    assert post_calls[-1] == (job, "stdout output")
 
 
-def test_ac4_post_resolver_does_not_overwrite_text(tmp_path: Path) -> None:
+def test_post_resolver_does_not_overwrite_skill_text(tmp_path: Path) -> None:
     """AC-4: _post() Home resolver Home text does not override the skill generation text."""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary", persona="persona-a")
@@ -810,15 +883,20 @@ def test_ac4_post_resolver_does_not_overwrite_text(tmp_path: Path) -> None:
     )
     sch.reload_jobs()
 
+    posts: list[tuple[str, dict]] = []
+
+    def _record_post(text: str, channel: str, **kwargs) -> bool:
+        posts.append((text, kwargs))
+        return True
+
+    slack.post_message.side_effect = _record_post
     sch._post(job, "skill generation text")
 
-    slack.post_message.assert_called_once()
-    args, kwargs = slack.post_message.call_args
-    assert args[0] == "skill generation text"
-    assert kwargs.get("icon_emoji") == ":robot:"
+    assert posts[-1][0] == "skill generation text"
+    assert posts[-1][1].get("icon_emoji") == ":robot:"
 
 
-def test_ac5_post_empty_text_uses_resolver_fallback(tmp_path: Path) -> None:
+def test_post_empty_text_uses_resolver_fallback(tmp_path: Path) -> None:
     """AC-5: text empty resolver Home text Use fallback when applying."""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary", persona="persona-a")
@@ -835,14 +913,19 @@ def test_ac5_post_empty_text_uses_resolver_fallback(tmp_path: Path) -> None:
     )
     sch.reload_jobs()
 
+    posts: list[tuple[str, dict]] = []
+
+    def _record_post(text: str, channel: str, **kwargs) -> bool:
+        posts.append((text, kwargs))
+        return True
+
+    slack.post_message.side_effect = _record_post
     sch._post(job, "")
 
-    slack.post_message.assert_called_once()
-    args, kwargs = slack.post_message.call_args
-    assert args[0] == "fallback Text"
+    assert posts[-1][0] == "fallback Text"
 
 
-def test_ac6_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
+def test_post_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
     """AC-6: resolver when an exception is sent default_slack_post_kwargs Use text not changed."""
     slack = _make_slack_mock()
     job = _skill_job(notify="slack_secretary", persona="persona-a")
@@ -863,31 +946,22 @@ def test_ac6_resolver_exception_uses_default_kwargs(tmp_path: Path) -> None:
     )
     sch.reload_jobs()
 
+    posts: list[tuple[str, dict]] = []
+
+    def _record_post(text: str, channel: str, **kwargs) -> bool:
+        posts.append((text, kwargs))
+        return True
+
+    slack.post_message.side_effect = _record_post
     sch._post(job, "Original text")
 
-    slack.post_message.assert_called_once()
-    args, kwargs = slack.post_message.call_args
-    assert args[0] == "Original text"
-    assert kwargs.get("icon_emoji") == ":default:"
+    assert posts[-1][0] == "Original text"
+    assert posts[-1][1].get("icon_emoji") == ":default:"
 
 
 # ---------------------------------------------------------------------------
 # Issue #906: PersonaScheduler / SchedulePaths Rename + register_action
 # ---------------------------------------------------------------------------
-
-
-def test_secretary_scheduler_not_importable() -> None:
-    """SecretaryScheduler Home mltgnt.scheduler Home import No backward aliases."""
-    import mltgnt.scheduler as sched
-    assert not hasattr(sched, "SecretaryScheduler"), (
-        "SecretaryScheduler can be removed without backward compatible aliases"
-    )
-
-
-def test_secretary_schedule_paths_not_importable() -> None:
-    """SecretarySchedulePaths Home mltgnt.scheduler Home import Not possible."""
-    import mltgnt.scheduler as sched
-    assert not hasattr(sched, "SecretarySchedulePaths")
 
 
 def test_schedule_paths_importable() -> None:
@@ -1017,12 +1091,6 @@ def test_slack_client_protocol_import() -> None:
     assert SlackClientProtocol is not None
 
 
-def test_skill_loader_protocol_deleted() -> None:
-    """SkillLoaderProtocol remains importable."""
-    with pytest.raises(ImportError):
-        from mltgnt.interfaces import SkillLoaderProtocol  # noqa: F401
-
-
 def test_slack_protocol_no_kwargs() -> None:
     """SlackClientProtocol.post_message Home **kwargs There is no signature closure."""
     import inspect
@@ -1106,13 +1174,14 @@ def test_fanout_calls_enqueue_dag_when_block_present(tmp_path: Path) -> None:
         "enable_fanout": True,
     })
 
-    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
-         patch(_ENQUEUE_DAG, return_value=[(True, "ok1"), (True, "ok2")]) as mock_dag:
+    _dag_capt, _dag_pos, _dag_fake = _dag_side_effect([(True, "ok1"), (True, "ok2")])
+    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), patch(
+        _ENQUEUE_DAG, side_effect=_dag_fake
+    ):
         ok, msg = sch.execute_action(job)
 
     assert ok is True
-    mock_dag.assert_called_once()
-    steps = mock_dag.call_args[0][0]
+    steps = _dag_pos[0]
     assert len(steps) == 2
     assert steps[0].id == "child-1"
     assert steps[1].id == "child-2"

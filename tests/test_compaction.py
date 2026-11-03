@@ -99,19 +99,6 @@ class TestExtractPromoteCandidates:
         for i in range(3):
             assert f"detail_{i}" in result[0].summary
 
-    def test_no_md_promote_call(self, monkeypatch):
-        """md promote is not called in extract promote candidates."""
-        called = []
-        monkeypatch.setattr(
-            "mltgnt.memory.compaction.extract_promote_candidates",
-            lambda *a, **kw: called.append(True) or [],
-            raising=False,
-        )
-        # No monkeyp needed
-        # md_promote only verify it does not exist
-        import mltgnt.memory.compaction as mod
-        assert not hasattr(mod, "md_promote"), "md promote is compaction has leaked into"
-
 
 # ---------------------------------------------------------------------------
 # Compact candidates
@@ -193,16 +180,10 @@ class TestEffectiveBytesForRatio:
 
 class TestSanitizePhase1Output:
     def test_removes_meta_lines(self):
-        meta_tokens = next(
-            value
-            for value in _sanitize_phase1_output.__code__.co_consts
-            if isinstance(value, tuple) and len(value) == 4
-        )
-        text = f"{meta_tokens[0]}\n- likes coffee\n{meta_tokens[1]}\n- a morning routine"
+        text = "Analyzing entries\n- likes coffee\n**Statistics** summary\n- a morning routine"
         result = _sanitize_phase1_output(text)
-        assert meta_tokens[0] not in result
-        assert meta_tokens[1] not in result
         assert "Analyzing" not in result
+        assert "Statistics" not in result
         assert "likes coffee" in result
 
     def test_removes_headings(self):
@@ -397,14 +378,6 @@ class TestRedistributeEntries:
         assert len(result) == 1
         # preferences layer not changed
         assert result[0].source_tag == "preferences"
-
-    def test_uses_config_timezone(self, tmp_path: Path):
-        """re bute entries does not import tools. core.tz."""
-        import mltgnt.memory.compaction as mod
-        import inspect
-        src = inspect.getsource(mod._redistribute_entries)
-        assert "tools._core.tz" not in src
-        assert "JST" not in src or "ZoneInfo" in src
 
 
 # ---------------------------------------------------------------------------
@@ -603,14 +576,6 @@ class TestCompactPerSectionCap:
         # LLM fails to get warning instead of exception
         assert isinstance(result, CompactionResult)
         assert len(result.warnings) > 0
-
-    def test_no_diary_dependency(self):
-        """compaction.py does not import tools. core.tz (AC-5)."""
-        import mltgnt.memory.compaction as mod
-        import inspect
-        src = inspect.getsource(mod)
-        assert "tools._core.tz" not in src
-        assert "from tools" not in src
 
     def test_redistribute_uses_config_timezone(self, tmp_path: Path):
         """re bute entries uses config.timezone (AC-5)."""

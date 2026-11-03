@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Testing policy**: remove T1-T5 anti-pattern tests and consolidate behavior-focused coverage (Issue #5963).
+
 ## v0.134.7
 
 - **WebChat row display**: `WebChatClient.post(extra={"author", "display"})` can override the row author and attach a hub-validated `display` (`name` / `icon_url`); `WebChatStore.append(extra=)` forwards extra fields to JSONL rows; the UI prefers row `display` for message avatars and names via `rowName` / `rowAvatar`.

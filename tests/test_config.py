@@ -53,18 +53,9 @@ def test_scheduler_config_custom_values():
     assert config.salt == "my_salt"
 
 
-def test_no_diary_constants_in_mltgnt_config():
-    """mltgnt.config has no diary-specific constants."""
-    import mltgnt.config as cfg_module
-    assert not hasattr(cfg_module, "REPO_ROOT")
-    assert not hasattr(cfg_module, "DIARY_DIR")
-    assert not hasattr(cfg_module, "PERSONA_NAME")
-
-
 def test_import_without_tools_dependency():
     """from mltgnt.config import succeeds without depending on tools/."""
     from mltgnt.config import MemoryConfig, SchedulerConfig
-    # Instantiation success is enough
     mc = MemoryConfig(chat_dir=Path("/a"), chat_memory_dir=Path("/b"))
     sc = SchedulerConfig(schedule_yaml=Path("/c"), state_dir=Path("/d"))
     assert mc is not None
@@ -122,17 +113,6 @@ def test_set_language_pack_rejects_non_pack(restore_language_pack):
     with pytest.raises(TypeError):
         set_language_pack("en")  # type: ignore[arg-type]
 
-
-def test_ja_pack_removed_from_language_module():
-    """JA is removed without an alias."""
-    with pytest.raises(ImportError):
-        from mltgnt.config.language import JA  # noqa: F401
-
-
-def test_ja_pack_removed_from_config_package():
-    """JA is not re-exported from mltgnt.config."""
-    with pytest.raises(ImportError):
-        from mltgnt.config import JA  # noqa: F401
 
 
 def test_language_pack_defaults_are_ascii():
@@ -217,11 +197,6 @@ def test_persona_config_has_exclude_stems():
     assert pc_default.exclude_stems == frozenset()
 
 
-def test_registry_exclude_stems_default_empty():
-    """AC-2: EXCLUDE_STEMS in registry has no hardcoded values."""
-    from mltgnt.persona.registry import EXCLUDE_STEMS
-    assert frozenset() == EXCLUDE_STEMS
-
 
 def test_list_personas_exclude_stems_arg(tmp_path):
     """AC-4: list_personas with exclude_stems=frozenset() returns all personas."""
@@ -243,11 +218,6 @@ def test_list_personas_exclude_stems_filters(tmp_path):
     assert "alice" in result
     assert "bob" not in result
 
-
-def test_no_hardcoded_exclude_stems_in_synthesizer():
-    """AC-2: synthesizer does not define _EXCLUDE_PERSONA_STEMS."""
-    import mltgnt.memory.dream.synthesizer as synth_module
-    assert not hasattr(synth_module, "_EXCLUDE_PERSONA_STEMS")
 
 
 def test_memory_config_dream_engine_and_model_defaults():
