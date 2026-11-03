@@ -508,3 +508,37 @@ class TestUnresolved:
         skills = discover([tmp_path])
         assert "review" in skills
         assert "fake-skill" not in skills
+
+
+class TestSkillMetaTriggers:
+    """SkillMeta.triggers parsing from frontmatter."""
+
+    @staticmethod
+    def _fm_and_meta(yaml_content: str, tmp_path: Path, path: Path | None = None):
+        from mltgnt.bridges.files_adapter import md_read
+        from mltgnt.skill.loader import build_meta
+
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text(f"---\n{yaml_content}\n---\nbody\n", encoding="utf-8")
+        md = md_read(skill_path.name, repo_root=tmp_path)
+        return build_meta(md.frontmatter, path or Path("/fake/skills/test/SKILL.md"))
+
+    def test_triggers_list_parsed_from_frontmatter(self, tmp_path: Path) -> None:
+        meta = self._fm_and_meta(
+            'name: test\ndescription: desc\ntriggers:\n  - "a"\n  - "b"\n',
+            tmp_path,
+        )
+        assert meta.triggers == ["a", "b"]
+
+    def test_triggers_default_empty_when_missing(self, tmp_path: Path) -> None:
+        meta = self._fm_and_meta("name: test\ndescription: desc\n", tmp_path)
+        assert meta.triggers == []
+
+    def test_triggers_non_list_raises_value_error(self, tmp_path: Path) -> None:
+        from mltgnt.skill.loader import build_meta  # noqa: F401
+
+        with pytest.raises(ValueError, match="triggers"):
+            self._fm_and_meta(
+                'name: test\ndescription: desc\ntriggers: "not a list"\n',
+                tmp_path,
+            )

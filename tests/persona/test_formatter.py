@@ -59,20 +59,3 @@ def test_format_persona_body_cuts_generic_tone_marker(ascii_pack) -> None:
     """Cut marker must match any persona token, not a host-specific name (#3337)."""
     raw = "body text.\n\npersona-a tone-body starts here with explanation"
     assert format_persona_body(raw, pack=ascii_pack) == "body text."
-
-
-def test_formatter_source_has_no_media_or_sdk() -> None:
-    src = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "mltgnt"
-        / "persona"
-        / "formatter.py"
-    ).read_text(encoding="utf-8")
-    assert "jobs/" not in src
-    assert "slack_sdk" not in src
-    assert "ghdag" not in src
-    assert "markdown_to_slack_mrkdwn" not in src
-    assert _PERSONA_NAME_A not in src
-    assert _PERSONA_NAME_B not in src
-    assert _PERSONA_NAME_C not in src

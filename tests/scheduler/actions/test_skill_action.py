@@ -178,7 +178,7 @@ class TestResolveExitCode:
         assert "contract_violation: undeclared PIPELINE_STATUS marker" in diagnostics
         assert "violated_marker=BRUSHUP_DONE" in diagnostics
 
-    def test_marker_absent(self) -> None:
+    def test_marker_missing_from_output(self) -> None:
         # #3172: with enforce=False (default), missing marker does not become CONTRACT_VIOLATION
         code, diagnostics = _resolve_exit_code(True, "processed", ["DONE"])
         assert code == ExitStatus.SUCCESS
@@ -220,7 +220,7 @@ class TestResolveExitCode:
             == "REJECTED:FILE_NOT_FOUND"
         )
 
-    def test_absent_observe_vs_enforce(self) -> None:
+    def test_missing_marker_observe_vs_enforce(self) -> None:
         msg = "processed"
         expected = ["DONE"]
         code_obs, diag_obs = _resolve_exit_code(True, msg, expected, enforce=False)
@@ -469,7 +469,7 @@ class TestResultFrontmatterOptIn:
             )
 
         assert captured_kwargs.get("run_result") is not None
-        assert hasattr(captured_kwargs["run_result"], "chat_input")
+        assert getattr(captured_kwargs["run_result"], "chat_input", None) is not None
 
 
 class TestRunSkillActionExitCodeBranch:
@@ -1082,7 +1082,7 @@ class TestTaskTimeoutSecPassthrough:
         assert isinstance(kwargs["task_timeout_sec"], float)
         assert "task_timeout_sec" not in capsys.readouterr().err
 
-    def test_none_when_absent(self, tmp_path: Path, capsys) -> None:
+    def test_permission_none_when_unset(self, tmp_path: Path, capsys) -> None:
         kwargs = self._capture_single(tmp_path, {})
         assert "task_timeout_sec" in kwargs
         assert kwargs["task_timeout_sec"] is None

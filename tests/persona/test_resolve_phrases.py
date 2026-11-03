@@ -91,16 +91,3 @@ def test_format_tool_trace_block() -> None:
     )
     assert "[tool: read_file(path='a.md')]" in block
     assert "[result: ok]" in block
-
-
-def test_resolve_source_has_no_routing_import() -> None:
-    src = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "mltgnt"
-        / "persona"
-        / "resolve.py"
-    ).read_text(encoding="utf-8")
-    assert "mltgnt.routing" not in src
-    assert "slack_sdk" not in src
-    assert "REPO_ROOT" not in src

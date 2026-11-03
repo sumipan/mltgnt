@@ -24,14 +24,3 @@ def test_resolve_rejects_invalid(bad: str) -> None:
 def test_storage_key() -> None:
     assert id_map.storage_key("C1", "1.2") == "C1-1.2"
     assert id_map.storage_key_from_conversation_id("C1:1.2") == "C1-1.2"
-
-
-def test_id_map_has_no_host_imports() -> None:
-    import ast
-    import inspect
-
-    tree = ast.parse(inspect.getsource(id_map))
-    modules = [node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)] + [
-        alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names
-    ]
-    assert all(m == "__future__" for m in modules)

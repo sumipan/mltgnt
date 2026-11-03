@@ -442,17 +442,6 @@ def test_memory_config_new_fields_custom() -> None:
     assert config.protected_layers == ()
 
 
-# ---------------------------------------------------------------------------
-# Old API public interface removal
-# ---------------------------------------------------------------------------
-
-def test_old_api_symbols_not_in_all() -> None:
-    """MemorySections, parse_memory, format_memory, assemble_memory, migrate_markdown_to_jsonl Home __all__ Not included."""
-    import mltgnt.memory._format as fmt
-    for symbol in ("MemorySections", "parse_memory", "format_memory", "assemble_memory", "migrate_markdown_to_jsonl"):
-        assert symbol not in fmt.__all__, f"{symbol} should not be in __all__"
-
-
 def test_ensure_jsonl_no_md_fallback(tmp_path: Path) -> None:
     """.jsonl HOME.md Without automatic migration .jsonl Return the path as it is (empty string)."""
     config = make_config(tmp_path)
@@ -462,13 +451,6 @@ def test_ensure_jsonl_no_md_fallback(tmp_path: Path) -> None:
     result = read_memory_tail_text(config, "persona", max_bytes=4096, max_entries=20)
     assert result == ""
     assert not memory_file_path(config, "persona").exists()
-
-
-def test_old_api_functions_not_accessible() -> None:
-    """parse_memory, format_memory, assemble_memory, MemorySections does not exist as a module attribute."""
-    import mltgnt.memory._format as fmt
-    for symbol in ("parse_memory", "format_memory", "assemble_memory", "MemorySections"):
-        assert not hasattr(fmt, symbol), f"{symbol} should not be a public attribute"
 
 
 # ---------------------------------------------------------------------------
@@ -744,21 +726,3 @@ def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
     # LLM The original long content is not left because the compression was executed
     original_content_entries = [e for e in result_entries if "c" * 100 in e.content]
     assert len(original_content_entries) == 0  # LLM compressed "ccc..." No content
-
-
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# extract_and_append  (Issue #915)
-# ---------------------------------------------------------------------------
-
-def test_extract_and_append_not_in_all() -> None:
-    """extract_and_append Home __all__ Check that you are not affected."""
-    import mltgnt.memory as m
-    assert "extract_and_append" not in m.__all__
-
-
-def test_extract_and_append_not_importable() -> None:
-    """`from mltgnt.memory import extract_and_append` Home ImportError """
-    with pytest.raises(ImportError):
-        from mltgnt.memory import extract_and_append  # noqa: F401

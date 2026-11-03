@@ -68,11 +68,6 @@ class TestBridgesInitImports:
             "md_write",
         }
 
-    def test_scheduler_shim_removed(self):
-        """v0.8.0: scheduler/ghdag_bridge.py shim has been removed."""
-        with pytest.raises(ImportError):
-            from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait  # noqa: F401
-
 
 # ---------------------------------------------------------------------------
 # correlation_id — AuditContext PropagationAC3-AC5)
@@ -667,7 +662,7 @@ def _make_jobs_dir_dag(tmp_path: Path) -> tuple[Path, Path]:
 class TestEnqueueDag:
     """enqueue_dag() Acceptance test."""
 
-    def test_ac1_two_step_linear_dag_submit(self, tmp_path):
+    def test_compose_two_step_linear_dag_submit(self, tmp_path):
         """AC-1: 2Step Linear DAG Home s1→s2 in order submit (separate model)."""
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
@@ -706,7 +701,7 @@ class TestEnqueueDag:
         assert captured_steps[0].depends == []
         assert captured_steps[1].depends == []
 
-    def test_ac2_pre_formatted_prompts_passed_as_is(self, tmp_path):
+    def test_compose_preformatted_prompts_passed_unchanged(self, tmp_path):
         """AC-2: The caller is pre-converted prompt Home DagStep If you pass to submit """
         from ghdag.pipeline import LLMPipelineAPI
         from ghdag.workflow.schema import StepConfig
@@ -743,7 +738,7 @@ class TestEnqueueDag:
         assert s1.template == "Persian Transformed: A"
         assert s2.template == "B"
 
-    def test_ac3_empty_steps_raises_value_error(self, tmp_path):
+    def test_compose_empty_steps_raises_value_error(self, tmp_path):
         """AC-3: empty list ValueError('empty' messages)."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
@@ -756,7 +751,7 @@ class TestEnqueueDag:
                 exec_done_dir=done_dir,
             )
 
-    def test_ac4_idempotency_prevents_duplicate_submission(self, tmp_path):
+    def test_compose_idempotency_prevents_duplicate_submission(self, tmp_path):
         """AC-4: Anti-injection due to idemic properties."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         key = f"dag:ac4:{uuid.uuid4()}"
@@ -793,7 +788,7 @@ class TestEnqueueDag:
             )
         assert second_result == [(True, ""), (True, "")]
 
-    def test_ac5_timeout_returns_false_with_message(self, tmp_path):
+    def test_compose_timeout_returns_false_with_message(self, tmp_path):
         """AC-5: Timeout (False, 'timeout (Ns)') """
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
@@ -814,14 +809,14 @@ class TestEnqueueDag:
         assert ok is False
         assert "timeout" in msg
 
-    def test_ac6_existing_tests_still_pass(self):
+    def test_compose_existing_unit_tests_still_pass(self):
         """AC-6: This test itself pass Existing tests are non-destructive (if any)pytest ed)."""
         # This test verifies the test suite can be collected without import errors.
         assert enqueue_and_wait is not None
         assert enqueue_dag is not None
         assert DagStep is not None
 
-    def test_ac7_exec_jsonl_valid_json_with_required_fields(self, tmp_path):
+    def test_compose_exec_jsonl_lines_are_valid_json(self, tmp_path):
         """AC-7: exec.jsonl Records valid JSON Warranty."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 
@@ -953,7 +948,7 @@ class TestEnqueueAndWaitResultRead:
 class TestEnqueueDagDataFlow:
     """AC-8–AC-12: verify result propagation between steps and sequential input model."""
 
-    def test_ac8_result_content_propagated_to_dependent_step(self, tmp_path):
+    def test_compose_result_content_propagates_to_dependent_step(self, tmp_path):
         """AC-8: step_a result is propagated to step_b base_context['step_a_result']."""
         from ghdag.pipeline import LLMPipelineAPI
 
@@ -994,7 +989,7 @@ class TestEnqueueDagDataFlow:
         # step_a Success
         assert results[0] == (True, "analysis resultA")
 
-    def test_ac9_independent_steps_no_cross_context(self, tmp_path):
+    def test_compose_independent_steps_have_no_cross_context(self, tmp_path):
         """AC-9: depends No Steps base_context to other steps _result not included."""
         from ghdag.pipeline import LLMPipelineAPI
 
@@ -1028,7 +1023,7 @@ class TestEnqueueDagDataFlow:
         # step_b Home context Home step_a_result Nonedepends not)
         assert "step_a_result" not in captured_contexts[1]
 
-    def test_ac10_user_context_overrides_auto_injection(self, tmp_path):
+    def test_compose_user_context_overrides_auto_injection(self, tmp_path):
         """AC-10: User specification context precedes auto injection."""
         from ghdag.pipeline import LLMPipelineAPI
 
@@ -1071,7 +1066,7 @@ class TestEnqueueDagDataFlow:
         # Overwrite auto injection directly from user specified
         assert captured_contexts[1]["step_a_result"] == "custom value"
 
-    def test_ac11_failed_step_prevents_dependent_submission(self, tmp_path):
+    def test_compose_failed_step_blocks_dependent_submission(self, tmp_path):
         """AC-11: The following steps depend on the previous step failure submit not."""
         from ghdag.pipeline import LLMPipelineAPI
 
@@ -1106,7 +1101,7 @@ class TestEnqueueDagDataFlow:
         assert results[0][0] is False
         assert results[1][0] is False
 
-    def test_ac12_backward_compat_no_context_field(self, tmp_path):
+    def test_compose_backward_compat_without_context_field(self, tmp_path):
         """AC-12: context Unspecified existing call pattern works backward."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
 

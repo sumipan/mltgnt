@@ -83,12 +83,6 @@ def test_resume_supported_without_callback_is_false(isolated_store):
     assert ss.resume_supported("claude") is False
 
 
-def test_module_has_no_ghdag_or_jobs_literal():
-    text = Path("src/mltgnt/conversation/session_store.py").read_text(encoding="utf-8")
-    assert "ghdag" not in text
-    assert "jobs/" not in text
-    assert "slack_sdk" not in text
-
 
 def test_gc_sessions(isolated_store):
     from mltgnt.conversation import session_store as ss

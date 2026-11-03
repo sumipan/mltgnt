@@ -23,7 +23,7 @@ def test_deferred_promise_detected(ascii_pack) -> None:
     assert match_deferred_promise("will do later", pack=ascii_pack) is not None
 
 
-def test_deferred_promise_none_when_absent(ascii_pack) -> None:
+def test_deferred_promise_none_for_non_matching_input(ascii_pack) -> None:
     assert match_deferred_promise("sounds good", pack=ascii_pack) is None
 
 

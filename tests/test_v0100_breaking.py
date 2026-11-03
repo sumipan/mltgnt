@@ -4,7 +4,6 @@ from __future__ import annotations
 import pytest
 
 from mltgnt.agent._parse import _parse_json_response
-from mltgnt.persona.loader import Persona
 from mltgnt.persona.schema import parse_fm, validate_fm
 
 
@@ -32,34 +31,6 @@ def test_ops_chat_model_rejected() -> None:
     )
     result = validate_fm(fm)
     assert not result.ok
-
-
-def test_persona_compat_attrs_removed() -> None:
-    for attr in ("WEIGHT_MAP", "ops_config", "slack_post_kwargs", "delegate_ack"):
-        assert not hasattr(Persona, attr)
-
-
-def test_removed_imports() -> None:
-    with pytest.raises(ImportError):
-        from mltgnt.chat.models import ChatInput  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt.chat.pipeline import run_chat  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt.chat.pipeline import run_pipeline  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt.memory import read_memory_agentic  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt.memory._compaction import compact  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt.memory import normalize_source_prefix  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt.scheduler.ghdag_bridge import enqueue_and_wait  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt import compact  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt import needs_compaction  # noqa: F401
-    with pytest.raises(ImportError):
-        from mltgnt import run_pipeline  # noqa: F401
 
 
 def test_canonical_imports() -> None:

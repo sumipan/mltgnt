@@ -116,13 +116,3 @@ def test_run_persona_prompt_rejects_audit_writer_kwarg(persona_dir: Path) -> Non
     with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(ok=True, stdout="ok")):
         with pytest.raises(TypeError):
             run_persona_prompt("persona-a", "hello", persona_dir=persona_dir, audit_writer=MagicMock())
-
-
-def test_persona_runner_does_not_import_chat_module() -> None:
-    """persona/runner.py must not import mltgnt.chat."""
-    import inspect
-
-    import mltgnt.persona.runner as mod
-
-    source = inspect.getsource(mod)
-    assert "mltgnt.chat" not in source

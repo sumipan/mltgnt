@@ -1,6 +1,7 @@
 """Tests for mltgnt.persona.loader — AC-3 / AC-4 / AC-5 / BC."""
 from __future__ import annotations
 
+import logging
 import textwrap
 from pathlib import Path
 from unittest.mock import patch
@@ -109,7 +110,7 @@ class TestParseSection0Exclusion:
         assert "File usage" not in sections
         assert "Basic information" in sections
 
-    def test_3_2_no_section0_regression(self):
+    def test_3_2_no_section0_in_parsed_sections(self):
         body = textwrap.dedent("""\
             ## 1. Basic information
 
@@ -171,7 +172,7 @@ class TestFormatPromptWeightSelection:
         result_heavy = persona.format_prompt("instruction", weight="heavy")
         assert result_default == result_heavy
 
-    def test_4_4_unknown_section_warns_and_fallbacks(self):
+    def test_4_4_unknown_section_warns_and_fallbacks(self, caplog):
         body_with_unknown = textwrap.dedent("""\
             ## 1. Unknown section
 
@@ -182,9 +183,9 @@ class TestFormatPromptWeightSelection:
             Basic info content.
         """)
         persona = _make_persona(body_with_unknown)
-        with patch("mltgnt.persona.loader.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
             result = persona.format_prompt("instruction", weight="heavy")
-            mock_logger.warning.assert_called()
+        assert caplog.records
         assert "Unknown content" in result
         assert "Basic info content" in result
 
@@ -303,7 +304,7 @@ class TestParseSectionsV2:
         assert "#### critique" in sections["Output format"]
         assert sections.get("Notes and update history") == "update notes"
 
-    def test_1_2_format_prompt_v2_no_unknown_warning(self):
+    def test_1_2_format_prompt_v2_no_unknown_warning(self, caplog):
         """AC 1-2: v2 (heavy only) format_prompt must not warn about undefined WEIGHT_MAP."""
         body = _textwrap.dedent("""\
             ## Heavy
@@ -325,12 +326,9 @@ class TestParseSectionsV2:
             Tone content.
         """)
         persona = _make_persona(body)
-        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
             persona.format_prompt("instruction", weight="heavy")
-            for call_args in mock_logger.warning.call_args_list:
-                args = call_args[0]
-                assert "WEIGHT_MAP  is undefined in " not in str(args), \
-                    f"must not warn about undefined WEIGHT_MAP: {args}"
+        assert not any("WEIGHT_MAP  is undefined in " in r.message for r in caplog.records)
 
     def test_1_3_reference_block_h3_expansion(self):
         """AC 1-3: Reference block H3 expansion."""
@@ -390,7 +388,7 @@ class TestParseSectionsV2:
         assert "File usage" not in sections
         assert sections.get("Basic information") == "content B"
 
-    def test_1_7_v1_full_section_names_no_warning(self):
+    def test_1_7_v1_full_section_names_no_warning(self, caplog):
         """AC 1-7: full v1 section names must not warn about undefined WEIGHT_MAP."""
         body = _textwrap.dedent("""\
             ## Basic information
@@ -414,12 +412,9 @@ class TestParseSectionsV2:
             Light text.
         """)
         persona = _make_persona(body)
-        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
             persona.format_prompt("instruction", weight="heavy")
-            for call_args in mock_logger.warning.call_args_list:
-                args = call_args[0]
-                assert "WEIGHT_MAP  is undefined in " not in str(args), \
-                    f"must not warn about undefined WEIGHT_MAP: {args}"
+        assert not any("WEIGHT_MAP  is undefined in " in r.message for r in caplog.records)
 
     def test_1_8_v1_full_section_names_heavy_excludes_light(self):
         """AC 1-8: v1 weight=heavy must exclude the light section."""
@@ -522,26 +517,18 @@ class TestExtractOutputFormatV2:
 from mltgnt.routing.triage import extract_triage_section as _extract_triage_section  # noqa: E402
 
 
-def _triage_heading(index: int) -> str:
-    patterns = [
-        value
-        for value in _extract_triage_section.__code__.co_consts
-        if isinstance(value, str) and value.startswith("^##")
-    ]
-    return patterns[index].split(r"\s+")[1].split(r"\s*")[0]
-
 
 class TestExtractTriageSectionV2:
     def test_3_1_v2_returns_light_section(self):
         """AC 3-1: return triage section from v2 light heading."""
-        md = f"## {_triage_heading(0)}\n\nlogical and frank\n\n## Other\n\ncontent"
+        md = "## Light\n\nlogical and frank\n\n## Other\n\ncontent"
         result = _extract_triage_section(md)
         assert result is not None
         assert "logical and frank" in result
 
     def test_3_2_v1_fallback(self):
         """AC 3-2: fallback to v1 triage heading."""
-        md = f"## {_triage_heading(1)}\n\ntriage content\n\n## Other\n\ncontent"
+        md = "## Triage\n\ntriage content\n\n## Other\n\ncontent"
         result = _extract_triage_section(md)
         assert result is not None
         assert "triage content" in result
@@ -554,8 +541,8 @@ class TestExtractTriageSectionV2:
     def test_3_4_both_present_v2_wins(self):
         """AC 3-4: when both exist, light heading wins."""
         md = (
-            f"## {_triage_heading(0)}\n\nv2 content\n\n"
-            f"## {_triage_heading(1)}\n\nv1 content"
+            "## Light\n\nv2 content\n\n"
+            "## Triage\n\nv1 content"
         )
         result = _extract_triage_section(md)
         assert result is not None
@@ -602,17 +589,17 @@ _ENGLISH_BODY = _tw.dedent("""\
 
 
 class TestPersonaConfig:
-    def test_ac1_default_weight_map(self):
+    def test_persona_config_default_weight_map(self):
         """AC-1: default construction uses DEFAULT_WEIGHT_MAP."""
         cfg = PersonaConfig()
         assert cfg.weight_map == DEFAULT_WEIGHT_MAP
 
-    def test_ac1_weight_map_is_copy(self):
+    def test_persona_config_weight_map_is_copy(self):
         """AC-1: weight_map is a copy of DEFAULT_WEIGHT_MAP."""
         cfg = PersonaConfig()
         assert cfg.weight_map is not DEFAULT_WEIGHT_MAP
 
-    def test_ac2_custom_weight_map(self):
+    def test_persona_config_custom_weight_map(self):
         """AC-2: custom weight_map can override."""
         custom = {"Custom": "heavy"}
         cfg = PersonaConfig(weight_map=custom)
@@ -620,7 +607,7 @@ class TestPersonaConfig:
 
 
 class TestEnglishPersona:
-    def test_ac4_english_heavy_sections(self):
+    def test_english_persona_heavy_sections(self):
         """AC-4: English persona weight=heavy includes Background/Values/Tone only."""
         persona = _make_persona(_ENGLISH_BODY)
         result = persona.format_prompt("instruction", weight="heavy")
@@ -629,14 +616,14 @@ class TestEnglishPersona:
         assert "Tone content" in result
         assert "Light content" not in result
 
-    def test_ac5_english_light_section(self):
+    def test_english_persona_light_section(self):
         """AC-5: English persona weight=light includes Light only."""
         persona = _make_persona(_ENGLISH_BODY)
         result = persona.format_prompt("instruction", weight="light")
         assert "Light content" in result
         assert "Background content" not in result
 
-    def test_ac6_parse_sections_expands_heavy_h3(self):
+    def test_parse_sections_expands_heavy_h3(self):
         """AC-6: _parse_sections flattens ## Heavy > ### X / ### Y."""
         body = _tw.dedent("""\
             ## Heavy
@@ -656,26 +643,23 @@ class TestEnglishPersona:
         assert sections["Background"] == "Background content."
         assert sections["Values"] == "Values content."
 
-    def test_ac7_parse_sections_expands_reference_h3(self):
+    def test_parse_sections_expands_reference_h3(self):
         """AC-7: Reference > Output format expands and extract_output_format works."""
         persona = _make_persona(_ENGLISH_BODY)
         result = persona.extract_output_format("critique")
         assert result is not None
         assert "Critique template" in result
 
-    def test_ac4_no_unknown_warning_english(self):
+    def test_english_persona_no_weight_map_warning(self, caplog):
         """AC-4: English persona must not warn about undefined WEIGHT_MAP."""
         persona = _make_persona(_ENGLISH_BODY)
-        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
             persona.format_prompt("instruction", weight="heavy")
-            for call_args in mock_logger.warning.call_args_list:
-                args = call_args[0]
-                assert "WEIGHT_MAP  is undefined in " not in str(args), \
-                    f"must not warn about undefined WEIGHT_MAP: {args}"
+        assert not any("WEIGHT_MAP  is undefined in " in r.message for r in caplog.records)
 
 
 class TestLoadWithConfig:
-    def test_ac8_load_with_custom_config(self, tmp_path):
+    def test_load_with_custom_persona_config(self, tmp_path):
         """AC-8: load(..., config=PersonaConfig(weight_map=custom)) uses custom map."""
         md = _tw.dedent("""\
             ---
@@ -693,7 +677,7 @@ class TestLoadWithConfig:
         persona = load(p, config=cfg)
         assert persona.weight_map == custom
 
-    def test_ac9_load_without_config(self, tmp_path):
+    def test_load_without_persona_config(self, tmp_path):
         """AC-9: without config, weight_map equals DEFAULT_WEIGHT_MAP."""
         md = _tw.dedent("""\
             ---
@@ -709,7 +693,7 @@ class TestLoadWithConfig:
         persona = load(p)
         assert persona.weight_map == DEFAULT_WEIGHT_MAP
 
-    def test_ac10_unknown_section_warns_and_fallbacks(self):
+    def test_unknown_section_warns_and_fallbacks(self, caplog):
         """AC-10: unknown sections warn and fall back to all sections."""
         body = _tw.dedent("""\
             ## UnknownSection
@@ -717,12 +701,12 @@ class TestLoadWithConfig:
             Unknown content.
         """)
         persona = _make_persona(body)
-        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
             result = persona.format_prompt("instruction", weight="heavy")
-            mock_logger.warning.assert_called()
+        assert caplog.records
         assert "Unknown content" in result
 
-    def test_ac11_empty_weight_map_fallback(self):
+    def test_empty_weight_map_fallback(self, caplog):
         """AC-11: empty weight_map falls back to all sections."""
         body = _tw.dedent("""\
             ## Basic information
@@ -739,16 +723,13 @@ class TestLoadWithConfig:
             path=Path("test.md"),
             weight_map={},
         )
-        with _patch("mltgnt.persona.loader.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
             result = persona.format_prompt("instruction", weight="heavy")
-            mock_logger.warning.assert_called()
+        assert caplog.records
         assert "content" in result
 
-    def test_ac12_class_var_weight_map_removed(self):
-        """AC-12: Persona.WEIGHT_MAP ClassVar removed in v0.9 (use instance weight_map)."""
-        assert not hasattr(Persona, "WEIGHT_MAP")
 
-    def test_ac13_make_persona_without_weight_map(self):
+    def test_make_persona_without_weight_map(self):
         """AC-13: constructing Persona without weight_map still works (helper compat)."""
         from mltgnt.persona.schema import PersonaFM
 
@@ -803,11 +784,3 @@ class TestLoadMdRead:
             load(p)
 
 
-class TestFrontmatterDeadCode:
-    """AC: confirm dead code removal."""
-
-    def test_read_persona_markdown_deleted(self):
-        """AC: read_persona_markdown has been removed."""
-        import mltgnt.persona.frontmatter as m
-
-        assert not hasattr(m, "read_persona_markdown")

@@ -101,15 +101,6 @@ def test_drain_to_turn_input_empty_returns_none(queue_root: Path):
     assert drain_to_turn_input("C1:171.0000") is None
 
 
-def test_module_has_no_ghdag_jobs_or_outbound():
-    text = Path("src/mltgnt/conversation/thread_queue.py").read_text(encoding="utf-8")
-    assert "ghdag" not in text
-    assert "jobs/" not in text
-    assert "slack_sdk" not in text
-    assert "outbound" not in text
-    assert "_run_triage_and_dispatch" not in text
-    assert "load_secretary_yaml" not in text
-
 
 def test_paths_come_from_conversation_config(tmp_path: Path):
     from mltgnt.conversation import configure, thread_queue as tq

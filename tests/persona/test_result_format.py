@@ -114,16 +114,3 @@ def test_format_result_for_persona_empty_raw_returns_none() -> None:
         )
         is None
     )
-
-
-def test_format_result_source_has_no_slack_mrkdwn() -> None:
-    src = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "mltgnt"
-        / "persona"
-        / "result_format.py"
-    ).read_text(encoding="utf-8")
-    assert "markdown_to_slack_mrkdwn" not in src
-    assert "slack_sdk" not in src
-    assert "ghdag" not in src

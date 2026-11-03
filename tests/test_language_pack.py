@@ -56,7 +56,7 @@ def test_config_reads_aliases_from_current_pack(monkeypatch: pytest.MonkeyPatch)
     assert PersonaConfig().section_aliases == _DUMMY_ALIASES
 
 
-def test_sanitize_phase1_output_uses_pack(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sanitize_compaction_meta_output_uses_pack(monkeypatch: pytest.MonkeyPatch) -> None:
     from mltgnt.memory.compaction import _sanitize_phase1_output
 
     _install(monkeypatch, phase1_meta_prefixes=("META-ACK",), phase1_meta_markers=("**META-STATS**",))

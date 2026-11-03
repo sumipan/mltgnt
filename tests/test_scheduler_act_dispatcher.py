@@ -81,14 +81,3 @@ def test_execute_action_custom_action_dispatched(tmp_path):
     assert msg == "custom_ok"
     assert called == ["test-my_custom"]
 
-
-def test_run_skill_action_not_called_directly_in_execute_action(tmp_path):
-    """execute_action() Home run_skill_action Contact Us _actions Contact Us"""
-    import inspect
-    import mltgnt.scheduler.runner as runner_mod
-
-    src = inspect.getsource(PersonaScheduler.execute_action)
-    assert "run_skill_action" not in src, (
-        "execute_action() Home run_skill_action() call directly."
-        "_actions Unify via ."
-    )

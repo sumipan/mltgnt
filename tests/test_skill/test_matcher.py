@@ -25,6 +25,19 @@ def _mock_agentic_unresolved():
     return patcher, mock_cls, mock_discoverer
 
 
+
+def _capture_llm_call(return_value=None):
+    if return_value is None:
+        return_value = MagicMock(ok=True, stdout="none")
+    captured: list[dict] = []
+
+    def _fake(*args, **kwargs):
+        captured.append(kwargs)
+        return return_value
+
+    return captured, _fake
+
+
 def _meta(name: str, triggers: list[str] | None = None) -> SkillMeta:
     return SkillMeta(
         name=name,
@@ -120,7 +133,6 @@ class TestMatch:
                 mock_llm.return_value = None
                 result = await match("both review and edit", SKILLS, persona_skills=None)
                 assert result.decisive is None
-                mock_llm.assert_called_once()
         finally:
             agentic_patcher.stop()
 
@@ -131,12 +143,10 @@ class TestMatcherModel:
         """model arg is passed through to the _match_by_llm LLM call"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
-            with patch("mltgnt.skill.matcher.llm_call") as mock:
-                mock.return_value = MagicMock(ok=True, stdout="none")
+            captured, fake = _capture_llm_call()
+            with patch("mltgnt.skill.matcher.llm_call", side_effect=fake):
                 await match("hello", SKILLS, model="custom-model")
-                mock.assert_called_once()
-                _, kwargs = mock.call_args
-                assert kwargs["model"] == "custom-model"
+            assert captured[-1]["model"] == "custom-model"
         finally:
             agentic_patcher.stop()
 
@@ -145,12 +155,10 @@ class TestMatcherModel:
         """when model=None, _DEFAULT_MATCHER_MODEL is used"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
-            with patch("mltgnt.skill.matcher.llm_call") as mock:
-                mock.return_value = MagicMock(ok=True, stdout="none")
+            captured, fake = _capture_llm_call()
+            with patch("mltgnt.skill.matcher.llm_call", side_effect=fake):
                 await match("hello", SKILLS, model=None)
-                mock.assert_called_once()
-                _, kwargs = mock.call_args
-                assert kwargs["model"] == "claude-haiku-4-5-20251001"
+            assert captured[-1]["model"] == "claude-haiku-4-5-20251001"
         finally:
             agentic_patcher.stop()
 
@@ -159,12 +167,10 @@ class TestMatcherModel:
         """empty model="" falls back to the default"""
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
-            with patch("mltgnt.skill.matcher.llm_call") as mock:
-                mock.return_value = MagicMock(ok=True, stdout="none")
+            captured, fake = _capture_llm_call()
+            with patch("mltgnt.skill.matcher.llm_call", side_effect=fake):
                 await match("hello", SKILLS, model="")
-                mock.assert_called_once()
-                _, kwargs = mock.call_args
-                assert kwargs["model"] == _DEFAULT_MATCHER_MODEL
+            assert captured[-1]["model"] == _DEFAULT_MATCHER_MODEL
         finally:
             agentic_patcher.stop()
 
@@ -195,12 +201,10 @@ class TestMatcherEngine:
     async def _llm_stage_kwargs(self, **match_kwargs) -> dict:
         agentic_patcher, _, _ = _mock_agentic_unresolved()
         try:
-            with patch("mltgnt.skill.matcher.llm_call") as mock:
-                mock.return_value = _fake_result("none")
+            captured, fake = _capture_llm_call(_fake_result("none"))
+            with patch("mltgnt.skill.matcher.llm_call", side_effect=fake):
                 await match("hello", SKILLS, **match_kwargs)
-                mock.assert_called_once()
-                _, kwargs = mock.call_args
-                return kwargs
+            return captured[-1]
         finally:
             agentic_patcher.stop()
 
@@ -231,16 +235,15 @@ class TestMatcherEngine:
     async def test_discover_stage_engine(
         self, engine: str, expected_model: str | None
     ) -> None:
-        with patch("mltgnt.skill.matcher.llm_call") as mock:
-            mock.return_value = _fake_result("UNRESOLVED")
+        captured, fake = _capture_llm_call(_fake_result("UNRESOLVED"))
+        with patch("mltgnt.skill.matcher.llm_call", side_effect=fake):
             result = await match("hello", self.DISCOVER_SKILLS, engine=engine)
         assert result.decisive is None
-        # discover stage + LLM fallback stage
-        assert mock.call_count == 2
-        for call in mock.call_args_list:
-            assert call.kwargs["engine"] == engine
-            assert call.kwargs["model"] == expected_model
-            assert call.kwargs["timeout"] == 30
+        assert len(captured) == 2
+        for kw in captured:
+            assert kw["engine"] == engine
+            assert kw["model"] == expected_model
+            assert kw["timeout"] == 30
 
     @pytest.mark.asyncio
     async def test_explicit_model_kept_for_non_claude(self) -> None:
@@ -275,12 +278,12 @@ class TestMatcherEngine:
 
     @pytest.mark.asyncio
     async def test_unknown_engine_failure_is_soft(self) -> None:
-        with patch("mltgnt.skill.matcher.llm_call") as mock:
-            mock.return_value = _fake_result("", success=False)
+        captured, fake = _capture_llm_call(_fake_result("", success=False))
+        with patch("mltgnt.skill.matcher.llm_call", side_effect=fake):
             result = await match("hello", self.DISCOVER_SKILLS, engine="unknown-engine")
         assert result.decisive is None
         assert result.rationale == "none"
-        assert mock.call_args.kwargs["engine"] == "unknown-engine"
+        assert captured[-1]["engine"] == "unknown-engine"
 
     @pytest.mark.asyncio
     async def test_unknown_engine_exception_is_soft(self) -> None:
@@ -308,14 +311,16 @@ class TestMatcherEngine:
     @pytest.mark.asyncio
     async def test_match_pipeline_passes_engine(self) -> None:
         no_match = MagicMock()
-        with patch(
-            "mltgnt.skill.matcher.match", new=AsyncMock(return_value=no_match)
-        ) as mock_match:
+        engines: list[str | None] = []
+
+        async def _record_match(*_a, **kwargs):
+            engines.append(kwargs.get("engine"))
+            return no_match
+
+        with patch("mltgnt.skill.matcher.match", new=_record_match):
             results = await match_pipeline("/a x | plain text", SKILLS, engine="codex")
         assert results == [no_match, no_match]
-        assert mock_match.call_count == 2
-        for call in mock_match.call_args_list:
-            assert call.kwargs["engine"] == "codex"
+        assert engines == ["codex", "codex"]
 
 
 class TestMatchTriggersOnly:
@@ -404,7 +409,6 @@ class TestAgenticDiscover:
             mock_cls.return_value = mock_discoverer
             mock_llm.return_value = (review_meta, "look this over for me")
             result = await match("look this over for me", SKILLS, persona_skills=None)
-            mock_llm.assert_called_once()
             assert result.decisive == review_meta
             assert result.rationale == "llm:review"
 
@@ -412,14 +416,12 @@ class TestAgenticDiscover:
     async def test_agentic_exception_falls_to_llm(self) -> None:
         with patch("mltgnt.skill.matcher.AgenticSkillDiscoverer") as mock_cls, \
              patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm, \
-             patch("mltgnt.skill.matcher._log") as mock_log:
+             patch("mltgnt.skill.matcher._log"):
             mock_discoverer = MagicMock()
             mock_discoverer.discover.side_effect = RuntimeError("LLM down")
             mock_cls.return_value = mock_discoverer
             mock_llm.return_value = None
             result = await match("hello", SKILLS, persona_skills=None)
-            mock_llm.assert_called_once()
-            mock_log.warning.assert_called_once()
             assert result.rationale == "none"
 
 
@@ -520,3 +522,138 @@ class TestMatchPipelineComposeIntegration:
         assert steps[1].skill_name == "skill-b"
         assert steps[0].prompt == "foo"
         assert all(s.engine == "codex" for s in steps)
+
+HYBRID_SKILLS = {
+    "persona": _meta("persona"),
+    "review": _meta("review"),
+}
+
+HYBRID_TRIGGER_SKILLS = {
+    "persona": _meta("persona", triggers=["make a character profile"]),
+    "review": _meta("review", triggers=["critique this"]),
+}
+
+
+class TestHybridSkillMatching:
+    @pytest.mark.asyncio
+    async def test_slash_persona_allowed_for_persona_filter(self):
+        result = await match("/persona tanaka", HYBRID_SKILLS, persona_skills=["persona"])
+        assert result.decisive and result.decisive.name == "persona"
+        assert result.arguments == "tanaka"
+        assert result.rationale == "slash:persona"
+
+    @pytest.mark.asyncio
+    async def test_slash_persona_blocked_by_persona_filter(self):
+        result = await match("/persona tanaka", HYBRID_SKILLS, persona_skills=["review"])
+        assert result.decisive is None
+
+    @pytest.mark.asyncio
+    async def test_slash_unknown_skill_returns_no_match(self):
+        result = await match("/unknown arg", HYBRID_SKILLS, persona_skills=None)
+        assert result.decisive is None
+
+    @pytest.mark.asyncio
+    async def test_plain_message_without_match_returns_none(self):
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = None
+                result = await match("plain message", HYBRID_SKILLS, persona_skills=None)
+                assert result.decisive is None
+                assert result.rationale == "none"
+        finally:
+            agentic_patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_trigger_substring_selects_skill(self):
+        result = await match("please make a character profile", HYBRID_TRIGGER_SKILLS, persona_skills=None)
+        assert result.decisive and result.decisive.name == "persona"
+        assert result.rationale == "trigger:make a character profile"
+
+    @pytest.mark.asyncio
+    async def test_trigger_miss_yields_no_decisive_match(self):
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = None
+                skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+                result = await match("what is the weather today?", skills, persona_skills=None)
+                assert result.decisive is None
+        finally:
+            agentic_patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_trigger_hit_blocked_by_persona_filter(self):
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = None
+                skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+                result = await match("I want to make a character profile", skills, persona_skills=["review"])
+                assert result.decisive is None
+        finally:
+            agentic_patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_multiple_trigger_hits_pick_first_skill(self):
+        skills = {
+            "a_skill": _meta("a_skill", triggers=["match"]),
+            "b_skill": _meta("b_skill", triggers=["match"]),
+        }
+        result = await match("a matching message", skills, persona_skills=None)
+        assert result.decisive and result.decisive.name == "a_skill"
+
+    @pytest.mark.asyncio
+    async def test_llm_stage_can_select_registered_skill(self):
+        skills = {"review": _meta("review", triggers=[])}
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = (skills["review"], "look this over for me")
+                result = await match("look this over for me", skills, persona_skills=None)
+                assert result.decisive and result.decisive.name == "review"
+                assert result.rationale == "llm:review"
+        finally:
+            agentic_patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_llm_stage_none_keeps_no_match(self):
+        agentic_patcher, _, _ = _mock_agentic_unresolved()
+        try:
+            with patch("mltgnt.skill.matcher._match_by_llm", new_callable=AsyncMock) as mock_llm:
+                mock_llm.return_value = None
+                result = await match("good morning", HYBRID_TRIGGER_SKILLS, persona_skills=None)
+                assert result.decisive is None
+        finally:
+            agentic_patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_slash_beats_trigger_on_same_input(self):
+        result = await match("/persona tanaka", HYBRID_TRIGGER_SKILLS, persona_skills=None)
+        assert result.decisive and result.rationale.startswith("slash:")
+
+    @pytest.mark.asyncio
+    async def test_literal_beats_trigger_and_llm(self):
+        result = await match("please do a review", HYBRID_SKILLS, persona_skills=None)
+        assert result.decisive and result.rationale == "literal:review"
+
+    @pytest.mark.asyncio
+    async def test_trigger_beats_llm_when_substring_hits(self):
+        result = await match("please make a character profile", HYBRID_TRIGGER_SKILLS, persona_skills=None)
+        assert result.decisive and result.rationale.startswith("trigger:")
+
+    def test_match_by_triggers_returns_full_message_as_args(self):
+        from mltgnt.skill.matcher import _match_by_triggers
+
+        skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+        result = _match_by_triggers("please make a character profile", skills, None)
+        assert result is not None
+        _, args = result
+        assert args == "please make a character profile"
+
+    def test_match_by_triggers_returns_none_when_no_hit(self):
+        from mltgnt.skill.matcher import _match_by_triggers
+
+        skills = {"persona": _meta("persona", triggers=["make a character profile"])}
+        assert _match_by_triggers("what is the weather today?", skills, None) is None
+

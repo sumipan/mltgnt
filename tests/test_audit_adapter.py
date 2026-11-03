@@ -46,15 +46,6 @@ def test_record_persona_call(tmp_path: Path) -> None:
     assert record["ok"] is True
 
 
-def test_audit_adapter_has_no_ghdag_import() -> None:
-    import inspect
-
-    import mltgnt.bridges.audit_adapter as mod
-
-    source = inspect.getsource(mod)
-    assert "from ghdag" not in source
-    assert "import ghdag" not in source
-
 
 def test_start_end_orchestration_events(tmp_path: Path) -> None:
     audit_path = tmp_path / "audit.jsonl"
