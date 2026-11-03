@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.134.9
+
 - **Testing policy**: split oversized test modules (T8) into focused files without changing test names (Issue #5968).
 
 ## v0.134.8
