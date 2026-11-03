@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.134.8
+
 - **Testing policy**: remove T1-T5 anti-pattern tests and consolidate behavior-focused coverage (Issue #5963).
 
 ## v0.134.7
