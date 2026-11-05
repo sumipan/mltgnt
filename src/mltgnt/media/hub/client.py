@@ -111,8 +111,10 @@ class UrllibTransport:
         if not isinstance(parsed, dict):
             return reason
         detail = parsed.get("detail")
-        if isinstance(detail, dict) and isinstance(detail.get("reason"), str):
-            return detail["reason"]
+        if isinstance(detail, dict):
+            detail_reason = detail.get("reason")
+            if isinstance(detail_reason, str):
+                return detail_reason
         if isinstance(detail, str):
             return detail
         return reason
