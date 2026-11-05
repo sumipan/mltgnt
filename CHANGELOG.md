@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.135.2
+
 - **Hub guard**: `too_fast` applies only within an existing thread; root posts no longer inherit the room-wide message interval check (Issue #6030).
 - **Hub client**: `HubClient.last_error` and `UrllibTransport.last_error` report structured failure reasons, including `http:<status>:<reason>` from API rejections, without changing transport return types.
 
