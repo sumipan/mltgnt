@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Mapping
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Literal
+from unittest.mock import patch
 
 import pytest
+import urllib.error
 
 from mltgnt.interfaces.hub import HubAddress, HubMessage, HubTransport
 from mltgnt.interfaces.media import MediaClient, Status
@@ -39,6 +43,8 @@ class FakeTransport:
         self.room_today_count = 0
         self.fail_send = False
         self.fail_guard = False
+        self.fail_revise = False
+        self.last_error: str | None = None
         self.revise_calls: list[tuple[str, str, str, dict[str, Any]]] = []
         self.raise_on_send = False
         self.raise_on_revise = False
@@ -63,6 +69,8 @@ class FakeTransport:
     ) -> bool:
         if self.raise_on_revise:
             raise RuntimeError("revise boom")
+        if self.fail_revise:
+            return False
         self.revise_calls.append((room, message_id, kind, {"text": text, "status": status}))
         return True
 
@@ -231,3 +239,128 @@ def test_post_carries_display(tmp_path: Path) -> None:
     HubClient(_config(tmp_path), persona="persona-x", transport=bare).post("hi", "hub.r1")
     assert bare.sent[0].display is None
     assert "display" not in _message_to_post_body(bare.sent[0])
+
+
+def _hub_message_for_transport() -> HubMessage:
+    return HubMessage(
+        id="m1",
+        ts=None,
+        room="r1",
+        thread=None,
+        sender=HubAddress("host-a", None),
+        to=None,
+        text="hi",
+        attachments=(),
+        hop=0,
+        origin_id=None,
+        kind="message",
+        status=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("response_body", "expected_reason"),
+    [
+        ({"detail": {"reason": "too_fast"}}, "http:409:too_fast"),
+        ({"detail": "id_conflict"}, "http:409:id_conflict"),
+    ],
+)
+def test_urllib_transport_extracts_http_error_reason(
+    tmp_path: Path,
+    response_body: dict[str, object],
+    expected_reason: str,
+) -> None:
+    """Issue #6030."""
+    payload = json.dumps(response_body).encode()
+    http_error = urllib.error.HTTPError(
+        url="http://127.0.0.1:8790/rooms/r1/messages",
+        code=409,
+        msg="Conflict",
+        hdrs=None,
+        fp=BytesIO(payload),
+    )
+    transport = UrllibTransport(_config(tmp_path), environ={"HUB_TOKEN": "secret"})
+    with patch("urllib.request.urlopen", side_effect=http_error):
+        assert transport.send(_hub_message_for_transport()) is None
+    assert transport.last_error == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("setup", "expected"),
+    [
+        ("bad_space", "room"),
+        ("bad_extra", "input"),
+        ("filter_block", "filter"),
+        ("filter_exception", "filter"),
+        ("guard_reject", "guard:room_daily_limit"),
+        ("send_fail", "transport"),
+        ("send_http", "http:409:too_fast"),
+    ],
+)
+def test_post_last_error_categories_and_success_reset(
+    tmp_path: Path,
+    setup: str,
+    expected: str,
+) -> None:
+    """Issue #6030."""
+    transport = FakeTransport()
+    config_kwargs: dict[str, object] = {}
+    if setup == "filter_block":
+
+        def block(_text: str) -> str | None:
+            return None
+
+        config_kwargs["outbound_filter"] = block
+    if setup == "filter_exception":
+
+        def broken(_text: str) -> str | None:
+            raise RuntimeError("filter boom")
+
+        config_kwargs["outbound_filter"] = broken
+    if setup == "guard_reject":
+        transport.room_today_count = 9999
+    if setup == "send_fail":
+        transport.fail_send = True
+    if setup == "send_http":
+        transport.last_error = "http:409:too_fast"
+        transport.fail_send = True
+
+    client = HubClient(_config(tmp_path, **config_kwargs), persona="bot", transport=transport)
+    if setup == "bad_space":
+        assert client.post("hi", "unknown.r1") is None
+    elif setup == "bad_extra":
+        assert client.post("hi", "hub.r1", extra={"unexpected": 1}) is None
+    else:
+        assert client.post("hi", "hub.r1") is None
+    assert client.last_error == expected
+    if setup in ("bad_space", "bad_extra", "guard_reject", "send_fail", "send_http"):
+        transport.fail_send = False
+        transport.room_today_count = 0
+        transport.last_error = None
+        assert client.post("ok", "hub.r1") is not None
+        assert client.last_error is None
+
+
+@pytest.mark.parametrize("method", ["update", "set_status"])
+def test_revise_last_error_and_success_reset(tmp_path: Path, method: str) -> None:
+    """Issue #6030."""
+    transport = FakeTransport()
+    client = HubClient(_config(tmp_path), persona=None, transport=transport)
+    message_id = client.post("v1", "hub.r1")
+    assert message_id is not None
+    assert client.update("missing", "x") is False
+    assert client.last_error == "unknown_message"
+    transport.fail_revise = True
+    transport.last_error = "http:404:unknown_message"
+    if method == "update":
+        assert client.update(message_id, "v2") is False
+    else:
+        assert client.set_status(message_id, Status.WORKING) is False
+    assert client.last_error == "http:404:unknown_message"
+    transport.fail_revise = False
+    transport.last_error = None
+    if method == "update":
+        assert client.update(message_id, "v3") is True
+    else:
+        assert client.set_status(message_id, Status.DONE) is True
+    assert client.last_error is None

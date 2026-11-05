@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Hub guard**: `too_fast` applies only within an existing thread; root posts no longer inherit the room-wide message interval check (Issue #6030).
+- **Hub client**: `HubClient.last_error` and `UrllibTransport.last_error` report structured failure reasons, including `http:<status>:<reason>` from API rejections, without changing transport return types.
+
 ## v0.135.0
 
 - **WebChat header meters**: optional `header_meters_url` on `WebChatMediaConfig` (same-origin path only). The browser fetches host-provided usage JSON and renders header usage/progress bars; failures hide the region without affecting chat.

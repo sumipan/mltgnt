@@ -94,6 +94,28 @@ class UrllibTransport:
         self._config = config
         self._timeout_sec = timeout_sec
         self._environ = environ if environ is not None else os.environ
+        self.last_error: str | None = None
+
+    def _http_error_reason(self, exc: urllib.error.HTTPError) -> str:
+        reason = "unknown"
+        try:
+            raw = exc.read()
+        except OSError:
+            return reason
+        if not raw:
+            return reason
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return reason
+        if not isinstance(parsed, dict):
+            return reason
+        detail = parsed.get("detail")
+        if isinstance(detail, dict) and isinstance(detail.get("reason"), str):
+            return detail["reason"]
+        if isinstance(detail, str):
+            return detail
+        return reason
 
     def _token(self) -> str | None:
         return self._environ.get(self._config.token_env)
@@ -105,9 +127,11 @@ class UrllibTransport:
         *,
         body: dict[str, Any] | None = None,
     ) -> tuple[int, Any] | None:
+        self.last_error = None
         token = self._token()
         if not token:
             _log.warning("hub transport: missing token env %s", self._config.token_env)
+            self.last_error = "transport"
             return None
         url = f"{self._config.hub_url}{path}"
         data = None
@@ -119,8 +143,20 @@ class UrllibTransport:
         try:
             with urllib.request.urlopen(request, timeout=self._timeout_sec) as resp:  # noqa: S310
                 raw = resp.read()
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+        except urllib.error.HTTPError as exc:
+            reason = self._http_error_reason(exc)
+            self.last_error = f"http:{exc.code}:{reason}"
+            _log.warning(
+                "hub transport: %s %s failed: HTTP %s reason=%s",
+                method,
+                path,
+                exc.code,
+                reason,
+            )
+            return None
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             _log.warning("hub transport: %s %s failed: %s", method, path, exc)
+            self.last_error = "transport"
             return None
         if not raw:
             return resp.status, None
@@ -128,6 +164,7 @@ class UrllibTransport:
             parsed = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             _log.warning("hub transport: invalid JSON from %s: %s", path, exc)
+            self.last_error = "transport"
             return None
         return resp.status, parsed
 
@@ -248,6 +285,13 @@ class HubClient:
         self._transport = transport if transport is not None else UrllibTransport(config)
         self._known: dict[str, tuple[str, str]] = {}
         self._pending_id: str | None = None
+        self.last_error: str | None = None
+
+    def _transport_failure_reason(self, *, fallback: str = "transport") -> str:
+        err = getattr(self._transport, "last_error", None)
+        if isinstance(err, str) and err:
+            return err
+        return fallback
 
     def _room_for_space(self, space: str) -> str | None:
         prefix = self._config.space_prefix
@@ -291,20 +335,25 @@ class HubClient:
         *,
         extra: Mapping[str, Any] | None = None,
     ) -> str | None:
+        self.last_error = None
         room = self._room_for_space(space)
         if room is None:
+            self.last_error = "room"
             return None
         try:
             to_addr, hop, origin_id = self._parse_extra(extra)
         except ValueError as exc:
             _log.warning("hub client: invalid extra: %s", exc)
+            self.last_error = "input"
             return None
         try:
             filtered = self._config.outbound_filter(text) if self._config.outbound_filter is not None else text
         except Exception as exc:
             _log.warning("hub client: outbound_filter failed: %s", exc)
+            self.last_error = "filter"
             return None
         if filtered is None:
+            self.last_error = "filter"
             return None
         if self._pending_id is None:
             self._pending_id = str(uuid.uuid4())
@@ -329,9 +378,11 @@ class HubClient:
             ctx = self._transport.guard_context(room, thread)
         except Exception as exc:
             _log.warning("hub client: guard_context failed room=%s: %s", room, exc)
+            self.last_error = "transport"
             return None
         if ctx is None:
             _log.warning("hub client: guard_context unavailable room=%s", room)
+            self.last_error = self._transport_failure_reason()
             return None
         thread_rows, room_today_count = ctx
         verdict = check(
@@ -343,39 +394,56 @@ class HubClient:
         )
         if not verdict.ok:
             _log.warning("hub client: guard rejected post room=%s reason=%s", room, verdict.reason)
+            self.last_error = f"guard:{verdict.reason}"
             return None
         try:
             sent_id = self._transport.send(message)
         except Exception as exc:
             _log.warning("hub client: send failed room=%s: %s", room, exc)
+            self.last_error = "transport"
             return None
         if sent_id is None:
+            self.last_error = self._transport_failure_reason()
             return None
         self._pending_id = None
         self._known[sent_id] = (room, filtered)
         return sent_id
 
     def update(self, message_id: str, text: str) -> bool:
+        self.last_error = None
         known = self._known.get(message_id)
         if known is None:
+            self.last_error = "unknown_message"
             return False
         room, _prev = known
         try:
-            return self._transport.revise(room, message_id, kind="update", text=text)
+            ok = self._transport.revise(room, message_id, kind="update", text=text)
         except Exception as exc:
             _log.warning("hub client: update failed message_id=%s: %s", message_id, exc)
+            self.last_error = "transport"
             return False
+        if not ok:
+            self.last_error = self._transport_failure_reason()
+            return False
+        return True
 
     def set_status(self, message_id: str, status: Status) -> bool:
+        self.last_error = None
         known = self._known.get(message_id)
         if known is None:
+            self.last_error = "unknown_message"
             return False
         room, _prev = known
         try:
-            return self._transport.revise(room, message_id, kind="status", status=status)
+            ok = self._transport.revise(room, message_id, kind="status", status=status)
         except Exception as exc:
             _log.warning("hub client: set_status failed message_id=%s: %s", message_id, exc)
+            self.last_error = "transport"
             return False
+        if not ok:
+            self.last_error = self._transport_failure_reason()
+            return False
+        return True
 
     def upload(self, path: str, space: str, thread: str | None = None) -> bool:
         return False

@@ -506,10 +506,7 @@ def create_app(
             if _normalized_row_signature(existing) == _message_signature(message):
                 return JSONResponse(status_code=200, content={"id": message.id, "ts": existing.get("ts")})
             raise HTTPException(status_code=409, detail="id_conflict")
-        if message.thread is not None:
-            guard_rows = _thread_display_rows(store, message.thread)
-        else:
-            guard_rows = [r for r in store._rows(store.today()) if r.get("kind") == "message"]
+        guard_rows = _thread_display_rows(store, message.thread)
         now = store._clock()
         verdict = check(
             message,
