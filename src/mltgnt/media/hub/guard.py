@@ -106,19 +106,21 @@ def check(
         if message.to.persona is not None:
             to_map["persona"] = message.to.persona
 
-    for row in reversed(thread_rows):
-        if row.get("kind") != "message":
-            continue
-        if not _same_address(row.get("sender") if isinstance(row.get("sender"), dict) else None, sender_map):
-            continue
-        if not _same_address(row.get("to") if isinstance(row.get("to"), dict) else None, to_map):
-            continue
-        prev_ts = _parse_ts(row.get("ts"))
-        if prev_ts is None:
+    # Root posts start a new thread; too_fast applies only within one thread.
+    if message.thread is not None:
+        for row in reversed(thread_rows):
+            if row.get("kind") != "message":
+                continue
+            if not _same_address(row.get("sender") if isinstance(row.get("sender"), dict) else None, sender_map):
+                continue
+            if not _same_address(row.get("to") if isinstance(row.get("to"), dict) else None, to_map):
+                continue
+            prev_ts = _parse_ts(row.get("ts"))
+            if prev_ts is None:
+                break
+            delta = (now - prev_ts).total_seconds()
+            if delta < cfg.min_interval_sec:
+                return GuardVerdict(ok=False, reason="too_fast")
             break
-        delta = (now - prev_ts).total_seconds()
-        if delta < cfg.min_interval_sec:
-            return GuardVerdict(ok=False, reason="too_fast")
-        break
 
     return GuardVerdict(ok=True)

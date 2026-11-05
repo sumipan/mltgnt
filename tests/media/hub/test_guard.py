@@ -71,6 +71,33 @@ def test_status_rows_do_not_count_toward_agent_run() -> None:
     assert verdict.ok is True
 
 
+def test_root_post_skips_too_fast() -> None:
+    """Issue #6030."""
+    prev_ts = (NOW - timedelta(seconds=1)).isoformat()
+    rows = [
+        {
+            "kind": "message",
+            "sender": {"host": "host-a", "persona": "bot"},
+            "to": {"host": "host-b", "persona": "y"},
+            "ts": prev_ts,
+        }
+    ]
+    root = _msg(
+        thread=None,
+        sender=HubAddress("host-a", "bot"),
+        to=HubAddress("host-b", "y"),
+    )
+    assert check(root, rows, 0, NOW, config=CFG).ok is True
+    threaded = _msg(
+        thread="root",
+        sender=HubAddress("host-a", "bot"),
+        to=HubAddress("host-b", "y"),
+    )
+    verdict = check(threaded, rows, 0, NOW, config=CFG)
+    assert verdict.ok is False
+    assert verdict.reason == "too_fast"
+
+
 def test_too_fast_within_interval() -> None:
     prev_ts = (NOW - timedelta(seconds=4)).isoformat()
     rows = [
@@ -81,7 +108,7 @@ def test_too_fast_within_interval() -> None:
             "ts": prev_ts,
         }
     ]
-    verdict = check(_msg(sender=HubAddress("host-a", "bot")), rows, 0, NOW, config=CFG)
+    verdict = check(_msg(sender=HubAddress("host-a", "bot"), thread="root"), rows, 0, NOW, config=CFG)
     assert verdict.ok is False
     assert verdict.reason == "too_fast"
 
@@ -96,7 +123,7 @@ def test_too_fast_allowed_at_exact_interval() -> None:
             "ts": prev_ts,
         }
     ]
-    verdict = check(_msg(sender=HubAddress("host-a", "bot")), rows, 0, NOW, config=CFG)
+    verdict = check(_msg(sender=HubAddress("host-a", "bot"), thread="root"), rows, 0, NOW, config=CFG)
     assert verdict.ok is True
 
 

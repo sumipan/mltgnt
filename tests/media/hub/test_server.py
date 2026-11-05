@@ -200,6 +200,36 @@ def test_guard_rejection_returns_409(tmp_path: Path) -> None:
     assert resp.json()["detail"]["reason"] == "hop_exceeded"
 
 
+def test_root_posts_bypass_too_fast_but_thread_posts_do_not(tmp_path: Path) -> None:
+    """Issue #6030."""
+    clock = FakeClock(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc))
+    client = _client(tmp_path, clock=clock)
+    to = {"host": "host-b", "persona": "p"}
+    first_root = _post_body(id="root-a", sender={"host": "host-a", "persona": "bot"}, to=to)
+    assert client.post("/rooms/lobby/messages", json=first_root, headers=_auth()).status_code == 201
+    clock.now += timedelta(seconds=1)
+    second_root = _post_body(id="root-b", sender={"host": "host-a", "persona": "bot"}, to=to)
+    assert client.post("/rooms/lobby/messages", json=second_root, headers=_auth()).status_code == 201
+    clock.now += timedelta(seconds=6)
+    first_reply = _post_body(
+        id="t1",
+        sender={"host": "host-a", "persona": "bot"},
+        to=to,
+        thread="root-a",
+    )
+    assert client.post("/rooms/lobby/messages", json=first_reply, headers=_auth()).status_code == 201
+    clock.now += timedelta(seconds=1)
+    fast_reply = _post_body(
+        id="t2",
+        sender={"host": "host-a", "persona": "bot"},
+        to=to,
+        thread="root-a",
+    )
+    resp = client.post("/rooms/lobby/messages", json=fast_reply, headers=_auth())
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["reason"] == "too_fast"
+
+
 def test_root_post_after_persona_exchange_is_accepted(tmp_path: Path) -> None:
     clock = FakeClock(datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc))
     client = _client(tmp_path, clock=clock)
