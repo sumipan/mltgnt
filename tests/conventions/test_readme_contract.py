@@ -13,9 +13,9 @@ import sys
 import tomllib
 from argparse import ArgumentParser
 from collections.abc import Iterator
-from dataclasses import fields
+from dataclasses import MISSING, Field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 README_PATH = REPO_ROOT / "README.md"
@@ -250,19 +250,25 @@ def _direct_env_vars(src_root: Path) -> set[str]:
     return keys
 
 
-def _config_field_names() -> set[str]:
-    from mltgnt.config import ConversationConfig, MemoryConfig, PersonaConfig, SchedulerConfig
+def _public_config_dataclasses() -> tuple[type[Any], ...]:
+    from mltgnt.config import (
+        ConversationConfig,
+        MemoryConfig,
+        PersonaConfig,
+        SchedulerConfig,
+        SkillConfig,
+    )
     from mltgnt.media._core.config import MediaConfig
     from mltgnt.media.hub.config import HubMediaConfig
     from mltgnt.media.hub.server import HubServerConfig
     from mltgnt.media.slack.config import SlackMediaConfig
     from mltgnt.media.webchat.config import WebChatMediaConfig, WebPushConfig
 
-    names: set[str] = set()
-    for cls in (
+    return (
         PersonaConfig,
         MemoryConfig,
         SchedulerConfig,
+        SkillConfig,
         ConversationConfig,
         MediaConfig,
         SlackMediaConfig,
@@ -270,27 +276,134 @@ def _config_field_names() -> set[str]:
         WebPushConfig,
         HubMediaConfig,
         HubServerConfig,
+    )
+
+
+def _field_type_tokens(field: Field[Any], cls: type[Any]) -> set[str]:
+    hints = get_type_hints(cls)
+    annotation = hints.get(field.name, field.type)
+    text = str(annotation)
+    tokens: set[str] = set()
+    for name in (
+        "Path",
+        "str",
+        "float",
+        "bool",
+        "int",
+        "tuple",
+        "frozenset",
+        "dict",
+        "list",
+        "LanguagePack",
+        "GuardConfig",
+        "WebPushConfig",
+        "Mapping",
     ):
-        names.update(f.name for f in fields(cls))
+        if name in text:
+            tokens.add(name)
+    if not tokens and text not in {"typing.Any", "Any"}:
+        tokens.add(text.replace("typing.", ""))
+    return tokens
+
+
+def _field_default_token(field: Field[Any]) -> str | None:
+    if field.default is not MISSING:
+        value = field.default
+    elif field.default_factory is not MISSING:
+        value = field.default_factory()
+    else:
+        return None
+    if isinstance(value, Path):
+        return "Path"
+    if isinstance(value, str):
+        return f'"{value}"' if value else '""'
+    if isinstance(value, float):
+        return str(value).rstrip("0").rstrip(".") if value == int(value) else str(value)
+    return repr(value)
+
+
+def _field_is_required(field: Field[Any]) -> bool:
+    return field.default is MISSING and field.default_factory is MISSING
+
+
+def _config_field_names() -> set[str]:
+    names: set[str] = set()
+    for cls in _public_config_dataclasses():
+        for field in fields(cls):
+            names.add(field.name)
+            if not _field_is_required(field):
+                token = _field_default_token(field)
+                assert token is not None, f"missing default metadata for {cls.__name__}.{field.name}"
+            type_tokens = _field_type_tokens(field, cls)
+            assert type_tokens, f"missing type metadata for {cls.__name__}.{field.name}"
     return names
 
 
+def _assert_readme_config_field(block: str, field: Field[Any], cls: type[Any]) -> None:
+    assert field.name in block, f"undocumented config field {field.name}"
+    type_tokens = _field_type_tokens(field, cls)
+    default_token = None if _field_is_required(field) else _field_default_token(field)
+    type_ok = any(token in block for token in type_tokens)
+    default_ok = bool(default_token and default_token in block)
+    assert type_ok or default_ok, (
+        f"README missing type or default for {cls.__name__}.{field.name}: "
+        f"types={sorted(type_tokens)} default={default_token!r}"
+    )
+
+
+def _exception_class_names(src_root: Path) -> set[str]:
+    names: set[str] = set()
+    for path in sorted(src_root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if not _ast_class_inherits_exception(node):
+                continue
+            names.add(node.name)
+    return names
+
+
+def _ast_class_inherits_exception(node: ast.ClassDef) -> bool:
+    for base in node.bases:
+        if isinstance(base, ast.Name) and base.id in {
+            "Exception",
+            "ValueError",
+            "TypeError",
+            "RuntimeError",
+            "MltgntError",
+        }:
+            return True
+        if isinstance(base, ast.Attribute) and base.attr in {
+            "Exception",
+            "ValueError",
+            "TypeError",
+            "RuntimeError",
+        }:
+            return True
+    return False
+
+
+def _raised_builtin_exception_names(src_root: Path) -> set[str]:
+    documented = {"ValueError", "TypeError", "RuntimeError", "ImportError"}
+    found: set[str] = set()
+    for path in sorted(src_root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Raise):
+                continue
+            exc = node.exc
+            if exc is None:
+                continue
+            if isinstance(exc, ast.Call):
+                exc = exc.func
+            if isinstance(exc, ast.Name) and exc.id in documented:
+                found.add(exc.id)
+    return found
+
+
 def _public_exception_names(src_root: Path) -> set[str]:
-    return {
-        "MltgntError",
-        "ConfigError",
-        "DependencyError",
-        "PersonaValidationError",
-        "SkillLoadError",
-        "SkillIOTypeError",
-        "LlmCallError",
-        "ReflectionParseError",
-        "WorkLoopDeadline",
-        "ValueError",
-        "TypeError",
-        "RuntimeError",
-        "ImportError",
-    }
+    return _exception_class_names(src_root) | _raised_builtin_exception_names(src_root)
 
 
 def _error_table_names(text: str) -> set[str]:
@@ -310,6 +423,88 @@ def _error_table_names(text: str) -> set[str]:
     return names
 
 
+def _cli_parser_for_command(
+    root: ArgumentParser,
+    cmd: tuple[str, ...],
+) -> ArgumentParser:
+    subparsers = [
+        action
+        for action in root._actions
+        if getattr(action, "choices", None) is not None and action.dest == "subcommand"
+    ]
+    if not subparsers:
+        raise AssertionError("CLI root parser has no subcommands")
+    parser = subparsers[0].choices[cmd[0]]
+    for part in cmd[1:]:
+        nested = [
+            action
+            for action in parser._actions
+            if getattr(action, "choices", None) is not None and part in action.choices
+        ]
+        if not nested:
+            raise AssertionError(f"CLI subcommand path not found: {cmd}")
+        parser = nested[0].choices[part]
+    return parser
+
+
+def _cli_argument_spec(parser: ArgumentParser) -> dict[str, set[str]]:
+    options: set[str] = set()
+    args: set[str] = set()
+    for action in parser._actions:
+        if action.dest in {"help"}:
+            continue
+        if action.option_strings:
+            long_opts = [opt for opt in action.option_strings if opt.startswith("--")]
+            if long_opts:
+                options.add(long_opts[0])
+            continue
+        args.add(action.dest)
+    if options and not args:
+        return {"options": options}
+    return {"args": args | options}
+
+
+def _function_exit_codes(path: Path, function_names: set[str]) -> set[int]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    codes: set[int] = set()
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name not in function_names:
+            continue
+        for inner in ast.walk(node):
+            if (
+                isinstance(inner, ast.Return)
+                and isinstance(inner.value, ast.Constant)
+                and isinstance(inner.value.value, int)
+            ):
+                codes.add(inner.value.value)
+            if isinstance(inner, ast.Raise) and isinstance(inner.exc, ast.Call):
+                func = inner.exc.func
+                if (
+                    isinstance(func, ast.Name)
+                    and func.id == "SystemExit"
+                    and inner.exc.args
+                    and isinstance(inner.exc.args[0], ast.Constant)
+                    and isinstance(inner.exc.args[0].value, int)
+                ):
+                    codes.add(inner.exc.args[0].value)
+    return codes
+
+
+def _cli_exit_codes_from_sources(cmd: tuple[str, ...]) -> set[int]:
+    cli_root = REPO_ROOT / "src" / "mltgnt" / "cli"
+    if cmd == ("run",):
+        return _function_exit_codes(cli_root / "main.py", {"main"})
+    if cmd == ("memory", "dream", "show"):
+        return _function_exit_codes(cli_root / "memory.py", {"_show"})
+    if cmd == ("memory", "dream", "forget"):
+        return _function_exit_codes(cli_root / "memory.py", {"_forget"})
+    if cmd == ("hub", "serve"):
+        return _function_exit_codes(cli_root / "hub.py", {"_serve"})
+    raise AssertionError(f"unsupported CLI command inventory: {cmd}")
+
+
 def _cli_inventory_from_sources() -> dict[tuple[str, ...], dict[str, Any]]:
     from mltgnt.cli import hub as hub_module
     from mltgnt.cli import memory as memory_module
@@ -323,22 +518,11 @@ def _cli_inventory_from_sources() -> dict[tuple[str, ...], dict[str, Any]]:
     hub_module.register(sub)
 
     inventory: dict[tuple[str, ...], dict[str, Any]] = {}
-    inventory[("run",)] = {
-        "options": {"--components", "--pid-file"},
-        "exit_codes": {0, 1, 2, 3},
-    }
-    inventory[("memory", "dream", "show")] = {
-        "args": {"persona", "--chat-dir"},
-        "exit_codes": {0},
-    }
-    inventory[("memory", "dream", "forget")] = {
-        "args": {"persona", "--category", "--chat-dir"},
-        "exit_codes": {0, 1},
-    }
-    inventory[("hub", "serve")] = {
-        "args": {"config"},
-        "exit_codes": {0, 2, 3},
-    }
+    for cmd in CLI_COMMANDS:
+        leaf = _cli_parser_for_command(parser, cmd)
+        spec = _cli_argument_spec(leaf)
+        spec["exit_codes"] = _cli_exit_codes_from_sources(cmd)
+        inventory[cmd] = spec
     return inventory
 
 
@@ -460,8 +644,10 @@ def test_readme_configuration_inventory_covers_runtime_contracts() -> None:
             continue
         assert var in config_block, f"undocumented env var {var}"
 
-    for field_name in sorted(_config_field_names()):
-        assert field_name in config_block, f"undocumented config field {field_name}"
+    _ = _config_field_names()
+    for cls in _public_config_dataclasses():
+        for field in fields(cls):
+            _assert_readme_config_field(config_block, field, cls)
 
     assert "header_meters_url" in config_block
     assert "same-origin" in config_block.lower()
