@@ -11,7 +11,8 @@ import re
 import subprocess
 import sys
 import tomllib
-from argparse import ArgumentParser
+import argparse
+from argparse import SUPPRESS, ArgumentParser
 from collections.abc import Iterator
 from dataclasses import MISSING, Field, fields
 from pathlib import Path
@@ -339,15 +340,103 @@ def _config_field_names() -> set[str]:
     return names
 
 
+def _config_summary_table_row(block: str, cls_name: str) -> list[str] | None:
+    for line in block.splitlines():
+        if not line.startswith("|") or line.startswith("|--"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not cells or cells[0].strip("` ") != cls_name:
+            continue
+        return cells
+    return None
+
+
+def _readme_documents_required_config_field(block: str, field: Field[Any], cls: type[Any]) -> bool:
+    row = _config_summary_table_row(block, cls.__name__)
+    if row is not None and len(row) >= 2 and field.name in row[1]:
+        return True
+    if re.search(
+        rf"\|\s*`?{re.escape(field.name)}`?\s*\|\s*required\s*\|",
+        block,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    return bool(
+        re.search(
+            rf"`{re.escape(field.name)}`[^\n]*\(\s*required",
+            block,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _readme_documents_optional_config_default(
+    block: str,
+    field: Field[Any],
+    cls: type[Any],
+    default_token: str,
+) -> bool:
+    if default_token in block:
+        return True
+    row = _config_summary_table_row(block, cls.__name__)
+    if row is not None and len(row) >= 3 and field.name in row[2]:
+        return True
+    if field.name in block and default_token.strip('"') in block:
+        return True
+    if field.name == "language" and "get_language_pack()" in block:
+        return True
+    if field.name == "guard" and "GuardConfig()" in block:
+        return True
+    type_tokens = _field_type_tokens(field, cls)
+    if "LanguagePack" in type_tokens and field.name in block and "LanguagePack" in block:
+        return True
+    if re.search(
+        rf"{re.escape(field.name)}[^\n]*\(\s*`?[A-Z][A-Z0-9_]+`?\)",
+        block,
+    ):
+        return True
+    return bool(
+        re.search(rf"{re.escape(field.name)}[^\n]*\([^)]+\)", block)
+    )
+
+
+def _readme_documents_config_type(
+    block: str,
+    field: Field[Any],
+    cls: type[Any],
+    type_tokens: set[str],
+    default_token: str | None,
+) -> bool:
+    if any(token in block for token in type_tokens):
+        return True
+    if default_token and default_token in block:
+        if "float" in type_tokens:
+            return True
+        if "int" in type_tokens:
+            return True
+        if "bool" in type_tokens and default_token in {"True", "False"}:
+            return True
+        if "str" in type_tokens and default_token.startswith('"'):
+            return True
+    return False
+
+
 def _assert_readme_config_field(block: str, field: Field[Any], cls: type[Any]) -> None:
     assert field.name in block, f"undocumented config field {field.name}"
     type_tokens = _field_type_tokens(field, cls)
     default_token = None if _field_is_required(field) else _field_default_token(field)
-    type_ok = any(token in block for token in type_tokens)
-    default_ok = bool(default_token and default_token in block)
-    assert type_ok or default_ok, (
-        f"README missing type or default for {cls.__name__}.{field.name}: "
-        f"types={sorted(type_tokens)} default={default_token!r}"
+    assert _readme_documents_config_type(block, field, cls, type_tokens, default_token), (
+        f"README missing type for {cls.__name__}.{field.name}: types={sorted(type_tokens)}"
+    )
+    if _field_is_required(field):
+        assert _readme_documents_required_config_field(block, field, cls), (
+            f"README missing required marker for {cls.__name__}.{field.name}"
+        )
+        return
+    default_token = _field_default_token(field)
+    assert default_token is not None, f"missing default metadata for {cls.__name__}.{field.name}"
+    assert _readme_documents_optional_config_default(block, field, cls, default_token), (
+        f"README missing default for {cls.__name__}.{field.name}: default={default_token!r}"
     )
 
 
@@ -406,6 +495,70 @@ def _public_exception_names(src_root: Path) -> set[str]:
     return _exception_class_names(src_root) | _raised_builtin_exception_names(src_root)
 
 
+def _ast_direct_base_name(node: ast.ClassDef) -> str | None:
+    if not node.bases:
+        return None
+    base = node.bases[0]
+    if isinstance(base, ast.Name):
+        return base.id
+    if isinstance(base, ast.Attribute):
+        return base.attr
+    return None
+
+
+def _exception_class_metadata(src_root: Path) -> dict[str, tuple[str, str]]:
+    meta: dict[str, tuple[str, str]] = {}
+    for path in sorted(src_root.rglob("*.py")):
+        rel = path.relative_to(src_root.parent)
+        module = ".".join(rel.with_suffix("").parts)
+        if module.endswith(".__init__"):
+            module = module[: -len(".__init__")]
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if not _ast_class_inherits_exception(node):
+                continue
+            base = _ast_direct_base_name(node)
+            if base is None:
+                continue
+            meta[node.name] = (module, base)
+    return meta
+
+
+def _error_reference_custom_rows(text: str) -> dict[str, dict[str, str]]:
+    block = _section_slice(text, "Error Reference", stop_before=("Public API Stability",))
+    rows: dict[str, dict[str, str]] = {}
+    for line in block.splitlines():
+        if line.startswith("Built-in exceptions"):
+            break
+        if not line.startswith("|") or line.startswith("|--"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 4 or cells[0] in ("Exception", "Name"):
+            continue
+        name = cells[0].strip("` ")
+        if not re.match(r"^[A-Z][A-Za-z0-9_]*$", name):
+            continue
+        module_match = re.search(r"`(mltgnt\.[^`]+)`", cells[1])
+        module = module_match.group(1) if module_match else cells[1].strip("` ").split()[0]
+        base_match = re.search(r"`([A-Za-z][A-Za-z0-9_]*)`", cells[2])
+        base = base_match.group(1) if base_match else cells[2].strip("` ")
+        rows[name] = {"module": module, "base": base}
+    return rows
+
+
+def _assert_error_reference_matches_implementation(text: str) -> None:
+    source_meta = _exception_class_metadata(SRC_ROOT)
+    readme_rows = _error_reference_custom_rows(text)
+    for name, (module, base) in sorted(source_meta.items()):
+        if name not in readme_rows:
+            continue
+        doc = readme_rows[name]
+        assert doc["module"] == module, f"{name} module: README={doc['module']!r} source={module!r}"
+        assert doc["base"] == base, f"{name} base: README={doc['base']!r} source={base!r}"
+
+
 def _error_table_names(text: str) -> set[str]:
     block = _section_slice(text, "Error Reference", stop_before=("Public API Stability",))
     names: set[str] = set()
@@ -421,6 +574,10 @@ def _error_table_names(text: str) -> set[str]:
         if re.match(r"^[A-Z][A-Za-z0-9_]*$", first):
             names.add(first)
     return names
+
+
+def _assert_readme_error_module_base(text: str) -> None:
+    _assert_error_reference_matches_implementation(text)
 
 
 def _cli_parser_for_command(
@@ -447,21 +604,115 @@ def _cli_parser_for_command(
     return parser
 
 
-def _cli_argument_spec(parser: ArgumentParser) -> dict[str, set[str]]:
-    options: set[str] = set()
-    args: set[str] = set()
+_CLI_SKIP_ACTION_DESTS = frozenset(
+    {"help", "subcommand", "memory_cmd", "dream_cmd", "hub_cmd", "handler"},
+)
+
+
+def _build_cli_parser() -> ArgumentParser:
+    from mltgnt.cli import hub as hub_module
+    from mltgnt.cli import memory as memory_module
+
+    parser = ArgumentParser(
+        prog="mltgnt",
+        description="mltgnt daemon management",
+    )
+    subparsers = parser.add_subparsers(dest="subcommand")
+    run_parser = subparsers.add_parser("run", help="Start the mltgnt daemon")
+    run_parser.add_argument(
+        "--components",
+        required=True,
+        metavar="MODULE:FUNCTION",
+        help="Component factory as 'module.path:function_name'",
+    )
+    run_parser.add_argument(
+        "--pid-file",
+        default="/tmp/mltgnt_daemon.pid",
+        help="Path to PID file (default: /tmp/mltgnt_daemon.pid)",
+    )
+    memory_module.register(subparsers)
+    hub_module.register(subparsers)
+    return parser
+
+
+def _cli_action_command_key(action: argparse.Action) -> str:
+    if action.option_strings:
+        long_opts = [opt for opt in action.option_strings if opt.startswith("--")]
+        return long_opts[0] if long_opts else action.option_strings[0]
+    return action.dest
+
+
+def _cli_action_default_literal(action: argparse.Action) -> str | None:
+    if action.default is SUPPRESS:
+        return None
+    if action.option_strings:
+        if action.default is None:
+            return None
+        if isinstance(action.default, str):
+            return action.default
+        return repr(action.default)
+    return None
+
+
+def _cli_argument_entries(parser: ArgumentParser) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
     for action in parser._actions:
-        if action.dest in {"help"}:
+        if action.dest in _CLI_SKIP_ACTION_DESTS:
             continue
-        if action.option_strings:
-            long_opts = [opt for opt in action.option_strings if opt.startswith("--")]
-            if long_opts:
-                options.add(long_opts[0])
+        entries.append(
+            {
+                "command": _cli_action_command_key(action),
+                "required": bool(action.required),
+                "default": _cli_action_default_literal(action),
+            }
+        )
+    return entries
+
+
+def _readme_cli_section_chunk(cli_block: str, cmd: tuple[str, ...]) -> str:
+    section_title = "### `" + " ".join(("mltgnt", *cmd)) + "`"
+    assert section_title in cli_block, f"missing CLI section for {cmd}"
+    return cli_block.split(section_title, 1)[1].split("### ", 1)[0]
+
+
+def _readme_cli_argument_table(chunk: str) -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    has_default_column = False
+    for line in chunk.splitlines():
+        if not line.startswith("|") or line.startswith("|--"):
             continue
-        args.add(action.dest)
-    if options and not args:
-        return {"options": options}
-    return {"args": args | options}
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if not cells:
+            continue
+        if cells[0] in ("Option", "Argument / option", "Argument"):
+            has_default_column = "Default" in cells
+            continue
+        command = cells[0].strip("`").split()[0]
+        required = cells[1].lower() == "yes" if len(cells) > 1 else False
+        default: str | None = None
+        if has_default_column and len(cells) > 2:
+            raw = cells[2].strip("` ")
+            default = None if raw in {"", "-"} else raw
+        rows[command] = {"required": required, "default": default}
+    return rows
+
+
+def _assert_readme_cli_argument_matches_source(
+    readme_row: dict[str, Any],
+    source_row: dict[str, Any],
+    *,
+    cmd: tuple[str, ...],
+) -> None:
+    command = source_row["command"]
+    assert readme_row["required"] == source_row["required"], (
+        f"{cmd} {command}: required README={readme_row['required']!r} "
+        f"parser={source_row['required']!r}"
+    )
+    if source_row["default"] is not None:
+        assert readme_row["default"] == source_row["default"], (
+            f"{cmd} {command}: default README={readme_row['default']!r} "
+            f"parser={source_row['default']!r}"
+        )
 
 
 def _function_exit_codes(path: Path, function_names: set[str]) -> set[int]:
@@ -505,24 +756,30 @@ def _cli_exit_codes_from_sources(cmd: tuple[str, ...]) -> set[int]:
     raise AssertionError(f"unsupported CLI command inventory: {cmd}")
 
 
-def _cli_inventory_from_sources() -> dict[tuple[str, ...], dict[str, Any]]:
-    from mltgnt.cli import hub as hub_module
-    from mltgnt.cli import memory as memory_module
-
-    parser = ArgumentParser(prog="mltgnt")
-    sub = parser.add_subparsers(dest="subcommand")
-    run_parser = sub.add_parser("run")
-    run_parser.add_argument("--components", required=True)
-    run_parser.add_argument("--pid-file", default="/tmp/mltgnt_daemon.pid")
-    memory_module.register(sub)
-    hub_module.register(sub)
-
+def _cli_inventory_from_sources(*, readme_cli_block: str | None = None) -> dict[tuple[str, ...], dict[str, Any]]:
+    parser = _build_cli_parser()
     inventory: dict[tuple[str, ...], dict[str, Any]] = {}
     for cmd in CLI_COMMANDS:
         leaf = _cli_parser_for_command(parser, cmd)
-        spec = _cli_argument_spec(leaf)
-        spec["exit_codes"] = _cli_exit_codes_from_sources(cmd)
-        inventory[cmd] = spec
+        inventory[cmd] = {
+            "arguments": _cli_argument_entries(leaf),
+            "exit_codes": _cli_exit_codes_from_sources(cmd),
+        }
+
+    if readme_cli_block is not None:
+        for cmd, spec in inventory.items():
+            chunk = _readme_cli_section_chunk(readme_cli_block, cmd)
+            readme_args = _readme_cli_argument_table(chunk)
+            for source_row in spec["arguments"]:
+                command = source_row["command"]
+                assert command in readme_args, f"README missing CLI argument {command} for {cmd}"
+                _assert_readme_cli_argument_matches_source(
+                    readme_args[command],
+                    source_row,
+                    cmd=cmd,
+                )
+            for code in spec["exit_codes"]:
+                assert f"`{code}`" in chunk, f"README missing exit code {code} for {cmd}"
     return inventory
 
 
@@ -592,24 +849,11 @@ def test_readme_cli_inventory_matches_argparse_sources() -> None:
     """Documented CLI commands match argparse sources and list exits."""
     text = _readme_text()
     cli_block = _section_slice(text, "CLI Reference", stop_before=("Public API",))
-    inventory = _cli_inventory_from_sources()
+    _cli_inventory_from_sources(readme_cli_block=cli_block)
 
     for cmd in CLI_COMMANDS:
         label = "mltgnt " + " ".join(cmd)
         assert label in cli_block or f"`{label}`" in cli_block
-
-    for cmd, spec in inventory.items():
-        section_title = "### `" + " ".join(("mltgnt", *cmd)) + "`"
-        assert section_title in cli_block, f"missing CLI section for {cmd}"
-        chunk = cli_block.split(section_title, 1)[1].split("### ", 1)[0]
-        if "options" in spec:
-            for opt in spec["options"]:
-                assert opt in chunk
-        if "args" in spec:
-            for arg in spec["args"]:
-                assert arg.strip("-") in chunk or arg in chunk
-        for code in spec["exit_codes"]:
-            assert f"`{code}`" in chunk
 
 
 def test_readme_public_api_inventory_covers_exports() -> None:
@@ -656,8 +900,10 @@ def test_readme_configuration_inventory_covers_runtime_contracts() -> None:
 
 def test_readme_error_inventory_covers_public_exceptions() -> None:
     """Public exceptions in Error Reference match the documented set."""
+    text = _readme_text()
+    _assert_readme_error_module_base(text)
     expected = _public_exception_names(SRC_ROOT)
-    documented = _error_table_names(_readme_text())
+    documented = _error_table_names(text)
     missing = sorted(expected - documented)
     extra = sorted(documented - expected)
     assert missing == [], missing
