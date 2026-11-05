@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.135.0
+
+- **WebChat header meters**: optional `header_meters_url` on `WebChatMediaConfig` (same-origin path only). The browser fetches host-provided usage JSON and renders header usage/progress bars; failures hide the region without affecting chat.
+
 ## v0.134.9
 
 - **Testing policy**: split oversized test modules (T8) into focused files without changing test names (Issue #5968).

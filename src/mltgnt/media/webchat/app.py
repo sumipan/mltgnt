@@ -171,6 +171,7 @@ def create_app(
             "channel_slug": config.channel_slug,
             "max_upload_bytes": files.max_bytes,
             "push_enabled": push_active,
+            "header_meters_url": config.header_meters_url,
         }
 
     @app.get("/manifest.webmanifest")
