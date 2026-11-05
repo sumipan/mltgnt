@@ -847,13 +847,13 @@ def test_readme_required_sections_are_present_once() -> None:
     assert missing == []
 
 
-def test_readme_quick_start_runs_offline() -> None:
+def test_readme_quick_start_runs_offline(tmp_path: Path) -> None:
     """Quick Start example runs without network or external services."""
     code = _quick_start_python_block(_readme_text())
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")}
     proc = subprocess.run(
         [sys.executable, "-c", code],
-        cwd=REPO_ROOT,
+        cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
