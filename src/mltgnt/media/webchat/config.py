@@ -10,7 +10,26 @@ from types import MappingProxyType
 
 from mltgnt.media._core.config import MediaConfig
 
-__all__ = ["WebChatMediaConfig", "WebPushConfig"]
+__all__ = ["WebChatMediaConfig", "WebPushConfig", "validate_header_meters_url"]
+
+
+def validate_header_meters_url(value: str | None) -> str | None:
+    """Return a same-origin absolute path, or ``None`` when unset."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("header_meters_url must be a same-origin absolute path starting with /")
+    # WHATWG URL parsing treats backslashes as slashes and strips ASCII tabs
+    # and newlines.  Reject those forms before the browser can normalize a
+    # seemingly relative path into a protocol-relative, cross-origin URL.
+    if (
+        not value.startswith("/")
+        or value.startswith("//")
+        or "\\" in value
+        or any(char in value for char in ("\t", "\n", "\r"))
+    ):
+        raise ValueError("header_meters_url must be a same-origin absolute path starting with /")
+    return value
 
 
 def _default_push_body_text() -> str:
@@ -52,8 +71,10 @@ class WebChatMediaConfig(MediaConfig):
     push: WebPushConfig = field(default_factory=WebPushConfig)
     pwa_icon_192: str | None = None
     pwa_icon_512: str | None = None
+    header_meters_url: str | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "header_meters_url", validate_header_meters_url(self.header_meters_url))
         if not re.fullmatch(r"[a-z0-9-]+", self.channel_slug):
             raise ValueError("channel_slug must match [a-z0-9-]+")
         if not isinstance(self.avatars, MappingProxyType):

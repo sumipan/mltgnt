@@ -806,9 +806,29 @@ All of them are frozen dataclasses.
 | Subclass | Extra fields (default) |
 |----------|------------------------|
 | `SlackMediaConfig` | `bot_token_env` (`"SLACK_BOT_TOKEN"`), `app_token_env` (`"SLACK_APP_TOKEN"`), `status_reactions` (`DEFAULT_STATUS_REACTIONS`), `chunk_max_chars` (`3000`, must be positive) |
-| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`; author -> file under `assets_dir` or an `http(s)://` URL), `display_names` (`{}`; author -> name. The browser user posts as `"user"`), `channel_name` (`"general"`), `channel_slug` (`"general"`; URL segment under `/c/<slug>/`), `files_dir` (`None` = `<store_dir>/../files`), `max_upload_bytes` (20 MiB), `push` (`WebPushConfig`; VAPID keys and `enabled` flag), `pwa_icon_192` / `pwa_icon_512` (optional basename under `assets_dir` for PWA icons) |
+| `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`; author -> file under `assets_dir` or an `http(s)://` URL), `display_names` (`{}`; author -> name. The browser user posts as `"user"`), `channel_name` (`"general"`), `channel_slug` (`"general"`; URL segment under `/c/<slug>/`), `files_dir` (`None` = `<store_dir>/../files`), `max_upload_bytes` (20 MiB), `push` (`WebPushConfig`; VAPID keys and `enabled` flag), `pwa_icon_192` / `pwa_icon_512` (optional basename under `assets_dir` for PWA icons), `header_meters_url` (`None`; when set, a same-origin absolute path such as `/meters.json` that the UI fetches with `cache: no-store`) |
 | `WebPushConfig` | `enabled` (`False`), `vapid_public_key` / `vapid_private_key` (`None`), `vapid_subject` (`mailto:admin@example.invalid`), `body_text` (fixed notification body; message text is never sent). Requires `pip install mltgnt[webchat-push]` and a valid subject (`mailto:` or `https://`) for `push_enabled` |
 | `HubMediaConfig` | `hub_url`, `host_id`, `token_env`, `rooms` (required, keyword-only), `cursor_dir` (`None`), `poll_interval_sec` (`2.0`), `space_prefix` (`"hub."`), `guard` (`GuardConfig()`), `outbound_filter` (`None`) |
+
+#### WebChat header meters
+
+When `header_meters_url` is set (for example `/meters.json`), the single-page UI loads that path on the same origin with `fetch(..., { cache: "no-store" })`. The host serves JSON shaped like:
+
+```json
+{
+  "fetched_at": "2026-11-05T12:21:00+09:00",
+  "groups": [
+    {
+      "name": "Example",
+      "meters": [
+        {"name": "weekly", "used": 0.41, "resets_at": "2026-11-08T04:00:00+09:00", "window_seconds": 604800}
+      ]
+    }
+  ]
+}
+```
+
+Each meter requires a string `name` and finite `used` (clamped to 0–1 for display). Optional `resets_at` (ISO 8601) and positive `window_seconds` together enable a progress marker and footer text. Invalid JSON, HTTP errors, or malformed payloads hide the header meter region (`console.warn` once); chat and SSE continue unchanged. When `header_meters_url` is unset, `GET /config` returns `"header_meters_url": null` and the UI does not fetch meter data.
 
 ### LanguagePack
 

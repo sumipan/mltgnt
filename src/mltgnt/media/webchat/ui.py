@@ -29,6 +29,12 @@ INDEX_HTML = r"""<!doctype html>
     --text: #d1d2d3; --text-strong: #f8f8f8; --muted: #9a9b9e;
     --link: #1d9bd1; --mention-bg: rgba(29, 155, 209, 0.12); --selected: rgba(242, 199, 68, 0.08);
     --send: #007a5a;
+    --meter-track: #35373b; --meter-fill: #2bac76; --meter-fill-warn: #e8912d; --meter-marker: #f8f8f8;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --meter-track: #d8d8da; --meter-fill: #007a5a; --meter-fill-warn: #c7743c; --meter-marker: #1a1d21;
+    }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -41,10 +47,24 @@ INDEX_HTML = r"""<!doctype html>
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
   #app { display: flex; height: 100vh; height: 100dvh; }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
-  #header { display: flex; align-items: center; gap: 8px; height: 49px; padding: 0 12px 0 16px; flex-shrink: 0; }
+  #header { display: flex; align-items: center; gap: 8px; height: 49px; padding: 0 12px 0 16px; flex-shrink: 0; min-width: 0; }
   #header .star { color: var(--muted); }
   #channel-title { font-size: 18px; font-weight: 900; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #channel-title .hash { font-weight: 400; margin-right: 2px; }
+  #header-meters { min-width: 0; overflow: hidden; flex: 1; max-width: 420px; font-size: 11px; color: var(--muted); }
+  #header-meters[hidden] { display: none !important; }
+  .hm-title { font-size: 10px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hm-group { margin-bottom: 4px; }
+  .hm-group-name { font-weight: 700; color: var(--text-strong); }
+  .hm-meter { margin-top: 2px; }
+  .hm-meter-head { display: flex; align-items: baseline; gap: 6px; }
+  .meter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hm-used { font-weight: 700; color: var(--text-strong); min-width: 2.5em; text-align: right; }
+  .meter-bar { height: 6px; position: relative; background: var(--meter-track); border-radius: 3px; margin-top: 2px; }
+  .meter-bar-fill { height: 100%; border-radius: 3px; background: var(--meter-fill); max-width: 100%; }
+  .meter-warn .meter-bar-fill { background: var(--meter-fill-warn); }
+  .meter-bar-prog { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--meter-marker); pointer-events: none; }
+  .meter-footer { font-size: 10px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
   .hicon { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-radius: 6px; color: var(--text); }
   .hicon:hover { background: var(--bg-hover); }
@@ -160,6 +180,9 @@ INDEX_HTML = r"""<!doctype html>
     .composer { padding: 0 8px 8px; }
     .actions { right: 12px; }
   }
+  @media (max-width: 479px) {
+    .meter-name, .meter-footer { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -168,6 +191,7 @@ INDEX_HTML = r"""<!doctype html>
     <div id="header">
       <span class="star"><svg viewBox="0 0 24 24"><polygon points="12 3 14.8 8.9 21 9.6 16.4 13.9 17.7 20 12 16.9 6.3 20 7.6 13.9 3 9.6 9.2 8.9"/></svg></span>
       <span id="channel-title"><span class="hash">#</span><span id="channel-name">general</span></span>
+      <div id="header-meters" hidden></div>
       <span class="spacer"></span>
       <span class="hicon hide-narrow" title="Members"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.3c2 .7 3.5 2.7 3.5 5.7"/></svg><span class="count" id="member-count">1</span></span>
       <span class="hicon hide-narrow" title="Huddle"><svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg></span>
@@ -263,7 +287,26 @@ INDEX_HTML = r"""<!doctype html>
   var lightbox = document.getElementById("lightbox");
   var threadTs = null;
   var panelMode = null;
-  var config = { avatars: {}, display_names: {}, channel_name: "general", channel_slug: "general", max_upload_bytes: 20971520, push_enabled: false };
+  var config = { avatars: {}, display_names: {}, channel_name: "general", channel_slug: "general", max_upload_bytes: 20971520, push_enabled: false, header_meters_url: null };
+  var headerMetersEl = document.getElementById("header-meters");
+  var headerMetersUrl = null;
+  var headerMetersPayload = null;
+  var headerMetersFetchTimer = null;
+  var headerMetersTickTimer = null;
+  var headerMetersWarned = false;
+  var HEADER_METERS_FETCH_MS = 300000;
+  var HEADER_METERS_TICK_MS = 60000;
+  var METER_LABEL_USAGE = String.fromCharCode(0x5229, 0x7528, 0x91cf);
+  var METER_LABEL_FETCHED = String.fromCharCode(0x53d6, 0x5f97);
+  var METER_LABEL_PROGRESS = String.fromCharCode(0x7d1a, 0x9032);
+  var METER_LABEL_REMAIN = String.fromCharCode(0x3042, 0x3068);
+  var METER_LABEL_RESET = String.fromCharCode(0x30ea, 0x30bb, 0x30c3, 0x30c8, 0x6e08, 0x307f);
+  var METER_LEGEND = " | = " + String.fromCharCode(0x671f, 0x9593, 0x306e, 0x9032, 0x6357);
+  var METER_WD = [
+    String.fromCharCode(0x65e5), String.fromCharCode(0x6708), String.fromCharCode(0x706b),
+    String.fromCharCode(0x6c34), String.fromCharCode(0x6728), String.fromCharCode(0x91d1),
+    String.fromCharCode(0x571f)
+  ];
   var PUSH_ENABLE = String.fromCharCode(0x901a, 0x77e5, 0x3092, 0x53d7, 0x3051, 0x53d6, 0x308b);
   var PUSH_DISABLE = String.fromCharCode(0x901a, 0x77e5, 0x3092, 0x6b62, 0x3081, 0x308b);
   var PUSH_IOS_HINT = String.fromCharCode(
@@ -1300,6 +1343,185 @@ INDEX_HTML = r"""<!doctype html>
     closePanel();
   });
 
+  function clamp01(n) {
+    if (typeof n !== "number" || !isFinite(n)) { return 0; }
+    if (n < 0) { return 0; }
+    if (n > 1) { return 1; }
+    return n;
+  }
+
+  function meterView(meter, nowMs) {
+    var usedPct = Math.round(clamp01(meter.used) * 100);
+    var footer = "";
+    var progressPct = null;
+    var windowSec = meter.window_seconds;
+    var resetsAtMs = meter.resetsAtMs;
+    if (typeof windowSec === "number" && isFinite(windowSec) && windowSec > 0 && typeof resetsAtMs === "number" && isFinite(resetsAtMs)) {
+      var progress = clamp01(1 - (resetsAtMs - nowMs) / (meter.window_seconds * 1000));
+      progressPct = Math.round(progress * 100);
+      if (nowMs >= resetsAtMs) {
+        footer = METER_LABEL_RESET;
+      } else if (windowSec >= 86400) {
+        footer = METER_LABEL_PROGRESS + " " + progressPct + "%";
+        var resetDate = new Date(resetsAtMs);
+        footer += "  " + (resetDate.getMonth() + 1) + "/" + resetDate.getDate() + "(" + METER_WD[resetDate.getDay()] + ") ";
+        var hh = resetDate.getHours();
+        var mm = resetDate.getMinutes();
+        footer += (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
+      } else {
+        var remainSec = Math.max(0, Math.floor((resetsAtMs - nowMs) / 1000));
+        var rh = Math.floor(remainSec / 3600);
+        var rm = Math.floor((remainSec % 3600) / 60);
+        footer = METER_LABEL_REMAIN + " " + rh + "h" + rm + "m";
+      }
+    }
+    return { usedPct: usedPct, progressPct: progressPct, footer: footer, used: clamp01(meter.used), progress: progressPct === null ? null : progress };
+  }
+
+  function validateHeaderMetersPayload(data) {
+    if (!data || typeof data !== "object" || !Array.isArray(data.groups)) { return null; }
+    var groups = [];
+    for (var gi = 0; gi < data.groups.length; gi++) {
+      var group = data.groups[gi];
+      if (!group || typeof group !== "object" || typeof group.name !== "string" || !Array.isArray(group.meters)) { return null; }
+      var meters = [];
+      for (var mi = 0; mi < group.meters.length; mi++) {
+        var meter = group.meters[mi];
+        if (!meter || typeof meter !== "object" || typeof meter.name !== "string") { return null; }
+        if (typeof meter.used !== "number" || !isFinite(meter.used)) { return null; }
+        var entry = { name: meter.name, used: meter.used, window_seconds: null, resetsAtMs: null };
+        var parsed = typeof meter.resets_at === "string" ? Date.parse(meter.resets_at) : NaN;
+        if (typeof meter.window_seconds === "number" && isFinite(meter.window_seconds) && meter.window_seconds > 0 && isFinite(parsed)) {
+          entry.window_seconds = meter.window_seconds;
+          entry.resetsAtMs = parsed;
+        }
+        meters.push(entry);
+      }
+      groups.push({ name: group.name, meters: meters });
+    }
+    var fetchedAt = null;
+    if (typeof data.fetched_at === "string") {
+      var fetchedMs = Date.parse(data.fetched_at);
+      if (isFinite(fetchedMs)) { fetchedAt = fetchedMs; }
+    }
+    return { fetched_at: fetchedAt, groups: groups };
+  }
+
+  function hideHeaderMeters() {
+    headerMetersPayload = null;
+    headerMetersEl.hidden = true;
+    while (headerMetersEl.firstChild) { headerMetersEl.removeChild(headerMetersEl.firstChild); }
+  }
+
+  function renderHeaderMeters(payload, nowMs) {
+    while (headerMetersEl.firstChild) { headerMetersEl.removeChild(headerMetersEl.firstChild); }
+    var title = document.createElement("div");
+    title.className = "hm-title";
+    var titleParts = [METER_LABEL_USAGE];
+    if (payload.fetched_at !== null) {
+      var ft = new Date(payload.fetched_at);
+      titleParts.push(METER_LABEL_FETCHED + " " + (ft.getHours() < 10 ? "0" : "") + ft.getHours() + ":" + (ft.getMinutes() < 10 ? "0" : "") + ft.getMinutes());
+    }
+    titleParts.push(METER_LEGEND);
+    title.textContent = titleParts.join("  ");
+    headerMetersEl.appendChild(title);
+    for (var gi = 0; gi < payload.groups.length; gi++) {
+      var group = payload.groups[gi];
+      var groupEl = document.createElement("div");
+      groupEl.className = "hm-group";
+      var groupName = document.createElement("div");
+      groupName.className = "hm-group-name";
+      groupName.textContent = group.name;
+      groupEl.appendChild(groupName);
+      for (var mi = 0; mi < group.meters.length; mi++) {
+        var view = meterView(group.meters[mi], nowMs);
+        var meterEl = document.createElement("div");
+        meterEl.className = "hm-meter";
+        if (view.progress !== null && view.used - view.progress >= 0.1) { meterEl.classList.add("meter-warn"); }
+        var head = document.createElement("div");
+        head.className = "hm-meter-head";
+        var nameEl = document.createElement("span");
+        nameEl.className = "meter-name";
+        nameEl.textContent = group.meters[mi].name;
+        var usedEl = document.createElement("span");
+        usedEl.className = "hm-used";
+        usedEl.textContent = view.usedPct + "%";
+        head.appendChild(nameEl);
+        head.appendChild(usedEl);
+        meterEl.appendChild(head);
+        var bar = document.createElement("div");
+        bar.className = "meter-bar";
+        var fill = document.createElement("div");
+        fill.className = "meter-bar-fill";
+        fill.style.width = view.usedPct + "%";
+        bar.appendChild(fill);
+        if (view.progressPct !== null) {
+          var marker = document.createElement("div");
+          marker.className = "meter-bar-prog";
+          marker.style.left = view.progressPct + "%";
+          bar.appendChild(marker);
+        }
+        meterEl.appendChild(bar);
+        if (view.footer) {
+          var foot = document.createElement("div");
+          foot.className = "meter-footer";
+          foot.textContent = view.footer;
+          meterEl.appendChild(foot);
+        }
+        groupEl.appendChild(meterEl);
+      }
+      headerMetersEl.appendChild(groupEl);
+    }
+    headerMetersEl.hidden = false;
+  }
+
+  function warnHeaderMetersOnce(msg) {
+    if (headerMetersWarned) { return; }
+    headerMetersWarned = true;
+    console.warn(msg);
+  }
+
+  function fetchHeaderMeters() {
+    if (!headerMetersUrl) { return Promise.resolve(); }
+    return fetch(headerMetersUrl, { cache: "no-store" }).then(function (r) {
+      if (!r.ok) {
+        hideHeaderMeters();
+        warnHeaderMetersOnce("header meters fetch failed");
+        return;
+      }
+      return r.json().then(function (data) {
+        var payload = validateHeaderMetersPayload(data);
+        if (!payload) {
+          hideHeaderMeters();
+          warnHeaderMetersOnce("header meters payload invalid");
+          return;
+        }
+        headerMetersPayload = payload;
+        renderHeaderMeters(payload, Date.now());
+      });
+    }).catch(function () {
+      hideHeaderMeters();
+      warnHeaderMetersOnce("header meters fetch failed");
+    });
+  }
+
+  function startHeaderMetersTimers() {
+    if (headerMetersFetchTimer !== null) { return; }
+    headerMetersFetchTimer = setInterval(fetchHeaderMeters, HEADER_METERS_FETCH_MS);
+    headerMetersTickTimer = setInterval(function () {
+      if (headerMetersPayload) { renderHeaderMeters(headerMetersPayload, Date.now()); }
+    }, HEADER_METERS_TICK_MS);
+  }
+
+  function scheduleHeaderMetersFromConfig() {
+    if (!headerMetersUrl) {
+      hideHeaderMeters();
+      return;
+    }
+    startHeaderMetersTimers();
+    fetchHeaderMeters();
+  }
+
   function applyConfig(c) {
     config.avatars = c.avatars || {};
     config.display_names = c.display_names || {};
@@ -1307,9 +1529,12 @@ INDEX_HTML = r"""<!doctype html>
     config.channel_slug = c.channel_slug || "general";
     config.max_upload_bytes = c.max_upload_bytes || config.max_upload_bytes;
     config.push_enabled = !!c.push_enabled;
+    config.header_meters_url = c.header_meters_url || null;
+    headerMetersUrl = config.header_meters_url;
     document.title = config.channel_name;
     document.getElementById("channel-name").textContent = config.channel_name;
     mainComposer.input.placeholder = "Message #" + config.channel_name;
+    scheduleHeaderMetersFromConfig();
   }
 
   function urlBase64ToUint8Array(base64String) {
@@ -1500,6 +1725,9 @@ INDEX_HTML = r"""<!doctype html>
           return;
         }
         upsertRow(row);
+        if (kind === "message" && row.author !== "user") {
+          fetchHeaderMeters();
+        }
       });
     });
   });
