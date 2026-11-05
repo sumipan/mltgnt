@@ -44,7 +44,16 @@ def test_header_meters_config_contract(tmp_path: Path) -> None:
     client_default = TestClient(create_app(WebChatMediaConfig(**dirs), _Bridge()))
     assert client_default.get("/config").json()["header_meters_url"] is None
 
-    for bad in ("", "https://example.test/meters.json", "//example.test/meters.json", "meters.json"):
+    for bad in (
+        "",
+        "https://example.test/meters.json",
+        "//example.test/meters.json",
+        r"/\example.test/meters.json",
+        "/\t/example.test/meters.json",
+        "/\n/example.test/meters.json",
+        "/\r/example.test/meters.json",
+        "meters.json",
+    ):
         with pytest.raises(ValueError, match="header_meters_url"):
             WebChatMediaConfig(**dirs, header_meters_url=bad)
 
@@ -75,6 +84,9 @@ def test_header_meters_render_contract() -> None:
     assert "innerHTML" not in INDEX_HTML.split("function renderHeaderMeters")[1].split("function fetchHeaderMeters")[0]
     assert "cache: \"no-store\"" in INDEX_HTML
     assert "validateHeaderMetersPayload" in INDEX_HTML
+    assert 'typeof meter.resets_at === "string"' in INDEX_HTML
+    assert 'typeof data.fetched_at === "string"' in INDEX_HTML
+    assert "meter.window_seconds > 0 && isFinite(parsed)" in INDEX_HTML
 
 
 def test_header_meters_refresh_contract() -> None:

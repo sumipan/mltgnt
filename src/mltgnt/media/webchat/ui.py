@@ -1390,25 +1390,17 @@ INDEX_HTML = r"""<!doctype html>
         if (!meter || typeof meter !== "object" || typeof meter.name !== "string") { return null; }
         if (typeof meter.used !== "number" || !isFinite(meter.used)) { return null; }
         var entry = { name: meter.name, used: meter.used, window_seconds: null, resetsAtMs: null };
-        if (meter.window_seconds !== undefined && meter.window_seconds !== null) {
-          if (typeof meter.window_seconds !== "number" || !isFinite(meter.window_seconds) || meter.window_seconds <= 0) { return null; }
+        var parsed = typeof meter.resets_at === "string" ? Date.parse(meter.resets_at) : NaN;
+        if (typeof meter.window_seconds === "number" && isFinite(meter.window_seconds) && meter.window_seconds > 0 && isFinite(parsed)) {
           entry.window_seconds = meter.window_seconds;
-        }
-        if (meter.resets_at !== undefined && meter.resets_at !== null) {
-          var parsed = Date.parse(meter.resets_at);
-          if (!isFinite(parsed)) { return null; }
           entry.resetsAtMs = parsed;
-        }
-        if ((entry.window_seconds === null) !== (entry.resetsAtMs === null)) {
-          entry.window_seconds = null;
-          entry.resetsAtMs = null;
         }
         meters.push(entry);
       }
       groups.push({ name: group.name, meters: meters });
     }
     var fetchedAt = null;
-    if (data.fetched_at !== undefined && data.fetched_at !== null) {
+    if (typeof data.fetched_at === "string") {
       var fetchedMs = Date.parse(data.fetched_at);
       if (isFinite(fetchedMs)) { fetchedAt = fetchedMs; }
     }

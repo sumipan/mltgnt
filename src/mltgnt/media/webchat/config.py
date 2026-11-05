@@ -19,7 +19,15 @@ def validate_header_meters_url(value: str | None) -> str | None:
         return None
     if not isinstance(value, str):
         raise ValueError("header_meters_url must be a same-origin absolute path starting with /")
-    if not value.startswith("/") or value.startswith("//"):
+    # WHATWG URL parsing treats backslashes as slashes and strips ASCII tabs
+    # and newlines.  Reject those forms before the browser can normalize a
+    # seemingly relative path into a protocol-relative, cross-origin URL.
+    if (
+        not value.startswith("/")
+        or value.startswith("//")
+        or "\\" in value
+        or any(char in value for char in ("\t", "\n", "\r"))
+    ):
         raise ValueError("header_meters_url must be a same-origin absolute path starting with /")
     return value
 
