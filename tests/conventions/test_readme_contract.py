@@ -10,13 +10,18 @@ import os
 import re
 import subprocess
 import sys
-import tomllib
 import argparse
 from argparse import SUPPRESS, ArgumentParser
 from collections.abc import Iterator
 from dataclasses import MISSING, Field, fields
 from pathlib import Path
 from typing import Any, get_type_hints
+from unittest.mock import patch
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 README_PATH = REPO_ROOT / "README.md"
@@ -228,26 +233,43 @@ def _direct_env_vars(src_root: Path) -> set[str]:
     keys: set[str] = set()
     for path in sorted(src_root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        string_constants: dict[str, str] = {}
+        for node in tree.body:
+            if (
+                isinstance(node, (ast.Assign, ast.AnnAssign))
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        string_constants[target.id] = node.value.value
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
-            if (
+            is_os_getenv = (
                 isinstance(func, ast.Attribute)
-                and func.attr in ("getenv", "environ")
-                and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str)
-            ):
-                keys.add(node.args[0].value)
-            if (
-                isinstance(func, ast.Name)
-                and func.id == "getenv"
-                and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str)
-            ):
-                keys.add(node.args[0].value)
+                and func.attr == "getenv"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "os"
+            )
+            is_os_environ_get = (
+                isinstance(func, ast.Attribute)
+                and func.attr == "get"
+                and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "environ"
+                and isinstance(func.value.value, ast.Name)
+                and func.value.value.id == "os"
+            )
+            is_imported_getenv = isinstance(func, ast.Name) and func.id == "getenv"
+            if not (is_os_getenv or is_os_environ_get or is_imported_getenv) or not node.args:
+                continue
+            key_arg = node.args[0]
+            if isinstance(key_arg, ast.Constant) and isinstance(key_arg.value, str):
+                keys.add(key_arg.value)
+            elif isinstance(key_arg, ast.Name) and key_arg.id in string_constants:
+                keys.add(string_constants[key_arg.id])
     return keys
 
 
@@ -610,29 +632,25 @@ _CLI_SKIP_ACTION_DESTS = frozenset(
 
 
 def _build_cli_parser() -> ArgumentParser:
-    from mltgnt.cli import hub as hub_module
-    from mltgnt.cli import memory as memory_module
+    from mltgnt.cli import main as main_module
 
-    parser = ArgumentParser(
-        prog="mltgnt",
-        description="mltgnt daemon management",
-    )
-    subparsers = parser.add_subparsers(dest="subcommand")
-    run_parser = subparsers.add_parser("run", help="Start the mltgnt daemon")
-    run_parser.add_argument(
-        "--components",
-        required=True,
-        metavar="MODULE:FUNCTION",
-        help="Component factory as 'module.path:function_name'",
-    )
-    run_parser.add_argument(
-        "--pid-file",
-        default="/tmp/mltgnt_daemon.pid",
-        help="Path to PID file (default: /tmp/mltgnt_daemon.pid)",
-    )
-    memory_module.register(subparsers)
-    hub_module.register(subparsers)
-    return parser
+    captured: dict[str, ArgumentParser] = {}
+
+    def capture_parser(parser: ArgumentParser, argv: list[str] | None = None) -> argparse.Namespace:
+        captured["parser"] = parser
+        return argparse.Namespace(subcommand=None)
+
+    with (
+        patch.object(ArgumentParser, "parse_args", capture_parser),
+        patch.object(ArgumentParser, "print_help"),
+    ):
+        try:
+            main_module.main([])
+        except SystemExit as exc:
+            assert exc.code == 0
+
+    assert "parser" in captured, "mltgnt.cli.main did not construct an ArgumentParser"
+    return captured["parser"]
 
 
 def _cli_action_command_key(action: argparse.Action) -> str:
