@@ -85,6 +85,26 @@ def _section_slice(text: str, heading: str, *, stop_before: tuple[str, ...] = ()
     return rest[:end]
 
 
+def _subsection_slice(text: str, heading: str, *, stop_before: tuple[str, ...] = ()) -> str:
+    pattern = re.compile(rf"^### {re.escape(heading)}\s*$", re.MULTILINE)
+    match = pattern.search(text)
+    if match is None:
+        return ""
+    start = match.end()
+    rest = text[start:]
+    stops: list[int] = []
+    next_heading = re.search(r"^\n##+ ", rest, re.MULTILINE)
+    if next_heading is not None:
+        stops.append(next_heading.start())
+    for name in stop_before:
+        for prefix in ("### ", "## "):
+            needle = f"\n{prefix}{name}\n"
+            if needle in rest:
+                stops.append(rest.find(needle))
+    end = min(stops) if stops else len(rest)
+    return rest[:end]
+
+
 def _heading_counts(text: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     for line in text.splitlines():
@@ -134,11 +154,8 @@ def _tokens_from_table_cell(cell: str) -> Iterator[str]:
             yield token
 
 
-def _table_claimed_api_names(text: str) -> set[str]:
-    """Symbols explicitly listed as API rows (not prose examples)."""
-    block = _section_slice(text, "Public API", stop_before=("Protocols / Extension Points",))
-    error_block = _section_slice(text, "Error Reference", stop_before=("Public API Stability",))
-    kind_markers = {
+_API_KIND_MARKERS = frozenset(
+    {
         "function",
         "class",
         "constant",
@@ -149,11 +166,109 @@ def _table_claimed_api_names(text: str) -> set[str]:
         "typeddict",
         "str",
         "mapping",
+        "name",
     }
+)
+
+
+def _parse_public_api_inventory_rows(block: str) -> list[tuple[str, str, str, str]]:
+    rows: list[tuple[str, str, str, str]] = []
+    for line in block.splitlines():
+        if not line.startswith("|") or line.startswith("|--"):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) < 4 or cells[0] in ("Name", "Exception", "Deprecated"):
+            continue
+        name = cells[0].strip("` ")
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
+            continue
+        rows.append((name, cells[1], cells[2], cells[3].strip("` ")))
+    return rows
+
+
+def _export_owner_modules(src_root: Path) -> dict[str, set[str]]:
+    owners: dict[str, set[str]] = {}
+    for path in sorted(src_root.rglob("*.py")):
+        rel = path.relative_to(src_root.parent)
+        module = ".".join(rel.with_suffix("").parts)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if (
+                isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+                and isinstance(node.value, (ast.List, ast.Tuple))
+            ):
+                for elt in node.value.elts:
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                        owners.setdefault(elt.value, set()).add(module)
+    return owners
+
+
+def _module_path_for_name(src_root: Path, module: str) -> Path | None:
+    candidate = src_root.parent / (module.replace(".", "/") + ".py")
+    if candidate.exists():
+        return candidate
+    init_path = src_root.parent / module.replace(".", "/") / "__init__.py"
+    return init_path if init_path.exists() else None
+
+
+def _export_defining_module(src_root: Path, name: str, owners: dict[str, set[str]]) -> str:
+    modules = sorted(owners.get(name, ()), key=lambda mod: (-mod.count("."), mod))
+    for module in modules:
+        path = _module_path_for_name(src_root, module)
+        if path is None:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    exported = alias.asname or alias.name
+                    if exported == name and node.module:
+                        imported = node.module
+                        if imported.startswith("mltgnt"):
+                            return imported
+                        parent = module.rsplit(".", 1)[0]
+                        return f"{parent}.{imported}" if parent else imported
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name == name:
+                return module
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == name:
+                        return module
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+                return module
+    return modules[0] if modules else ""
+
+
+def _assert_readme_supplement_inventory(text: str) -> None:
+    block = _section_slice(text, "Public API", stop_before=("Protocols / Extension Points",))
+    supplement = _subsection_slice(block, "Submodule export index (`__all__` supplement)")
+    assert supplement.strip(), "README missing Submodule export index subsection"
+    rows = _parse_public_api_inventory_rows(supplement)
+    assert rows, "Submodule export index must use Name | Kind | Signature / fields | Defined in rows"
+    owners = _export_owner_modules(SRC_ROOT)
+    for name, kind, signature, defined_in in rows:
+        kind_key = kind.strip("` ").lower().split()[0]
+        assert kind_key in _API_KIND_MARKERS or kind.lower() in _API_KIND_MARKERS, (
+            f"supplement row for {name} missing kind: {kind!r}"
+        )
+        assert signature.strip(), f"supplement row for {name} missing signature / fields"
+        assert defined_in.startswith("mltgnt."), f"supplement row for {name} missing defining module"
+        expected = _export_defining_module(SRC_ROOT, name, owners)
+        assert expected, f"{name} is not exported from any __all__"
+        assert defined_in == expected, (
+            f"supplement {name} defined in README={defined_in!r} source={expected!r}"
+        )
+
+
+def _table_claimed_api_names(text: str) -> set[str]:
+    """Symbols explicitly listed as API rows (not prose examples)."""
+    block = _section_slice(text, "Public API", stop_before=("Protocols / Extension Points",))
+    error_block = _section_slice(text, "Error Reference", stop_before=("Public API Stability",))
     names: set[str] = set()
-    supplement = _section_slice(block, "Submodule export index (`__all__` supplement)", stop_before=())
-    if supplement:
-        names.update(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", supplement))
+    supplement = _subsection_slice(block, "Submodule export index (`__all__` supplement)")
+    for name, _kind, _signature, _defined_in in _parse_public_api_inventory_rows(supplement):
+        names.add(name)
     for section in (block, error_block):
         for line in section.splitlines():
             if not line.startswith("|") or line.startswith("|--"):
@@ -168,7 +283,7 @@ def _table_claimed_api_names(text: str) -> set[str]:
                 for token in _tokens_from_table_cell(cells[1]):
                     names.add(token)
                 continue
-            if second.split()[0] in kind_markers or second in kind_markers:
+            if second.split()[0] in _API_KIND_MARKERS or second in _API_KIND_MARKERS:
                 for token in _tokens_from_table_cell(cells[0]):
                     names.add(token)
     return names
@@ -361,6 +476,21 @@ def _config_field_names() -> set[str]:
     return names
 
 
+def _config_field_documentation_excerpt(block: str, field: Field[Any], cls: type[Any]) -> str:
+    lines: list[str] = []
+    summary = _config_summary_table_row(block, cls.__name__)
+    if summary is not None and _summary_row_documents_field(summary, field.name):
+        lines.append("|".join(summary))
+    field_row = re.compile(rf"^\|\s*`?{re.escape(field.name)}`?\s*\|")
+    class_name = cls.__name__
+    for line in block.splitlines():
+        if field_row.match(line) or (field.name in line and class_name in line):
+            lines.append(line)
+    if field.name == "header_meters_url":
+        lines.append(_subsection_slice(block, "WebChat header meters"))
+    return "\n".join(lines)
+
+
 def _config_summary_table_row(block: str, cls_name: str) -> list[str] | None:
     for line in block.splitlines():
         if not line.startswith("|") or line.startswith("|--"):
@@ -368,8 +498,16 @@ def _config_summary_table_row(block: str, cls_name: str) -> list[str] | None:
         cells = [c.strip() for c in line.strip("|").split("|")]
         if not cells or cells[0].strip("` ") != cls_name:
             continue
+        if cells[0] in ("Class", "Subclass", "Field"):
+            continue
         return cells
     return None
+
+
+def _summary_row_documents_field(row: list[str], field_name: str) -> bool:
+    if len(row) >= 3 and field_name in row[2]:
+        return True
+    return len(row) >= 2 and field_name in row[1]
 
 
 def _readme_documents_required_config_field(block: str, field: Field[Any], cls: type[Any]) -> bool:
@@ -397,40 +535,73 @@ def _readme_documents_optional_config_default(
     cls: type[Any],
     default_token: str,
 ) -> bool:
-    if default_token in block:
-        return True
+    excerpt = _config_field_documentation_excerpt(block, field, cls)
     row = _config_summary_table_row(block, cls.__name__)
-    if row is not None and len(row) >= 3 and field.name in row[2]:
+    if row is not None and _summary_row_documents_field(row, field.name):
         return True
-    if field.name in block and default_token.strip('"') in block:
+    if default_token in excerpt:
         return True
-    if field.name == "language" and "get_language_pack()" in block:
+    bare_default = default_token.strip('"')
+    if re.search(
+        rf"`{re.escape(field.name)}`[^\n]*default[^\n]*`?{re.escape(bare_default)}`?",
+        excerpt,
+        flags=re.IGNORECASE,
+    ):
         return True
-    if field.name == "guard" and "GuardConfig()" in block:
+    if default_token.strip('"') in excerpt and field.name in excerpt:
+        return True
+    if field.name == "language" and "get_language_pack()" in excerpt:
+        return True
+    if field.name == "guard" and "GuardConfig()" in excerpt:
         return True
     type_tokens = _field_type_tokens(field, cls)
-    if "LanguagePack" in type_tokens and field.name in block and "LanguagePack" in block:
+    if "LanguagePack" in type_tokens and field.name in excerpt and "LanguagePack" in excerpt:
         return True
     if re.search(
         rf"{re.escape(field.name)}[^\n]*\(\s*`?[A-Z][A-Z0-9_]+`?\)",
-        block,
+        excerpt,
     ):
         return True
     return bool(
-        re.search(rf"{re.escape(field.name)}[^\n]*\([^)]+\)", block)
+        re.search(rf"{re.escape(field.name)}[^\n]*\([^)]+\)", excerpt)
     )
 
 
 def _readme_documents_config_type(
     block: str,
+    excerpt: str,
     field: Field[Any],
     cls: type[Any],
     type_tokens: set[str],
     default_token: str | None,
 ) -> bool:
-    if any(token in block for token in type_tokens):
+    row = _config_summary_table_row(block, cls.__name__)
+    if _field_is_required(field) and row is not None and len(row) >= 2 and field.name in row[1]:
         return True
-    if default_token and default_token in block:
+    if (
+        _field_is_required(field)
+        and cls.__name__ in excerpt
+        and re.search(rf"`{re.escape(field.name)}`", excerpt)
+    ):
+        return True
+    if row is not None and _summary_row_documents_field(row, field.name):
+        return True
+    if any(re.search(rf"\b{re.escape(token)}\b", excerpt) for token in type_tokens):
+        return True
+    if field.name not in excerpt:
+        return False
+    if cls.__name__ in excerpt and re.search(rf"`{re.escape(field.name)}`", excerpt):
+        if re.search(rf"optional\s+`{re.escape(field.name)}`", excerpt, flags=re.IGNORECASE):
+            return True
+        if not re.search(
+            rf"`{re.escape(field.name)}`[^,\n]*\bdefault\b",
+            excerpt,
+            flags=re.IGNORECASE,
+        ):
+            return True
+    if re.search(rf"`?{re.escape(field.name)}`?\s*\(\s*`?None`?\s*\)", excerpt):
+        return True
+    if default_token and default_token in excerpt:
         if "float" in type_tokens:
             return True
         if "int" in type_tokens:
@@ -439,21 +610,41 @@ def _readme_documents_config_type(
             return True
         if "str" in type_tokens and default_token.startswith('"'):
             return True
-    return False
+    bare_default = default_token.strip('"') if default_token else None
+    if bare_default and re.search(
+        rf"`{re.escape(field.name)}`[^\n]*default[^\n]*`?{re.escape(bare_default)}`?",
+        excerpt,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    if "dict" in type_tokens and "DEFAULT_WEIGHT_MAP" in excerpt:
+        return True
+    if "frozenset" in type_tokens and "frozenset()" in excerpt:
+        return True
+    if "LanguagePack" in type_tokens and "LanguagePack" in excerpt:
+        return True
+    if "GuardConfig" in type_tokens and "GuardConfig()" in excerpt:
+        return True
+    if "WebPushConfig" in type_tokens and "WebPushConfig" in excerpt:
+        return True
+    return "Path" in type_tokens and "required" in excerpt.lower()
 
 
 def _assert_readme_config_field(block: str, field: Field[Any], cls: type[Any]) -> None:
     assert field.name in block, f"undocumented config field {field.name}"
+    excerpt = _config_field_documentation_excerpt(block, field, cls)
+    assert excerpt.strip(), f"README missing dedicated docs for {cls.__name__}.{field.name}"
     type_tokens = _field_type_tokens(field, cls)
     default_token = None if _field_is_required(field) else _field_default_token(field)
-    assert _readme_documents_config_type(block, field, cls, type_tokens, default_token), (
+    assert _readme_documents_config_type(block, excerpt, field, cls, type_tokens, default_token), (
         f"README missing type for {cls.__name__}.{field.name}: types={sorted(type_tokens)}"
     )
     if _field_is_required(field):
-        assert _readme_documents_required_config_field(block, field, cls), (
-            f"README missing required marker for {cls.__name__}.{field.name}"
-        )
-        return
+        if _readme_documents_required_config_field(block, field, cls):
+            return
+        if cls.__name__ in excerpt and re.search(rf"`{re.escape(field.name)}`", excerpt):
+            return
+        raise AssertionError(f"README missing required marker for {cls.__name__}.{field.name}")
     default_token = _field_default_token(field)
     assert default_token is not None, f"missing default metadata for {cls.__name__}.{field.name}"
     assert _readme_documents_optional_config_default(block, field, cls, default_token), (
@@ -901,11 +1092,13 @@ def test_readme_cli_inventory_matches_argparse_sources() -> None:
 
 def test_readme_public_api_inventory_covers_exports() -> None:
     """Every __all__ export appears in Public API tables and no stray names remain."""
+    text = _readme_text()
+    _assert_readme_supplement_inventory(text)
     exports = _collect_all_exports(SRC_ROOT)
-    parsed = _parse_readme_symbol_names(_readme_text())
+    parsed = _parse_readme_symbol_names(text)
     documented = parsed & exports
     missing = sorted(exports - documented)
-    extra = sorted(_table_claimed_api_names(_readme_text()) - exports)
+    extra = sorted(_table_claimed_api_names(text) - exports)
     assert missing == [], f"README missing __all__ exports: {missing[:20]}"
     assert extra == [], f"README documents unknown API names: {extra[:20]}"
 
@@ -925,16 +1118,19 @@ def test_readme_configuration_inventory_covers_runtime_contracts() -> None:
     """Env vars and public config fields are documented; header meters contract is stated."""
     text = _readme_text()
     config_block = _section_slice(text, "Configuration", stop_before=("Error Reference",))
+    cli_block = _section_slice(text, "CLI Reference", stop_before=("Public API",))
+    hub_cli = _readme_cli_section_chunk(cli_block, ("hub", "serve"))
+    doc_block = f"{config_block}\n{hub_cli}"
 
     for var in sorted(_direct_env_vars(SRC_ROOT)):
         if var.startswith("_"):
             continue
-        assert var in config_block, f"undocumented env var {var}"
+        assert var in doc_block, f"undocumented env var {var}"
 
     _ = _config_field_names()
     for cls in _public_config_dataclasses():
         for field in fields(cls):
-            _assert_readme_config_field(config_block, field, cls)
+            _assert_readme_config_field(doc_block, field, cls)
 
     assert "header_meters_url" in config_block
     assert "same-origin" in config_block.lower()

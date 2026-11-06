@@ -555,31 +555,99 @@ Hub envelopes live in `mltgnt.interfaces.hub` (`HubAddress`, `HubDisplay`, `HubM
 
 Names exported from submodule `__all__` lists that are not repeated in the tables above.
 
-| Name | Name | Name | Name |
-|------|------|------|------|
-| `AdmitResult` | `AgenticSkillDiscoverer` | `DEFAULT_COMMIT_DEBOUNCE_SEC` | `DaemonRunner` |
-| `DiscoverResult` | `DiscoverRound` | `DiscoverVerdict` | `IterativeRetriever` |
-| `LOCK` | `PidLock` | `PromoteCandidate` | `SearchAction` |
-| `SearchResult` | `SessionRecord` | `SkillSearchFn` | `SkillWatcherComponent` |
-| `SufficiencyResult` | `THREAD_QUEUE_DIR` | `_build_section_prompt` | `_check_date_coverage` |
-| `_compact_section` | `_compress_rollup_chunk` | `_default_outbound_filter` | `_effective_bytes_for_ratio` |
-| `_entries_to_body` | `_entry_to_block` | `_extract_and_merge_preferences` | `_extract_chunk_date_range` |
-| `_promote_mid_to_long` | `_promote_with_compression` | `_redistribute_entries` | `_rollup_recent_chunk` |
-| `_sanitize_phase1_output` | `_strip_heading` | `_strip_observe_entries` | `append_entry` |
-| `append_turn` | `audit_path` | `build_composite_instruction` | `build_notification_payload` |
-| `build_prompt` | `configure_llm_factory` | `configure_on_set` | `configure_paths` |
-| `configure_resume_check` | `drain_to_turn_input` | `drained_entries_meta` | `dream_json_path` |
-| `dream_summary_from_dict` | `dream_summary_to_dict` | `estimate_tokens` | `extract_promote_candidates` |
-| `finish_turn` | `format_turns_for_prompt` | `gc_sessions` | `global_json_path` |
-| `invalidate_ledger` | `invalidate_session` | `is_expired` | `is_stale` |
-| `judge_for_discover` | `judge_sufficiency` | `latest_session` | `load_turns` |
-| `load_turns_safe` | `lookup_ledger` | `lookup_result_path` | `read_dream_summary` |
-| `read_state` | `record_job` | `record_job_by_key` | `record_ledger_entry` |
-| `record_session` | `register_bot_post` | `resume_supported` | `run_dream_action` |
-| `safe_asset_path` | `schedule_commit` | `session_exists` | `session_path` |
-| `sessions_dir` | `set_config_provider` | `set_lock_registry` | `set_persona` |
-| `set_post_content_writer` | `thread_queue_config` | `ttl_days` | `validate_delete_body` |
-| `validate_header_meters_url` | `validate_subscription` | `write_post_content` |
+| Name | Kind | Signature / fields | Defined in |
+|------|------|--------------------|------------|
+| `AdmitResult` | class | proceed, queued, status | `mltgnt.conversation.thread_queue` |
+| `AgenticSkillDiscoverer` | class | see source | `mltgnt.routing.agentic_discover` |
+| `DEFAULT_COMMIT_DEBOUNCE_SEC` | constant | 300.0 | `mltgnt.memory._commit` |
+| `DaemonRunner` | class | see source | `mltgnt.daemon._runner` |
+| `DiscoverResult` | frozen dataclass | kind, skill, candidates, trace | `mltgnt.routing.agentic_discover` |
+| `DiscoverRound` | frozen dataclass | query, candidates, verdict | `mltgnt.routing.agentic_discover` |
+| `DiscoverVerdict` | frozen dataclass | kind, skill_name, next_query, reason, top_candidates | `mltgnt.memory._sufficiency` |
+| `IterativeRetriever` | class | see source | `mltgnt.memory._iterative` |
+| `LOCK` | constant | see source | `mltgnt.conversation.thread_persona_store` |
+| `PidLock` | class | see source | `mltgnt.daemon._pidlock` |
+| `PromoteCandidate` | frozen dataclass | topic, summary, source_entries, recurrence | `mltgnt.memory.compaction` |
+| `SearchAction` | frozen dataclass | source, query | `mltgnt.memory._sufficiency` |
+| `SearchResult` | frozen dataclass | source, entries | `mltgnt.memory._iterative` |
+| `SessionRecord` | frozen dataclass | engine, session_id, created_at, parent_session_id, is_compacted, summary_tokens | `mltgnt.conversation.session_store` |
+| `SkillSearchFn` | constant | see source | `mltgnt.memory._iterative` |
+| `SkillWatcherComponent` | class | see source | `mltgnt.daemon._skill_watcher` |
+| `SufficiencyResult` | frozen dataclass | sufficient, action | `mltgnt.memory._sufficiency` |
+| `THREAD_QUEUE_DIR` | constant | None | `mltgnt.conversation.thread_queue` |
+| `_build_section_prompt` | function | (section_text, target_bytes) | `mltgnt.memory.compaction` |
+| `_check_date_coverage` | function | (observed_ranges, final_text) | `mltgnt.memory.compaction` |
+| `_compact_section` | function | (section_name, section_text, target_bytes, llm_call, *) | `mltgnt.memory.compaction` |
+| `_compress_rollup_chunk` | function | (promoted, llm_call, *) | `mltgnt.memory.compaction` |
+| `_default_outbound_filter` | function | (text) | `mltgnt.media.hub.config` |
+| `_effective_bytes_for_ratio` | function | (text) | `mltgnt.memory.compaction` |
+| `_entries_to_body` | function | (entries) | `mltgnt.memory.compaction` |
+| `_entry_to_block` | function | (e) | `mltgnt.memory.compaction` |
+| `_extract_and_merge_preferences` | function | (existing_prefs, recent_text, target_bytes, llm_call, *) | `mltgnt.memory.compaction` |
+| `_extract_chunk_date_range` | function | (promoted) | `mltgnt.memory.compaction` |
+| `_promote_mid_to_long` | function | (compacted, mid_term_cap, long_term_cap, llm_call, *) | `mltgnt.memory.compaction` |
+| `_promote_with_compression` | function | (section_name, existing_body, incoming_body, cap_bytes, llm_call, *) | `mltgnt.memory.compaction` |
+| `_redistribute_entries` | function | (entries, now, config, *) | `mltgnt.memory.compaction` |
+| `_rollup_recent_chunk` | function | (recent_body, rollup_chunk) | `mltgnt.memory.compaction` |
+| `_sanitize_phase1_output` | function | (text, *) | `mltgnt.memory.compaction` |
+| `_strip_heading` | function | (section_text) | `mltgnt.memory.compaction` |
+| `_strip_observe_entries` | function | (body) | `mltgnt.memory.compaction` |
+| `append_entry` | function | (conversation_id, posted_ts, uid, result_path, order_path) | `mltgnt.conversation.thread_index` |
+| `append_turn` | function | (conversation_id, role, content, persona_id, *) | `mltgnt.conversation.session_store` |
+| `audit_path` | function | () | `mltgnt.conversation.session_compact` |
+| `build_composite_instruction` | function | (entries) | `mltgnt.conversation.thread_queue` |
+| `build_notification_payload` | function | (row, *) | `mltgnt.media.webchat.push` |
+| `build_prompt` | function | (turns_to_compact, existing_compacted) | `mltgnt.conversation.session_compact` |
+| `configure_llm_factory` | function | (factory) | `mltgnt.conversation.session_compact` |
+| `configure_on_set` | function | (callback) | `mltgnt.conversation.thread_persona_store` |
+| `configure_paths` | function | (*) | `mltgnt.conversation.session_store` |
+| `configure_resume_check` | function | (check) | `mltgnt.conversation.session_store` |
+| `drain_to_turn_input` | function | (conversation_id, *) | `mltgnt.conversation.thread_queue` |
+| `drained_entries_meta` | function | (entries) | `mltgnt.conversation.thread_queue` |
+| `dream_json_path` | function | (persona_dir, *) | `mltgnt.memory.dream.api` |
+| `dream_summary_from_dict` | function | (data) | `mltgnt.memory.dream._format` |
+| `dream_summary_to_dict` | function | (summary) | `mltgnt.memory.dream._format` |
+| `estimate_tokens` | function | (turns) | `mltgnt.conversation.session_compact` |
+| `extract_promote_candidates` | function | (entries, *) | `mltgnt.memory.compaction` |
+| `finish_turn` | function | (thread_key) | `mltgnt.conversation.thread_queue` |
+| `format_turns_for_prompt` | function | (turns_to_compact, existing_compacted) | `mltgnt.conversation.session_compact` |
+| `gc_sessions` | function | (*) | `mltgnt.conversation.session_store` |
+| `global_json_path` | function | (chat_dir, *) | `mltgnt.memory.dream.api` |
+| `invalidate_ledger` | function | (key) | `mltgnt.conversation.session_store` |
+| `invalidate_session` | function | (conversation_id) | `mltgnt.conversation.session_store` |
+| `is_expired` | function | (ts, *) | `mltgnt.conversation.thread_persona_store` |
+| `is_stale` | function | (state, stale_after_sec) | `mltgnt.conversation.thread_queue` |
+| `judge_for_discover` | function | (query, collected_text, skill_names, llm_call) | `mltgnt.memory._sufficiency` |
+| `judge_sufficiency` | function | (query, collected_text, llm_call) | `mltgnt.memory._sufficiency` |
+| `latest_session` | function | (conversation_id) | `mltgnt.conversation.session_store` |
+| `load_turns` | function | (conversation_id) | `mltgnt.conversation.session_store` |
+| `load_turns_safe` | function | (conversation_id, *) | `mltgnt.conversation.session_compact` |
+| `lookup_ledger` | function | (key, *) | `mltgnt.conversation.session_store` |
+| `lookup_result_path` | function | (conversation_id, posted_ts, *) | `mltgnt.conversation.thread_index` |
+| `read_dream_summary` | function | (config, persona_stem) | `mltgnt.memory.dream.api` |
+| `read_state` | function | (thread_key) | `mltgnt.conversation.thread_queue` |
+| `record_job` | function | (conversation_id, uuid) | `mltgnt.conversation.thread_queue` |
+| `record_job_by_key` | function | (thread_key, uuid) | `mltgnt.conversation.thread_queue` |
+| `record_ledger_entry` | function | (key, engine, session_id) | `mltgnt.conversation.session_store` |
+| `record_session` | function | (conversation_id, engine, session_id) | `mltgnt.conversation.session_store` |
+| `register_bot_post` | function | (conversation_id, posted_ts, uid, *) | `mltgnt.conversation.thread_index` |
+| `resume_supported` | function | (engine) | `mltgnt.conversation.session_store` |
+| `run_dream_action` | function | (job, *) | `mltgnt.scheduler.actions.dream` |
+| `safe_asset_path` | function | (assets_dir, name) | `mltgnt.media.webchat.app` |
+| `schedule_commit` | function | (path, persona, kind, *) | `mltgnt.memory._commit` |
+| `session_exists` | function | (conversation_id) | `mltgnt.conversation.session_store` |
+| `session_path` | function | (conversation_id) | `mltgnt.conversation.session_store` |
+| `sessions_dir` | function | () | `mltgnt.conversation.session_store` |
+| `set_config_provider` | function | (fn) | `mltgnt.conversation.thread_queue` |
+| `set_lock_registry` | function | (locks) | `mltgnt.conversation.thread_queue` |
+| `set_persona` | function | (conversation_id, persona) | `mltgnt.conversation.thread_persona_store` |
+| `set_post_content_writer` | function | (fn) | `mltgnt.conversation.thread_index` |
+| `thread_queue_config` | function | () | `mltgnt.conversation.thread_queue` |
+| `ttl_days` | function | () | `mltgnt.conversation.thread_persona_store` |
+| `validate_delete_body` | function | (body) | `mltgnt.media.webchat.push` |
+| `validate_header_meters_url` | function | (value) | `mltgnt.media.webchat.config` |
+| `validate_subscription` | function | (body) | `mltgnt.media.webchat.push` |
+| `write_post_content` | function | (uid, content) | `mltgnt.conversation.thread_index` |
 
 ## Protocols / Extension Points
 
