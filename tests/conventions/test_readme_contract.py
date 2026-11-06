@@ -5,18 +5,17 @@ architecture, configuration, errors, and v0.135.x hub / WebChat contracts.
 """
 from __future__ import annotations
 
+import argparse
 import ast
 import os
 import re
 import subprocess
 import sys
-import argparse
 from argparse import SUPPRESS, ArgumentParser
 from collections.abc import Iterator
 from dataclasses import MISSING, Field, fields
 from pathlib import Path
 from typing import Any, get_type_hints
-from unittest.mock import patch
 
 try:
     import tomllib
@@ -632,25 +631,51 @@ _CLI_SKIP_ACTION_DESTS = frozenset(
 
 
 def _build_cli_parser() -> ArgumentParser:
+    """Run the parser-construction prefix of the real CLI entry point."""
+    from mltgnt.cli import hub as hub_module
     from mltgnt.cli import main as main_module
+    from mltgnt.cli import memory as memory_module
 
-    captured: dict[str, ArgumentParser] = {}
+    source_path = Path(main_module.__file__)
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    main_node = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    prefix: list[ast.stmt] = []
+    for statement in main_node.body:
+        if (
+            isinstance(statement, ast.Assign)
+            and isinstance(statement.value, ast.Call)
+            and isinstance(statement.value.func, ast.Attribute)
+            and statement.value.func.attr == "parse_args"
+        ):
+            break
+        prefix.append(statement)
+    else:
+        raise AssertionError("mltgnt.cli.main does not call parser.parse_args")
 
-    def capture_parser(parser: ArgumentParser, argv: list[str] | None = None) -> argparse.Namespace:
-        captured["parser"] = parser
-        return argparse.Namespace(subcommand=None)
-
-    with (
-        patch.object(ArgumentParser, "parse_args", capture_parser),
-        patch.object(ArgumentParser, "print_help"),
-    ):
-        try:
-            main_module.main([])
-        except SystemExit as exc:
-            assert exc.code == 0
-
-    assert "parser" in captured, "mltgnt.cli.main did not construct an ArgumentParser"
-    return captured["parser"]
+    builder = ast.FunctionDef(
+        name="_readme_contract_parser_builder",
+        args=ast.arguments(
+            posonlyargs=[],
+            args=[],
+            kwonlyargs=[],
+            kw_defaults=[],
+            defaults=[],
+        ),
+        body=[*prefix, ast.Return(value=ast.Name(id="parser", ctx=ast.Load()))],
+        decorator_list=[],
+    )
+    module = ast.fix_missing_locations(ast.Module(body=[builder], type_ignores=[]))
+    namespace: dict[str, Any] = {
+        "argparse": argparse,
+        "hub_module": hub_module,
+        "memory_module": memory_module,
+    }
+    exec(compile(module, str(source_path), "exec"), namespace)
+    parser = namespace["_readme_contract_parser_builder"]()
+    assert isinstance(parser, ArgumentParser)
+    return parser
 
 
 def _cli_action_command_key(action: argparse.Action) -> str:
