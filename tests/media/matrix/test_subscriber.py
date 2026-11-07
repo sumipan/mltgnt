@@ -174,3 +174,69 @@ def test_invite_join_only_when_allowed(tmp_path: Path) -> None:
     fake.calls.clear()
     sub.sync_once()
     assert not [c for c in fake.calls if c.method == "POST" and "/join" in c.path]
+
+
+def test_encrypted_room_plain_messages_are_not_read(tmp_path: Path) -> None:
+    state_dir = tmp_path / "s"
+    state_dir.mkdir(parents=True)
+    (state_dir / "matrix_sync.json").write_text(json.dumps({"next_batch": "s1", "encrypted_notified": []}))
+    fake = FakeHomeserver()
+    msg = {
+        "type": "m.room.message",
+        "event_id": "$m1",
+        "sender": "@u:x",
+        "content": {"msgtype": "m.text", "body": "hi"},
+    }
+    sync1 = {
+        "next_batch": "s2",
+        "rooms": {
+            "join": {
+                "!a:x": {
+                    "state": {"events": [{"type": "m.room.encryption", "content": {}}]},
+                    "timeline": {"events": [msg]},
+                }
+            }
+        },
+    }
+    sync2 = {"next_batch": "s3", "rooms": {"join": {"!a:x": {"timeline": {"events": [msg]}}}}}
+    fake.queue("GET", "/sync", MatrixResponse(200, sync1))
+    fake.queue("GET", "/sync", MatrixResponse(200, sync2))
+    handler = RecordingHandler()
+    client = MatrixClient(_config(tmp_path), transport=fake)
+    sub = MatrixSubscriber(_config(tmp_path), handler, client=client, transport=fake)
+    assert sub.sync_once() == 0
+    assert sub.sync_once() == 0
+    assert handler.events == []
+    assert len(fake.send_bodies()) == 1
+
+
+def test_sync_failure_keeps_state_and_reports_failure(tmp_path: Path) -> None:
+    state_dir = tmp_path / "s"
+    state_dir.mkdir(parents=True)
+    (state_dir / "matrix_sync.json").write_text(json.dumps({"next_batch": "s1", "encrypted_notified": []}))
+    fake = FakeHomeserver()
+    fake.queue("GET", "/sync", MatrixResponse(0, None))
+    client = MatrixClient(_config(tmp_path), transport=fake)
+    sub = MatrixSubscriber(_config(tmp_path), RecordingHandler(), client=client, transport=fake)
+    assert sub._sync() is None
+    state = json.loads((state_dir / "matrix_sync.json").read_text(encoding="utf-8"))
+    assert state["next_batch"] == "s1"
+
+
+def test_invite_from_unknown_sender_in_known_room_is_ignored(tmp_path: Path) -> None:
+    state_dir = tmp_path / "s"
+    state_dir.mkdir(parents=True)
+    (state_dir / "matrix_sync.json").write_text(json.dumps({"next_batch": "s0", "encrypted_notified": []}))
+    fake = FakeHomeserver()
+    member = {
+        "type": "m.room.member",
+        "state_key": "@staff:x",
+        "sender": "@stranger:x",
+        "content": {"membership": "invite"},
+    }
+    sync = {"next_batch": "s1", "rooms": {"invite": {"!a:x": {"invite_state": {"events": [member]}}}}}
+    fake.queue("GET", "/sync", MatrixResponse(200, sync))
+    client = MatrixClient(_config(tmp_path), transport=fake)
+    sub = MatrixSubscriber(_config(tmp_path), RecordingHandler(), client=client, transport=fake)
+    sub.sync_once()
+    assert not [c for c in fake.calls if c.method == "POST" and "/join" in c.path]

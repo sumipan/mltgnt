@@ -167,12 +167,9 @@ def _matrix(tmp_path: Path, handler: ScriptedHandler) -> Medium:
         for body in reversed(fake.send_bodies()):
             rel = body.get("m.relates_to")
             if isinstance(rel, dict) and rel.get("rel_type") == "m.replace" and rel.get("event_id") == message_id:
-                    nc = body.get("m.new_content")
-                    if isinstance(nc, dict) and isinstance(nc.get("body"), str):
-                        return nc["body"]
-        for body in fake.send_bodies():
-            if body.get("msgtype") == "m.text" and "m.relates_to" not in body:
-                pass
+                nc = body.get("m.new_content")
+                if isinstance(nc, dict) and isinstance(nc.get("body"), str):
+                    return nc["body"]
         return posts()[-1] if posts() else ""
 
     medium = Medium(
@@ -274,7 +271,7 @@ def test_persona_reaction_is_the_same_on_both_media(tmp_path: Path) -> None:
     matrix_fake = media[2].client._transport  # type: ignore[attr-defined]
     assert any(
         isinstance(c.body, dict)
-        and c.body.get("msgtype") == "m.reaction"
+        and "/send/m.reaction/" in c.path
         and c.body.get("m.relates_to", {}).get("key") == "\U0001f4a1"
         for c in matrix_fake.calls
     )

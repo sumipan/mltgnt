@@ -16,13 +16,13 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.135.4)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.136.0)-orange)
 
-Pre-1.0. The current release is `0.135.4` (tag `v0.135.4`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.136.0` (tag `v0.136.0`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
-## Source inventory (`v0.135.4`)
+## Source inventory (`v0.136.0`)
 
-Regenerated from the `v0.135.4` tree (`package 0.135.4`, ghdag pin `v0.106.5`) on 2026-11-07. Row counts below match the tables in this file.
+Regenerated from the `v0.136.0` tree (`package 0.136.0`, ghdag pin `v0.106.5`) on 2026-11-07. Row counts below match the tables in this file.
 
 | Inventory item | Count |
 |----------------|------:|
@@ -50,29 +50,29 @@ Regenerated from the `v0.135.4` tree (`package 0.135.4`, ghdag pin `v0.106.5`) o
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.135.4"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.135.4"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.135.4"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # WebChat Web Push (includes the webchat dependencies and pywebpush)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.135.4"
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
-pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.135.4"
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.135.4"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 ```
 
 See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.135.4` |
+| Distribution | `mltgnt` `0.136.0` |
 | Python | `>=3.10` |
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.106.5` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
@@ -191,7 +191,7 @@ media.set_status(media.post("hello", "general"), Status.DONE)
 
 ## CLI Reference
 
-Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.135.4`.
+Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.136.0`.
 
 The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
 
@@ -259,7 +259,7 @@ Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` 
 
 ## Public API
 
-Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.135.4` (23 top-level names).
+Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.136.0` (23 top-level names).
 
 ### Top level: `mltgnt.__all__`
 
@@ -707,7 +707,7 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/` (151 modules at `v0.135.4`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Every Python module under `src/mltgnt/` (151 modules at `v0.136.0`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
@@ -866,7 +866,7 @@ Every Python module under `src/mltgnt/` (151 modules at `v0.135.4`). "Depends to
 
 ## Configuration
 
-Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.135.4`.
+Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.136.0`.
 
 mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
 
@@ -1025,7 +1025,7 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 
 ## Error Reference
 
-Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.135.4`.
+Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.136.0`.
 
 | Exception | Module | Base | Raised when |
 |-----------|--------|------|-------------|
@@ -1053,7 +1053,7 @@ Built-in exceptions raised by the public API:
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.135.4` (update when releasing).
+- Pin an exact tag in production, for example `@v0.136.0` (update when releasing).
 
 ## Deprecated API
 

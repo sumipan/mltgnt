@@ -68,7 +68,7 @@ class FakeHomeserver:
         if method.upper() == "PUT" and "/send/m.room.message/" in path:
             txn = path.rsplit("/", 1)[-1]
             return MatrixResponse(200, {"event_id": f"$sent-{txn[:8]}"})
-        if method.upper() == "PUT" and "/send/m.room.reaction/" in path:
+        if method.upper() == "PUT" and "/send/m.reaction/" in path:
             return MatrixResponse(200, {"event_id": "$reaction"})
         if method.upper() == "PUT" and "/typing/" in path:
             return MatrixResponse(200, {})

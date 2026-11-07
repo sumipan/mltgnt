@@ -154,7 +154,6 @@ class MatrixClient:
         self._sleep = sleep if sleep is not None else time.sleep
         self._event_rooms: dict[str, str] = {}
         self._thread_last_event: dict[str, str] = {}
-        self._pending_txn: str | None = None
 
     def remember(self, event_id: str, room_id: str) -> None:
         self._event_rooms[event_id] = room_id
@@ -268,8 +267,9 @@ class MatrixClient:
         user = _quote_path_segment(self._config.user_id)
         room = _quote_path_segment(room_id)
         path = f"/_matrix/client/v3/rooms/{room}/typing/{user}"
-        typing = status in _WORKING_STATUSES
-        body = {"typing": typing, "timeout": 30000}
+        body: dict[str, Any] = {"typing": False}
+        if status in _WORKING_STATUSES:
+            body = {"typing": True, "timeout": 30000}
         resp = self._request_with_retry("PUT", path, body=body)
         return resp is not None
 
@@ -281,7 +281,6 @@ class MatrixClient:
         if room_id is None:
             return False
         payload = {
-            "msgtype": "m.reaction",
             "m.relates_to": {
                 "rel_type": "m.annotation",
                 "event_id": message_id,
@@ -290,7 +289,7 @@ class MatrixClient:
         }
         txn = f"mltgnt-{uuid.uuid4().hex}"
         room = _quote_path_segment(room_id)
-        path = f"/_matrix/client/v3/rooms/{room}/send/m.room.reaction/{_quote_path_segment(txn)}"
+        path = f"/_matrix/client/v3/rooms/{room}/send/m.reaction/{_quote_path_segment(txn)}"
         resp = self._request_with_retry("PUT", path, body=payload)
         return resp is not None
 

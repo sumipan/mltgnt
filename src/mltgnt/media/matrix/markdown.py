@@ -15,25 +15,19 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
 
 
 def _inline(text: str) -> str:
+    # Escape once up front; the substitutions below work on already-escaped text.
     escaped = html.escape(text, quote=True)
 
     def link_sub(match: re.Match[str]) -> str:
         label, url = match.group(1), match.group(2)
         if not re.match(r"^https?://", url, re.IGNORECASE):
-            return html.escape(f"[{label}]({url})", quote=True)
-        return f'<a href="{html.escape(url, quote=True)}">{html.escape(label, quote=True)}</a>'
-
-    def bold_sub(match: re.Match[str]) -> str:
-        inner = match.group(1)
-        return f"<strong>{html.escape(inner, quote=True)}</strong>"
-
-    def code_sub(match: re.Match[str]) -> str:
-        return f"<code>{html.escape(match.group(1), quote=True)}</code>"
+            return match.group(0)
+        return f'<a href="{url}">{label}</a>'
 
     out = escaped
     out = _LINK_RE.sub(link_sub, out)
-    out = _BOLD_RE.sub(bold_sub, out)
-    out = _CODE_RE.sub(code_sub, out)
+    out = _BOLD_RE.sub(r"<strong>\1</strong>", out)
+    out = _CODE_RE.sub(r"<code>\1</code>", out)
     return out
 
 
@@ -105,9 +99,7 @@ def to_html(text: str) -> str:
                 continue
             if re.match(r"^[-*]\s+", line) or re.match(r"^\d+\.\s+", line):
                 items: list[str] = []
-                while i < len(lines) and (
-                    re.match(r"^[-*]\s+", lines[i]) or re.match(r"^\d+\.\s+", lines[i])
-                ):
+                while i < len(lines) and (re.match(r"^[-*]\s+", lines[i]) or re.match(r"^\d+\.\s+", lines[i])):
                     content = re.sub(r"^[-*]\s+", "", lines[i])
                     content = re.sub(r"^\d+\.\s+", "", content)
                     items.append(f"<li>{_inline(content)}</li>")

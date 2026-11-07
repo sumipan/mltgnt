@@ -17,4 +17,11 @@ def test_table_fence_and_unsafe_link() -> None:
     html = to_html("|a|b|\n|---|---|\n|1|2|\n\n```py\nx\n```\n\n[y](javascript:alert(1))")
     assert "<table>" in html
     assert "<pre><code>" in html
-    assert "<a " not in html or "javascript:" not in html
+    assert "<a " not in html
+
+
+def test_inline_escapes_once() -> None:
+    html = to_html("`a && b` **x<y** [l](https://e.example/?a=1&b=2)")
+    assert "<code>a &amp;&amp; b</code>" in html
+    assert "<strong>x&lt;y</strong>" in html
+    assert '<a href="https://e.example/?a=1&amp;b=2">l</a>' in html

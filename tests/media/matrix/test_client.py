@@ -91,7 +91,7 @@ def test_set_status_typing(tmp_path: Path) -> None:
     fake.calls.clear()
     assert client.set_status("$in", Status.DONE) is True
     body2 = fake.calls[-1].body
-    assert isinstance(body2, dict) and body2["typing"] is False
+    assert isinstance(body2, dict) and body2 == {"typing": False}
 
 
 def test_react_emoji_map(tmp_path: Path) -> None:
@@ -99,9 +99,9 @@ def test_react_emoji_map(tmp_path: Path) -> None:
     client = _client(tmp_path, fake)
     client.remember("$in", "!a:x")
     assert client.react("$in", "bulb") is True
+    assert "/send/m.reaction/" in fake.calls[-1].path
     body = fake.calls[-1].body
     assert isinstance(body, dict)
-    assert body["msgtype"] == "m.reaction"
     assert body["m.relates_to"]["key"] == "\U0001f4a1"
     assert body["m.relates_to"]["rel_type"] == "m.annotation"
     fake.calls.clear()

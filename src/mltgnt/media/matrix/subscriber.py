@@ -167,47 +167,24 @@ class MatrixSubscriber:
         return Attachment(name=name, content_type=ct, uri=str(dest))
 
     def _room_encrypted(self, room_block: dict[str, Any]) -> bool:
-        state = room_block.get("state")
-        if isinstance(state, dict):
-            events = state.get("events")
-            if isinstance(events, list):
-                for ev in events:
-                    if isinstance(ev, dict) and ev.get("type") == "m.room.encryption":
-                        return True
-        timeline = room_block.get("timeline")
-        if isinstance(timeline, dict):
-            events = timeline.get("events")
-            if isinstance(events, list):
-                for ev in events:
-                    if isinstance(ev, dict) and ev.get("type") == "m.room.encrypted":
-                        return True
+        for section in ("state", "timeline"):
+            block = room_block.get(section)
+            events = block.get("events") if isinstance(block, dict) else None
+            if not isinstance(events, list):
+                continue
+            for ev in events:
+                if isinstance(ev, dict) and ev.get("type") in ("m.room.encryption", "m.room.encrypted"):
+                    return True
         return False
 
-    def _maybe_encrypted_notice(
-        self,
-        room_id: str,
-        room_block: dict[str, Any],
-        encrypted_notified: list[str],
-    ) -> list[str]:
+    def _notify_encrypted(self, room_id: str, encrypted_notified: list[str]) -> None:
         if room_id in encrypted_notified:
-            return encrypted_notified
-        encrypted = self._room_encrypted(room_block)
-        if not encrypted:
-            timeline = room_block.get("timeline")
-            if isinstance(timeline, dict):
-                events = timeline.get("events")
-                if isinstance(events, list):
-                    encrypted = any(
-                        isinstance(ev, dict) and ev.get("type") == "m.room.encrypted" for ev in events
-                    )
-        if not encrypted:
-            return encrypted_notified
+            return
         space = self._config.space_for_room(room_id)
         if space is None:
-            return encrypted_notified
+            return
         self._client.post(self._config.encrypted_room_notice, space)
         encrypted_notified.append(room_id)
-        return encrypted_notified
 
     def _process_invites(self, rooms: dict[str, Any]) -> None:
         invite = rooms.get("invite")
@@ -242,6 +219,10 @@ class MatrixSubscriber:
 
     def sync_once(self) -> int:
         """Run one sync cycle. Return the number of MediaEvents delivered."""
+        return self._sync() or 0
+
+    def _sync(self) -> int | None:
+        """Like ``sync_once`` but return None when ``/sync`` itself failed."""
         next_batch, encrypted_notified = self._load_state()
         initial_sync = next_batch is None
         query: dict[str, str] = {"timeout": str(self._config.poll_timeout_ms)}
@@ -249,13 +230,17 @@ class MatrixSubscriber:
             query["since"] = next_batch
         else:
             query["filter"] = json.dumps({"room": {"timeline": {"limit": 0}}}, separators=(",", ":"))
-        resp = self._transport.request("GET", "/_matrix/client/v3/sync", query=query)
+        # The HTTP timeout must outlast the server-side long-poll.
+        timeout_sec = self._config.poll_timeout_ms / 1000.0 + 30.0
+        resp = self._transport.request("GET", "/_matrix/client/v3/sync", query=query, timeout_sec=timeout_sec)
         if resp.status != 200 or resp.json is None:
-            return 0
+            _log.warning("matrix subscriber: sync failed status=%s", resp.status)
+            return None
         body = resp.json
         new_batch = body.get("next_batch")
         if not isinstance(new_batch, str):
-            return 0
+            _log.warning("matrix subscriber: sync response without next_batch")
+            return None
         delivered = 0
         rooms = body.get("rooms")
         if isinstance(rooms, dict):
@@ -266,7 +251,10 @@ class MatrixSubscriber:
                 for room_id, block in joined.items():
                     if not isinstance(block, dict):
                         continue
-                    encrypted_notified = self._maybe_encrypted_notice(room_id, block, encrypted_notified)
+                    # Encryption cannot be turned off again, so a notified room stays skipped.
+                    if room_id in encrypted_notified or self._room_encrypted(block):
+                        self._notify_encrypted(room_id, encrypted_notified)
+                        continue
                     timeline = block.get("timeline")
                     if not isinstance(timeline, dict):
                         continue
@@ -275,11 +263,6 @@ class MatrixSubscriber:
                         continue
                     for ev in events:
                         if not isinstance(ev, dict):
-                            continue
-                        if ev.get("type") == "m.room.encrypted":
-                            encrypted_notified = self._maybe_encrypted_notice(
-                                room_id, {"timeline": {"events": [ev]}}, encrypted_notified
-                            )
                             continue
                         event_id = ev.get("event_id")
                         if isinstance(event_id, str):
@@ -310,10 +293,13 @@ class MatrixSubscriber:
     def _run(self) -> None:
         while not self._stop.is_set():
             try:
-                self.sync_once()
-                self._backoff_index = 0
+                ok = self._sync() is not None
             except Exception:
                 _log.exception("matrix subscriber: sync failed")
+                ok = False
+            if ok:
+                self._backoff_index = 0
+            else:
                 delay = _BACKOFF_SCHEDULE[min(self._backoff_index, len(_BACKOFF_SCHEDULE) - 1)]
                 self._backoff_index = min(self._backoff_index + 1, len(_BACKOFF_SCHEDULE) - 1)
                 if self._interruptible_sleep(delay):

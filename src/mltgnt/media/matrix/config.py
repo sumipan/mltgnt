@@ -56,9 +56,7 @@ class MatrixMediaConfig(MediaConfig):
     files_dir: Path | None = None
     max_upload_bytes: int = 20 * 1024 * 1024
     poll_timeout_ms: int = 30000
-    encrypted_room_notice: str = (
-        "I can't read encrypted rooms. Please talk to me in a room with encryption turned off."
-    )
+    encrypted_room_notice: str = "I can't read encrypted rooms. Please talk to me in a room with encryption turned off."
     display_names: Mapping[str, str] = field(default_factory=dict, hash=False)
     avatars: Mapping[str, str] = field(default_factory=dict, hash=False)
 
