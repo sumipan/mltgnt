@@ -16,17 +16,17 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.135.3)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.136.0)-orange)
 
-Pre-1.0. The current release is `0.135.3` (tag `v0.135.3`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.136.0` (tag `v0.136.0`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
-## Source inventory (`v0.135.3`)
+## Source inventory (`v0.136.0`)
 
-Regenerated from the `v0.135.3` tree (`package 0.135.3`, ghdag pin `v0.106.5`) on 2026-11-06. Row counts below match the tables in this file.
+Regenerated from the `v0.136.0` tree (`package 0.136.0`, ghdag pin `v0.106.5`) on 2026-11-07. Row counts below match the tables in this file.
 
 | Inventory item | Count |
 |----------------|------:|
-| Python modules under `src/mltgnt/` | 145 |
+| Python modules under `src/mltgnt/` | 151 |
 | `mltgnt.__all__` exports | 23 |
 | `mltgnt.agent.__all__` exports | 38 |
 | `mltgnt.media.__all__` exports | 27 |
@@ -50,29 +50,29 @@ Regenerated from the `v0.135.3` tree (`package 0.135.3`, ghdag pin `v0.106.5`) o
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.135.3"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.135.3"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.135.3"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # WebChat Web Push (includes the webchat dependencies and pywebpush)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.135.3"
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
-pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.135.3"
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.135.3"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.136.0"
 ```
 
 See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.135.3` |
+| Distribution | `mltgnt` `0.136.0` |
 | Python | `>=3.10` |
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.106.5` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
@@ -191,7 +191,7 @@ media.set_status(media.post("hello", "general"), Status.DONE)
 
 ## CLI Reference
 
-Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.135.3`.
+Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.136.0`.
 
 The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
 
@@ -259,7 +259,7 @@ Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` 
 
 ## Public API
 
-Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.135.3` (23 top-level names).
+Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.136.0` (23 top-level names).
 
 ### Top level: `mltgnt.__all__`
 
@@ -551,6 +551,18 @@ Dependency-free DTOs and Protocols that every layer shares.
 
 Hub envelopes live in `mltgnt.interfaces.hub` (`HubAddress`, `HubDisplay`, `HubMessage`, `HubTransport`) so core layers never import `mltgnt.media.hub`.
 
+`mltgnt.media.matrix` (stdlib only; no optional extra):
+
+| Module | Main names | Purpose |
+|--------|------------|---------|
+| `config` | `MatrixMediaConfig` | Homeserver URL, bot `user_id`, `access_token_env` (default `MATRIX_ACCESS_TOKEN`), room key map, `allowed_senders`, `space_prefix`, files and sync settings. Room keys are `[a-z0-9-]+`; `space_id` is `space_prefix` + key (no `:`). |
+| `client` | `MatrixClient`, `MatrixTransport`, `UrllibMatrixTransport`, `MatrixResponse` | `MatrixClient(config, *, transport=None)` implements `MediaClient` (post / update / typing / reaction / upload). `remember(event_id, room_id)` registers inbound ids for `set_status` / `react` / `update`. |
+| `inbound` | `to_media_event` | Matrix `m.room.message` -> `MediaEvent` (text, image, file; thread roots; quote stripping). Ignores encrypted events, edits, notices, and disallowed senders. |
+| `markdown` | `to_html` | Small Markdown subset -> HTML for `formatted_body` (escaped; no raw HTML). |
+| `subscriber` | `MatrixSubscriber`, `EventHandler` | Long-poll `GET /_matrix/client/v3/sync`, persist `matrix_sync.json`, deliver events to `MediaBridge`, auto-join invited rooms, one-time notice for encrypted rooms. |
+
+Prepare a Matrix homeserver (for example Conduit), create a bot user and access token, set `MATRIX_ACCESS_TOKEN` (or the name in `access_token_env`), invite the bot to **unencrypted** rooms listed in `rooms`, and list human senders in `allowed_senders`. WebChat and Slack stay unchanged; Matrix is an additional inbound/outbound medium.
+
 ### Submodule export index (`__all__` supplement)
 
 Names exported from submodule `__all__` lists that are not repeated in the tables above.
@@ -660,6 +672,7 @@ Names exported from submodule `__all__` lists that are not repeated in the table
 | `DaemonComponent` | `mltgnt.daemon` | `name` property, non-blocking `start()`, `stop()` | `DaemonRunner`, `mltgnt run` |
 | `HubTransport` | `mltgnt.interfaces.hub` | `send`, `poll`, `revise`, `guard_context` for hub HTTP relay | `HubClient`, `UrllibTransport`, `HubSubscriber` |
 | `EventHandler` | `mltgnt.media.hub.subscriber` | `handle_event(event: MediaEvent)` | `HubSubscriber` polls rooms and delivers inbound events |
+| `EventHandler` | `mltgnt.media.matrix.subscriber` | `handle_event(event: MediaEvent)` | `MatrixSubscriber` polls `/sync` and delivers inbound events |
 | `LLMCaller` | `mltgnt.agent._runner` | `(prompt, *, tool_result=None) -> str \| None` | `AgentRunner(llm_call=...)`, `run_work_loop(llm_call=...)` |
 | `ToolExecutor` | `mltgnt.agent._runner` | `(tool_name, tool_args) -> str`. `MemoryToolExecutor` is a built-in implementation | `AgentRunner(tool_executor=...)`, `run_work_loop(tools=...)` |
 | `ReflexionEvaluator` | `mltgnt.agent._runner` | `(prompt, tool_name, tool_args, tool_result, tool_trace) -> ReflexionVerdict` | `AgentRunner(evaluator=...)` |
@@ -694,7 +707,7 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/` (145 modules at `v0.135.3`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Every Python module under `src/mltgnt/` (151 modules at `v0.136.0`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
@@ -768,6 +781,12 @@ Every Python module under `src/mltgnt/` (145 modules at `v0.135.3`). "Depends to
 | `mltgnt.media.hub.inbound` | Hub envelope rows -> MediaEvent (no FastAPI). | L1 → L2–L5 |
 | `mltgnt.media.hub.server` | FastAPI hub server: per-room JSONL stores and bearer auth. | L1 → L2–L5 |
 | `mltgnt.media.hub.subscriber` | Poll hub rooms and deliver inbound messages to a host handler. | L1 → L2–L5 |
+| `mltgnt.media.matrix.__init__` | Matrix medium package (stdlib only; no slack/webchat/hub imports). | L1 → L2–L5 |
+| `mltgnt.media.matrix.client` | MatrixClient (MediaClient), MatrixTransport, and urllib transport. | L1 → L2–L5 |
+| `mltgnt.media.matrix.config` | Matrix media client / subscriber settings. | L1 → L2–L5 |
+| `mltgnt.media.matrix.inbound` | Matrix client events -> MediaEvent. | L1 → L2–L5 |
+| `mltgnt.media.matrix.markdown` | Markdown subset -> HTML for Matrix formatted messages. | L1 → L2–L5 |
+| `mltgnt.media.matrix.subscriber` | Long-poll Matrix /sync and deliver inbound messages to a host handler. | L1 → L2–L5 |
 | `mltgnt.media.slack.__init__` | Slack media implementation. Import from the submodules (requires the ``slack`` extra at runtime). | L1 → L2–L5 |
 | `mltgnt.media.slack.app` | Slack Bolt App factory and Socket Mode start-up. Bolt is imported lazily. | L1 → L2–L5 |
 | `mltgnt.media.slack.client` | SlackClient: MediaClient implementation over a Slack WebClient. | L1 → L2–L5 |
@@ -847,7 +866,7 @@ Every Python module under `src/mltgnt/` (145 modules at `v0.135.3`). "Depends to
 
 ## Configuration
 
-Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.135.3`.
+Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.136.0`.
 
 mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
 
@@ -907,6 +926,7 @@ All of them are frozen dataclasses.
 | `WebChatMediaConfig` | `store_dir` (required, keyword-only), `host` (`"127.0.0.1"`), `port` (`8765`), `space_id` (`"webchat"`), `assets_dir` (`None`), `avatars` (`{}`; author -> file under `assets_dir` or an `http(s)://` URL), `display_names` (`{}`; author -> name. The browser user posts as `"user"`), `channel_name` (`"general"`), `channel_slug` (`"general"`; URL segment under `/c/<slug>/`), `files_dir` (`None` = `<store_dir>/../files`), `max_upload_bytes` (20 MiB), `push` (`WebPushConfig`; VAPID keys and `enabled` flag), `pwa_icon_192` / `pwa_icon_512` (optional basename under `assets_dir` for PWA icons), `header_meters_url` (`None`; when set, a same-origin absolute path such as `/meters.json` that the UI fetches with `cache: no-store`) |
 | `WebPushConfig` | `enabled` (`False`), `vapid_public_key` / `vapid_private_key` (`None`), `vapid_subject` (`mailto:admin@example.invalid`), `body_text` (fixed notification body; message text is never sent). Requires `pip install mltgnt[webchat-push]` and a valid subject (`mailto:` or `https://`) for `push_enabled` |
 | `HubMediaConfig` | `hub_url`, `host_id`, `token_env`, `rooms` (required, keyword-only), `cursor_dir` (`None`), `poll_interval_sec` (`2.0`), `space_prefix` (`"hub."`), `guard` (`GuardConfig()`), `outbound_filter` (`None`) |
+| `MatrixMediaConfig` | `homeserver_url`, `user_id` (required, keyword-only), `access_token_env` (`"MATRIX_ACCESS_TOKEN"`), `rooms` (`{}`), `allowed_senders` (`()`), `space_prefix` (`"matrix."`), `files_dir` (`None` = `<state_dir>/files`), `max_upload_bytes` (20 MiB), `poll_timeout_ms` (`30000`), `encrypted_room_notice` (fixed English notice), `display_names` / `avatars` (`{}`) |
 
 #### WebChat header meters
 
@@ -1005,7 +1025,7 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 
 ## Error Reference
 
-Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.135.3`.
+Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.136.0`.
 
 | Exception | Module | Base | Raised when |
 |-----------|--------|------|-------------|
@@ -1033,7 +1053,7 @@ Built-in exceptions raised by the public API:
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.135.3`.
+- Pin an exact tag in production, for example `@v0.136.0` (update when releasing).
 
 ## Deprecated API
 

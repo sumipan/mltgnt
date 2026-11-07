@@ -1,7 +1,7 @@
-"""Media contract (#4032): one TurnHandler gives the same turn on Slack and WebChat.
+"""Media contract (#4032): one TurnHandler gives the same turn on each medium.
 
-Reply, delegation, progress and result are run on the Slack fake and on WebChat
-(store under ``tmp_path``); the TurnResult and what each medium shows must match.
+Reply, delegation, progress and result run on Slack, WebChat, and Matrix fakes;
+the TurnResult and what each medium shows must match.
 """
 
 from __future__ import annotations
@@ -25,7 +25,11 @@ from mltgnt.media.slack.config import SlackMediaConfig
 from mltgnt.media.slack.inbound import to_media_event as slack_event
 from mltgnt.media.webchat.client import WebChatClient
 from mltgnt.media.webchat.config import WebChatMediaConfig
+from mltgnt.media.matrix.client import MatrixClient
+from mltgnt.media.matrix.config import MatrixMediaConfig
+from mltgnt.media.matrix.inbound import to_media_event as matrix_event
 from mltgnt.media.webchat.inbound import to_media_event as webchat_event
+from tests.media.matrix.fakes import FakeHomeserver
 from tests.media.slack.fakes import FakeWebClient
 
 UID = "22222222-2222-2222-2222-222222222222"
@@ -121,7 +125,66 @@ def _webchat(tmp_path: Path, handler: ScriptedHandler) -> Medium:
     return medium
 
 
-FACTORIES = (_slack, _webchat)
+def _matrix(tmp_path: Path, handler: ScriptedHandler) -> Medium:
+    root = tmp_path / "matrix"
+    config = MatrixMediaConfig(
+        state_dir=root / "s",
+        pending_dir=root / "p",
+        events_dir=root / "e",
+        homeserver_url="http://127.0.0.1:8008",
+        user_id="@bot:x",
+        rooms={"staff": "!a:x"},
+        allowed_senders=("@u:x",),
+    )
+    fake = FakeHomeserver()
+    client = MatrixClient(config, transport=fake)
+    counter = itertools.count(1)
+
+    def receive(text: str) -> MediaEvent:
+        eid = f"$in{next(counter)}"
+        event = {
+            "type": "m.room.message",
+            "event_id": eid,
+            "sender": "@u:x",
+            "content": {"msgtype": "m.text", "body": text},
+        }
+        client.remember(eid, "!a:x")
+        return matrix_event(event, room_id="!a:x", config=config, files=lambda _u, _i: None)
+
+    def posts() -> list[str]:
+        out: list[str] = []
+        for body in fake.send_bodies():
+            relates = body.get("m.relates_to")
+            if isinstance(relates, dict) and relates.get("rel_type") == "m.replace":
+                continue
+            if body.get("msgtype") == "m.text" and "m.new_content" not in body:
+                body_text = body.get("body")
+                if isinstance(body_text, str):
+                    out.append(body_text)
+        return out
+
+    def shown(message_id: str) -> str:
+        for body in reversed(fake.send_bodies()):
+            rel = body.get("m.relates_to")
+            if isinstance(rel, dict) and rel.get("rel_type") == "m.replace" and rel.get("event_id") == message_id:
+                nc = body.get("m.new_content")
+                if isinstance(nc, dict) and isinstance(nc.get("body"), str):
+                    return nc["body"]
+        return posts()[-1] if posts() else ""
+
+    medium = Medium(
+        "matrix",
+        client,
+        config.pending_dir,
+        receive,
+        posts,
+        shown,
+    )
+    medium.bridge = MediaBridge(client, handler, config)
+    return medium
+
+
+FACTORIES = (_slack, _webchat, _matrix)
 
 
 @pytest.fixture(autouse=True)
@@ -143,17 +206,19 @@ def _bridge(medium: Medium) -> MediaBridge:
 
 def test_reply_is_the_same_on_both_media(tmp_path: Path) -> None:
     handler, media = _media(tmp_path, TurnResult(kind="reply", text="pong"))
+    n = len(media)
     results = [_bridge(m).handle_event(m.receive("ping")) for m in media]
-    assert results == [TurnResult(kind="reply", text="pong")] * 2
-    assert [t.text for t in handler.turns] == ["ping", "ping"]
+    assert results == [TurnResult(kind="reply", text="pong")] * n
+    assert [t.text for t in handler.turns] == ["ping"] * n
     for medium in media:
         assert medium.posts() == ["pong"], medium.name
 
 
 def test_delegation_is_the_same_on_both_media(tmp_path: Path) -> None:
     _handler, media = _media(tmp_path, TurnResult(kind="task", task_ref=UID))
+    n = len(media)
     results = [_bridge(m).handle_event(m.receive("do it")) for m in media]
-    assert results == [TurnResult(kind="task", task_ref=UID)] * 2
+    assert results == [TurnResult(kind="task", task_ref=UID)] * n
     for medium in media:
         assert medium.posts() == [], medium.name
         pending = PendingStore(medium.pending_dir).load(UID)
@@ -175,7 +240,7 @@ def test_progress_is_the_same_on_both_media(tmp_path: Path) -> None:
         assert finalize_progress(medium.client, message_id, "0") is True
         shown.append([after_update, medium.shown(message_id)])
         assert medium.posts() == ["..."], medium.name
-    assert shown[0] == shown[1]
+    assert len({tuple(s) for s in shown}) == 1
     assert shown[0][0] == "Read notes.txt"
 
 
@@ -192,16 +257,22 @@ def test_result_is_the_same_on_both_media(tmp_path: Path) -> None:
 
 def test_persona_reaction_is_the_same_on_both_media(tmp_path: Path) -> None:
     handler, media = _media(tmp_path, TurnResult(kind="reply", text="pong", reaction="bulb"))
-    slack_event = media[0].receive("ping")
-    webchat_event = media[1].receive("ping")
-    assert _bridge(media[0]).handle_event(slack_event) == TurnResult(kind="reply", text="pong", reaction="bulb")
-    assert _bridge(media[1]).handle_event(webchat_event) == TurnResult(kind="reply", text="pong", reaction="bulb")
+    events = [m.receive("ping") for m in media]
+    for m, ev in zip(media, events, strict=True):
+        assert _bridge(m).handle_event(ev) == TurnResult(kind="reply", text="pong", reaction="bulb")
     slack_web = media[0].client._web  # type: ignore[attr-defined]
     persona_calls = [
-        c for c in slack_web.calls_of("reactions_add") if c["name"] == "bulb" and c["timestamp"] == slack_event.message_id
+        c for c in slack_web.calls_of("reactions_add") if c["name"] == "bulb" and c["timestamp"] == events[0].message_id
     ]
     assert len(persona_calls) == 1
     webchat_store = media[1].client.store  # type: ignore[attr-defined]
-    row = webchat_store.latest(webchat_event.message_id)
+    row = webchat_store.latest(events[1].message_id)
     assert row is not None and row["reactions"] == ["bulb"]
-    assert handler.turns[0].text == handler.turns[1].text == "ping"
+    matrix_fake = media[2].client._transport  # type: ignore[attr-defined]
+    assert any(
+        isinstance(c.body, dict)
+        and "/send/m.reaction/" in c.path
+        and c.body.get("m.relates_to", {}).get("key") == "\U0001f4a1"
+        for c in matrix_fake.calls
+    )
+    assert len({t.text for t in handler.turns}) == 1 and handler.turns[0].text == "ping"
