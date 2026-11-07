@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.136.0
+
 - **Matrix medium**: optional `mltgnt.media.matrix` package (stdlib only): `MatrixMediaConfig`, `MatrixClient` (`MediaClient` over Client-Server API), `MatrixSubscriber` (`/sync` long-poll), `to_media_event`, and `to_html` for formatted messages. Unencrypted rooms only; homeserver URL, bot user, room map, and `MATRIX_ACCESS_TOKEN` (configurable env name) are required at host wiring time.
 
 ## v0.135.2
