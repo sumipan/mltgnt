@@ -1025,8 +1025,8 @@ def _quick_start_python_block(text: str) -> str:
     raise AssertionError("Quick Start python fence not found")
 
 
-def test_pyproject_ghdag_pins_v0_107_0() -> None:
-    """Issue #6097: ghdag dependency pin must match the bumped ghdag release tag."""
+def test_pyproject_ghdag_pins_v0_107_2() -> None:
+    """Issue #6105: ghdag dependency pin must match the bumped ghdag release tag."""
     pins = [
         dep
         for dep in _pyproject()["project"]["dependencies"]
@@ -1034,7 +1034,7 @@ def test_pyproject_ghdag_pins_v0_107_0() -> None:
     ]
     assert len(pins) == 1, f"expected exactly one ghdag git pin: {pins}"
     tag = pins[0].rsplit("@v", 1)[1]
-    assert tag == "0.107.0", f"ghdag pin v{tag} is not v0.107.0"
+    assert tag == "0.107.2", f"ghdag pin v{tag} is not v0.107.2"
 
 
 def test_readme_release_metadata_matches_pyproject() -> None:
