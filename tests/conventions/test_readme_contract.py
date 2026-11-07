@@ -118,15 +118,6 @@ def _pyproject() -> dict[str, Any]:
     return tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
 
 
-def _ghdag_pin(version: str) -> str:
-    for dep in _pyproject()["project"]["dependencies"]:
-        if "ghdag" in dep:
-            match = re.search(r"@v([0-9.]+)", dep)
-            if match:
-                return f"v{match.group(1)}"
-    raise AssertionError("ghdag dependency pin not found in pyproject.toml")
-
-
 def _install_urls(text: str) -> list[str]:
     return re.findall(r"git\+https://github\.com/sumipan/mltgnt\.git@v[0-9.]+", text)
 
@@ -1034,26 +1025,37 @@ def _quick_start_python_block(text: str) -> str:
     raise AssertionError("Quick Start python fence not found")
 
 
+def test_pyproject_ghdag_pins_v0_107_0() -> None:
+    """Issue #6097: ghdag dependency pin must match the bumped ghdag release tag."""
+    pins = [
+        dep
+        for dep in _pyproject()["project"]["dependencies"]
+        if dep.startswith("ghdag @ git+https://github.com/sumipan/ghdag.git@v")
+    ]
+    assert len(pins) == 1, f"expected exactly one ghdag git pin: {pins}"
+    tag = pins[0].rsplit("@v", 1)[1]
+    assert tag == "0.107.0", f"ghdag pin v{tag} is not v0.107.0"
+
+
 def test_readme_release_metadata_matches_pyproject() -> None:
-    """Release badge, install URLs, ghdag pin, Python floor, and license match pyproject."""
+    """Release badge, install URLs, Python floor, and license match pyproject (mltgnt package only).
+
+    ghdag pin alignment is checked in ``test_pyproject_ghdag_pins_*`` so ghdag-only bumps
+    do not require README.md edits in the same PR.
+    """
     text = _readme_text()
     project = _pyproject()["project"]
     version = project["version"]
     tag = f"v{version}"
-    ghdag_tag = _ghdag_pin(version)
 
     assert f"`{version}`" in text or version in text
     assert tag in text
-    assert ghdag_tag in text
     assert project["requires-python"] in text
     assert "MIT" in text
 
     urls = _install_urls(text)
     assert urls, "no mltgnt git install URLs in README"
     assert all(url.endswith(f"@{tag}") for url in urls)
-
-    install_block = _section_slice(text, "Installation", stop_before=("Quick Start",))
-    assert ghdag_tag in install_block
 
 
 def test_readme_required_sections_are_present_once() -> None:
