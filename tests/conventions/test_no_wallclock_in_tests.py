@@ -7,8 +7,12 @@ ledger may only shrink when wall-clock usage is removed, never grow.
 from __future__ import annotations
 
 import ast
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _LEDGER_FILE = Path(__file__).resolve().parent / "known_wallclock_tests.txt"
@@ -84,7 +88,7 @@ def _find_wallclock_calls(source: str) -> list[tuple[int, str]]:
             kind = _call_kind(node)
             if kind is not None:
                 candidates.append((node.lineno, kind))
-    return candidates
+    return sorted(candidates)
 
 
 def _scan_test_files(root: Path) -> dict[str, list[tuple[int, str]]]:
@@ -118,6 +122,26 @@ def _wallclock_file_set(root: Path | None = None) -> set[str]:
     return set(_scan_test_files(root))
 
 
+def _ledger_violations(root: Path, ledger: Path) -> str:
+    """Return the unlisted / stale report, or an empty string when in sync."""
+    measured = _wallclock_file_set(root)
+    known = _read_ledger(ledger)
+    unlisted = sorted(measured - known)
+    stale = sorted(known - measured)
+    parts: list[str] = []
+    if unlisted:
+        parts.append(
+            "Unlisted wall-clock test files (fix tests; do not grow the ledger):\n"
+            + "\n".join(f"  {p}" for p in unlisted)
+        )
+    if stale:
+        parts.append(
+            "Stale paths in known_wallclock_tests.txt (remove these lines):\n"
+            + "\n".join(f"  {p}" for p in stale)
+        )
+    return "\n\n".join(parts)
+
+
 def test_positive_literal_waits_are_wallclock_candidates() -> None:
     source = (
         "import asyncio\n"
@@ -133,15 +157,12 @@ def test_positive_literal_waits_are_wallclock_candidates() -> None:
         "    thread.start()\n"
         "    thread.join(timeout=2.0)\n"
     )
-    found = _find_wallclock_calls(source)
-    kinds = {k for _, k in found}
-    assert kinds == {
-        "time.sleep",
-        "asyncio.sleep",
-        "communicate(timeout=...)",
-        "join(timeout=...)",
-    }
-    assert len(found) == 4
+    assert _find_wallclock_calls(source) == [
+        (7, "time.sleep"),
+        (8, "asyncio.sleep"),
+        (10, "communicate(timeout=...)"),
+        (13, "join(timeout=...)"),
+    ]
 
 
 def test_unfixed_clock_calls_are_wallclock_candidates() -> None:
@@ -157,17 +178,14 @@ def test_unfixed_clock_calls_are_wallclock_candidates() -> None:
         "    datetime.now()\n"
         "    datetime.utcnow()\n"
     )
-    found = _find_wallclock_calls(source)
-    kinds = {k for _, k in found}
-    assert kinds == {
-        "time.monotonic",
-        "time.perf_counter",
-        "perf_counter",
-        "time.time",
-        "datetime.now",
-        "datetime.utcnow",
-    }
-    assert len(found) == 6
+    assert _find_wallclock_calls(source) == [
+        (6, "time.monotonic"),
+        (7, "time.perf_counter"),
+        (8, "perf_counter"),
+        (9, "time.time"),
+        (10, "datetime.now"),
+        (11, "datetime.utcnow"),
+    ]
 
 
 def test_nonliteral_waits_and_monkeypatch_references_are_not_candidates() -> None:
@@ -196,10 +214,10 @@ def test_wallclock_policy_rejects_unlisted_files(tmp_path: Path) -> None:
     ledger = root / "tests" / "conventions" / "known_wallclock_tests.txt"
     ledger.parent.mkdir(parents=True)
     ledger.write_text("# empty\n", encoding="utf-8")
-    measured = _wallclock_file_set(root)
-    known = _read_ledger(ledger)
-    unlisted = sorted(measured - known)
-    assert unlisted == ["tests/test_new_wallclock.py"]
+    report = _ledger_violations(root, ledger)
+    assert report.startswith("Unlisted wall-clock test files")
+    assert "  tests/test_new_wallclock.py" in report
+    assert "Stale" not in report
 
 
 def test_wallclock_ledger_entries_still_have_candidates(tmp_path: Path) -> None:
@@ -211,30 +229,16 @@ def test_wallclock_ledger_entries_still_have_candidates(tmp_path: Path) -> None:
     ledger = root / "tests" / "conventions" / "known_wallclock_tests.txt"
     ledger.parent.mkdir(parents=True)
     ledger.write_text(f"{rel}\n", encoding="utf-8")
-    measured = _wallclock_file_set(root)
-    known = _read_ledger(ledger)
-    stale = sorted(known - measured)
-    assert stale == [rel]
+    report = _ledger_violations(root, ledger)
+    assert report.startswith("Stale paths in known_wallclock_tests.txt")
+    assert f"  {rel}" in report
+    assert "Unlisted" not in report
 
 
 def test_wallclock_known_files_match_scanner() -> None:
     """Files with wall-clock calls must match known_wallclock_tests.txt exactly."""
-    measured = _wallclock_file_set()
-    known = _read_ledger(_LEDGER_FILE)
-    unlisted = sorted(measured - known)
-    stale = sorted(known - measured)
-    parts: list[str] = []
-    if unlisted:
-        parts.append(
-            "Unlisted wall-clock test files (fix tests; do not grow the ledger):\n"
-            + "\n".join(f"  {p}" for p in unlisted)
-        )
-    if stale:
-        parts.append(
-            "Stale paths in known_wallclock_tests.txt (remove these lines):\n"
-            + "\n".join(f"  {p}" for p in stale)
-        )
-    assert not parts, "\n\n".join(parts)
+    report = _ledger_violations(REPO_ROOT, _LEDGER_FILE)
+    assert not report, report
 
 
 def test_pytest_has_one_global_timeout() -> None:
