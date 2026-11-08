@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.136.3
+
+- **WebChat layout**: header usage meters no longer overflow the fixed-height header (groups sit side by side, and move to their own row on narrow screens); each day's messages live in their own section so sticky day pills no longer pile up on top of each other.
+
 ## v0.136.0
 
 - **Matrix medium**: optional `mltgnt.media.matrix` package (stdlib only): `MatrixMediaConfig`, `MatrixClient` (`MediaClient` over Client-Server API), `MatrixSubscriber` (`/sync` long-poll), `to_media_event`, and `to_html` for formatted messages. Unencrypted rooms only; homeserver URL, bot user, room map, and `MATRIX_ACCESS_TOKEN` (configurable env name) are required at host wiring time.

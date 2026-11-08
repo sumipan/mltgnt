@@ -47,18 +47,21 @@ INDEX_HTML = r"""<!doctype html>
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
   #app { display: flex; height: 100vh; height: 100dvh; }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
-  #header { display: flex; align-items: center; gap: 8px; height: 49px; padding: 0 12px 0 16px; flex-shrink: 0; min-width: 0; }
+  #header { display: flex; align-items: center; gap: 8px; min-height: 49px; padding: 4px 12px 4px 16px; flex-shrink: 0; min-width: 0; }
   #header .star { color: var(--muted); }
   #channel-title { font-size: 18px; font-weight: 900; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #channel-title .hash { font-weight: 400; margin-right: 2px; }
-  #header-meters { min-width: 0; overflow: hidden; flex: 1; max-width: 420px; font-size: 11px; color: var(--muted); }
+  #header-meters { display: flex; flex-wrap: wrap; column-gap: 16px; min-width: 0; overflow: hidden; flex: 1; max-width: 560px; font-size: 11px; line-height: 1.3; color: var(--muted); }
   #header-meters[hidden] { display: none !important; }
-  .hm-title { font-size: 10px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hm-group { margin-bottom: 4px; }
+  .hm-title { flex-basis: 100%; font-size: 10px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hm-group { flex: 1 1 0; min-width: 0; }
   .hm-group-name { font-weight: 700; color: var(--text-strong); }
-  .hm-meter { margin-top: 2px; }
-  .hm-meter-head { display: flex; align-items: baseline; gap: 6px; }
-  .meter-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hm-meter { display: grid; grid-template-columns: auto minmax(24px, 1fr) auto; align-items: center; column-gap: 6px; }
+  .hm-meter-head { display: contents; }
+  .hm-meter .meter-bar { order: 1; margin-top: 0; }
+  .hm-used { order: 2; }
+  .hm-meter .meter-footer { order: 3; grid-column: 1 / -1; }
+  .meter-name { min-width: 0; max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hm-used { font-weight: 700; color: var(--text-strong); min-width: 2.5em; text-align: right; }
   .meter-bar { height: 6px; position: relative; background: var(--meter-track); border-radius: 3px; margin-top: 2px; }
   .meter-bar-fill { height: 100%; border-radius: 3px; background: var(--meter-fill); max-width: 100%; }
@@ -81,6 +84,7 @@ INDEX_HTML = r"""<!doctype html>
   .channel-intro .title { font-size: 22px; font-weight: 900; color: var(--text-strong); }
   .channel-intro .sub { color: var(--muted); margin-top: 4px; }
   .history-loading { text-align: center; font-size: 13px; color: var(--muted); padding: 12px 0; }
+  .day-section { position: relative; }
   .day-divider { position: sticky; top: 0; z-index: 2; display: flex; justify-content: center; margin: 16px 0 4px; }
   .day-divider::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--border); z-index: -1; }
   .day-pill { background: var(--bg); border: 1px solid var(--border); border-radius: 24px; padding: 2px 16px; font-size: 13px; font-weight: 700; color: var(--text-strong); }
@@ -181,7 +185,10 @@ INDEX_HTML = r"""<!doctype html>
     .actions { right: 12px; }
   }
   @media (max-width: 479px) {
-    .meter-name, .meter-footer { display: none; }
+    #header { flex-wrap: wrap; }
+    #header-meters { order: 1; flex-basis: 100%; max-width: none; padding-bottom: 2px; }
+    .hm-title, .meter-name, .meter-footer { display: none; }
+    .hm-meter { grid-template-columns: minmax(24px, 1fr) auto; }
   }
 </style>
 </head>
@@ -747,19 +754,25 @@ INDEX_HTML = r"""<!doctype html>
     if (bar.childNodes.length) { el.appendChild(bar); }
   }
 
-  function insertDayDivider(container, row) {
-    var msgs = container.querySelectorAll(".msg");
-    var last = msgs.length ? msgs[msgs.length - 1] : null;
+  // Each day gets its own section so its sticky pill only sticks while that day is in view.
+  function daySection(container, row) {
+    var last = container.lastElementChild;
+    var section = last && last.classList.contains("day-section") ? last : null;
     var d = new Date(row.ts);
-    if (isNaN(d.getTime())) { return; }
-    if (last && sameDay(new Date(last.dataset.ts), d)) { return; }
+    if (isNaN(d.getTime())) { return section || container; }
+    if (section && sameDay(new Date(section.dataset.ts), d)) { return section; }
+    section = document.createElement("div");
+    section.className = "day-section";
+    section.dataset.ts = row.ts;
     var div = document.createElement("div");
     div.className = "day-divider";
     var pill = document.createElement("span");
     pill.className = "day-pill";
     pill.textContent = dayLabel(row.ts);
     div.appendChild(pill);
-    container.appendChild(div);
+    section.appendChild(div);
+    container.appendChild(section);
+    return section;
   }
 
   function updateMemberCount() {
@@ -799,7 +812,7 @@ INDEX_HTML = r"""<!doctype html>
     var el = document.getElementById(id);
     var created = false;
     if (!el) {
-      if (container === log) { insertDayDivider(container, row); }
+      var parent = container === log ? daySection(container, row) : container;
       el = document.createElement("div");
       el.id = id;
       el.className = "msg";
@@ -811,7 +824,7 @@ INDEX_HTML = r"""<!doctype html>
         if (e.target.closest("a, img, button")) { return; }
         openThread(messageId);
       });
-      container.appendChild(el);
+      parent.appendChild(el);
       created = true;
     }
     fillMessage(el, row, container);
