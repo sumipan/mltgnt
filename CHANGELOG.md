@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.136.4
+
+- **Testing policy**: add T13 wall-clock ratchet (`tests/conventions/test_no_wallclock_in_tests.py` plus `known_wallclock_tests.txt`) and a suite-wide pytest timeout of 300 seconds via `pytest-timeout`.
+
 ## v0.136.3
 
 - **WebChat layout**: header usage meters no longer overflow the fixed-height header (groups sit side by side, and move to their own row on narrow screens); each day's messages live in their own section so sticky day pills no longer pile up on top of each other.
