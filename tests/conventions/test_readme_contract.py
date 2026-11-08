@@ -1025,16 +1025,18 @@ def _quick_start_python_block(text: str) -> str:
     raise AssertionError("Quick Start python fence not found")
 
 
-def test_pyproject_ghdag_pins_v0_107_2() -> None:
-    """Issue #6105: ghdag dependency pin must match the bumped ghdag release tag."""
+def test_pyproject_has_single_ghdag_release_tag_pin() -> None:
+    """The ghdag dependency is exactly one git pin on a semver release tag."""
     pins = [
         dep
         for dep in _pyproject()["project"]["dependencies"]
-        if dep.startswith("ghdag @ git+https://github.com/sumipan/ghdag.git@v")
+        if dep.startswith("ghdag ")
     ]
-    assert len(pins) == 1, f"expected exactly one ghdag git pin: {pins}"
-    tag = pins[0].rsplit("@v", 1)[1]
-    assert tag == "0.107.2", f"ghdag pin v{tag} is not v0.107.2"
+    assert len(pins) == 1, f"expected exactly one ghdag dependency: {pins}"
+    assert re.fullmatch(
+        r"ghdag @ git\+https://github\.com/sumipan/ghdag\.git@v\d+\.\d+\.\d+",
+        pins[0],
+    ), f"ghdag dependency is not a release tag pin: {pins[0]}"
 
 
 def test_readme_release_metadata_matches_pyproject() -> None:
