@@ -34,6 +34,25 @@ def test_import_tail_utf8_bytes_from_mltgnt_memory() -> None:
     from mltgnt.memory import tail_utf8_bytes  # noqa: F401
 
 
+def test_new_memory_api_is_exported() -> None:
+    """Issue #6238: host wiring APIs are importable and listed in __all__."""
+    import mltgnt.memory as m
+
+    names = (
+        "append_turn_episodes",
+        "build_memory_context",
+        "build_memory_gate",
+        "forced_memory_tool",
+        "MigrationGuardedMemoryToolExecutor",
+        "recent_episodes_text",
+        "strip_trigger_words",
+        "thread_tail_text",
+    )
+    for symbol in names:
+        assert hasattr(m, symbol), symbol
+        assert symbol in m.__all__, symbol
+
+
 def test_all_symbols_in_dunder_all() -> None:
     """MemoryEntry, parse_jsonl, serialize_entry, assemble_entries_text, tail_utf8_bytes Home __all__ Included."""
     import mltgnt.memory as m

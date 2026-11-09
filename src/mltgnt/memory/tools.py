@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,8 @@ __all__ = [
     "MEMORY_TOOL_SPECS",
     "MemoryGate",
     "MemoryToolExecutor",
+    "MigrationGuardedMemoryToolExecutor",
+    "build_memory_gate",
     "query_terms",
 ]
 
@@ -89,6 +92,30 @@ MEMORY_TOOL_SPECS: tuple[dict[str, Any], ...] = (
 )
 
 MEMORY_TOOL_NAMES: frozenset[str] = frozenset(spec["name"] for spec in MEMORY_TOOL_SPECS)
+
+
+def build_memory_gate(
+    *,
+    max_per_turn: int,
+    max_chars: int,
+    secret_patterns: Sequence[str] = (),
+    allowed_subject_prefixes: tuple[str, ...] | None = None,
+) -> MemoryGate:
+    """Build a ``MemoryGate`` with optional secret pattern matching."""
+    secret_check: Callable[[str], bool] | None = None
+    if secret_patterns:
+        compiled = [re.compile(p) for p in secret_patterns]
+
+        def _check(content: str) -> bool:
+            return any(p.search(content) for p in compiled)
+
+        secret_check = _check
+    return MemoryGate(
+        max_per_turn=max_per_turn,
+        max_chars=max_chars,
+        secret_check=secret_check,
+        allowed_subject_prefixes=allowed_subject_prefixes,
+    )
 
 
 @dataclass(frozen=True)
@@ -262,3 +289,26 @@ class MemoryToolExecutor:
             return {"ok": False, "reason": "ambiguous", "candidates": [e.id for e in matches]}
         self.store.supersede(matches[0].id)
         return {"ok": True, "id": matches[0].id}
+
+
+class MigrationGuardedMemoryToolExecutor(MemoryToolExecutor):
+    """Reject ``remember`` when only a legacy flat JSONL layout exists."""
+
+    def __init__(
+        self,
+        *args: Any,
+        legacy_flat_path: Path | None,
+        persona_dir: Path,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._legacy_flat_path = Path(legacy_flat_path) if legacy_flat_path is not None else None
+        self._persona_dir = Path(persona_dir)
+
+    def __call__(self, tool_name: str, tool_args: dict[str, Any]) -> str:
+        if tool_name == "remember":
+            flat = self._legacy_flat_path
+            if flat is not None and flat.exists() and not self._persona_dir.is_dir():
+                _log.warning("memory remember rejected: reason=not_migrated")
+                return '{"ok": false, "reason": "not_migrated"}'
+        return super().__call__(tool_name, tool_args)

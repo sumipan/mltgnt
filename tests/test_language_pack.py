@@ -41,6 +41,14 @@ def test_en_new_keys_are_empty() -> None:
     assert EN.phase1_meta_markers == ()
 
 
+def test_memory_heading_fields_default_and_replace() -> None:
+    assert EN.memory_core_heading == "## Memory (core)"
+    assert EN.memory_thread_tail_heading == "## Recent turns in this thread"
+    assert EN.memory_recent_heading == "## Recent conversations (other threads)"
+    replaced = dataclasses.replace(EN, memory_core_heading="CUSTOM CORE")
+    assert replaced.memory_core_heading == "CUSTOM CORE"
+
+
 def test_en_strings_are_ascii() -> None:
     for f in dataclasses.fields(EN):
         for text in _strings(getattr(EN, f.name)):

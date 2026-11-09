@@ -386,7 +386,8 @@ Persona section headings are canonical English (`Background`, `Values`, `Reactio
 
 | Group | Names |
 |-------|-------|
-| Episodic log | `append_memory_entry`, `read_memory_preferences`, `read_memory_tail_text`, `memory_file_path`, `persona_memory_lock`, `tail_utf8_bytes`, `assemble_entries_text` |
+| Episodic log | `append_memory_entry`, `append_turn_episodes`, `read_memory_preferences`, `read_memory_tail_text`, `memory_file_path`, `persona_memory_lock`, `tail_utf8_bytes`, `assemble_entries_text` |
+| Host wiring | `build_memory_context`, `thread_tail_text`, `recent_episodes_text`, `forced_memory_tool`, `strip_trigger_words`, `build_memory_gate`, `MigrationGuardedMemoryToolExecutor` |
 | Search | `read_memory_by_relevance`, `read_memory_with_sufficiency_check`, `read_memory_iterative` |
 | Entries | `MemoryEntry`, `parse_jsonl`, `serialize_entry` |
 | Compaction | `compact`, `needs_compaction`, `CompactionResult`, `LlmCall`, `LlmCallError` |
@@ -405,7 +406,10 @@ Memory submodules that declare their own `__all__`:
 |--------|-------|---------|
 | `mltgnt.memory.dream` | `DreamSection`, `DreamSummary`, `read_dream`, `write_dream`, `read_global`, `write_global`, `read_global_summary`, `DreamSelector`, `Synthesizer` | Per-persona `dream.json` and cross-persona `global.json` summaries |
 | `mltgnt.memory.semantic` | `SemanticStore`, `SemanticEntry`, `KINDS`, `STATUSES`, `validate_entry`, `normalize_content` | `SemanticStore(path, *, persona_stem, commit_debounce_sec=None)` over `semantic.jsonl`. Kinds: `fact`, `preference`, `commitment`, `caveat`, `self`, `reflection`. Statuses: `active`, `superseded` |
-| `mltgnt.memory.tools` | `MemoryToolExecutor`, `MemoryGate`, `MEMORY_TOOL_SPECS`, `MEMORY_TOOL_NAMES`, `query_terms` | `remember` / `recall` / `forget` tools in `ToolExecutor` form. `MemoryGate(max_per_turn=3, max_chars=300, secret_check=None, allowed_subject_prefixes=None)` |
+| `mltgnt.memory.context` | `build_memory_context`, `thread_tail_text`, `recent_episodes_text` | Deterministic assembly of semantic core plus episodic tail / cross-thread recent text (no LLM) |
+| `mltgnt.memory.episodes` | `append_turn_episodes` | Append one direct-chat user/assistant pair under a shared lock |
+| `mltgnt.memory.triggers` | `forced_memory_tool`, `strip_trigger_words` | `LanguagePack` remember/forget trigger detection and stripping |
+| `mltgnt.memory.tools` | `MemoryToolExecutor`, `MemoryGate`, `MigrationGuardedMemoryToolExecutor`, `build_memory_gate`, `MEMORY_TOOL_SPECS`, `MEMORY_TOOL_NAMES`, `query_terms` | `remember` / `recall` / `forget` tools in `ToolExecutor` form. `build_memory_gate` compiles `secret_patterns` into `MemoryGate.secret_check` |
 | `mltgnt.memory.reflection` | `build_reflection_prompt`, `parse_reflection`, `apply_reflection`, `ReflectionResult`, `ReflectionAdd`, `ApplyReport`, `ReflectionParseError` | Reflection prompt, parser, and applier for a `SemanticStore` |
 | `mltgnt.memory.core_render` | `render_core`, `MANDATORY_KINDS`, `OPTIONAL_KINDS` | `render_core(entries, *, max_bytes=4096, heading="## Memory")`. `caveat` and `commitment` entries are always kept |
 | `mltgnt.memory.archive` | `archive_episodes` | `archive_episodes(persona_dir, *, now, keep_days=90) -> int`. Moves old episodes into monthly files |
@@ -707,7 +711,7 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/` (151 modules at `v0.136.4`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Every Python module under `src/mltgnt/` (154 modules at `v0.136.4`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
@@ -816,7 +820,9 @@ Every Python module under `src/mltgnt/` (151 modules at `v0.136.4`). "Depends to
 | `mltgnt.memory.api` | mltgnt.memory.api — path resolve, lock, append, read (CRUD). | L3 → L4–L5 |
 | `mltgnt.memory.archive` | mltgnt.memory.archive — move old episodes to monthly archive files. | L3 → L4–L5 |
 | `mltgnt.memory.compaction` | mltgnt.memory.compaction — memory compaction (per-section cap). | L3 → L4–L5 |
+| `mltgnt.memory.context` | mltgnt.memory.context — deterministic memory context assembly. | L3 → L4–L5 |
 | `mltgnt.memory.core_render` | mltgnt.memory.core_render — render the always-loaded memory core. | L3 → L4–L5 |
+| `mltgnt.memory.episodes` | mltgnt.memory.episodes — append user/assistant turn pairs to episodic memory. | L3 → L4–L5 |
 | `mltgnt.memory.dream.__init__` | mltgnt.memory.dream — dream.json synthesis API. | L3 → L4–L5 |
 | `mltgnt.memory.dream._format` | mltgnt.memory.dream._format — DreamSection / DreamSummary and JSON conversion. | L3 → L4–L5 |
 | `mltgnt.memory.dream.api` | mltgnt.memory.dream.api — read/write dream.json. | L3 → L4–L5 |
@@ -826,6 +832,7 @@ Every Python module under `src/mltgnt/` (151 modules at `v0.136.4`). "Depends to
 | `mltgnt.memory.search` | mltgnt.memory.search — relevance search, sufficiency, iterative retrieval. | L3 → L4–L5 |
 | `mltgnt.memory.semantic` | mltgnt.memory.semantic — semantic memory store (``semantic.jsonl``). | L3 → L4–L5 |
 | `mltgnt.memory.tools` | mltgnt.memory.tools — ``remember`` / ``recall`` / ``forget`` tool executor. | L3 → L4–L5 |
+| `mltgnt.memory.triggers` | mltgnt.memory.triggers — LanguagePack trigger word detection. | L3 → L4–L5 |
 | `mltgnt.persona.__init__` | mltgnt.persona — persona management module | L3 → L4–L5 |
 | `mltgnt.persona.compress` | mltgnt.persona.compress | L3 → L4–L5 |
 | `mltgnt.persona.extractor` | mltgnt.persona.extractor — H2 section parse and light/heavy text extract (#3318). | L3 → L4–L5 |
@@ -962,7 +969,7 @@ To use another locale, define your own `LanguagePack` and call `set_language_pac
 | Compaction | `phase1_meta_prefixes` (default `()`), `phase1_meta_markers` (default `()`) | Extra line prefixes and substrings that memory compaction drops from Phase 1 LLM output, on top of the English ones |
 | Conversation | `cancel_words`, `composite_header`, `composite_cancel_suffix` | `mltgnt.conversation.thread_queue`, `mltgnt.media._core.cancel` |
 | Media | `approval_words`, `status_labels`, `enqueue_failed_text`, `progress_line_pattern` | `mltgnt.media._core` |
-| Memory tools | `remember_trigger_words`, `forget_trigger_words` | `mltgnt.memory.tools` |
+| Memory tools | `remember_trigger_words`, `forget_trigger_words`, `memory_core_heading`, `memory_thread_tail_heading`, `memory_recent_heading` | `mltgnt.memory.context`, `mltgnt.memory.triggers` |
 
 The first ten fields (request gates, persona text up to `persona_cut_re`, and `exclude_stems`) are required. All other fields have English defaults or empty defaults.
 

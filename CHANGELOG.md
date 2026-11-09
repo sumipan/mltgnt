@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Memory host wiring**: add `build_memory_context`, `thread_tail_text`, `recent_episodes_text`, `append_turn_episodes`, `forced_memory_tool`, `strip_trigger_words`, `build_memory_gate`, and `MigrationGuardedMemoryToolExecutor` under `mltgnt.memory`; `LanguagePack` gains three memory section headings.
+
 ## v0.136.4
 
 - **Testing policy**: add T13 wall-clock ratchet (`tests/conventions/test_no_wallclock_in_tests.py` plus `known_wallclock_tests.txt`) and a suite-wide pytest timeout of 300 seconds via `pytest-timeout`.

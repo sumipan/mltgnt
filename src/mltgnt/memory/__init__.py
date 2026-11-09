@@ -46,7 +46,20 @@ from mltgnt.memory.reflection import (
     parse_reflection,
 )
 from mltgnt.memory.semantic import KINDS, SemanticEntry, SemanticStore, validate_entry
-from mltgnt.memory.tools import MEMORY_TOOL_SPECS, MemoryGate, MemoryToolExecutor
+from mltgnt.memory.context import (
+    build_memory_context,
+    recent_episodes_text,
+    thread_tail_text,
+)
+from mltgnt.memory.episodes import append_turn_episodes
+from mltgnt.memory.triggers import forced_memory_tool, strip_trigger_words
+from mltgnt.memory.tools import (
+    MEMORY_TOOL_SPECS,
+    MemoryGate,
+    MemoryToolExecutor,
+    MigrationGuardedMemoryToolExecutor,
+    build_memory_gate,
+)
 
 # The semantic-memory API above is importable from ``mltgnt.memory`` but kept out
 # of ``__all__`` (pinned by tests/test_all_snapshot.py); its submodules
@@ -71,6 +84,11 @@ _SEMANTIC_API = (
 )
 
 __all__ = [
+    "MigrationGuardedMemoryToolExecutor",
+    "append_turn_episodes",
+    "build_memory_context",
+    "build_memory_gate",
+    "forced_memory_tool",
     "persona_memory_lock",
     "append_memory_entry",
     "read_memory_preferences",
@@ -78,6 +96,7 @@ __all__ = [
     "read_memory_by_relevance",
     "read_memory_with_sufficiency_check",
     "read_memory_iterative",
+    "recent_episodes_text",
     "memory_file_path",
     "LlmCallError",
     "CompactionResult",
@@ -87,11 +106,13 @@ __all__ = [
     "MemoryEntry",
     "parse_jsonl",
     "serialize_entry",
+    "strip_trigger_words",
     "assemble_entries_text",
     "get_collection",
     "query_similar",
     "upsert_entry",
     "tail_utf8_bytes",
+    "thread_tail_text",
     "LlmCall",
     "MEMORY_CORRUPT_THRESHOLD_BYTES",
     "MEMORY_DEDUPE_SCAN_BYTES",
