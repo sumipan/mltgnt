@@ -16,13 +16,13 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.136.4)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.137.0)-orange)
 
-Pre-1.0. The current release is `0.136.4` (tag `v0.136.4`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.137.0` (tag `v0.137.0`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
-## Source inventory (`v0.136.4`)
+## Source inventory (`v0.137.0`)
 
-Regenerated from the `v0.136.4` tree (`package 0.136.4`, ghdag pin `v0.107.2`) on 2026-11-08. Row counts below match the tables in this file.
+Regenerated from the `v0.137.0` tree (`package 0.137.0`, ghdag pin `v0.107.2`) on 2026-11-09. Row counts below match the tables in this file.
 
 | Inventory item | Count |
 |----------------|------:|
@@ -50,29 +50,29 @@ Regenerated from the `v0.136.4` tree (`package 0.136.4`, ghdag pin `v0.107.2`) o
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.136.4"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.137.0"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.136.4"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.137.0"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.136.4"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.137.0"
 
 # WebChat Web Push (includes the webchat dependencies and pywebpush)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.136.4"
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.137.0"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
-pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.136.4"
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.137.0"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.136.4"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.137.0"
 ```
 
 See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.136.4` |
+| Distribution | `mltgnt` `0.137.0` |
 | Python | `>=3.10` |
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.107.2` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
@@ -191,7 +191,7 @@ media.set_status(media.post("hello", "general"), Status.DONE)
 
 ## CLI Reference
 
-Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.136.4`.
+Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.137.0`.
 
 The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
 
@@ -259,7 +259,7 @@ Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` 
 
 ## Public API
 
-Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.136.4` (23 top-level names).
+Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.137.0` (23 top-level names).
 
 ### Top level: `mltgnt.__all__`
 
@@ -386,7 +386,8 @@ Persona section headings are canonical English (`Background`, `Values`, `Reactio
 
 | Group | Names |
 |-------|-------|
-| Episodic log | `append_memory_entry`, `read_memory_preferences`, `read_memory_tail_text`, `memory_file_path`, `persona_memory_lock`, `tail_utf8_bytes`, `assemble_entries_text` |
+| Episodic log | `append_memory_entry`, `append_turn_episodes`, `read_memory_preferences`, `read_memory_tail_text`, `memory_file_path`, `persona_memory_lock`, `tail_utf8_bytes`, `assemble_entries_text` |
+| Host wiring | `build_memory_context`, `thread_tail_text`, `recent_episodes_text`, `forced_memory_tool`, `strip_trigger_words`, `build_memory_gate`, `MigrationGuardedMemoryToolExecutor` |
 | Search | `read_memory_by_relevance`, `read_memory_with_sufficiency_check`, `read_memory_iterative` |
 | Entries | `MemoryEntry`, `parse_jsonl`, `serialize_entry` |
 | Compaction | `compact`, `needs_compaction`, `CompactionResult`, `LlmCall`, `LlmCallError` |
@@ -405,7 +406,10 @@ Memory submodules that declare their own `__all__`:
 |--------|-------|---------|
 | `mltgnt.memory.dream` | `DreamSection`, `DreamSummary`, `read_dream`, `write_dream`, `read_global`, `write_global`, `read_global_summary`, `DreamSelector`, `Synthesizer` | Per-persona `dream.json` and cross-persona `global.json` summaries |
 | `mltgnt.memory.semantic` | `SemanticStore`, `SemanticEntry`, `KINDS`, `STATUSES`, `validate_entry`, `normalize_content` | `SemanticStore(path, *, persona_stem, commit_debounce_sec=None)` over `semantic.jsonl`. Kinds: `fact`, `preference`, `commitment`, `caveat`, `self`, `reflection`. Statuses: `active`, `superseded` |
-| `mltgnt.memory.tools` | `MemoryToolExecutor`, `MemoryGate`, `MEMORY_TOOL_SPECS`, `MEMORY_TOOL_NAMES`, `query_terms` | `remember` / `recall` / `forget` tools in `ToolExecutor` form. `MemoryGate(max_per_turn=3, max_chars=300, secret_check=None, allowed_subject_prefixes=None)` |
+| `mltgnt.memory.context` | `build_memory_context`, `thread_tail_text`, `recent_episodes_text` | Deterministic assembly of semantic core plus episodic tail / cross-thread recent text (no LLM) |
+| `mltgnt.memory.episodes` | `append_turn_episodes` | Append one direct-chat user/assistant pair under a shared lock |
+| `mltgnt.memory.triggers` | `forced_memory_tool`, `strip_trigger_words` | `LanguagePack` remember/forget trigger detection and stripping |
+| `mltgnt.memory.tools` | `MemoryToolExecutor`, `MemoryGate`, `MigrationGuardedMemoryToolExecutor`, `build_memory_gate`, `MEMORY_TOOL_SPECS`, `MEMORY_TOOL_NAMES`, `query_terms` | `remember` / `recall` / `forget` tools in `ToolExecutor` form. `build_memory_gate` compiles `secret_patterns` into `MemoryGate.secret_check` |
 | `mltgnt.memory.reflection` | `build_reflection_prompt`, `parse_reflection`, `apply_reflection`, `ReflectionResult`, `ReflectionAdd`, `ApplyReport`, `ReflectionParseError` | Reflection prompt, parser, and applier for a `SemanticStore` |
 | `mltgnt.memory.core_render` | `render_core`, `MANDATORY_KINDS`, `OPTIONAL_KINDS` | `render_core(entries, *, max_bytes=4096, heading="## Memory")`. `caveat` and `commitment` entries are always kept |
 | `mltgnt.memory.archive` | `archive_episodes` | `archive_episodes(persona_dir, *, now, keep_days=90) -> int`. Moves old episodes into monthly files |
@@ -707,7 +711,7 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/` (151 modules at `v0.136.4`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Every Python module under `src/mltgnt/` (154 modules at `v0.137.0`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
@@ -816,7 +820,9 @@ Every Python module under `src/mltgnt/` (151 modules at `v0.136.4`). "Depends to
 | `mltgnt.memory.api` | mltgnt.memory.api — path resolve, lock, append, read (CRUD). | L3 → L4–L5 |
 | `mltgnt.memory.archive` | mltgnt.memory.archive — move old episodes to monthly archive files. | L3 → L4–L5 |
 | `mltgnt.memory.compaction` | mltgnt.memory.compaction — memory compaction (per-section cap). | L3 → L4–L5 |
+| `mltgnt.memory.context` | mltgnt.memory.context — deterministic memory context assembly. | L3 → L4–L5 |
 | `mltgnt.memory.core_render` | mltgnt.memory.core_render — render the always-loaded memory core. | L3 → L4–L5 |
+| `mltgnt.memory.episodes` | mltgnt.memory.episodes — append user/assistant turn pairs to episodic memory. | L3 → L4–L5 |
 | `mltgnt.memory.dream.__init__` | mltgnt.memory.dream — dream.json synthesis API. | L3 → L4–L5 |
 | `mltgnt.memory.dream._format` | mltgnt.memory.dream._format — DreamSection / DreamSummary and JSON conversion. | L3 → L4–L5 |
 | `mltgnt.memory.dream.api` | mltgnt.memory.dream.api — read/write dream.json. | L3 → L4–L5 |
@@ -826,6 +832,7 @@ Every Python module under `src/mltgnt/` (151 modules at `v0.136.4`). "Depends to
 | `mltgnt.memory.search` | mltgnt.memory.search — relevance search, sufficiency, iterative retrieval. | L3 → L4–L5 |
 | `mltgnt.memory.semantic` | mltgnt.memory.semantic — semantic memory store (``semantic.jsonl``). | L3 → L4–L5 |
 | `mltgnt.memory.tools` | mltgnt.memory.tools — ``remember`` / ``recall`` / ``forget`` tool executor. | L3 → L4–L5 |
+| `mltgnt.memory.triggers` | mltgnt.memory.triggers — LanguagePack trigger word detection. | L3 → L4–L5 |
 | `mltgnt.persona.__init__` | mltgnt.persona — persona management module | L3 → L4–L5 |
 | `mltgnt.persona.compress` | mltgnt.persona.compress | L3 → L4–L5 |
 | `mltgnt.persona.extractor` | mltgnt.persona.extractor — H2 section parse and light/heavy text extract (#3318). | L3 → L4–L5 |
@@ -866,7 +873,7 @@ Every Python module under `src/mltgnt/` (151 modules at `v0.136.4`). "Depends to
 
 ## Configuration
 
-Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.136.4`.
+Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.137.0`.
 
 mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
 
@@ -962,7 +969,7 @@ To use another locale, define your own `LanguagePack` and call `set_language_pac
 | Compaction | `phase1_meta_prefixes` (default `()`), `phase1_meta_markers` (default `()`) | Extra line prefixes and substrings that memory compaction drops from Phase 1 LLM output, on top of the English ones |
 | Conversation | `cancel_words`, `composite_header`, `composite_cancel_suffix` | `mltgnt.conversation.thread_queue`, `mltgnt.media._core.cancel` |
 | Media | `approval_words`, `status_labels`, `enqueue_failed_text`, `progress_line_pattern` | `mltgnt.media._core` |
-| Memory tools | `remember_trigger_words`, `forget_trigger_words` | `mltgnt.memory.tools` |
+| Memory tools | `remember_trigger_words`, `forget_trigger_words`, `memory_core_heading`, `memory_thread_tail_heading`, `memory_recent_heading` | `mltgnt.memory.context`, `mltgnt.memory.triggers` |
 
 The first ten fields (request gates, persona text up to `persona_cut_re`, and `exclude_stems`) are required. All other fields have English defaults or empty defaults.
 
@@ -1025,7 +1032,7 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 
 ## Error Reference
 
-Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.136.4`.
+Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.137.0`.
 
 | Exception | Module | Base | Raised when |
 |-----------|--------|------|-------------|
@@ -1053,7 +1060,7 @@ Built-in exceptions raised by the public API:
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.136.4` (update when releasing).
+- Pin an exact tag in production, for example `@v0.137.0` (update when releasing).
 
 ## Deprecated API
 

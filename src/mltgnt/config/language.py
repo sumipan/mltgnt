@@ -55,6 +55,9 @@ class LanguagePack:
     # Memory-tool trigger words (mltgnt.memory.tools); empty by default, injected by callers
     remember_trigger_words: frozenset[str] = frozenset()
     forget_trigger_words: frozenset[str] = frozenset()
+    memory_core_heading: str = "## Memory (core)"
+    memory_thread_tail_heading: str = "## Recent turns in this thread"
+    memory_recent_heading: str = "## Recent conversations (other threads)"
     # Localized legacy persona headings -> canonical English names; empty by default
     persona_section_aliases: dict[str, str] = field(hash=False, default_factory=dict)
     # Compaction Phase 1 meta lines to drop, in addition to the English ones

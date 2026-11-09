@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ from mltgnt.memory.tools import (
     MEMORY_TOOL_SPECS,
     MemoryGate,
     MemoryToolExecutor,
+    MigrationGuardedMemoryToolExecutor,
+    build_memory_gate,
     query_terms,
 )
 
@@ -214,3 +217,60 @@ def test_executor_never_raises(tmp_path: Path) -> None:
     ex.gate = MemoryGate(secret_check=boom)
     res = _call(ex, "remember", {"content": "x", "kind": "fact", "subject": "user"})
     assert res["ok"] is False and res["reason"] == "error"
+
+
+def test_build_memory_gate_compiles_patterns() -> None:
+    gate = build_memory_gate(max_per_turn=1, max_chars=50, secret_patterns=[r"secret\d+"])
+    assert gate.secret_check is not None
+    assert gate.secret_check("has secret9 here")
+    assert not gate.secret_check("clean")
+    empty = build_memory_gate(max_per_turn=1, max_chars=50, secret_patterns=[])
+    assert empty.secret_check is None
+
+
+def test_build_memory_gate_rejects_invalid_pattern() -> None:
+    with pytest.raises(re.error):
+        build_memory_gate(max_per_turn=1, max_chars=50, secret_patterns=["("])
+
+
+def _guarded(
+    tmp_path: Path,
+    *,
+    persona_dir: Path,
+    flat: Path | None,
+    migrated: bool = True,
+) -> MigrationGuardedMemoryToolExecutor:
+    if migrated:
+        persona_dir.mkdir(parents=True, exist_ok=True)
+    store = SemanticStore(persona_dir / "semantic.jsonl", persona_stem="p")
+    return MigrationGuardedMemoryToolExecutor(
+        store,
+        episodes_path=persona_dir / "episodes.jsonl",
+        gate=MemoryGate(),
+        source="s",
+        now=lambda: datetime(2026, 9, 26, 14, 5),
+        legacy_flat_path=flat,
+        persona_dir=persona_dir,
+    )
+
+
+def test_migration_guard_blocks_legacy_flat_layout(tmp_path: Path) -> None:
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    flat = memory_dir / "p.jsonl"
+    flat.write_text("", encoding="utf-8")
+    persona_dir = memory_dir / "p"
+    ex = _guarded(tmp_path, persona_dir=persona_dir, flat=flat, migrated=False)
+    out = json.loads(ex("remember", {"content": "a", "kind": "fact", "subject": "user"}))
+    assert out == {"ok": False, "reason": "not_migrated"}
+    assert not (persona_dir / "semantic.jsonl").exists()
+
+
+def test_migration_guard_delegates_for_directory_layout(tmp_path: Path) -> None:
+    persona_dir = tmp_path / "memory" / "p"
+    persona_dir.mkdir(parents=True)
+    ex = _guarded(tmp_path, persona_dir=persona_dir, flat=tmp_path / "memory" / "p.jsonl")
+    out = json.loads(ex("remember", {"content": "a", "kind": "fact", "subject": "user"}))
+    assert out["ok"] is True
+    assert "a" in ex("recall", {"query": "a"})
+    assert json.loads(ex("forget", {"text": "a"}))["ok"] is True
