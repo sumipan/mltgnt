@@ -36,7 +36,7 @@ def thread_tail_text(
     Matching uses a substring of ``dedupe_key`` that aligns with
     ``mltgnt.persona.memory.direct_dedupe_base()`` as
     ``<prefix>:<space_id>:<thread_key>:<message_id>`` (``space_id`` omitted
-  when None: ``:<thread_key>:`` only).
+    when None: ``:<thread_key>:`` only).
     """
     if max_entries <= 0 or not thread_key or not episodes_path.exists():
         return ""
