@@ -411,6 +411,7 @@ Memory submodules that declare their own `__all__`:
 | `mltgnt.memory.triggers` | `forced_memory_tool`, `strip_trigger_words` | `LanguagePack` remember/forget trigger detection and stripping |
 | `mltgnt.memory.tools` | `MemoryToolExecutor`, `MemoryGate`, `MigrationGuardedMemoryToolExecutor`, `build_memory_gate`, `MEMORY_TOOL_SPECS`, `MEMORY_TOOL_NAMES`, `query_terms` | `remember` / `recall` / `forget` tools in `ToolExecutor` form. `build_memory_gate` compiles `secret_patterns` into `MemoryGate.secret_check` |
 | `mltgnt.memory.reflection` | `build_reflection_prompt`, `parse_reflection`, `apply_reflection`, `ReflectionResult`, `ReflectionAdd`, `ApplyReport`, `ReflectionParseError` | Reflection prompt, parser, and applier for a `SemanticStore` |
+| `mltgnt.memory.reflect_job` | `COLLECT_VERSION`, `LLM_VERSION`, `apply_from_payloads`, `build_collect_payload`, `collect_new_episodes`, `load_reflect_state`, `save_reflect_state`, `validate_llm_payload` | collect / validate / apply steps and `.reflect-state.json` shape for the reflection job (no LLM) |
 | `mltgnt.memory.core_render` | `render_core`, `MANDATORY_KINDS`, `OPTIONAL_KINDS` | `render_core(entries, *, max_bytes=4096, heading="## Memory")`. `caveat` and `commitment` entries are always kept |
 | `mltgnt.memory.archive` | `archive_episodes` | `archive_episodes(persona_dir, *, now, keep_days=90) -> int`. Moves old episodes into monthly files |
 
@@ -829,6 +830,7 @@ Every Python module under `src/mltgnt/` (154 modules at `v0.137.0`). "Depends to
 | `mltgnt.memory.dream.selector` | mltgnt.memory.dream.selector — select personas for synthesis. | L3 → L4–L5 |
 | `mltgnt.memory.dream.synthesizer` | mltgnt.memory.dream.synthesizer — synthesize DreamSummary via LLM. | L3 → L4–L5 |
 | `mltgnt.memory.reflection` | mltgnt.memory.reflection — reflection prompt, parser and applier. | L3 → L4–L5 |
+| `mltgnt.memory.reflect_job` | mltgnt.memory.reflect_job — deterministic collect / validate / apply steps of the reflection job. | L3 → L4–L5 |
 | `mltgnt.memory.search` | mltgnt.memory.search — relevance search, sufficiency, iterative retrieval. | L3 → L4–L5 |
 | `mltgnt.memory.semantic` | mltgnt.memory.semantic — semantic memory store (``semantic.jsonl``). | L3 → L4–L5 |
 | `mltgnt.memory.tools` | mltgnt.memory.tools — ``remember`` / ``recall`` / ``forget`` tool executor. | L3 → L4–L5 |

@@ -52,6 +52,16 @@ from mltgnt.memory.context import (
     thread_tail_text,
 )
 from mltgnt.memory.episodes import append_turn_episodes
+from mltgnt.memory.reflect_job import (
+    COLLECT_VERSION,
+    LLM_VERSION,
+    apply_from_payloads,
+    build_collect_payload,
+    collect_new_episodes,
+    load_reflect_state,
+    save_reflect_state,
+    validate_llm_payload,
+)
 from mltgnt.memory.triggers import forced_memory_tool, strip_trigger_words
 from mltgnt.memory.tools import (
     MEMORY_TOOL_SPECS,
@@ -81,6 +91,14 @@ _SEMANTIC_API = (
     parse_reflection,
     render_core,
     validate_entry,
+    COLLECT_VERSION,
+    LLM_VERSION,
+    apply_from_payloads,
+    build_collect_payload,
+    collect_new_episodes,
+    load_reflect_state,
+    save_reflect_state,
+    validate_llm_payload,
 )
 
 __all__ = [
