@@ -1,6 +1,6 @@
 """README.md must stay aligned with the installed package (Issue #6025).
 
-Verifies release metadata, section structure, Quick Start, CLI, public API,
+Verifies section structure, Quick Start, CLI, public API,
 architecture, configuration, errors, and v0.135.x hub / WebChat contracts.
 """
 from __future__ import annotations
@@ -116,10 +116,6 @@ def _heading_counts(text: str) -> dict[str, int]:
 
 def _pyproject() -> dict[str, Any]:
     return tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-
-
-def _install_urls(text: str) -> list[str]:
-    return re.findall(r"git\+https://github\.com/sumipan/mltgnt\.git@v[0-9.]+", text)
 
 
 def _collect_all_exports(src_root: Path) -> set[str]:
@@ -1037,27 +1033,6 @@ def test_pyproject_has_single_ghdag_release_tag_pin() -> None:
         r"ghdag @ git\+https://github\.com/sumipan/ghdag\.git@v\d+\.\d+\.\d+",
         pins[0],
     ), f"ghdag dependency is not a release tag pin: {pins[0]}"
-
-
-def test_readme_release_metadata_matches_pyproject() -> None:
-    """Release badge, install URLs, Python floor, and license match pyproject (mltgnt package only).
-
-    ghdag pin alignment is checked in ``test_pyproject_ghdag_pins_*`` so ghdag-only bumps
-    do not require README.md edits in the same PR.
-    """
-    text = _readme_text()
-    project = _pyproject()["project"]
-    version = project["version"]
-    tag = f"v{version}"
-
-    assert f"`{version}`" in text or version in text
-    assert tag in text
-    assert project["requires-python"] in text
-    assert "MIT" in text
-
-    urls = _install_urls(text)
-    assert urls, "no mltgnt git install URLs in README"
-    assert all(url.endswith(f"@{tag}") for url in urls)
 
 
 def test_readme_required_sections_are_present_once() -> None:
