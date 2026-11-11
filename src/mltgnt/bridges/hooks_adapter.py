@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ghdag.dag import check_pipeline_status, default_check_rejected
-from ghdag.pipeline.audit import write_task_exit_audit
+from ghdag.pipeline import write_task_exit_audit
 
 if TYPE_CHECKING:
-    from ghdag.dag.hooks import Task, TaskMetrics
+    from ghdag.dag import Task
+    from ghdag.metrics import TaskMetrics
 
 
 class MltgntHooks:

@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from ghdag.dag.hooks import DagHooks, Task, TaskMetrics
+from ghdag.dag import DagHooks, Task
+from ghdag.metrics import TaskMetrics
 
 from mltgnt.bridges.hooks_adapter import MltgntHooks
 from mltgnt.config import MemoryConfig

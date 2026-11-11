@@ -1,6 +1,6 @@
 """Tests that VALID_ENGINES stays in sync with ghdag ENGINE_SPECS."""
 import pytest
-from ghdag.llm.spec import ENGINE_SPECS
+from ghdag.llm import ENGINE_SPECS
 from mltgnt.persona.schema import VALID_ENGINES
 
 
