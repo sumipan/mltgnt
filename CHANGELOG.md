@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.138.7
+
 - **ghdag imports**: use one-segment package paths only (`ghdag.pipeline`, `ghdag.dag`, etc.); deep paths and shims are forbidden, enforced by `tests/conventions/test_ghdag_import_depth.py`.
 
 ## v0.138.0
