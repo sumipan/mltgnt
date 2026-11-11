@@ -739,7 +739,7 @@ Every Python module under `src/mltgnt/` (155 modules at `v0.138.12`). "Depends t
 | `mltgnt.cli.main` | Implementation module. | entry (CLI) |
 | `mltgnt.cli.memory` | mltgnt.cli.memory — memory dream show/forget subcommands. | entry (CLI) |
 | `mltgnt.cli.run` | Implementation module. | entry (CLI) |
-| `mltgnt.config.__init__` | mltgnt.config — diary-independent configuration dataclasses. | cross-cutting (any layer) |
+| `mltgnt.config.__init__` | mltgnt.config — host-independent configuration dataclasses. | cross-cutting (any layer) |
 | `mltgnt.config.language` | mltgnt.config.language — language-pack dataclass for locale-specific vocabulary. | cross-cutting (any layer) |
 | `mltgnt.conversation.__init__` | mltgnt.conversation — media-agnostic conversation layer (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.fake_media` | Fake media layer — build TurnInput without Slack (#3317). | L3 → L4–L5 |

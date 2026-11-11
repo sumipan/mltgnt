@@ -1,47 +1,47 @@
 #!/usr/bin/env bash
-# 越境ポリシー lint: mltgnt から order/result/.md への直接 I/O を検出する
+# Boundary policy lint: detect direct I/O from mltgnt to order / result / .md files
 set -euo pipefail
 
 violations=0
 
-# Rule 1: memory module 内の .md ファイルへの書き込みを検出
-# JSONL ファイルへの既知の書き込み（__init__.py, _compaction.py）は対象外
+# Rule 1: detect writes to .md files inside the memory module
+# Known JSONL writes (__init__.py, _compaction.py) are out of scope
 non_jsonl_writes=$(grep -rn '\.write_text\|open(' src/mltgnt/memory/ --include="*.py" \
   | grep -v '__pycache__\|#.*lint-ok\|\.jsonl\|jsonl' \
   | grep '\.md\b' || true)
 if [ -n "$non_jsonl_writes" ]; then
-  echo "ERROR: memory module に .md ファイルへの書き込みが検出されました:"
+  echo "ERROR: the memory module writes to .md files:"
   echo "$non_jsonl_writes"
   violations=$((violations + 1))
 fi
 
-# Rule 2: ghdag_bridge での result 直接読み取りを検出
+# Rule 2: detect direct result reads in ghdag_bridge
 direct_reads=$(grep -n 'read_text\|\.read()' src/mltgnt/scheduler/ghdag_bridge.py 2>/dev/null | grep -v 'ghdag\.files\|#.*lint-ok' || true)
 if [ -n "$direct_reads" ]; then
-  echo "ERROR: ghdag_bridge が ghdag.files 以外でファイルを読み取っています:"
+  echo "ERROR: ghdag_bridge reads files without ghdag.files:"
   echo "$direct_reads"
   violations=$((violations + 1))
 fi
 
-# Rule 3: 新規ファイルでの order/result パスへの直接書き込みを検出
+# Rule 3: detect direct writes to order / result paths in new files
 order_result_writes=$(grep -rn 'open.*order/\|open.*result/\|write_text.*order\|write_text.*result' src/mltgnt/ --include="*.py" | grep -v '__pycache__\|ghdag\.files\|#.*lint-ok' || true)
 if [ -n "$order_result_writes" ]; then
-  echo "ERROR: order/result への直接ファイル操作が検出されました:"
+  echo "ERROR: direct file operations on order / result paths:"
   echo "$order_result_writes"
   violations=$((violations + 1))
 fi
 
-# Rule 4: src/mltgnt/ 全体で .md ファイルへの read_text を検出
+# Rule 4: detect read_text on .md files anywhere under src/mltgnt/
 md_reads=$(grep -rn 'read_text' src/mltgnt/ --include="*.py" \
   | grep -v '__pycache__\|#.*lint-ok\|\.jsonl\|jsonl' \
   | grep '\.md\b' || true)
 if [ -n "$md_reads" ]; then
-  echo "ERROR: src/mltgnt/ 内に .md ファイルへの read_text が検出されました:"
+  echo "ERROR: read_text on .md files under src/mltgnt/:"
   echo "$md_reads"
   violations=$((violations + 1))
 fi
 
 if [ $violations -eq 0 ]; then
-  echo "OK: 越境ポリシー lint passed"
+  echo "OK: boundary policy lint passed"
 fi
 exit $violations

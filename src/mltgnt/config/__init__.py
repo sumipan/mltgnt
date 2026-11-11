@@ -1,5 +1,5 @@
 """
-mltgnt.config — diary-independent configuration dataclasses.
+mltgnt.config — host-independent configuration dataclasses.
 
 Design: Issue #118 §4.1, Issue #123 §4.1
 """
