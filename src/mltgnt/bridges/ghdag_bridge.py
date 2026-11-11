@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ghdag.files import md_read
-from ghdag.pipeline.order import OrderBuilder
+from ghdag.pipeline import OrderBuilder
 
 from mltgnt.skill.models import SkillMatchResult, SkillMeta, SkillRunResult
 from mltgnt.skill.runner import write_result_frontmatter
@@ -107,7 +107,7 @@ def _scheduler_audit_context(
     request_id: str | None = None,
 ):
     """AuditContext for mltgnt-scheduler. Omit parent_correlation_id on ghdag < v0.25.5."""
-    from ghdag.pipeline.audit import AuditContext
+    from ghdag.pipeline import AuditContext
 
     kwargs: dict = {
         "source": "mltgnt-scheduler",
@@ -331,7 +331,7 @@ def enqueue_dag(
         PipelineState,
         wait_for_result,
     )
-    from ghdag.workflow.schema import StepConfig
+    from ghdag.workflow import StepConfig
 
     state = PipelineState(
         state_dir=jobs_dir / ".pipeline-state",
@@ -486,7 +486,7 @@ def enqueue_and_wait(
         PipelineState,
         wait_for_result,
     )
-    from ghdag.workflow.schema import StepConfig
+    from ghdag.workflow import StepConfig
 
     state = PipelineState(
         state_dir=jobs_dir / ".pipeline-state",

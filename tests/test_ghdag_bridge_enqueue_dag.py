@@ -31,7 +31,7 @@ class TestEnqueueDag:
     def test_compose_two_step_linear_dag_submit(self, tmp_path):
         """AC-1: 2Step Linear DAG Home s1→s2 in order submit (separate model)."""
         from ghdag.pipeline import LLMPipelineAPI
-        from ghdag.workflow.schema import StepConfig
+        from ghdag.workflow import StepConfig
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         captured_steps: list[StepConfig] = []
@@ -70,7 +70,7 @@ class TestEnqueueDag:
     def test_compose_preformatted_prompts_passed_unchanged(self, tmp_path):
         """AC-2: The caller is pre-converted prompt Home DagStep If you pass to submit """
         from ghdag.pipeline import LLMPipelineAPI
-        from ghdag.workflow.schema import StepConfig
+        from ghdag.workflow import StepConfig
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         captured_steps: list[StepConfig] = []
@@ -386,7 +386,7 @@ class TestFanoutPermissionInheritance:
     def test_permission_passed_to_step_config(self, tmp_path):
         """permission='dangerous_full_access' is propagated to each StepConfig."""
         from ghdag.pipeline import LLMPipelineAPI
-        from ghdag.workflow.schema import StepConfig
+        from ghdag.workflow import StepConfig
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         captured_steps: list[StepConfig] = []
@@ -420,7 +420,7 @@ class TestFanoutPermissionInheritance:
     def test_permission_none_when_not_specified(self, tmp_path):
         """permission Not specified StepConfig Home permission Home None Contact Us"""
         from ghdag.pipeline import LLMPipelineAPI
-        from ghdag.workflow.schema import StepConfig
+        from ghdag.workflow import StepConfig
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         captured_steps: list[StepConfig] = []

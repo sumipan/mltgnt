@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **ghdag imports**: use one-segment package paths only (`ghdag.pipeline`, `ghdag.dag`, etc.); deep paths and shims are forbidden, enforced by `tests/conventions/test_ghdag_import_depth.py`.
+
 ## v0.138.0
 
 - **Reflection job (deterministic)**: add `mltgnt.memory.reflect_job` with `build_collect_payload`, `validate_llm_payload`, `apply_from_payloads`, and reflect-state helpers for host-run reflection DAGs (Issue #6239).

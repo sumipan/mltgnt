@@ -43,7 +43,7 @@ def _resolve_origin(origin: tuple[str, str | None]) -> object:
 
 
 def _dag_hooks_methods() -> set[str]:
-    from ghdag.dag.hooks import DagHooks
+    from ghdag.dag import DagHooks
 
     return {name for name in dir(DagHooks) if not name.startswith("_") and callable(getattr(DagHooks, name))}
 

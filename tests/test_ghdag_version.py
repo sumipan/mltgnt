@@ -34,7 +34,7 @@ def test_ghdag_llm_pipeline_api_submit_accepts_metadata():
 
 def test_ghdag_dag_hooks_has_on_task_start():
     """DagHooks protocol includes on_task_start (v0.21.0 feature)."""
-    from ghdag.dag.hooks import DagHooks
+    from ghdag.dag import DagHooks
 
     assert hasattr(DagHooks, "on_task_start"), (
         "DagHooks has no on_task_start. ghdag v0.21.0+ is required."
@@ -43,7 +43,7 @@ def test_ghdag_dag_hooks_has_on_task_start():
 
 def test_ghdag_dag_hooks_has_check_promote_target():
     """DagHooks protocol includes check_promote_target (v0.21.0 feature)."""
-    from ghdag.dag.hooks import DagHooks
+    from ghdag.dag import DagHooks
 
     assert hasattr(DagHooks, "check_promote_target"), (
         "DagHooks has no check_promote_target. ghdag v0.21.0+ is required."
@@ -72,14 +72,14 @@ def test_pyproject_ghdag_pin_is_at_least_0_55_0():
 
 def test_required_ghdag_imports_are_available():
     """Issue #2702: imports required for v0.33.0 tracking remain available."""
-    from ghdag.dag._util import check_pipeline_status, default_check_rejected
-    from ghdag.llm.engines import EngineError
-    from ghdag.pipeline.audit import write_task_exit_audit
-    from ghdag.pipeline.status import interpret_done, read_done_content
+    from ghdag.dag import check_pipeline_status, default_check_rejected
+    from ghdag.io import done
+    from ghdag.llm import EngineError
+    from ghdag.pipeline import write_task_exit_audit
 
     assert callable(write_task_exit_audit)
-    assert callable(interpret_done)
-    assert callable(read_done_content)
+    assert callable(done.interpret_done)
+    assert callable(done.read_done_content)
     assert callable(check_pipeline_status)
     assert callable(default_check_rejected)
     assert EngineError is not None
@@ -87,7 +87,7 @@ def test_required_ghdag_imports_are_available():
 
 def test_step_config_exposes_resume_from_field():
     """Issue #2702: StepConfig has a resume_from attribute."""
-    from ghdag.workflow.schema import StepConfig
+    from ghdag.workflow import StepConfig
 
     field_names: set[str] = set(getattr(StepConfig, "__annotations__", {}).keys())
     field_names.update(getattr(StepConfig, "model_fields", {}).keys())
@@ -97,13 +97,13 @@ def test_step_config_exposes_resume_from_field():
 
 def test_ghdag_interpret_done_recognizes_engine_error():
     """Issue #2721 / #3321: engine_error remains a done status after loops StepStatus removal."""
-    from ghdag.pipeline.status import interpret_done
+    from ghdag.io import done
 
-    assert interpret_done("ENGINE_ERROR\n") == "engine_error"
+    assert done.interpret_done("ENGINE_ERROR\n") == "engine_error"
 
 
 def test_interpret_done_engine_error_maps_to_engine_error():
     """Issue #2721: interpret_done maps ENGINE_ERROR to engine_error."""
-    from ghdag.pipeline.status import interpret_done
+    from ghdag.io import done
 
-    assert interpret_done("ENGINE_ERROR") == "engine_error"
+    assert done.interpret_done("ENGINE_ERROR") == "engine_error"

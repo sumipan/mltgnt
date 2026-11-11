@@ -1,7 +1,7 @@
 """tests/test_fanout_integration.py — integration tests for the fanout path (#1036)"""
 import pytest
 
-from ghdag.dag.fanout import (
+from ghdag.dag import (
     FanOutSpec,
     build_child_jsonl_record,
     parse_fanout_spec,
@@ -80,14 +80,22 @@ class TestBuildChildJsonlRecord:
         """AC: build_child_jsonl_record output is an exec.jsonl-style JSON line."""
         import json
         result = build_child_jsonl_record("abc-uuid", "claude -p 'test'")
-        assert json.loads(result) == {"uuid": "abc-uuid", "command": "claude -p 'test'"}
+        assert json.loads(result) == {
+            "uuid": "abc-uuid",
+            "command": "claude -p 'test'",
+            "depends": [],
+        }
 
     def test_format_with_complex_command(self):
         """JSON record shape is preserved for complex commands."""
         import json
         cmd = "agent -p --force < /path/to/order.md"
         result = build_child_jsonl_record("some-uuid-1234", cmd)
-        assert json.loads(result) == {"uuid": "some-uuid-1234", "command": cmd}
+        assert json.loads(result) == {
+            "uuid": "some-uuid-1234",
+            "command": cmd,
+            "depends": [],
+        }
 
 
 class TestFanoutPromptSuffix:

@@ -1,7 +1,8 @@
 """tests/test_hooks_adapter.py — hooks_adapter acceptance tests (#1036, #1128)"""
 import json
 
-from ghdag.dag.hooks import Task, TaskMetrics
+from ghdag.dag import Task
+from ghdag.metrics import TaskMetrics
 
 import pytest
 
