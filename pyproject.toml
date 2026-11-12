@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.138.25"
+version = "0.138.26"
 description = "Type contracts and chat I/O for multi-agent systems"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,7 +15,7 @@ dependencies = [
     "PyYAML>=6.0",
     "scikit-learn>=1.0",
     "numpy>=1.21",
-    "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.131.0",
+    "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.132.0",
 ]
 
 [project.optional-dependencies]
