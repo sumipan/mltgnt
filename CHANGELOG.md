@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.138.27
+
+- **ghdag v0.132.0**: `mltgnt.bridges.llm_adapter.call_llm` wraps the single `ghdag.llm.call` and returns `LLMResult` (`call_text` / `TextResult` were removed upstream). Callers and `format_result_for_persona` read success from `.ok` instead of `.success`.
+
 ## v0.138.7
 
 - **ghdag imports**: use one-segment package paths only (`ghdag.pipeline`, `ghdag.dag`, etc.); deep paths and shims are forbidden, enforced by `tests/conventions/test_ghdag_import_depth.py`.

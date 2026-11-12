@@ -164,10 +164,10 @@ async def _match_by_llm(
         result = llm_call(
             prompt,
             engine=llm_engine,
-            model=llm_model,  # type: ignore[arg-type]  # ghdag call_text accepts None
+            model=llm_model,  # type: ignore[arg-type]  # ghdag call accepts None
             timeout=30,
         )
-        if not result.success:
+        if not result.ok:
             _log.warning("LLM intent classification error: %s", result.stderr)
             return None
         response = result.body.strip().lower()
@@ -280,10 +280,10 @@ async def match(
         result = llm_call(
             prompt,
             engine=llm_engine,
-            model=llm_model,  # type: ignore[arg-type]  # ghdag call_text accepts None
+            model=llm_model,  # type: ignore[arg-type]  # ghdag call accepts None
             timeout=30,
         )
-        if not result.success:
+        if not result.ok:
             raise RuntimeError(result.stderr)
         return str(result.body or "").strip()
 

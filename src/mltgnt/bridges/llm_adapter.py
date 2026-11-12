@@ -1,6 +1,6 @@
 """mltgnt.bridges.llm_adapter
 
-L2 bridge: thin wrapper around ghdag.llm.call_text.
+L2 bridge: thin wrapper around ghdag.llm.call.
 Isolates L3 (domain) from direct L0 (ghdag) dependency.
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ghdag.llm import TextResult
+    from ghdag.llm import LLMResult
 
 
 def call_llm(
@@ -17,19 +17,18 @@ def call_llm(
     engine: str = "",
     model: str = "",
     timeout: int = 120,
-) -> "TextResult":
-    """Thin wrapper around ghdag.llm.call_text. L2 isolates the L0 dependency.
+) -> "LLMResult":
+    """Thin wrapper around ghdag.llm.call. L2 isolates the L0 dependency.
 
-    Prefer call_text over ghdag.llm.call so per-engine stdout formats are
-    normalized by the engine output adapter. Codex EngineSpec always starts
-    with ``codex exec - --json``, so raw stdout is JSONL; treating
-    call()'s LLMResult.stdout as the body would leak JSONL into Slack posts
-    and persona memory.
+    Read the reply from ``.body``: the engine output adapter normalizes
+    per-engine stdout formats there. Codex stdout is JSONL, so using
+    ``.stdout`` as the reply would leak JSONL into Slack posts and persona
+    memory.
 
     Returns:
-        TextResult. Body is .body (adapter-extracted); success is .success.
-        Use .raw.stdout only when raw stdout is required.
+        LLMResult. Body is .body (adapter-extracted); success is .ok.
+        Use .stdout only when raw stdout is required.
     """
-    from ghdag.llm import call_text
+    from ghdag.llm import call
 
-    return call_text(prompt, engine=engine, model=model, timeout=timeout)
+    return call(prompt, engine=engine, model=model, timeout=timeout)

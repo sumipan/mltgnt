@@ -180,8 +180,8 @@ class TestMatcherModel:
         assert _DEFAULT_MATCHER_MODEL == "claude-haiku-4-5-20251001"
 
 
-def _fake_result(body: str = "none", success: bool = True) -> MagicMock:
-    return MagicMock(success=success, body=body, stderr="")
+def _fake_result(body: str = "none", ok: bool = True) -> MagicMock:
+    return MagicMock(ok=ok, body=body, stderr="")
 
 
 class TestMatcherEngine:
@@ -278,7 +278,7 @@ class TestMatcherEngine:
 
     @pytest.mark.asyncio
     async def test_unknown_engine_failure_is_soft(self) -> None:
-        captured, fake = _capture_llm_call(_fake_result("", success=False))
+        captured, fake = _capture_llm_call(_fake_result("", ok=False))
         with patch("mltgnt.skill.matcher.llm_call", side_effect=fake):
             result = await match("hello", self.DISCOVER_SKILLS, engine="unknown-engine")
         assert result.decisive is None

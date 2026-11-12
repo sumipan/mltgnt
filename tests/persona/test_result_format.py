@@ -20,7 +20,7 @@ _CASES = ("success", "failure", "empty")
 @dataclass(frozen=True)
 class _FakeLLMResult:
     body: str
-    success: bool
+    ok: bool
     returncode: int = 0
     stderr: str = ""
 
@@ -56,7 +56,7 @@ def test_format_result_for_persona_matches_fixture_expectation(
         )
         return _FakeLLMResult(
             body=fx["llm_body"],
-            success=fx["success"],
+            ok=fx["success"],
             returncode=fx["returncode"],
             stderr=fx["stderr"],
         )
@@ -85,7 +85,7 @@ def test_format_result_for_persona_matches_fixture_expectation(
 
 def test_format_result_for_persona_uses_injected_postprocess() -> None:
     def _llm_call(*_a, **_k) -> _FakeLLMResult:
-        return _FakeLLMResult(body="**bold** body text", success=True)
+        return _FakeLLMResult(body="**bold** body text", ok=True)
 
     def _post(text: str) -> str:
         return text.replace("**", "")

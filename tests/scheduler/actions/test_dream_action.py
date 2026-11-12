@@ -43,7 +43,7 @@ def _setup_persona_with_jsonl(agents_dir: Path, persona: str) -> Path:
 
 
 def _text_result(body: str):
-    """Stand-in for ghdag.llm.TextResult (only body is read)."""
+    """Stand-in for ghdag.llm.LLMResult (only body is read)."""
     return type("R", (), {"body": body, "success": True, "stderr": "", "returncode": 0})()
 
 

@@ -105,7 +105,7 @@ def compress_heavy_to_light(
     except Exception as e:
         raise RuntimeError(f"LLM call failed: {e}") from e
 
-    if not result.success:
+    if not result.ok:
         stderr = (result.stderr or "").strip()
         raise RuntimeError(f"LLM returned ok=False: {stderr}")
 
