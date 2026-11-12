@@ -15,7 +15,7 @@ DEFAULT_FORMAT_TIMEOUT_SEC = 25
 
 class _LLMResultLike(Protocol):
     body: str
-    success: bool
+    ok: bool
     returncode: int
     stderr: str
 
@@ -66,7 +66,7 @@ def format_result_for_persona(
         logger.warning("result format: %s error: %s", effective_engine, e)
         return None
 
-    if not getattr(proc, "success", False):
+    if not getattr(proc, "ok", False):
         err = (getattr(proc, "stderr", None) or "").strip()
         logger.warning(
             "result format: %s exit %s stderr=%s",

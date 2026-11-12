@@ -62,7 +62,7 @@ def run_persona_prompt(
         logger.warning("[persona.runner] persona=%r exception: %s", persona_name, e)
         content = f"(exec failed: {e})"
     else:
-        if not result.success:
+        if not result.ok:
             stderr = (result.stderr or "").strip()
             logger.warning("[persona.runner] persona=%r ok=False stderr=%s", persona_name, stderr[:200])
             content = f"(error: {stderr[:200]})" if stderr else "(error)"

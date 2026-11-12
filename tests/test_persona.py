@@ -253,7 +253,7 @@ def test_compress_uses_pack_set_at_call_time(monkeypatch: pytest.MonkeyPatch, cu
 
     def fake_call(prompt: str, **kwargs) -> SimpleNamespace:
         captured["prompt"] = prompt
-        return SimpleNamespace(success=True, body="LIGHT", stderr="")
+        return SimpleNamespace(ok=True, body="LIGHT", stderr="")
 
     monkeypatch.setattr(llm_adapter, "call_llm", fake_call)
     assert compress_heavy_to_light("BODY") == "LIGHT"
