@@ -60,15 +60,39 @@ class PersonaScheduler(BaseRunner):
         memory_config: Optional["MemoryConfig"] = None,
         state_keep_days: int = 30,
     ) -> None:
-        # When config is provided, take settings from it
+        if state_dir is not None:
+            resolved_state_dir = state_dir
+        elif config is not None:
+            resolved_state_dir = config.state_dir
+        else:
+            resolved_state_dir = None
+
+        if resolved_state_dir is None:
+            raise ConfigError(
+                "PersonaScheduler needs a state directory: pass "
+                "config=SchedulerConfig(...) or state_dir=..."
+            )
+
+        if yaml_path is not None:
+            resolved_yaml_path = yaml_path
+        elif config is not None:
+            resolved_yaml_path = config.schedule_yaml
+        else:
+            resolved_yaml_path = None
+
+        if resolved_yaml_path is None and jobs is None:
+            raise ConfigError(
+                "PersonaScheduler needs a schedule: pass config=SchedulerConfig(...), "
+                "yaml_path=..., or jobs=[...]"
+            )
+
+        self._state_dir = resolved_state_dir
+        self._yaml_path = resolved_yaml_path
+
         if config is not None:
-            self._state_dir = state_dir or config.state_dir
-            self._yaml_path = yaml_path or config.schedule_yaml
             self._salt = salt or config.salt
             self._default_tz = config.timezone
         else:
-            self._state_dir = state_dir or Path(".secretary_schedule_state")
-            self._yaml_path = yaml_path or Path("schedule.yaml")
             self._salt = salt
             self._default_tz = _DEFAULT_TIMEZONE
 

@@ -287,7 +287,7 @@ The top level exports these 23 names. Import everything else from its subpackage
 | `AgentResult` | dataclass | `tool`, `args`, `raw_response`, `tool_trace=None`, `reflexion_count=0`, `plan=None` | `mltgnt.agent._runner` |
 | `enqueue_and_wait` | function | `(prompt, engine, model, timeout, idempotency_key, jobs_dir, exec_done_dir, persona_name=None, persona_dir=None, correlation_id=None, parent_correlation_id=None, request_id=None, permission=None, order_builder=None, run_result=None, task_timeout_sec=None) -> tuple[bool, str]` | `mltgnt.bridges.ghdag_bridge` |
 | `enqueue_dag` | function | `(steps, timeout, idempotency_key, jobs_dir, exec_done_dir, persona_dir=None, correlation_id=None, parent_correlation_id=None, request_id=None, skills=None, permission=None, order_builder=None, task_timeout_sec=None) -> list[tuple[bool, str]]` | `mltgnt.bridges.ghdag_bridge` |
-| `PersonaScheduler` | class | `(slack, *, config=None, state_dir=None, yaml_path=None, salt="", jobs=None, notify_channel_resolver=None, default_slack_post_kwargs=None, persona_post_kwargs_resolver=None, repo_root=None, persona_dir=None, append_memory_fn=None, actions=None, memory_config=None, state_keep_days=30)`. `slack` is a `MediaClient` | `mltgnt.scheduler.runner` |
+| `PersonaScheduler` | class | `(slack, *, config=None, state_dir=None, yaml_path=None, salt="", jobs=None, notify_channel_resolver=None, default_slack_post_kwargs=None, persona_post_kwargs_resolver=None, repo_root=None, persona_dir=None, append_memory_fn=None, actions=None, memory_config=None, state_keep_days=30)`. `slack` is a `MediaClient`. Unless you pass `config=SchedulerConfig(...)`, you must pass `state_dir` (or get it from `config.state_dir`). You must pass `yaml_path`, `config.schedule_yaml`, or `jobs=[...]`; when `jobs` is set, `yaml_path` may stay unset. Missing required paths raise `ConfigError` at construction time (there are no default state or schedule file paths). | `mltgnt.scheduler.runner` |
 | `ScheduleJob` | dataclass | See [Scheduler jobs](#scheduler-jobs). Build one with `ScheduleJob.from_dict(raw)` | `mltgnt.scheduler.models` |
 | `__version__` | `str` | Installed distribution version. `"0.0.0"` when package metadata is unavailable | `mltgnt` |
 
@@ -977,7 +977,7 @@ The first ten fields (request gates, persona text up to `persona_cut_re`, and `e
 
 ### Scheduler jobs
 
-`PersonaScheduler` loads jobs from `yaml_path` or `SchedulerConfig.schedule_yaml`. A YAML error raises `ConfigError`. `ScheduleJob.from_dict` validates each entry and raises `ValueError` on invalid input.
+`PersonaScheduler` loads jobs from `yaml_path` or `SchedulerConfig.schedule_yaml`, or from the `jobs=` argument when you do not want a YAML file. Construction raises `ConfigError` when no state directory and no schedule source are provided (there is no default directory or file name). A YAML error raises `ConfigError`. `ScheduleJob.from_dict` validates each entry and raises `ValueError` on invalid input.
 
 If an action raises an exception, the job is marked failed with `<ExceptionType>: <message>`, a failure notice is posted, and the result is recorded to memory. Once per calendar day the scheduler prunes state files older than `state_keep_days` (default `30`) with `SchedulePaths.prune`.
 

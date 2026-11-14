@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.138.40
+
+- **PersonaScheduler**: remove default state directory and schedule file paths; pass `state_dir` and a schedule source (`yaml_path`, `SchedulerConfig.schedule_yaml`, or `jobs`) or construction raises `ConfigError`.
+
 ## v0.138.38
 
 - **Positioning**: align package description and README with persona agents that live in chat; document media as part of the library (no runtime behavior changes).
