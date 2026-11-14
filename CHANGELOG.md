@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.138.49
+
 - **BREAKING** Dispatch preflight: removed `PreflightContext.secretary_memo` and `run_preflight(read_secretary_memo_fn=...)`. `memory_tail` is now the memory excerpt as-is; include extra notes in the context you pass (for example the memory worker excerpt).
 
 ## v0.138.45
