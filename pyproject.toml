@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.138.35"
+version = "0.138.36"
 description = "Type contracts and chat I/O for multi-agent systems"
 readme = "README.md"
 requires-python = ">=3.10"
