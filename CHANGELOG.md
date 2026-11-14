@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.138.41
+
 - **Dispatch preflight**: `PreflightContext.secretary_memo` and `run_preflight(read_secretary_memo_fn=...)` are optional; removal is planned for the next minor release.
 
 ## v0.138.40
