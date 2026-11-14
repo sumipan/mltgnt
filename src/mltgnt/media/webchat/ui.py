@@ -45,7 +45,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
-  #app { display: flex; height: 100vh; height: 100dvh; }
+  #app { display: flex; height: 100vh; height: 100dvh; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
   #header { display: flex; align-items: center; gap: 8px; min-height: 49px; padding: 4px 12px 4px 16px; flex-shrink: 0; min-width: 0; }
   #header .star { color: var(--muted); }
@@ -176,7 +176,7 @@ INDEX_HTML = r"""<!doctype html>
   #lightbox img { max-width: 92vw; max-height: 86vh; border-radius: 4px; }
   #lightbox .caption { color: var(--text); font-size: 13px; }
   @media (max-width: 760px) {
-    #panel { position: fixed; inset: 0; width: 100%; max-width: none; z-index: 10; border-left: none; }
+    #panel { position: fixed; inset: 0; width: 100%; max-width: none; z-index: 10; border-left: none; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     #panel-back { display: inline-flex; }
     #panel-close { display: none; }
     .hide-narrow { display: none; }
