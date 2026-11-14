@@ -951,11 +951,14 @@ When `header_meters_url` is set (for example `/meters.json`), the single-page UI
         {"name": "weekly", "used": 0.41, "resets_at": "2026-11-08T04:00:00+09:00", "window_seconds": 604800}
       ]
     }
+  ],
+  "badges": [
+    {"text": "AC 71%", "title": "battery"}
   ]
 }
 ```
 
-Each meter requires a string `name` and finite `used` (clamped to 0–1 for display). Optional `resets_at` (ISO 8601) and positive `window_seconds` together enable a progress marker and footer text. Invalid JSON, HTTP errors, or malformed payloads hide the header meter region (`console.warn` once); chat and SSE continue unchanged. When `header_meters_url` is unset, `GET /config` returns `"header_meters_url": null` and the UI does not fetch meter data.
+Optional `badges` is a list of short status texts the host chooses (each needs a non-empty string `text`; optional `title` becomes the tooltip). They render compactly at the right end of the header, next to the search icon; entries without `text` are skipped. Each meter requires a string `name` and finite `used` (clamped to 0–1 for display). Optional `resets_at` (ISO 8601) and positive `window_seconds` together enable a progress marker and footer text. Invalid JSON, HTTP errors, or malformed payloads hide the header meter region (`console.warn` once); chat and SSE continue unchanged. When `header_meters_url` is unset, `GET /config` returns `"header_meters_url": null` and the UI does not fetch meter data.
 
 ### LanguagePack
 
