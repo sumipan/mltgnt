@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.138.45
+
 - **ghdag v0.134.5**: `call_llm` forwards `route=[(engine, model or None)]` to `ghdag.llm.call`, fixing `TypeError` from removed `engine`/`model` kwargs after the ghdag pin bump.
 
 ## v0.138.41
