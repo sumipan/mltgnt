@@ -1075,7 +1075,6 @@ Inventory source: `CHANGELOG.md` entries from `v0.126.0` through `v0.136.0` (rem
 |------------|--------|-------------|---------|
 | `SlackClientProtocol` (`post_message`) | `mltgnt.interfaces.slack`, `mltgnt.interfaces` | `MediaClient` | One `DeprecationWarning` when such a client goes through `adapt_client` (including `PersonaScheduler(slack=...)`). It is wrapped so that `post` calls `post_message`. Removal is planned for a future minor release |
 | `ChannelPersonaEntry` | `mltgnt.routing` | `SpacePersonaEntry` | None (plain alias) |
-| `PreflightContext.secretary_memo`, `run_preflight(read_secretary_memo_fn=...)` | `mltgnt.agent.dispatch_preflight` | Include memo text in host-supplied context (for example the memory worker excerpt) | None. Optional since this release; removal is planned for the next minor release |
 
 ## License
 
