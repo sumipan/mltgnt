@@ -1,7 +1,7 @@
 """Only ``mltgnt.bridges`` may import ghdag; no host-specific strings in ``src/``.
 
-``secretary`` style words are part of the configuration API (e.g. the
-``notify`` values in ``scheduler.models``) and are intentionally not checked.
+``scheduler`` configuration values (e.g. ``notify`` in ``scheduler.models``) are
+out of scope for host-role word checks; ``agent`` package sources are checked.
 """
 from __future__ import annotations
 
@@ -60,6 +60,10 @@ def _file_of(violation: str) -> str:
 
 def test_no_ghdag_imports_outside_bridges() -> None:
     assert find_ghdag_imports_outside_bridges(SRC_ROOT) == []
+
+
+def test_agent_has_no_host_role_words() -> None:
+    assert find_host_leaks(SRC_ROOT / "agent", ("secretary",)) == []
 
 
 def test_no_unexpected_host_leaks() -> None:

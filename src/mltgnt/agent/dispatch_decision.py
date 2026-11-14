@@ -72,16 +72,6 @@ def _resumed_from_payload(
     }
 
 
-def _merge_memory_with_memo(
-    memory_excerpt: str | None, secretary_memo: str | None
-) -> str | None:
-    merged = memory_excerpt
-    if secretary_memo:
-        memo_block = f"--- Today's secretary memo (situational awareness) ---\n{secretary_memo}\n\n"
-        merged = f"{memo_block}{merged}" if merged else memo_block
-    return merged
-
-
 def make_dispatch_decision(
     *,
     preflight: PreflightContext,
@@ -170,9 +160,7 @@ def make_dispatch_decision(
         result = run_agent_fn(
             instruction=instruction,
             profile_content=preflight.triage_profile_content,
-            memory_tail=_merge_memory_with_memo(
-                preflight.memory_excerpt, preflight.secretary_memo
-            ),
+            memory_tail=preflight.memory_excerpt,
             user_profile=preflight.user_preferences,
             engine=primary_engine,
             model=primary_model,
