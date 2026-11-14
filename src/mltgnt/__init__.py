@@ -1,4 +1,4 @@
-"""mltgnt — type contracts and chat I/O for persona × secretary (OSS core)."""
+"""mltgnt — building blocks for persona agents that live in chat (persona, memory, skills, scheduler and loop, media)."""
 
 from importlib.metadata import PackageNotFoundError, version
 

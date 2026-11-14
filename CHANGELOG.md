@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.138.38
+
+- **Positioning**: align package description and README with persona agents that live in chat; document media as part of the library (no runtime behavior changes).
+
 ## v0.138.27
 
 - **ghdag v0.132.0**: `mltgnt.bridges.llm_adapter.call_llm` wraps the single `ghdag.llm.call` and returns `LLMResult` (`call_text` / `TextResult` were removed upstream). Callers and `format_result_for_persona` read success from `.ok` instead of `.success`.
