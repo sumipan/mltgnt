@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mltgnt"
-version = "0.138.38"
+version = "0.138.39"
 description = "Building blocks for persona agents that live in chat: persona, memory, skills, scheduler and loop, media"
 readme = "README.md"
 requires-python = ">=3.10"
