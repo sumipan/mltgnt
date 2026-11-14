@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone as _timezone
 from typing import Any, Callable
 
@@ -40,7 +40,7 @@ class PreflightContext:
     memory_excerpt: str | None
     memory_worker: MemoryWorkerResult
     skill_worker: SkillWorkerResult
-    secretary_memo: str | None
+    secretary_memo: str | None = field(default=None, kw_only=True)
     user_preferences: str | None
     thread_context: str | None
     preflight_note: str | None
@@ -98,7 +98,7 @@ def run_preflight(
     load_persona_fn: Callable[..., tuple[str | None, Any, Any]],
     memory_worker_fn: Callable[[str, str, str], MemoryWorkerResult],
     skill_worker_fn: Callable[[str, str, list[str], str | None], SkillWorkerResult],
-    read_secretary_memo_fn: Callable[[], str | None],
+    read_secretary_memo_fn: Callable[[], str | None] | None = None,
     read_memory_preferences_fn: Callable[[str], str | None],
     format_thread_for_prompt_fn: Callable[..., str | None],
     build_preflight_note_fn: Callable[[str], str | None],
@@ -155,7 +155,7 @@ def run_preflight(
         memory_excerpt=mem_result.excerpt,
         memory_worker=mem_result,
         skill_worker=skill_result,
-        secretary_memo=read_secretary_memo_fn(),
+        secretary_memo=read_secretary_memo_fn() if read_secretary_memo_fn else None,
         user_preferences=user_profile,
         thread_context=thread_context,
         preflight_note=build_preflight_note_fn(instruction),

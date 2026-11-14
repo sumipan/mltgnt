@@ -42,6 +42,105 @@ def _preflight(
     )
 
 
+def test_run_preflight_without_secretary_memo_fn() -> None:
+    """Issue #6623: run_preflight without read_secretary_memo_fn."""
+    from types import SimpleNamespace
+
+    ctx = run_preflight(
+        effective_persona="test-secretary",
+        instruction="Please revise the script",
+        thread_key="1.0",
+        profile_content="base-profile",
+        routing_result=SimpleNamespace(prebound_skills=[]),
+        thread_messages=None,
+        load_persona_fn=lambda *_a, **_k: ("light-profile", None, None),
+        memory_worker_fn=lambda *_a, **_k: MemoryWorkerResult(
+            "memory", "2026-01-01T00:00:00+00:00", 10, "ok"
+        ),
+        skill_worker_fn=lambda *_a, **_k: SkillWorkerResult(
+            None, None, "2026-01-01T00:00:00+00:00", 20, "ok"
+        ),
+        read_memory_preferences_fn=lambda _p: None,
+        format_thread_for_prompt_fn=lambda *_a, **_k: None,
+        build_preflight_note_fn=lambda _i: None,
+    )
+    assert ctx.secretary_memo is None
+
+
+def test_preflight_context_secretary_memo_defaults_to_none() -> None:
+    """Issue #6623: PreflightContext secretary_memo defaults to None."""
+    ctx = PreflightContext(
+        triage_profile_content="profile",
+        memory_excerpt="memory",
+        memory_worker=MemoryWorkerResult("memory", "2026-01-01T00:00:00+00:00", 1, "ok"),
+        skill_worker=SkillWorkerResult(
+            None, None, "2026-01-01T00:00:00+00:00", 1, "ok"
+        ),
+        user_preferences=None,
+        thread_context=None,
+        preflight_note=None,
+    )
+    assert ctx.secretary_memo is None
+
+
+def test_memory_tail_prepends_secretary_memo() -> None:
+    """Issue #6623: memory_tail merges secretary memo before memory excerpt."""
+    captured: dict[str, object] = {}
+
+    def _capture_agent(**kwargs: object) -> DirectAgentResult:
+        captured.update(kwargs)
+        return DirectAgentResult(tool=MODE_REPLY, message="ok", raw_response="")
+
+    preflight = PreflightContext(
+        triage_profile_content="profile",
+        memory_excerpt="memory",
+        memory_worker=MemoryWorkerResult("memory", "2026-01-01T00:00:00+00:00", 1, "ok"),
+        skill_worker=SkillWorkerResult(
+            None, None, "2026-01-01T00:00:00+00:00", 1, "ok"
+        ),
+        secretary_memo="memo",
+        user_preferences=None,
+        thread_context=None,
+        preflight_note=None,
+    )
+    make_dispatch_decision(
+        preflight=preflight,
+        instruction="how about the weather",
+        space_id="C1",
+        thread_key="1.0",
+        engine="claude",
+        model="m",
+        run_agent_fn=_capture_agent,
+        should_preempt_delegate_fn=lambda _i: False,
+        match_deferred_promise_fn=lambda _t: None,
+        is_reply_tool_fn=lambda tool: tool == MODE_REPLY,
+        latest_session_fn=lambda *_a: None,
+        invalidate_session_fn=lambda *_a: False,
+    )
+    assert captured["memory_tail"] == (
+        "--- Today's secretary memo (situational awareness) ---\n"
+        "memo\n\n"
+        "memory"
+    )
+
+
+def test_preflight_context_secretary_memo_is_keyword_only() -> None:
+    """Issue #6623: secretary_memo cannot be passed positionally."""
+    mem = MemoryWorkerResult("memory", "2026-01-01T00:00:00+00:00", 1, "ok")
+    skill = SkillWorkerResult(None, None, "2026-01-01T00:00:00+00:00", 1, "ok")
+    with pytest.raises(TypeError):
+        PreflightContext(
+            "profile",
+            "memory",
+            mem,
+            skill,
+            "memo",
+            None,
+            None,
+            None,
+        )
+
+
 def test_run_preflight_requires_injected_workers() -> None:
     from types import SimpleNamespace
 

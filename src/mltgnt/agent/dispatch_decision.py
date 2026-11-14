@@ -24,7 +24,7 @@ MODE_DELEGATE = "delegate"
 
 @dataclass
 class DirectAgentResult:
-    """Result from a direct-reply agent (secretary_agent equivalent).
+    """Result from a direct-reply agent.
 
     Separate from ``mltgnt.agent.AgentResult`` (used by AgentRunner).
     """
