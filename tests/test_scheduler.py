@@ -192,6 +192,50 @@ def test_cycle_detection_raises(tmp_path: Path) -> None:
 # AC-3: SchedulerConfig Contact Us
 # ---------------------------------------------------------------------------
 
+def test_missing_state_dir_raises_config_error() -> None:
+    """Refs sumipan/nexus#6622."""
+    with pytest.raises(ConfigError, match="state_dir") as excinfo:
+        PersonaScheduler(slack=None, jobs=[])
+    assert "SchedulerConfig" in str(excinfo.value)
+
+
+def test_missing_schedule_without_jobs_raises_config_error(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#6622."""
+    with pytest.raises(ConfigError) as excinfo:
+        PersonaScheduler(slack=None, state_dir=tmp_path / "state")
+    msg = str(excinfo.value)
+    assert "yaml_path" in msg
+    assert "jobs" in msg
+
+
+def test_jobs_without_yaml_path_is_accepted(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#6622."""
+    job = ScheduleJob.from_dict({
+        "id": "inline_job",
+        "mode": "scheduled",
+        "every_day_at": "10:00",
+        "action": "noop",
+        "notify": "silent",
+    })
+    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[job])
+    assert sch.yaml_path is None
+    sch.reload_jobs()
+    assert sch._jobs == [job]
+
+
+def test_config_supplies_state_dir_and_schedule(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#6622."""
+    yaml_file = tmp_path / "schedule.yaml"
+    yaml_file.write_text("jobs: []\n", encoding="utf-8")
+    config = SchedulerConfig(
+        schedule_yaml=yaml_file,
+        state_dir=tmp_path / "state",
+    )
+    sch = PersonaScheduler(slack=None, config=config)
+    assert sch.state_dir == tmp_path / "state"
+    assert sch.yaml_path == yaml_file
+
+
 def test_scheduler_config_integration(tmp_path: Path) -> None:
     """SchedulerConfig Use the scheduler to work properly."""
     yaml_file = tmp_path / "schedule.yaml"
