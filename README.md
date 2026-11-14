@@ -33,7 +33,7 @@ Regenerated from the `v0.138.26` tree (`package 0.138.0`, ghdag pin `v0.107.2`) 
 | Direct `os.environ` / `os.getenv` keys in library code | 4 (`REPO_ROOT`, `SKILL_IO_TYPECHECK`, `THREAD_PERSONA_TTL_DAYS`, `MLTGNT_DEFAULT_ENGINE`) |
 | `SkillConfig.passthrough_env` keys | host-declared at startup |
 | Exceptions in [Error Reference](#error-reference) | 9 |
-| Rows in [Deprecated API](#deprecated-api) | 2 |
+| Rows in [Deprecated API](#deprecated-api) | 3 |
 | CLI commands documented | 4 (`run`, `memory dream show`, `memory dream forget`, `hub serve`) |
 
 ## Not
@@ -1072,6 +1072,7 @@ Inventory source: `CHANGELOG.md` entries from `v0.126.0` through `v0.136.0` (rem
 |------------|--------|-------------|---------|
 | `SlackClientProtocol` (`post_message`) | `mltgnt.interfaces.slack`, `mltgnt.interfaces` | `MediaClient` | One `DeprecationWarning` when such a client goes through `adapt_client` (including `PersonaScheduler(slack=...)`). It is wrapped so that `post` calls `post_message`. Removal is planned for a future minor release |
 | `ChannelPersonaEntry` | `mltgnt.routing` | `SpacePersonaEntry` | None (plain alias) |
+| `PreflightContext.secretary_memo`, `run_preflight(read_secretary_memo_fn=...)` | `mltgnt.agent.dispatch_preflight` | Include memo text in host-supplied context (for example the memory worker excerpt) | None. Optional since this release; removal is planned for the next minor release |
 
 ## License
 
