@@ -45,7 +45,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
-  #app { display: flex; height: 100vh; height: 100dvh; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #app { display: flex; height: 100vh; height: 100dvh; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
   #header { display: flex; align-items: center; gap: 8px; min-height: 49px; padding: 4px 12px 4px 16px; flex-shrink: 0; min-width: 0; }
   #header .star { color: var(--muted); }
@@ -69,6 +69,8 @@ INDEX_HTML = r"""<!doctype html>
   .meter-bar-prog { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--meter-marker); pointer-events: none; }
   .meter-footer { font-size: 10px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spacer { flex: 1; }
+  #header-badges { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--text-strong); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #header-badges[hidden] { display: none !important; }
   .hicon { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-radius: 6px; color: var(--text); }
   .hicon:hover { background: var(--bg-hover); }
   .hicon svg { width: 18px; height: 18px; }
@@ -130,7 +132,7 @@ INDEX_HTML = r"""<!doctype html>
   .save.on svg { fill: currentColor; }
   .divider { display: flex; align-items: center; gap: 12px; margin: 4px 20px; font-size: 13px; color: var(--muted); }
   .divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
-  .composer { padding: 0 20px 20px; flex-shrink: 0; }
+  .composer { padding: 0 20px max(20px, env(safe-area-inset-bottom)); flex-shrink: 0; }
   .composer-box { border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-raised); position: relative; }
   .composer-box:focus-within { border-color: #8e8e8e; }
   .composer-box.dragging { border-color: var(--link); box-shadow: 0 0 0 1px var(--link); }
@@ -181,7 +183,7 @@ INDEX_HTML = r"""<!doctype html>
     #panel-close { display: none; }
     .hide-narrow { display: none; }
     .msg { padding-left: 12px; padding-right: 12px; }
-    .composer { padding: 0 8px 8px; }
+    .composer { padding: 0 8px max(8px, env(safe-area-inset-bottom)); }
     .actions { right: 12px; }
   }
   @media (max-width: 479px) {
@@ -200,6 +202,7 @@ INDEX_HTML = r"""<!doctype html>
       <span id="channel-title"><span class="hash">#</span><span id="channel-name">general</span></span>
       <div id="header-meters" hidden></div>
       <span class="spacer"></span>
+      <span id="header-badges" hidden></span>
       <span class="hicon hide-narrow" title="Members"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.3c2 .7 3.5 2.7 3.5 5.7"/></svg><span class="count" id="member-count">1</span></span>
       <span class="hicon hide-narrow" title="Huddle"><svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg></span>
       <button type="button" class="hicon hide-narrow" id="push-btn" title="Notifications" hidden><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span class="count" id="push-label"></span></button>
@@ -296,6 +299,7 @@ INDEX_HTML = r"""<!doctype html>
   var panelMode = null;
   var config = { avatars: {}, display_names: {}, channel_name: "general", channel_slug: "general", max_upload_bytes: 20971520, push_enabled: false, header_meters_url: null };
   var headerMetersEl = document.getElementById("header-meters");
+  var headerBadgesEl = document.getElementById("header-badges");
   var headerMetersUrl = null;
   var headerMetersPayload = null;
   var headerMetersFetchTimer = null;
@@ -1417,16 +1421,39 @@ INDEX_HTML = r"""<!doctype html>
       var fetchedMs = Date.parse(data.fetched_at);
       if (isFinite(fetchedMs)) { fetchedAt = fetchedMs; }
     }
-    return { fetched_at: fetchedAt, groups: groups };
+    var badges = [];
+    if (Array.isArray(data.badges)) {
+      for (var bi = 0; bi < data.badges.length; bi++) {
+        var badge = data.badges[bi];
+        if (badge && typeof badge === "object" && typeof badge.text === "string" && badge.text) {
+          badges.push({ text: badge.text, title: typeof badge.title === "string" ? badge.title : "" });
+        }
+      }
+    }
+    return { fetched_at: fetchedAt, groups: groups, badges: badges };
   }
 
   function hideHeaderMeters() {
     headerMetersPayload = null;
     headerMetersEl.hidden = true;
     while (headerMetersEl.firstChild) { headerMetersEl.removeChild(headerMetersEl.firstChild); }
+    renderHeaderBadges([]);
+  }
+
+  function renderHeaderBadges(badges) {
+    while (headerBadgesEl.firstChild) { headerBadgesEl.removeChild(headerBadgesEl.firstChild); }
+    for (var bi = 0; bi < badges.length; bi++) {
+      var el = document.createElement("span");
+      el.className = "header-badge";
+      el.textContent = badges[bi].text;
+      if (badges[bi].title) { el.title = badges[bi].title; }
+      headerBadgesEl.appendChild(el);
+    }
+    headerBadgesEl.hidden = badges.length === 0;
   }
 
   function renderHeaderMeters(payload, nowMs) {
+    renderHeaderBadges(payload.badges);
     while (headerMetersEl.firstChild) { headerMetersEl.removeChild(headerMetersEl.firstChild); }
     var title = document.createElement("div");
     title.className = "hm-title";
@@ -1485,7 +1512,7 @@ INDEX_HTML = r"""<!doctype html>
       }
       headerMetersEl.appendChild(groupEl);
     }
-    headerMetersEl.hidden = false;
+    headerMetersEl.hidden = payload.groups.length === 0;
   }
 
   function warnHeaderMetersOnce(msg) {
