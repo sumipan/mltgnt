@@ -20,6 +20,9 @@ def call_llm(
 ) -> "LLMResult":
     """Thin wrapper around ghdag.llm.call. L2 isolates the L0 dependency.
 
+    Forwards a single ``route`` candidate ``(engine, model or None)``; an empty
+    ``model`` becomes ``None`` so ghdag selects the engine default.
+
     Read the reply from ``.body``: the engine output adapter normalizes
     per-engine stdout formats there. Codex stdout is JSONL, so using
     ``.stdout`` as the reply would leak JSONL into Slack posts and persona
@@ -31,4 +34,4 @@ def call_llm(
     """
     from ghdag.llm import call
 
-    return call(prompt, engine=engine, model=model, timeout=timeout)
+    return call(prompt, route=[(engine, model or None)], timeout=timeout)
