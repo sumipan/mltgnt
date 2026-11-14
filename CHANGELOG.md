@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.138.38
+
 - **Positioning**: align package description and README with persona agents that live in chat; document media as part of the library (no runtime behavior changes).
 
 ## v0.138.27
