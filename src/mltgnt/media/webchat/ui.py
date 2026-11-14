@@ -184,6 +184,7 @@ INDEX_HTML = r"""<!doctype html>
     .hide-narrow { display: none; }
     .msg { padding-left: 12px; padding-right: 12px; }
     .composer { padding: 0 8px max(8px, env(safe-area-inset-bottom)); }
+    .composer textarea { font-size: 16px; }
     .actions { right: 12px; }
   }
   @media (max-width: 479px) {
