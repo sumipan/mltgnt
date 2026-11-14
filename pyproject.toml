@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mltgnt"
 version = "0.138.37"
-description = "Type contracts and chat I/O for multi-agent systems"
+description = "Building blocks for persona agents that live in chat: persona, memory, skills, scheduler and loop, media"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "sumipan" }]
-keywords = ["persona", "secretary", "slack", "llm", "multi-agent"]
+keywords = ["persona", "agent", "chat", "memory", "llm", "multi-agent"]
 dependencies = [
     "PyYAML>=6.0",
     "scikit-learn>=1.0",

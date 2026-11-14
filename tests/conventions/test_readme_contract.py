@@ -58,7 +58,10 @@ REMOVED_README_TOKENS = (
     "_read_state",
     "_write_post_content",
     "_build_meta",
+    "optional adapters",
 )
+
+_FIVE_PART_TOKENS = ("persona", "memory", "skill", "scheduler", "media")
 
 V0135_README_MARKERS = (
     "header_meters_url",
@@ -1135,3 +1138,45 @@ def test_readme_deprecated_tokens_are_absent_and_v0135_features_present() -> Non
         assert token not in text
     for marker in V0135_README_MARKERS:
         assert marker in text
+
+
+def _title_positioning_bold_sentence(text: str) -> str:
+    block = _section_slice(text, "Title / Positioning", stop_before=("Status",))
+    match = re.search(r"\*\*(.+?)\*\*", block, flags=re.DOTALL)
+    assert match is not None, "Title / Positioning missing bold positioning sentence"
+    return match.group(1)
+
+
+def _module_docstring_first_line() -> str:
+    init_path = SRC_ROOT / "__init__.py"
+    tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
+    doc = ast.get_docstring(tree)
+    assert doc is not None, "mltgnt.__init__ missing module docstring"
+    return doc.splitlines()[0]
+
+
+def _text_includes_five_parts(text: str) -> list[str]:
+    lowered = text.lower()
+    return [token for token in _FIVE_PART_TOKENS if token not in lowered]
+
+
+def test_self_descriptions_name_the_five_parts() -> None:
+    """Package name, README positioning, and pyproject agree on the five building blocks.
+
+    Refs: sumipan/nexus#6613 (AC1, AC3).
+    """
+    readme_sentence = _title_positioning_bold_sentence(_readme_text())
+    description = _pyproject()["project"]["description"]
+    docstring_line = _module_docstring_first_line()
+    keywords = _pyproject()["project"]["keywords"]
+
+    for label, text in (
+        ("README Title / Positioning", readme_sentence),
+        ("pyproject description", description),
+        ("mltgnt.__init__ docstring", docstring_line),
+    ):
+        missing = _text_includes_five_parts(text)
+        assert missing == [], f"{label} missing parts: {missing}"
+
+    assert "secretary" not in " ".join(keywords).lower()
+    assert "secretary" not in docstring_line.lower()

@@ -2,17 +2,17 @@
 
 ## Title / Positioning
 
-**Typed building blocks for multi-agent chat hosts: personas, memory, skills, an agent loop and work loop, routing, scheduling, conversation state, and a media I/O contract.**
+**Building blocks for persona agents that live in chat: who they are (persona), what they remember (memory), what they can do (skills), when they act (scheduler and loop), and where they talk (media).**
 
 mltgnt is a Python library. It sits between an execution engine and the application that hosts your agents:
 
 | Layer | Owner | Responsibility |
 |-------|-------|----------------|
 | Engine | [ghdag](https://github.com/sumipan/ghdag) | DAG execution, LLM engines, VCS sinks |
-| Library | **mltgnt** | Domain types and behavior: personas, memory, skills, agent loop, routing, scheduler, conversation state, media contract |
+| Library | **mltgnt** | Domain types and behavior: personas, memory, skills, agent loop, routing, scheduler, conversation state, media (the `MediaClient` contract and the Slack / WebChat / hub / Matrix implementations) |
 | Host | Your application | Processes, credentials, filesystem paths, deployment |
 
-All LLM calls and git commits go out through `mltgnt.bridges`, which is the only package that imports ghdag. Chat media (Slack, WebChat, or your own) connect through a single Protocol, `MediaClient`.
+All LLM calls and git commits go out through `mltgnt.bridges`, which is the only package that imports ghdag. mltgnt ships Slack, WebChat, hub, and Matrix media; your own medium plugs in through the same Protocol, `MediaClient`.
 
 ## Status
 
@@ -43,7 +43,7 @@ Regenerated from the `v0.138.26` tree (`package 0.138.0`, ghdag pin `v0.107.2`) 
 | An LLM SDK | mltgnt ships no model client. `call_llm`, `enqueue_and_wait`, and `enqueue_dag` in `mltgnt.bridges` hand the work to ghdag. |
 | A DAG engine | Queueing, dependency resolution, cancellation, and job state belong to ghdag. mltgnt builds the steps and waits for the results. |
 | A host runtime | The host supplies paths, secrets, and the process layout. `mltgnt run` only starts the components that a host factory returns. |
-| A Slack bot | Slack and WebChat are optional adapters behind `MediaClient`. Core packages never import `mltgnt.media`. |
+| A Slack bot | Slack, WebChat, hub, and Matrix live in this library. Optional extras (`mltgnt[slack]`, etc.) only gate third-party packages; media is part of the core, not an external add-on. Core packages never import `mltgnt.media`. |
 
 ## Installation
 
