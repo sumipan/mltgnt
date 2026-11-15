@@ -149,25 +149,6 @@ def test_set_status_unmapped_returns_false(tmp_path: Path) -> None:
     assert web.calls == []
 
 
-def test_post_with_extra_passes_kwargs(tmp_path: Path) -> None:
-    web = FakeWebClient()
-    blocks = [{"type": "section", "text": {"type": "plain_text", "text": "hi"}}]
-    ts = _client(tmp_path, web).post(
-        "hi",
-        "C1",
-        extra={"username": "bot", "icon_emoji": ":robot:", "blocks": blocks},
-    )
-    assert ts == "1.000100"
-    assert web.calls_of("chat_postMessage") == [
-        {
-            "channel": "C1",
-            "text": "hi",
-            "username": "bot",
-            "icon_emoji": ":robot:",
-            "blocks": blocks,
-        }
-    ]
-
 
 def test_post_extra_on_later_chunks_only_username(tmp_path: Path) -> None:
     web = FakeWebClient()

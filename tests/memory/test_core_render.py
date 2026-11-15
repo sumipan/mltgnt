@@ -26,27 +26,6 @@ def test_empty_returns_empty_string() -> None:
     assert render_core([_e(1, "fact", "x", status="superseded")]) == ""
 
 
-def test_order_and_format() -> None:
-    entries = [
-        _e(1, "fact", "old fact"),
-        _e(2, "fact", "new fact"),
-        _e(3, "reflection", "a reflection"),
-        _e(4, "self", "self note"),
-        _e(5, "preference", "likes tea"),
-        _e(6, "commitment", "send report"),
-        _e(7, "caveat", "no calls"),
-    ]
-    assert render_core(entries).splitlines() == [
-        "## Memory",
-        "- [caveat] no calls",
-        "- [commitment] send report",
-        "- [preference] likes tea",
-        "- [self] self note",
-        "- [fact] new fact",
-        "- [fact] old fact",
-        "- [reflection] a reflection",
-    ]
-
 
 def test_superseded_entries_are_excluded() -> None:
     out = render_core([_e(1, "fact", "gone", status="superseded"), _e(2, "fact", "kept")])

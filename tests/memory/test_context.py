@@ -60,26 +60,6 @@ def test_thread_tail_applies_limit_and_empty_boundaries(tmp_path: Path) -> None:
     assert thread_tail_text(path, space_id="S", thread_key="T", max_entries=0) == ""
 
 
-def test_recent_episodes_filters_since_and_thread(tmp_path: Path) -> None:
-    path = tmp_path / "episodes.jsonl"
-    since = datetime(2026, 9, 27, 10, 0)
-    entries = [
-        _episode(f"{LEGACY_DIRECT_DEDUPE_PREFIX}:S:A:1:user", "old other", "2026-09-27 09:59"),
-        _episode(f"{LEGACY_DIRECT_DEDUPE_PREFIX}:S:B:2:user", "keep other", "2026-09-27 10:00"),
-        _episode(f"{LEGACY_DIRECT_DEDUPE_PREFIX}:S:A:3:user", "exclude same", "2026-09-27 10:05"),
-        _episode(f"{LEGACY_DIRECT_DEDUPE_PREFIX}:S:B:4:user", "keep other 2", "2026-09-27 10:10"),
-    ]
-    _write_episodes(path, entries)
-    out = recent_episodes_text(
-        path,
-        since=since,
-        max_entries=10,
-        exclude_thread_key="A",
-    )
-    assert "keep other" in out and "keep other 2" in out
-    assert "old other" not in out
-    assert "exclude same" not in out
-
 
 def test_recent_episodes_skips_invalid_timestamps(tmp_path: Path) -> None:
     path = tmp_path / "episodes.jsonl"

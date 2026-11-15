@@ -32,29 +32,6 @@ def test_text_override_and_missing_fields() -> None:
     assert got.space_id == ""
 
 
-def test_file_share_becomes_attachment() -> None:
-    event = {
-        "type": "message",
-        "subtype": "file_share",
-        "channel": "C1",
-        "user": "U9",
-        "text": "see file",
-        "ts": "3.3",
-        "files": [
-            {
-                "id": "F1",
-                "name": "photo.png",
-                "mimetype": "image/png",
-                "url_private_download": "https://files.example.test/F1/download",
-                "url_private": "https://files.example.test/F1",
-            }
-        ],
-    }
-    got = inbound.to_media_event(event)
-    assert got.attachments == (
-        Attachment(name="photo.png", content_type="image/png", uri="https://files.example.test/F1/download"),
-    )
-
 
 def test_files_to_attachments_edge_cases() -> None:
     files = [

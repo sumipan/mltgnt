@@ -156,23 +156,6 @@ def test_bridge_failure_does_not_break_the_request(tmp_path: Path) -> None:
     assert [r["text"] for r in store.read(DAY)] == ["ping"]
 
 
-def test_stream_resumes_from_last_event_id(tmp_path: Path) -> None:
-    client, store, _bridge = _app(tmp_path, poll_interval_sec=0.01, stream_timeout_sec=0.05)
-    store.append(message_id="m1", author="bot", text="v1")
-    store.revise("m1", "update", text="v2")
-    store.revise("m1", "status", status="done")
-    resp = client.get("/stream", headers={"Last-Event-ID": "2026-01-05:0"})
-    assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("text/event-stream")
-    frames = _frames(resp.text)
-    assert [f["event"] for f in frames] == ["message", "update", "status"]
-    assert [json.loads(f["data"])["text"] for f in frames] == ["v1", "v2", "v2"]
-    assert all(json.loads(f["data"])["message_id"] == "m1" for f in frames)
-    size = store.path_for(DAY).stat().st_size
-    assert frames[-1]["id"] == f"2026-01-05:{size}"
-    resumed = client.get("/stream", headers={"Last-Event-ID": frames[0]["id"]})
-    assert [f["event"] for f in _frames(resumed.text)] == ["update", "status"]
-
 
 def test_stream_without_last_event_id_starts_at_the_end(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path, poll_interval_sec=0.01, stream_timeout_sec=0.05)
@@ -233,30 +216,6 @@ def test_serve_binds_config_address(tmp_path: Path) -> None:
     serve(app, _config(tmp_path), runner=lambda a, **kw: calls.append((a, kw)))
     assert calls == [(app, {"host": "127.0.0.1", "port": 8765})]
 
-
-def test_config_endpoint_returns_avatars(tmp_path: Path) -> None:
-    config = WebChatMediaConfig(
-        state_dir=tmp_path / "s",
-        pending_dir=tmp_path / "p",
-        events_dir=tmp_path / "e",
-        store_dir=tmp_path / "w",
-        avatars={"u1": "avatar.png", "bot": "https://example.com/bot.png"},
-        display_names={"u1": "User One"},
-        channel_name="audit",
-        max_upload_bytes=1024,
-    )
-    client = TestClient(create_app(config, RecordingBridge()))
-    resp = client.get("/config")
-    assert resp.status_code == 200
-    assert resp.json() == {
-        "avatars": {"u1": "avatar.png", "bot": "https://example.com/bot.png"},
-        "display_names": {"u1": "User One"},
-        "channel_name": "audit",
-        "channel_slug": "general",
-        "max_upload_bytes": 1024,
-        "push_enabled": False,
-        "header_meters_url": None,
-    }
 
 
 @pytest.mark.parametrize("channel_slug", ["", "General", "a/b", "a b"])

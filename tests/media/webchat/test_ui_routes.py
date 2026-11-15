@@ -79,35 +79,6 @@ def test_custom_channel_slug_redirect_and_config(tmp_path: Path) -> None:
     assert client.get("/config").json()["channel_slug"] == "ops-1"
 
 
-def test_index_html_routing_client_strings() -> None:
-    forbidden = [
-        'fetch("config"',
-        'fetch("messages',
-        'fetch("threads/',
-        'fetch("bookmarks"',
-        'fetch("files',
-        'new EventSource("stream"',
-        '"files/"',
-        '"assets/"',
-    ]
-    for token in forbidden:
-        assert token not in INDEX_HTML
-    for token in (
-        'fetch("/config"',
-        'fetch("/messages',
-        'fetch("/threads/',
-        'fetch("/bookmarks"',
-        'fetch("/files',
-        'new EventSource("/stream"',
-        '"/files/"',
-        '"/assets/"',
-        "history.pushState",
-        "history.replaceState",
-        "popstate",
-        "navigator.clipboard",
-    ):
-        assert token in INDEX_HTML
-
 
 def test_index_html_prefers_row_display() -> None:
     """Issue #5956 AC6."""

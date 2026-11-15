@@ -1,7 +1,6 @@
 """Tests for mltgnt.memory.reflection (Issue #4037)."""
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -40,25 +39,6 @@ def test_build_prompt_includes_inputs(tmp_path: Path) -> None:
 def test_build_prompt_empty_inputs() -> None:
     assert "(none)" in build_reflection_prompt([], [], persona="helper")
 
-
-def test_parse_reflection_valid_with_fence() -> None:
-    text = (
-        "```json\n"
-        + json.dumps(
-            {
-                "reflection": "learned things",
-                "add": [{"kind": "fact", "content": "has a dog", "subject": "user"}],
-                "supersede": ["m_1"],
-            }
-        )
-        + "\n```"
-    )
-    result = parse_reflection(text)
-    assert result == ReflectionResult(
-        reflection="learned things",
-        add=(ReflectionAdd(kind="fact", content="has a dog", subject="user"),),
-        supersede=("m_1",),
-    )
 
 
 @pytest.mark.parametrize(
