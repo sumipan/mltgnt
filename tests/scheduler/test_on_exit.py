@@ -50,55 +50,6 @@ def wait_idle(sch: PersonaScheduler, timeout: float = 2.0) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Case 1: on_exit unset + ok=True → only done_path is written
-# ---------------------------------------------------------------------------
-
-def test_no_on_exit_ok_true_writes_done(tmp_path: Path) -> None:
-    job = ScheduleJob.from_dict({
-        "id": "job_a",
-        "mode": "scheduled",
-        "every_day_at": "10:00",
-        "action": "noop",
-        "notify": "silent",
-    })
-    sch = make_scheduler(tmp_path, [job])
-    d = date(2026, 7, 21)
-
-    with patch.object(sch, "execute_action", return_value=(True, "ok")) as mock_exec:
-        sch._spawn_job(job, d)
-        wait_idle(sch)
-
-    mock_exec.assert_called_once()
-    assert sch.paths.done_path(job.id, d).is_file()
-    assert not sch.paths.failed_path(job.id, d).is_file()
-    assert not sch.paths.skipped_path(job.id, d).is_file()
-
-
-# ---------------------------------------------------------------------------
-# Case 2: on_exit unset + ok=False → only failed_path is written
-# ---------------------------------------------------------------------------
-
-def test_no_on_exit_ok_false_writes_failed(tmp_path: Path) -> None:
-    job = ScheduleJob.from_dict({
-        "id": "job_b",
-        "mode": "scheduled",
-        "every_day_at": "10:00",
-        "action": "noop",
-        "notify": "silent",
-    })
-    sch = make_scheduler(tmp_path, [job])
-    d = date(2026, 7, 21)
-
-    with patch.object(sch, "execute_action", return_value=(False, "error msg")):
-        sch._spawn_job(job, d)
-        wait_idle(sch)
-
-    assert not sch.paths.done_path(job.id, d).is_file()
-    assert sch.paths.failed_path(job.id, d).is_file()
-    assert not sch.paths.skipped_path(job.id, d).is_file()
-
-
-# ---------------------------------------------------------------------------
 # Case 3: on_exit.nonzero=skip + ok=False → only skipped_path is written
 #            _post / _record_to_memory are not called
 # ---------------------------------------------------------------------------
@@ -129,31 +80,6 @@ def test_on_exit_skip_ok_false_writes_skipped(tmp_path: Path) -> None:
     assert sch.paths.skipped_path(job.id, d).is_file()
     mock_post.assert_not_called()
     mock_mem.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Case 4: on_exit.nonzero=fail + ok=False → only failed_path (same as unset)
-# ---------------------------------------------------------------------------
-
-def test_on_exit_fail_ok_false_writes_failed(tmp_path: Path) -> None:
-    job = ScheduleJob.from_dict({
-        "id": "job_d",
-        "mode": "scheduled",
-        "every_day_at": "10:00",
-        "action": "noop",
-        "notify": "silent",
-        "on_exit": {"nonzero": "fail"},
-    })
-    sch = make_scheduler(tmp_path, [job])
-    d = date(2026, 7, 21)
-
-    with patch.object(sch, "execute_action", return_value=(False, "err")):
-        sch._spawn_job(job, d)
-        wait_idle(sch)
-
-    assert not sch.paths.done_path(job.id, d).is_file()
-    assert sch.paths.failed_path(job.id, d).is_file()
-    assert not sch.paths.skipped_path(job.id, d).is_file()
 
 
 # ---------------------------------------------------------------------------

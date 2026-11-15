@@ -9,7 +9,6 @@ tests/memory/test_memory_commit_debounce.py
 tests/scheduler/test_chain_every_run.py
 tests/scheduler/test_media_client_notify.py
 tests/scheduler/test_on_exit.py
-tests/scheduler/test_spawn_job_post.py
 tests/test_compaction.py
 tests/test_daemon.py
 tests/test_memory.py

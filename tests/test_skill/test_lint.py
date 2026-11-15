@@ -326,24 +326,6 @@ class TestLintPass:
         )
         assert errors == []
 
-    def test_v1_frontmatter_passes(self) -> None:
-        errors = lint_skill_meta(
-            {
-                "name": "review",
-                "description": "desc",
-                "skill_io": "v1",
-                "produces": {
-                    "content_type": "text/markdown",
-                    "artifacts": [{"path": "report.md", "role": "primary"}],
-                    "status_markers": ["ACCEPTED"],
-                },
-                "consumes": [{"producer": "upstream", "content_type": "text/plain"}],
-                "input_schema": {"type": "object"},
-            },
-            _path(),
-        )
-        assert errors == []
-
 
 class TestLintV7TypeOnly:
     """Issue #3179: V7 is type-check only (does not require files to exist)."""

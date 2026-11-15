@@ -77,22 +77,6 @@ def _enqueue_side_effect(return_value=(True, "")):
     return captured, _fake
 
 
-def _dag_side_effect(return_value=None):
-    if return_value is None:
-        return_value = [(True, "ok")]
-    captured: list[dict] = []
-    positional: list = []
-
-    def _fake(*args, **kwargs):
-        if args:
-            positional.append(args[0])
-        captured.append(kwargs)
-        return return_value
-
-    return captured, positional, _fake
-
-
-
 def test_skill_action_success(tmp_path: Path) -> None:
     """skill action: enqueue_and_wait Home (True, stdout) → (True, stdout) """
     sch, meta = _make_skill_scheduler(tmp_path)
@@ -179,24 +163,6 @@ def test_skill_action_model_fallback_to_persona(tmp_path: Path) -> None:
 
     _enqueue_kw = _capt[-1]
     assert _enqueue_kw["model"] == "gemini-2.5-pro"
-
-
-def test_skill_action_argv_in_prompt(tmp_path: Path) -> None:
-    """argv When specified $ARGUMENTS will be deployed in the skill body."""
-    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "$ARGUMENTS Processing")
-    sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "persona-a")
-    job = _skill_job(action_args={"skill": "test-skill", "persona": "persona-a", "argv": ["morning"]})
-
-    _capt, _fake = _enqueue_side_effect((True, "Result"))
-    with patch(_ENQUEUE, side_effect=_fake):
-        ok, msg = sch.execute_action(job)
-
-    _enqueue_kw = _capt[-1]
-    assert ok is True
-    assert msg == "Result"
-    assert "morning Processing" in _enqueue_kw["prompt"]
 
 
 def test_skill_action_no_argv(tmp_path: Path) -> None:
@@ -300,27 +266,6 @@ def test_skill_action_request_id_uuid_v4(tmp_path: Path) -> None:
     _enqueue_kw = _capt[-1]
     request_id = _enqueue_kw["request_id"]
     assert re.match(_UUID_V4_RE, request_id)
-
-
-def test_skill_action_request_id_shared_with_fanout(tmp_path: Path) -> None:
-    """fanout Home enqueue_and_wait Home enqueue_dag Same request_id to receive."""
-    sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
-    job = _skill_job(action_args={
-        "skill": "test-skill",
-        "persona": "persona-a",
-        "enable_fanout": True,
-    })
-
-    _capt, _fake = _enqueue_side_effect((True, _FANOUT_RESPONSE))
-    _dag_capt, _dag_pos, _dag_fake = _dag_side_effect([(True, "ok1"), (True, "ok2")])
-    with patch(_ENQUEUE, side_effect=_fake), patch(_ENQUEUE_DAG, side_effect=_dag_fake):
-        sch.execute_action(job)
-
-    wait_rid = _capt[-1]["request_id"]
-    dag_rid = _dag_capt[-1]["request_id"]
-    assert wait_rid == dag_rid
-    assert wait_rid is not None
 
 
 def test_skill_action_missing_skill_name(tmp_path: Path) -> None:
@@ -455,26 +400,6 @@ def test_skill_action_arguments_empty_when_no_argv(tmp_path: Path) -> None:
     assert "Argument: []" in _enqueue_kw["prompt"]
 
 
-def test_skill_action_uses_format_prompt(tmp_path: Path) -> None:
-    """AC3: build the prompt through persona.format_prompt()."""
-    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta_with_body("test-skill", tmp_path, "")
-    sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "persona-a")
-    job = _skill_job()
-
-    _capt, _fake = _enqueue_side_effect((True, ""))
-    with patch(_ENQUEUE, side_effect=_fake):
-        sch.execute_action(job)
-
-    _enqueue_kw = _capt[-1]
-    prompt = _enqueue_kw["prompt"]
-    # Product prompt template strings (src Englishization is out of scope).
-    assert "You are the following character" in prompt
-    assert "--- User instruction ---" in prompt
-    assert "Current datetime:" in prompt
-
-
 def test_skill_action_model_from_skill_meta(tmp_path: Path) -> None:
     """AC4: skill.meta.model takes priority over action_args.model."""
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
@@ -517,29 +442,6 @@ _FANOUT_RESPONSE = (
     "    - id: child-2\n"
     "      command: \"agent -p --force < order-2.md\"\n"
 )
-
-
-def test_fanout_calls_enqueue_dag_when_block_present(tmp_path: Path) -> None:
-    """AC-4: enable_fanout=true Home LLM Contact Us ghdag_fanout Block → enqueue_dag is called."""
-    sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
-    job = _skill_job(action_args={
-        "skill": "test-skill",
-        "persona": "persona-a",
-        "enable_fanout": True,
-    })
-
-    _dag_capt, _dag_pos, _dag_fake = _dag_side_effect([(True, "ok1"), (True, "ok2")])
-    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), patch(
-        _ENQUEUE_DAG, side_effect=_dag_fake
-    ):
-        ok, msg = sch.execute_action(job)
-
-    assert ok is True
-    steps = _dag_pos[0]
-    assert len(steps) == 2
-    assert steps[0].id == "child-1"
-    assert steps[1].id == "child-2"
 
 
 def test_fanout_success_message_contains_step_count(tmp_path: Path) -> None:

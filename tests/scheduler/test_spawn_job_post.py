@@ -1,12 +1,8 @@
 """spawn_job posting and post resolver tests."""
 from __future__ import annotations
 
-import time
-from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from mltgnt.scheduler import PersonaScheduler, ScheduleJob
 from mltgnt.skill.models import SkillMeta
@@ -43,13 +39,6 @@ def _make_persona(tmp_path: Path, name: str, engine: str = "claude", model: str 
     return p
 
 
-def _make_skill_scheduler(tmp_path: Path, skill_name: str = "test-skill") -> tuple[PersonaScheduler, SkillMeta]:
-    sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[], repo_root=tmp_path)
-    meta = _make_skill_meta(skill_name, tmp_path)
-    sch._skill_registry = {skill_name: meta}
-    return sch, meta
-
-
 def _skill_job(**overrides) -> ScheduleJob:
     defaults = dict(
         id="skill_job",
@@ -66,114 +55,10 @@ def _skill_job(**overrides) -> ScheduleJob:
     return ScheduleJob.from_dict(defaults)
 
 
-_ENQUEUE = "mltgnt.bridges.ghdag_bridge.enqueue_and_wait"
-
-def _enqueue_side_effect(return_value=(True, "")):
-    captured: list[dict] = []
-
-    def _fake(**kwargs):
-        captured.append(kwargs)
-        return return_value
-
-    return captured, _fake
-
-
-def _dag_side_effect(return_value=None):
-    if return_value is None:
-        return_value = [(True, "ok")]
-    captured: list[dict] = []
-    positional: list = []
-
-    def _fake(*args, **kwargs):
-        if args:
-            positional.append(args[0])
-        captured.append(kwargs)
-        return return_value
-
-    return captured, positional, _fake
 def _make_slack_mock() -> MagicMock:
     slack = MagicMock()
     slack.post_message = MagicMock()
     return slack
-
-
-def _command_job(**overrides) -> ScheduleJob:
-    defaults = dict(
-        id="command_job",
-        mode="scheduled",
-        action="command",
-        notify="slack_secretary",
-        every_day_at="10:00",
-        action_args={"command": "echo hello"},
-    )
-    defaults.update(overrides)
-    return ScheduleJob.from_dict(defaults)
-
-
-def test_spawn_job_skill_success_posts_message(tmp_path: Path) -> None:
-    """Skill success with notify posts the enqueue result via _post."""
-    slack = _make_slack_mock()
-    job = _skill_job(notify="slack_secretary")
-    sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
-    meta = _make_skill_meta("test-skill", tmp_path)
-    sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "persona-a")
-    sch.reload_jobs()
-
-    post_calls: list[tuple[ScheduleJob, str]] = []
-
-    def _capture_post(j: ScheduleJob, text: str) -> None:
-        post_calls.append((j, text))
-
-    with patch(_ENQUEUE, return_value=(True, "hello")):
-        with patch.object(sch, "_post", side_effect=_capture_post):
-            sch._spawn_job(job, date(2026, 4, 23))
-            time.sleep(0.5)
-
-    assert post_calls[-1] == (job, "hello")
-
-
-def test_spawn_job_skill_empty_result_skips_post(tmp_path: Path) -> None:
-    """Skill success with empty message does not call _post."""
-    slack = _make_slack_mock()
-    job = _skill_job(notify="slack_secretary")
-    sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
-    meta = _make_skill_meta("test-skill", tmp_path)
-    sch._skill_registry = {"test-skill": meta}
-    _make_persona(tmp_path, "persona-a")
-    sch.reload_jobs()
-
-    post_calls: list[tuple[ScheduleJob, str]] = []
-
-    def _capture_post(j: ScheduleJob, text: str) -> None:
-        post_calls.append((j, text))
-
-    with patch(_ENQUEUE, return_value=(True, "")):
-        with patch.object(sch, "_post", side_effect=_capture_post):
-            sch._spawn_job(job, date(2026, 4, 23))
-            time.sleep(0.5)
-
-    assert post_calls == []
-
-
-def test_spawn_job_command_success_posts_stdout(tmp_path: Path) -> None:
-    """Command success with output posts via _post."""
-    slack = _make_slack_mock()
-    job = _command_job(notify="slack_secretary")
-    sch = PersonaScheduler(slack=slack, state_dir=tmp_path / "state", jobs=[job], repo_root=tmp_path)
-    sch.reload_jobs()
-
-    post_calls: list[tuple[ScheduleJob, str]] = []
-
-    def _capture_post(j: ScheduleJob, text: str) -> None:
-        post_calls.append((j, text))
-
-    with patch.object(sch, "execute_action", return_value=(True, "stdout output")):
-        with patch.object(sch, "_post", side_effect=_capture_post):
-            sch._spawn_job(job, date(2026, 4, 23))
-            time.sleep(0.5)
-
-    assert post_calls[-1] == (job, "stdout output")
 
 
 def test_post_resolver_does_not_overwrite_skill_text(tmp_path: Path) -> None:

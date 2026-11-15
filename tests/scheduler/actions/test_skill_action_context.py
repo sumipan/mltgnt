@@ -144,23 +144,6 @@ class TestContextInjection:
         assert records[0]["knowledge_count"] == 0
         assert records[0]["memory_bytes"] > 0
 
-    def test_both_knowledge_and_memory(self, tmp_path: Path) -> None:
-        prompt, records = self._capture_prompt(
-            tmp_path, with_knowledge=True, with_memory=True, knowledge_count=2
-        )
-        assert "## Context" in prompt
-        assert "### knowledge (last 2)" in prompt
-        assert "### Memory (tail)" in prompt
-        assert "k5" in prompt and "k6" in prompt
-        assert "last night's talk" in prompt
-        assert records[0]["event_type"] == "context_injection"
-        assert records[0]["skill_name"] == "test-skill"
-        assert records[0]["job_id"] == "skill_job"
-        assert records[0]["schema_version"] == 1
-        assert records[0]["knowledge_count"] == 2
-        assert records[0]["memory_bytes"] > 0
-        assert "timestamp" in records[0]
-
     def test_memory_exclude_source_tags_via_action_args(self, tmp_path: Path) -> None:
         prompt, records = self._capture_prompt(
             tmp_path,

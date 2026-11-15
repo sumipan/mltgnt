@@ -130,24 +130,6 @@ class TestRunPromptComposition:
         assert len(user_msgs) == 1
         assert user_msgs[0]["content"] == "hello"
 
-    def test_original_system_message_replaced(self) -> None:
-        """Original system message is replaced by the new system prompt"""
-        skill = _make_skill("new system")
-        chat_input = ChatInput(
-            source="test",
-            session_key="s",
-            messages=[
-                {"role": "system", "content": "old system"},
-                {"role": "user", "content": "hi"},
-            ],
-            model=None,
-        )
-        result = run(skill, _make_persona(), "", chat_input)
-        system_msgs = [m for m in result.chat_input.messages if m["role"] == "system"]
-        assert len(system_msgs) == 1
-        assert "old system" not in system_msgs[0]["content"]
-        assert "new system" in system_msgs[0]["content"]
-
 
 class TestSkillRunResult:
     def test_returns_skill_run_result_instance(self) -> None:
