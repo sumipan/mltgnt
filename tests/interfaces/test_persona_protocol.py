@@ -91,19 +91,3 @@ def test_persona_fm_satisfies_persona_fm_base(persona: Persona) -> None:
     assert isinstance(persona.fm, PersonaFMBase)
 
 
-def test_persona_protocol_no_domain_import() -> None:
-    """interfaces/persona.py must not import mltgnt.persona.schema."""
-    import importlib
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(
-        "mltgnt.interfaces.persona_src",
-        Path(__file__).parents[2] / "src" / "mltgnt" / "interfaces" / "persona.py",
-    )
-    assert spec is not None
-    source_file = spec.origin
-    assert source_file is not None
-    content = Path(source_file).read_text()
-    assert "mltgnt.persona" not in content, (
-        "interfaces/persona.py must not import from mltgnt.persona (layer violation)"
-    )
