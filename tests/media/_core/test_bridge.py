@@ -174,6 +174,17 @@ def test_second_event_while_delegated_is_queued(tmp_path: Path) -> None:
     assert _reactions(web, "101.0") == [DONE]  # RECEIVED maps to the same reaction
 
 
+def test_queued_message_runs_after_delivery(tmp_path: Path) -> None:
+    handler = RecordingHandler(TurnResult(kind="task", task_ref=UID), TurnResult(kind="reply", text="r2"))
+    bridge, web = _bridge(tmp_path, handler)
+    bridge.handle_event(_event("first", "100.0"))
+    bridge.handle_event(_event("second", "101.0"))
+    bridge.deliver_result(UID, "job done")
+    assert len(handler.turns) == 2
+    assert [p["text"] for p in web.calls_of("chat_postMessage")] == ["job done", "r2"]
+    assert thread_queue.read_state(thread_queue.storage_key(CID))["status"] == "idle"
+
+
 def test_handler_exception_marks_failed_and_releases(tmp_path: Path) -> None:
     bridge, web = _bridge(tmp_path, RecordingHandler(error=RuntimeError("boom")))
     assert bridge.handle_event(_event()) is None
