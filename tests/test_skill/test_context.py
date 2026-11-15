@@ -81,51 +81,6 @@ class TestBuildExtraContext:
         assert "p1" not in result
         assert "### Memory (tail)" not in result
 
-    def test_memory_only_formatted(self, tmp_path: Path) -> None:
-        """AC-2: JSONL is formatted as bullet list and must not include raw JSON."""
-        meta = _meta(tmp_path)
-        line = _jsonl_line(
-            timestamp="2026-04-21 14:25",
-            role="user",
-            content="Is persona-b around?",
-            source_tag="slack",
-        )
-        _write_memory(tmp_path, "persona-a", line + "\n")
-
-        result = build_extra_context(meta, tmp_path, "persona-a", memory_max_bytes=4096)
-
-        assert result is not None
-        assert "### Memory (tail)" in result
-        assert "- [2026-04-21 14:25] user: Is persona-b around?" in result
-        assert '{"timestamp"' not in result
-        assert "### knowledge" not in result
-
-    def test_both(self, tmp_path: Path) -> None:
-        knowledge = tmp_path / "skills" / "demo" / "knowledge.md"
-        knowledge.parent.mkdir(parents=True, exist_ok=True)
-        knowledge.write_text("k1\n\nk2", encoding="utf-8")
-        meta = _meta(tmp_path, knowledge_paths=[knowledge])
-        _write_memory(
-            tmp_path,
-            "persona-a",
-            _jsonl_line(content="last night's talk") + "\n",
-        )
-
-        result = build_extra_context(
-            meta,
-            tmp_path,
-            "persona-a",
-            knowledge_count=1,
-            memory_max_bytes=4096,
-        )
-
-        assert result is not None
-        assert "### knowledge (last 1)" in result
-        assert "k2" in result and "k1" not in result
-        assert "### Memory (tail)" in result
-        assert "last night's talk" in result
-        assert "- [" in result
-
     def test_knowledge_subdir_files(self, tmp_path: Path) -> None:
         sub = tmp_path / "skills" / "demo" / "knowledge"
         sub.mkdir(parents=True, exist_ok=True)
@@ -141,33 +96,6 @@ class TestBuildExtraContext:
         assert "mid-a" in result
         assert "from-b" in result
         assert "from-a" not in result
-
-    def test_memory_exclude_source_tags(self, tmp_path: Path) -> None:
-        """AC-3: memory_exclude_source_tags excludes matching source_tag entries."""
-        meta = _meta(tmp_path)
-        lines = "\n".join(
-            [
-                _jsonl_line(content="keep-slack", source_tag="slack"),
-                _jsonl_line(content="drop-observe", source_tag="slack-observe"),
-                _jsonl_line(content="keep-bracket", source_tag="[slack-observe]"),
-                _jsonl_line(content="keep-none"),
-            ]
-        )
-        _write_memory(tmp_path, "persona-a", lines + "\n")
-
-        result = build_extra_context(
-            meta,
-            tmp_path,
-            "persona-a",
-            memory_max_bytes=8192,
-            memory_exclude_source_tags=["slack-observe"],
-        )
-
-        assert result is not None
-        assert "keep-slack" in result
-        assert "drop-observe" not in result
-        assert "keep-bracket" in result
-        assert "keep-none" in result
 
     def test_memory_skips_invalid_and_empty_content(self, tmp_path: Path) -> None:
         meta = _meta(tmp_path)

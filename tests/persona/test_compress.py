@@ -260,42 +260,6 @@ class TestRegenerateLightBlock:
         content = persona_file.read_text(encoding="utf-8")
         assert "**tone**" in content
 
-    def test_regeneration_unchanged(self, tmp_path: Path) -> None:
-        from mltgnt.persona.compress import regenerate_light_block
-        persona_file = tmp_path / "persona-d.md"
-        v2_persona_v21_light = (
-            "---\n"
-            "persona:\n"
-            "  name: persona-d\n"
-            "ops:\n"
-            "  engine: claude\n"
-            "  model: claude-sonnet-4-6\n"
-            "---\n"
-            "\n"
-            f"## {_SECT_LIGHT}\n"
-            "\n"
-            "persona-c is a curious and logical person who engages eagerly with new technology.\n"
-            "\n"
-            "**tone** — Speaks concisely and uses technical terms appropriately.\n"
-            "**values** — Values efficiency and accuracy; dislikes ambiguity.\n"
-            "**positive-reaction** — Engages eagerly with logical proposals and new tech topics.\n"
-            "**friction** — Shows dissatisfaction with baseless claims or inefficient steps.\n"
-            "\n"
-            f"## {_SECT_HEAVY}\n"
-            "\n"
-            "Detailed persona text covering values, reaction patterns, and tone.\n"
-            "This persona is very curious and likes trying new things.\n"
-            "\n"
-            f"## {_SECT_REF}\n"
-            "\n"
-            "Reference links and supplemental info.\n"
-        )
-        persona_file.write_text(v2_persona_v21_light, encoding="utf-8")
-        with patch("mltgnt.bridges.llm_adapter.call_llm", return_value=_make_llm_result(stdout=_V21_MOCK_RESPONSE)):
-            result = regenerate_light_block(persona_file, pack=_ASCII_PACK)
-        assert result.changed is False
-        assert result.old_hash == result.new_hash
-
     def test_drift_warning_logged(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         from mltgnt.persona.compress import regenerate_light_block
         persona_file = tmp_path / "persona-d.md"

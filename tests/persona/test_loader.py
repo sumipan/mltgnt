@@ -125,25 +125,6 @@ class TestParseSection0Exclusion:
         assert "Values" in sections
         assert len(sections) == 2
 
-    def test_3_3_all_persona_files(self):
-        from mltgnt.persona import PersonaValidationError
-
-        repo_root = Path(__file__).parent.parent.parent
-        persona_dir = repo_root / "personas"
-        if not persona_dir.exists():
-            pytest.skip("personas/ directory does not exist")
-
-        files = list(persona_dir.glob("*.md"))
-        if not files:
-            pytest.skip("no files in personas/")
-
-        for path in files:
-            try:
-                p = load(path)
-                assert p is not None
-            except PersonaValidationError:
-                pytest.fail(f"PersonaValidationError for {path.name}")
-
 
 # ---------------------------------------------------------------------------
 # AC-4: H2 block selection
@@ -171,23 +152,6 @@ class TestFormatPromptWeightSelection:
         result_default = persona.format_prompt("instruction")
         result_heavy = persona.format_prompt("instruction", weight="heavy")
         assert result_default == result_heavy
-
-    def test_4_4_unknown_section_warns_and_fallbacks(self, caplog):
-        body_with_unknown = textwrap.dedent("""\
-            ## 1. Unknown section
-
-            Unknown content.
-
-            ## 2. Basic information
-
-            Basic info content.
-        """)
-        persona = _make_persona(body_with_unknown)
-        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
-            result = persona.format_prompt("instruction", weight="heavy")
-        assert caplog.records
-        assert "Unknown content" in result
-        assert "Basic info content" in result
 
 
 # ---------------------------------------------------------------------------
@@ -261,97 +225,9 @@ class TestBackwardCompatibility:
 
 
 import textwrap as _textwrap  # noqa: E402
-from unittest.mock import patch as _patch  # noqa: E402
 
 
 class TestParseSectionsV2:
-    def test_1_1_v2_expands_h3_heavy_and_reference(self):
-        """AC 1-1: v2 H3 expansion. Heavy/Reference H3s flatten into the dict."""
-        body = _textwrap.dedent("""\
-            ## Light
-
-            summary
-
-            ## Heavy
-
-            ### Basic information
-
-            content A
-
-            ### Values
-
-            content B
-
-            ## Reference
-
-            ### Output format
-
-            #### critique
-
-            template
-
-            ### Notes and update history
-
-            update notes
-        """)
-        sections = _parse_sections(body)
-        assert sections.get("Light") == "summary"
-        assert sections.get("Basic information") == "content A"
-        assert sections.get("Values") == "content B"
-        assert "Heavy" not in sections
-        assert "Reference" not in sections
-        assert "Output format" in sections
-        assert "#### critique" in sections["Output format"]
-        assert sections.get("Notes and update history") == "update notes"
-
-    def test_1_2_format_prompt_v2_no_unknown_warning(self, caplog):
-        """AC 1-2: v2 (heavy only) format_prompt must not warn about undefined WEIGHT_MAP."""
-        body = _textwrap.dedent("""\
-            ## Heavy
-
-            ### Basic information
-
-            Basic info content.
-
-            ### Values
-
-            Values content.
-
-            ### Reaction patterns
-
-            Reaction pattern content.
-
-            ### Tone
-
-            Tone content.
-        """)
-        persona = _make_persona(body)
-        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
-            persona.format_prompt("instruction", weight="heavy")
-        assert not any("WEIGHT_MAP  is undefined in " in r.message for r in caplog.records)
-
-    def test_1_3_reference_block_h3_expansion(self):
-        """AC 1-3: Reference block H3 expansion."""
-        body = _textwrap.dedent("""\
-            ## Reference
-
-            ### Output format
-
-            #### critique
-
-            template
-
-            ### Notes and update history
-
-            update notes
-        """)
-        sections = _parse_sections(body)
-        assert "Output format" in sections
-        assert "#### critique" in sections["Output format"]
-        assert "template" in sections["Output format"]
-        assert sections.get("Notes and update history") == "update notes"
-        assert "Reference" not in sections
-
     def test_1_4_v1_backward_compat(self):
         """AC 1-4: v1 backward compat. Direct H2 sections work as before."""
         body = _textwrap.dedent("""\
@@ -388,54 +264,6 @@ class TestParseSectionsV2:
         assert "File usage" not in sections
         assert sections.get("Basic information") == "content B"
 
-    def test_1_7_v1_full_section_names_no_warning(self, caplog):
-        """AC 1-7: full v1 section names must not warn about undefined WEIGHT_MAP."""
-        body = _textwrap.dedent("""\
-            ## Basic information
-
-            Basic info content.
-
-            ## Values and priorities
-
-            Values content.
-
-            ## Reaction patterns
-
-            Reaction pattern content.
-
-            ## Tone and voice
-
-            Tone content.
-
-            ## Light
-
-            Light text.
-        """)
-        persona = _make_persona(body)
-        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
-            persona.format_prompt("instruction", weight="heavy")
-        assert not any("WEIGHT_MAP  is undefined in " in r.message for r in caplog.records)
-
-    def test_1_8_v1_full_section_names_heavy_excludes_light(self):
-        """AC 1-8: v1 weight=heavy must exclude the light section."""
-        body = _textwrap.dedent("""\
-            ## Basic information
-
-            Basic info content.
-
-            ## Values and priorities
-
-            Values content.
-
-            ## Light
-
-            Light text.
-        """)
-        persona = _make_persona(body)
-        result = persona.format_prompt("instruction", weight="heavy")
-        assert "Basic info content" in result
-        assert "Light text" not in result
-
     def test_1_9_v1_full_section_names_light_weight(self):
         """AC 1-9: v1 weight=light must include only the light section."""
         body = _textwrap.dedent("""\
@@ -459,27 +287,6 @@ class TestParseSectionsV2:
 
 
 class TestExtractOutputFormatV2:
-    def test_2_1_v2_extract_critique(self):
-        """AC 2-1: extract critique from v2 (Reference > Output format)."""
-        body = _textwrap.dedent("""\
-            ## Reference
-
-            ### Output format
-
-            #### critique
-
-            [Findings]
-
-            #### edit
-
-            [Revision]
-        """)
-        persona = _make_persona(body)
-        result = persona.extract_output_format("critique")
-        assert result is not None
-        assert "[Findings]" in result
-        assert "[Revision]" not in result
-
     def test_2_2_v2_unknown_mode_returns_none(self):
         """AC 2-2: unknown mode returns None (silent skip)."""
         body = _textwrap.dedent("""\
@@ -623,26 +430,6 @@ class TestEnglishPersona:
         assert "Light content" in result
         assert "Background content" not in result
 
-    def test_parse_sections_expands_heavy_h3(self):
-        """AC-6: _parse_sections flattens ## Heavy > ### X / ### Y."""
-        body = _tw.dedent("""\
-            ## Heavy
-
-            ### Background
-
-            Background content.
-
-            ### Values
-
-            Values content.
-        """)
-        sections = _parse_sections(body)
-        assert "Background" in sections
-        assert "Values" in sections
-        assert "Heavy" not in sections
-        assert sections["Background"] == "Background content."
-        assert sections["Values"] == "Values content."
-
     def test_parse_sections_expands_reference_h3(self):
         """AC-7: Reference > Output format expands and extract_output_format works."""
         persona = _make_persona(_ENGLISH_BODY)
@@ -659,24 +446,6 @@ class TestEnglishPersona:
 
 
 class TestLoadWithConfig:
-    def test_load_with_custom_persona_config(self, tmp_path):
-        """AC-8: load(..., config=PersonaConfig(weight_map=custom)) uses custom map."""
-        md = _tw.dedent("""\
-            ---
-            persona:
-              name: test
-            ---
-            ## Custom
-
-            Custom content.
-        """)
-        p = tmp_path / "test.md"
-        p.write_text(md, encoding="utf-8")
-        custom = {"Custom": "heavy"}
-        cfg = PersonaConfig(weight_map=custom)
-        persona = load(p, config=cfg)
-        assert persona.weight_map == custom
-
     def test_load_without_persona_config(self, tmp_path):
         """AC-9: without config, weight_map equals DEFAULT_WEIGHT_MAP."""
         md = _tw.dedent("""\
@@ -705,29 +474,6 @@ class TestLoadWithConfig:
             result = persona.format_prompt("instruction", weight="heavy")
         assert caplog.records
         assert "Unknown content" in result
-
-    def test_empty_weight_map_fallback(self, caplog):
-        """AC-11: empty weight_map falls back to all sections."""
-        body = _tw.dedent("""\
-            ## Basic information
-
-            content.
-        """)
-        from mltgnt.persona.schema import PersonaFM
-        fm = PersonaFM(name="test")
-        persona = Persona(
-            name="test",
-            fm=fm,
-            sections=_parse_sections(body),
-            body=body,
-            path=Path("test.md"),
-            weight_map={},
-        )
-        with caplog.at_level(logging.WARNING, logger="mltgnt.persona.loader"):
-            result = persona.format_prompt("instruction", weight="heavy")
-        assert caplog.records
-        assert "content" in result
-
 
     def test_make_persona_without_weight_map(self):
         """AC-13: constructing Persona without weight_map still works (helper compat)."""

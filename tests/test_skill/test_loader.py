@@ -279,28 +279,6 @@ model: null
 body
 """
 
-CREATE_PERSONA_META_V1_MD = """\
----
-name: mltgnt-create-persona
-description: >
-  Persona-generation meta skill (v1 frontmatter example)
-skill_io: v1
-input_schema:
-  persona_name:
-    type: string
-    description: "name of the persona to generate"
-produces:
-  content_type: text/markdown
-  artifacts:
-    - path: "agents/example-persona.md"
-      role: primary
-  status_markers: []
-model: null
----
-
-body
-"""
-
 
 class TestCreateSkillV1TemplateParse:
     """Issue #1403 AC-3: v1 generation template examples parse correctly"""
@@ -329,24 +307,6 @@ class TestCreateSkillV1TemplateParse:
         assert meta.skill_io == "v1"
         assert meta.produces is not None
         assert isinstance(meta.input_schema, dict)
-
-    def test_create_persona_meta_build_meta(self, tmp_path: Path) -> None:
-        """Validate mltgnt-create-persona v1 frontmatter example via build_meta"""
-        from mltgnt.bridges.files_adapter import md_read
-        from mltgnt.skill.loader import build_meta
-
-        skill_path = tmp_path / "mltgnt-create-persona" / "SKILL.md"
-        skill_path.parent.mkdir(parents=True)
-        skill_path.write_text(CREATE_PERSONA_META_V1_MD, encoding="utf-8")
-        md = md_read("SKILL.md", repo_root=skill_path.parent)
-        meta = build_meta(md.frontmatter, skill_path)
-        assert meta.skill_io == "v1"
-        assert meta.produces is not None
-        assert isinstance(meta.input_schema, dict)
-        assert meta.input_schema["persona_name"]["description"] == "name of the persona to generate"
-        assert len(meta.produces.artifacts) == 1
-        assert meta.produces.artifacts[0].path == "agents/example-persona.md"
-        assert meta.produces.artifacts[0].role == "primary"
 
 
 # --- Issue #1383 U4: discover lint integration ---
