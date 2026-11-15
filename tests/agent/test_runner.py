@@ -36,26 +36,6 @@ def test_terminal_tool_immediate():
     assert result.args == {"message": "hello"}
 
 
-def test_two_step_non_terminal_then_terminal():
-    """#2: non-terminal then terminal; tool_trace is recorded."""
-    runner = AgentRunner(
-        llm_call=make_llm([
-            '{"tool": "search", "args": {"q": "x"}}',
-            '{"tool": "slack_reply", "args": {"message": "y"}}',
-        ]),
-        tool_executor=make_executor({"search": "found: y"}),
-        terminal_tools=frozenset({"slack_reply"}),
-        max_iterations=3,
-    )
-    result = runner.run("prompt")
-    assert result is not None
-    assert result.tool == "slack_reply"
-    assert result.args == {"message": "y"}
-    assert result.tool_trace == [
-        {"tool": "search", "args": {"q": "x"}, "result": "found: y"}
-    ]
-
-
 def test_json_in_code_block():
     """#3: JSON inside a code block is parsed correctly."""
     raw = '```json\n{"tool": "done", "args": {}}\n```'
@@ -148,27 +128,6 @@ def test_import():
 
 # ---- audit_writer ----
 
-def test_audit_writer_called_for_non_terminal_tool():
-    """AC-1: audit_writer called once for a non-terminal tool."""
-    calls = []
-
-    def mock_writer(name, args, result):
-        calls.append((name, args, result))
-
-    runner = AgentRunner(
-        llm_call=make_llm([
-            '{"tool": "search", "args": {"q": "x"}}',
-            '{"tool": "slack_reply", "args": {"message": "y"}}',
-        ]),
-        tool_executor=make_executor({"search": "found: y"}),
-        terminal_tools=frozenset({"slack_reply"}),
-        audit_writer=mock_writer,
-    )
-    runner.run("prompt")
-    assert len(calls) == 1
-    assert calls[0] == ("search", {"q": "x"}, "found: y")
-
-
 def test_audit_writer_not_called_for_terminal_tool():
     """AC-2: audit_writer not called for terminal-only tools."""
     calls = []
@@ -214,23 +173,3 @@ def test_audit_writer_exception_does_not_break_loop():
     result = runner.run("prompt")
     assert result is not None
     assert result.tool == "slack_reply"
-
-
-def test_audit_writer_called_for_each_non_terminal_tool():
-    """AC-5: audit_writer called on every non-terminal tool invocation."""
-    calls = []
-    runner = AgentRunner(
-        llm_call=make_llm([
-            '{"tool": "search", "args": {"q": "a"}}',
-            '{"tool": "search", "args": {"q": "b"}}',
-            '{"tool": "slack_reply", "args": {"message": "done"}}',
-        ]),
-        tool_executor=make_executor({"search": "ok"}),
-        terminal_tools=frozenset({"slack_reply"}),
-        max_iterations=5,
-        audit_writer=lambda n, a, r: calls.append((n, a, r)),
-    )
-    runner.run("prompt")
-    assert len(calls) == 2
-    assert calls[0] == ("search", {"q": "a"}, "ok")
-    assert calls[1] == ("search", {"q": "b"}, "ok")

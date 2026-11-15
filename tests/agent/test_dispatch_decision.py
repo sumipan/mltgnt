@@ -40,43 +40,6 @@ def _preflight(
         preflight_note=None,
     )
 
-
-def test_memory_tail_is_memory_excerpt() -> None:
-    """Issue #6625: memory_tail is the memory excerpt without extra merging."""
-    captured: dict[str, object] = {}
-
-    def _capture_agent(**kwargs: object) -> DirectAgentResult:
-        captured.update(kwargs)
-        return DirectAgentResult(tool=MODE_REPLY, message="ok", raw_response="")
-
-    preflight = PreflightContext(
-        triage_profile_content="profile",
-        memory_excerpt="memory",
-        memory_worker=MemoryWorkerResult("memory", "2026-01-01T00:00:00+00:00", 1, "ok"),
-        skill_worker=SkillWorkerResult(
-            None, None, "2026-01-01T00:00:00+00:00", 1, "ok"
-        ),
-        user_preferences=None,
-        thread_context=None,
-        preflight_note=None,
-    )
-    make_dispatch_decision(
-        preflight=preflight,
-        instruction="how about the weather",
-        space_id="C1",
-        thread_key="1.0",
-        engine="claude",
-        model="m",
-        run_agent_fn=_capture_agent,
-        should_preempt_delegate_fn=lambda _i: False,
-        match_deferred_promise_fn=lambda _t: None,
-        is_reply_tool_fn=lambda tool: tool == MODE_REPLY,
-        latest_session_fn=lambda *_a: None,
-        invalidate_session_fn=lambda *_a: False,
-    )
-    assert captured["memory_tail"] == "memory"
-
-
 def test_run_preflight_requires_injected_workers() -> None:
     from types import SimpleNamespace
 

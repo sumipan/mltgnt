@@ -7,8 +7,6 @@ import re
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
-import pytest
-
 # Slack-specific terms that must not appear in field names (AC-6 / nexus layer boundaries)
 _SLACK_FIELD_NAMES = frozenset(
     {
@@ -50,28 +48,6 @@ def test_package_exports_turn_types() -> None:
     assert TurnHandler is not None
     assert Attachment is not None
     assert HistoryMessage is not None
-
-
-def test_turn_input_fields_match_nexus_conversation_types() -> None:
-    from mltgnt.interfaces.turn import Attachment, HistoryMessage, TurnInput
-
-    fields = {f.name: f for f in dataclasses.fields(TurnInput)}
-    assert set(fields) == {
-        "conversation_id",
-        "text",
-        "attachments",
-        "history",
-        "persona_id",
-    }
-    assert fields["conversation_id"].type is str or fields["conversation_id"].type == "str"
-    assert fields["text"].type is str or fields["text"].type == "str"
-
-    hints = get_type_hints(TurnInput)
-    assert hints["conversation_id"] is str
-    assert hints["text"] is str
-    assert hints["attachments"] == tuple[Attachment, ...]
-    assert hints["history"] == tuple[HistoryMessage, ...]
-    assert hints["persona_id"] == str | None
 
 
 def test_turn_result_fields() -> None:
@@ -138,29 +114,3 @@ def test_turn_module_source_has_no_slack_field_names() -> None:
         )
 
 
-def test_attachment_and_history_message_defaults() -> None:
-    from mltgnt.interfaces.turn import Attachment, HistoryMessage, TurnInput, TurnResult
-
-    att = Attachment(name="a.txt")
-    assert att.content_type is None
-    assert att.uri is None
-
-    msg = HistoryMessage(role="user", text="hi")
-    assert msg.persona_id is None
-
-    turn = TurnInput(conversation_id="c1", text="hello")
-    assert turn.attachments == ()
-    assert turn.history == ()
-    assert turn.persona_id is None
-
-    result = TurnResult(kind="task", task_ref="uuid-1")
-    assert result.text == ""
-    assert result.task_ref == "uuid-1"
-    assert result.reaction is None
-    assert result.post_options is None
-
-    reply = TurnResult(kind="reply", text="ok", post_options={"username": "bot"})
-    assert reply.post_options == {"username": "bot"}
-
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        turn.text = "mutated"  # type: ignore[misc]

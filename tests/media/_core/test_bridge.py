@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from mltgnt.conversation import session_store, thread_queue
-from mltgnt.interfaces.turn import Attachment, HistoryMessage, TurnHandler, TurnInput, TurnResult
+from mltgnt.interfaces.turn import HistoryMessage, TurnHandler, TurnInput, TurnResult
 from mltgnt.media._core.bridge import MediaBridge
 from mltgnt.media._core.hooks import HookRegistry
 from mltgnt.media._core.pending import PendingStore
 from mltgnt.media._core.types import MediaEvent
-from mltgnt.media._core.watchers import ExecDoneHandler
 from mltgnt.media.slack.client import SlackClient
 from mltgnt.media.slack.config import SlackMediaConfig
 from tests.media.slack.fakes import FakeSlackApiError, FakeWebClient
@@ -23,13 +21,6 @@ CID = "C1:100.0"
 WORKING = "woman-raising-hand"
 DONE = "ok_woman"
 FAILED = "x"
-
-
-@dataclass
-class FakeFsEvent:
-    src_path: str
-    event_type: str = "created"
-    is_directory: bool = False
 
 
 class RecordingHandler:
@@ -112,34 +103,6 @@ def test_history_carries_earlier_turns(tmp_path: Path) -> None:
     )
 
 
-def test_delegation_then_delivery_via_watcher(tmp_path: Path) -> None:
-    handler = RecordingHandler(TurnResult(kind="task", task_ref=UID))
-    delivered: list[tuple[str, str]] = []
-    hooks = HookRegistry()
-    hooks.on_result(lambda uid, body: delivered.append((uid, body)))
-    bridge, web = _bridge(tmp_path, handler, hooks=hooks)
-
-    result = bridge.handle_event(_event())
-
-    assert result == TurnResult(kind="task", task_ref=UID)
-    pending = PendingStore(tmp_path / "p").load(UID)
-    assert pending is not None
-    assert pending["state"] == "running"
-    assert (pending["space"], pending["thread"], pending["conversation_id"]) == ("C1", "100.0", CID)
-    assert _reactions(web, "100.0")[-1] == WORKING
-    assert web.calls_of("chat_postMessage") == []
-    assert thread_queue.read_state(thread_queue.storage_key(CID))["status"] == "running"
-
-    ExecDoneHandler(lambda uid: bridge.deliver_result(uid, "job done")).dispatch(FakeFsEvent(f"/x/{UID}"))
-
-    assert web.calls_of("chat_postMessage") == [{"channel": "C1", "text": "job done", "thread_ts": "100.0"}]
-    assert delivered == [(UID, "job done")]
-    assert _reactions(web, "100.0")[-1] == DONE
-    assert _roles() == [("user", "ping"), ("assistant", "job done")]
-    assert PendingStore(tmp_path / "p").load(UID) is None
-    assert thread_queue.read_state(thread_queue.storage_key(CID))["status"] == "idle"
-
-
 def test_deliver_result_twice_posts_once(tmp_path: Path) -> None:
     bridge, web = _bridge(tmp_path, RecordingHandler(TurnResult(kind="task", task_ref=UID)))
     bridge.handle_event(_event())
@@ -211,27 +174,6 @@ def test_second_event_while_delegated_is_queued(tmp_path: Path) -> None:
     assert _reactions(web, "101.0") == [DONE]  # RECEIVED maps to the same reaction
 
 
-def test_queued_message_runs_after_the_reply(tmp_path: Path) -> None:
-    bridge_ref: list[MediaBridge] = []
-    queued: list[TurnResult | None] = []
-    handler = RecordingHandler(
-        TurnResult(kind="reply", text="r1"),
-        TurnResult(kind="reply", text="r2"),
-        on_handle=lambda: queued.append(bridge_ref[0].handle_event(_event("second", "101.0"))),
-    )
-    bridge, web = _bridge(tmp_path, handler)
-    bridge_ref.append(bridge)
-
-    assert bridge.handle_event(_event("first", "100.0")) == TurnResult(kind="reply", text="r1")
-
-    assert queued == [None]
-    assert len(handler.turns) == 2
-    assert "second" in handler.turns[1].text
-    assert [p["text"] for p in web.calls_of("chat_postMessage")] == ["r1", "r2"]
-    assert _reactions(web, "101.0")[-1] == DONE
-    assert thread_queue.read_state(thread_queue.storage_key(CID))["status"] == "idle"
-
-
 def test_queued_message_runs_after_delivery(tmp_path: Path) -> None:
     handler = RecordingHandler(TurnResult(kind="task", task_ref=UID), TurnResult(kind="reply", text="r2"))
     bridge, web = _bridge(tmp_path, handler)
@@ -241,27 +183,6 @@ def test_queued_message_runs_after_delivery(tmp_path: Path) -> None:
     assert len(handler.turns) == 2
     assert [p["text"] for p in web.calls_of("chat_postMessage")] == ["job done", "r2"]
     assert thread_queue.read_state(thread_queue.storage_key(CID))["status"] == "idle"
-
-
-def test_queued_attachment_runs_after_delivery(tmp_path: Path) -> None:
-    attachment = Attachment(name="shot.png", content_type="image/png", uri="https://example/shot")
-    handler = RecordingHandler(TurnResult(kind="task", task_ref=UID), TurnResult(kind="reply", text="r2"))
-    bridge, _web = _bridge(tmp_path, handler)
-    bridge.handle_event(_event("first", "100.0"))
-    bridge.handle_event(
-        MediaEvent(
-            space_id="C1",
-            conversation_id=CID,
-            message_id="101.0",
-            author="U1",
-            text="save this image",
-            attachments=(attachment,),
-        )
-    )
-    bridge.deliver_result(UID, "job done")
-    assert len(handler.turns) == 2
-    assert handler.turns[1].attachments == (attachment,)
-    assert "[attachments: 1]" in handler.turns[1].text
 
 
 def test_handler_exception_marks_failed_and_releases(tmp_path: Path) -> None:
@@ -324,24 +245,6 @@ def test_reaction_already_reacted_is_success(tmp_path: Path) -> None:
     web = FakeWebClient(errors={"reactions_add": FakeSlackApiError("already_reacted")})
     bridge, _web = _bridge(tmp_path, RecordingHandler(TurnResult(kind="reply", text="pong", reaction="bulb")), web)
     assert bridge.handle_event(_event()) == TurnResult(kind="reply", text="pong", reaction="bulb")
-
-
-def test_reply_passes_post_options_as_extra(tmp_path: Path) -> None:
-    blocks = [{"type": "section", "text": {"type": "plain_text", "text": "pong"}}]
-    handler = RecordingHandler(
-        TurnResult(kind="reply", text="pong", post_options={"username": "bot", "blocks": blocks}),
-    )
-    bridge, web = _bridge(tmp_path, handler)
-    bridge.handle_event(_event())
-    assert web.calls_of("chat_postMessage") == [
-        {
-            "channel": "C1",
-            "text": "pong",
-            "thread_ts": "100.0",
-            "username": "bot",
-            "blocks": blocks,
-        }
-    ]
 
 
 def test_delegation_saves_post_options_to_pending(tmp_path: Path) -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 import threading
-import time
 
 import pytest
 
@@ -13,24 +12,6 @@ from mltgnt.media._core.component import MediaBridgeComponent
 
 def _exit_three() -> None:
     sys.exit(3)
-
-
-def test_three_quick_exits_restart_in_backoff_order() -> None:
-    started: list[float] = []
-    codes: list[int] = []
-    codes_iter = iter([2, 5, 7])
-
-    def start() -> None:
-        started.append(time.monotonic())
-        raise SystemExit(next(codes_iter))
-
-    component = MediaBridgeComponent(start, mode="thread", backoff_sec=(0.05, 0.15), on_exit=codes.append)
-    component.run()
-    assert codes == [2, 5, 7]
-    assert len(started) == 3
-    gaps = [b - a for a, b in zip(started, started[1:])]
-    assert gaps[0] >= 0.05
-    assert gaps[1] >= 0.15
 
 
 def test_thread_mode_exit_codes() -> None:

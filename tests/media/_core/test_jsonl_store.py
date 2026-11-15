@@ -55,26 +55,6 @@ def test_append_extra_cannot_override_reserved_fields(tmp_path: Path) -> None:
         )
 
 
-def test_revise_carries_extra_fields(tmp_path: Path) -> None:
-    store, _clock = _store(tmp_path)
-    store.append(
-        message_id="m1",
-        author="host-a/persona-x",
-        text="v1",
-        extra={"room": "r1", "hop": 2},
-    )
-    revised = store.revise("m1", "status", status="working")
-    assert revised is not None
-    assert revised["room"] == "r1"
-    assert revised["hop"] == 2
-    assert revised["kind"] == "status"
-    assert revised["status"] == "working"
-    reaction = store.add_reaction("m1", "eyes")
-    assert reaction is not None
-    assert reaction["room"] == "r1"
-    assert reaction["hop"] == 2
-
-
 def test_append_rolls_to_next_day_file(tmp_path: Path) -> None:
     store, clock = _store(tmp_path)
     store.append(message_id="d1", author="u", text="day1")

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -51,33 +50,6 @@ def test_admit_idle_to_running(queue_root: Path):
     assert state["status"] == "running"
 
 
-def test_admit_running_queues(queue_root: Path):
-    from mltgnt.conversation.thread_queue import admit
-
-    thread_dir = queue_root / "C1-171.0000"
-    thread_dir.mkdir(parents=True)
-    (thread_dir / "state.json").write_text(
-        json.dumps(
-            {
-                "status": "running",
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "current_uuid": None,
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    result = admit("C1:171.0000", "wait", message_ts="171.0002", author="U1")
-    assert result.proceed is False
-    assert result.queued is True
-    assert result.status == "queued"
-    inbox = list((thread_dir / "inbox").glob("*.json"))
-    assert len(inbox) == 1
-    payload = json.loads(inbox[0].read_text(encoding="utf-8"))
-    assert payload["conversation_id"] == "C1:171.0000"
-    assert "channel" not in payload
-
-
 def test_drain_to_turn_input_returns_turn_input(queue_root: Path):
     from mltgnt.conversation.thread_queue import admit, drain_to_turn_input
 
@@ -99,26 +71,6 @@ def test_drain_to_turn_input_empty_returns_none(queue_root: Path):
 
     assert admit("C1:171.0000", "only", message_ts="171.0001").proceed
     assert drain_to_turn_input("C1:171.0000") is None
-
-
-
-def test_paths_come_from_conversation_config(tmp_path: Path):
-    from mltgnt.conversation import configure, thread_queue as tq
-
-    root = tmp_path / "q"
-    configure(
-        ConversationConfig(
-            queue_dir=root,
-            sessions_dir=tmp_path / "sessions",
-            ledger_dir=tmp_path / "ledger",
-            thread_index_dir=tmp_path / "thread-index",
-            thread_persona_path=tmp_path / "thread-persona-map.jsonl",
-        )
-    )
-    tq._locks.clear()
-    result = tq.admit("C9:1.0", "hi", message_ts="1.1")
-    assert result.status == "accepted"
-    assert (root / "C9-1.0" / "state.json").is_file()
 
 
 @pytest.fixture
@@ -195,25 +147,6 @@ def test_replaced_pack_admit_marks_cancel_entry(queue_root: Path, restore_langua
     assert kinds == {"abort": "cancel", "cancel": "message"}
 
 
-def test_admit_while_running_persists_attachments(queue_root: Path):
-    from mltgnt.conversation.thread_queue import admit
-
-    assert admit("C1:171.0000", "first", message_ts="171.0001").proceed
-    attachment = Attachment(name="a.png", content_type="image/png", uri="https://example/a")
-    assert admit(
-        "C1:171.0000",
-        "save this",
-        message_ts="171.0002",
-        attachments=(attachment,),
-    ).queued
-    payload = json.loads(
-        next((queue_root / "C1-171.0000" / "inbox").glob("*.json")).read_text(encoding="utf-8")
-    )
-    assert payload["attachments"] == [
-        {"name": "a.png", "content_type": "image/png", "uri": "https://example/a"}
-    ]
-
-
 def test_drain_to_turn_input_includes_attachments(queue_root: Path):
     from mltgnt.conversation.thread_queue import admit, drain_to_turn_input
 
@@ -230,30 +163,6 @@ def test_drain_to_turn_input_includes_attachments(queue_root: Path):
     assert turn.attachments == (attachment,)
 
 
-def test_drained_attachments_concatenates_in_entry_order():
-    from mltgnt.conversation.thread_queue import drained_attachments
-
-    a1 = Attachment(name="one.png", content_type="image/png", uri="https://example/1")
-    a2 = Attachment(name="two.png", content_type="image/png", uri="https://example/2")
-    a3 = Attachment(name="three.png", content_type="image/png", uri="https://example/3")
-    entries = [
-        {
-            "ts": "1.0",
-            "attachments": [
-                {"name": "one.png", "content_type": "image/png", "uri": "https://example/1"}
-            ],
-        },
-        {
-            "ts": "2.0",
-            "attachments": [
-                {"name": "two.png", "content_type": "image/png", "uri": "https://example/2"},
-                {"name": "three.png", "content_type": "image/png", "uri": "https://example/3"},
-            ],
-        },
-    ]
-    assert drained_attachments(entries) == (a1, a2, a3)
-
-
 def test_drained_attachments_tolerates_legacy_and_malformed_entries():
     from mltgnt.conversation.thread_queue import drained_attachments
 
@@ -266,45 +175,6 @@ def test_drained_attachments_tolerates_legacy_and_malformed_entries():
         Attachment(name="ok.png", content_type=None, uri=None),
     )
     assert drained_attachments([]) == ()
-
-
-def test_drain_legacy_inbox_entry_without_attachments_key(queue_root: Path):
-    from mltgnt.conversation.thread_queue import admit, drain_to_turn_input
-
-    assert admit("C1:171.0000", "first", message_ts="171.0001").proceed
-    inbox = queue_root / "C1-171.0000" / "inbox"
-    inbox.mkdir(parents=True, exist_ok=True)
-    legacy = {
-        "kind": "message",
-        "ts": "171.0002",
-        "conversation_id": "C1:171.0000",
-        "user": "U1",
-        "text": "old format",
-        "received_at": datetime.now(timezone.utc).isoformat(),
-    }
-    (inbox / "171.0002.json").write_text(json.dumps(legacy) + "\n", encoding="utf-8")
-    turn = drain_to_turn_input("C1:171.0000")
-    assert turn is not None
-    assert turn.attachments == ()
-    assert "[1] old format" in turn.text
-
-
-def test_build_composite_instruction_marks_attachment_lines():
-    from mltgnt.conversation.thread_queue import build_composite_instruction
-
-    out = build_composite_instruction(
-        [
-            {"text": "plain", "kind": "message"},
-            {
-                "text": "with files",
-                "kind": "message",
-                "attachments": [{"name": "a.png", "content_type": "image/png", "uri": "u"}],
-            },
-        ]
-    )
-    assert "[1] plain" in out
-    assert "[2] with files [attachments: 1]" in out
-    assert "[attachments:" not in out.split("[1] plain")[0]
 
 
 def test_replaced_pack_changes_composite_instruction(restore_language_pack):

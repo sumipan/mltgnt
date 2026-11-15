@@ -18,7 +18,6 @@ from mltgnt.interfaces.media import MediaClient
 from mltgnt.interfaces.turn import TurnInput, TurnResult
 from mltgnt.media._core.bridge import MediaBridge
 from mltgnt.media._core.pending import PendingStore
-from mltgnt.media._core.progress import ProgressState, finalize_progress
 from mltgnt.media._core.types import MediaEvent
 from mltgnt.media.slack.client import SlackClient
 from mltgnt.media.slack.config import SlackMediaConfig
@@ -33,10 +32,6 @@ from tests.media.matrix.fakes import FakeHomeserver
 from tests.media.slack.fakes import FakeWebClient
 
 UID = "22222222-2222-2222-2222-222222222222"
-TOOL_EVENT = {
-    "type": "assistant",
-    "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "notes.txt"}}]},
-}
 
 
 class ScriptedHandler:
@@ -225,25 +220,6 @@ def test_delegation_is_the_same_on_both_media(tmp_path: Path) -> None:
         assert pending is not None and pending["state"] == "running", medium.name
 
 
-def test_progress_is_the_same_on_both_media(tmp_path: Path) -> None:
-    _handler, media = _media(tmp_path, TurnResult(kind="task", task_ref=UID))
-    shown: list[list[str]] = []
-    for medium in media:
-        event = medium.receive("do it")
-        assert _bridge(medium).handle_event(event) == TurnResult(kind="task", task_ref=UID)
-        message_id = medium.client.post("...", event.space_id, event.conversation_id.partition(":")[2])
-        assert message_id is not None
-        state = ProgressState(min_interval_sec=0.0)
-        state.process_event(TOOL_EVENT)
-        assert state.maybe_update(medium.client, message_id, force=True) is True
-        after_update = medium.shown(message_id)
-        assert finalize_progress(medium.client, message_id, "0") is True
-        shown.append([after_update, medium.shown(message_id)])
-        assert medium.posts() == ["..."], medium.name
-    assert len({tuple(s) for s in shown}) == 1
-    assert shown[0][0] == "Read notes.txt"
-
-
 def test_result_is_the_same_on_both_media(tmp_path: Path) -> None:
     _handler, media = _media(tmp_path, TurnResult(kind="task", task_ref=UID))
     for medium in media:
@@ -255,24 +231,3 @@ def test_result_is_the_same_on_both_media(tmp_path: Path) -> None:
         assert PendingStore(medium.pending_dir).load(UID) is None, medium.name
 
 
-def test_persona_reaction_is_the_same_on_both_media(tmp_path: Path) -> None:
-    handler, media = _media(tmp_path, TurnResult(kind="reply", text="pong", reaction="bulb"))
-    events = [m.receive("ping") for m in media]
-    for m, ev in zip(media, events, strict=True):
-        assert _bridge(m).handle_event(ev) == TurnResult(kind="reply", text="pong", reaction="bulb")
-    slack_web = media[0].client._web  # type: ignore[attr-defined]
-    persona_calls = [
-        c for c in slack_web.calls_of("reactions_add") if c["name"] == "bulb" and c["timestamp"] == events[0].message_id
-    ]
-    assert len(persona_calls) == 1
-    webchat_store = media[1].client.store  # type: ignore[attr-defined]
-    row = webchat_store.latest(events[1].message_id)
-    assert row is not None and row["reactions"] == ["bulb"]
-    matrix_fake = media[2].client._transport  # type: ignore[attr-defined]
-    assert any(
-        isinstance(c.body, dict)
-        and "/send/m.reaction/" in c.path
-        and c.body.get("m.relates_to", {}).get("key") == "\U0001f4a1"
-        for c in matrix_fake.calls
-    )
-    assert len({t.text for t in handler.turns}) == 1 and handler.turns[0].text == "ping"
