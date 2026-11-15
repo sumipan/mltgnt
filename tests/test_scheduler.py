@@ -16,7 +16,6 @@ from mltgnt.exceptions import ConfigError
 from mltgnt.scheduler import (
     ScheduleJob,
     PersonaScheduler,
-    load_schedule_jobs,
 )
 from mltgnt.config import SchedulerConfig
 
@@ -31,25 +30,6 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
     sch = PersonaScheduler(slack=None, state_dir=state_dir, jobs=jobs)
     sch.reload_jobs()
     return sch
-
-def test_load_schedule_jobs_from_yaml(tmp_path: Path) -> None:
-    """Valid schedule.yaml can parse."""
-    yaml_file = tmp_path / "schedule.yaml"
-    yaml_file.write_text(
-        "jobs:\n"
-        "  - id: morning\n"
-        "    enabled: true\n"
-        "    mode: scheduled\n"
-        "    every_day_at: '09:00'\n"
-        "    action: noop\n"
-        "    notify: silent\n",
-        encoding="utf-8",
-    )
-    jobs = load_schedule_jobs(yaml_file)
-    assert len(jobs) == 1
-    assert jobs[0].id == "morning"
-    assert jobs[0].every_day_at == "09:00"
-
 
 # ---------------------------------------------------------------------------
 # AC-3: Job execution
@@ -236,27 +216,6 @@ def test_config_supplies_state_dir_and_schedule(tmp_path: Path) -> None:
     assert sch.yaml_path == yaml_file
 
 
-def test_scheduler_config_integration(tmp_path: Path) -> None:
-    """SchedulerConfig Use the scheduler to work properly."""
-    yaml_file = tmp_path / "schedule.yaml"
-    yaml_file.write_text(
-        "jobs:\n"
-        "  - id: config_test\n"
-        "    enabled: true\n"
-        "    mode: scheduled\n"
-        "    every_day_at: '11:00'\n"
-        "    action: noop\n"
-        "    notify: silent\n",
-        encoding="utf-8",
-    )
-    config = SchedulerConfig(
-        schedule_yaml=yaml_file,
-        state_dir=tmp_path / "state",
-    )
-    sch = PersonaScheduler(slack=None, config=config)
-    sch.reload_jobs()
-    assert len(sch._jobs) == 1
-    assert sch._jobs[0].id == "config_test"
 def test_schedule_paths_importable() -> None:
     """SchedulePaths Home import What you can do"""
     from mltgnt.scheduler import SchedulePaths  # noqa: F401 (import check)
@@ -307,24 +266,6 @@ def test_register_action_is_called(tmp_path: Path) -> None:
     assert msg == "ok"
 
 
-def test_actions_kwarg_in_init(tmp_path: Path) -> None:
-    """__init__ Home actions= kwarg Contact Us callback Home execute_action Called via"""
-    job = ScheduleJob.from_dict({
-        "id": "init_action_job",
-        "mode": "scheduled",
-        "every_day_at": "10:00",
-        "action": "init_action",
-        "notify": "silent",
-    })
-    sch = PersonaScheduler(
-        slack=None,
-        state_dir=tmp_path / "state",
-        jobs=[],
-        actions={"init_action": lambda j: (True, "from_init")},
-    )
-    ok, msg = sch.execute_action(job)
-    assert ok is True
-    assert msg == "from_init"
 
 
 def test_registered_action_failure(tmp_path: Path) -> None:

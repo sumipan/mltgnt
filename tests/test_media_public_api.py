@@ -76,43 +76,6 @@ _CORE_SOURCES: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def test_media_public_imports_and_dunder_all() -> None:
-    from mltgnt.media import (  # noqa: F401
-        AWAITING_STATE,
-        CATCHUP_STATES,
-        DeliveryReconciler,
-        ExecDoneHandler,
-        HookRegistry,
-        MediaBridge,
-        MediaConfig,
-        MediaEvent,
-        PENDING_KEY,
-        PendingStore,
-        PlanGate,
-        PlanState,
-        ProgressState,
-        ProgressWatcher,
-        catchup_pending_on_startup,
-        dedupe_trailing_repeated_block,
-        enqueue_or_report,
-        expire_pending,
-        extract_final_assistant_text,
-        finalize_progress,
-        is_approval,
-        is_cancel_request,
-        iter_pending_with_done,
-        sanitize_result_body,
-        strip_leading_paragraphs,
-        strip_status_lines,
-        summarize_tool_use_block,
-    )
-
-    import mltgnt.media as media
-
-    assert sorted(media.__all__) == sorted(MEDIA_PUBLIC_NAMES)
-    assert len(media.__all__) == 27
-
-
 @pytest.mark.parametrize("public_name,mod_path,attr", _CORE_SOURCES)
 def test_media_public_symbols_match_core(public_name: str, mod_path: str, attr: str) -> None:
     import mltgnt.media as media

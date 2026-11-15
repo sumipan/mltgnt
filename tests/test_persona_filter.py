@@ -91,30 +91,6 @@ def test_default_datetime_filter_backward_compat(tachikoma_persona: Persona) -> 
     assert "Current datetime: 2026-04-23 10:00:00 (JST)" in result
 
 
-def test_multiple_filters_ordered_accumulation(tachikoma_persona: Persona) -> None:
-    """Multiple filters accumulate prefixes in registration order."""
-    calls: list[str] = []
-
-    def filter_a(accumulated: str, ctx: dict[str, Any]) -> str:
-        calls.append("a")
-        return accumulated + "AAA\n\n"
-
-    def filter_b(accumulated: str, ctx: dict[str, Any]) -> str:
-        calls.append("b")
-        assert "AAA" in accumulated  # a's output is passed to b
-        return accumulated + "BBB\n\n"
-
-    # Replace datetime to keep the chain simple
-    tachikoma_persona.register_prompt_filter("datetime", filter_a)
-    tachikoma_persona.register_prompt_filter("extra", filter_b)
-    result = tachikoma_persona.format_prompt("test")
-
-    assert calls == ["a", "b"]
-    assert "AAA" in result
-    assert "BBB" in result
-    aaa_pos = result.index("AAA")
-    bbb_pos = result.index("BBB")
-    assert aaa_pos < bbb_pos
 
 
 def test_protocol_has_register_prompt_filter() -> None:

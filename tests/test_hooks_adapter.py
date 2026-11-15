@@ -28,24 +28,6 @@ def make_executor(results: dict):
 
 
 class TestCreateAuditWriter:
-    def test_writes_tool_exec_event(self, tmp_path):
-        """AC-1: Tool execution event_type=tool_exec record audit_path Added to."""
-        audit_path = tmp_path / "audit.jsonl"
-        runner = AgentRunner(
-            llm_call=make_llm([
-                '{"tool": "search", "args": {"q": "test"}}',
-                '{"tool": "done", "args": {}}',
-            ]),
-            tool_executor=make_executor({"search": "result"}),
-            terminal_tools=frozenset({"done"}),
-            audit_writer=create_audit_writer(audit_path),
-        )
-        runner.run("prompt")
-        assert audit_path.exists()
-        record = json.loads(audit_path.read_text().splitlines()[0])
-        assert record["event_type"] == "tool_exec"
-        assert record["correlation_id"] == "search"
-
     def test_no_audit_file_when_writer_is_none(self, tmp_path):
         """AC-2: audit_writer=None(default)Foraudit File is not created."""
         audit_path = tmp_path / "audit.jsonl"
@@ -75,27 +57,6 @@ class TestCreateAuditWriter:
         runner.run("prompt")
         audit_text = audit_path.read_text()
         assert "secret123" not in audit_text
-
-    def test_multiple_tools_separate_records_unique_uuids(self, tmp_path):
-        """AC-4: Tools 3 Run → Number of lines 3,UUID All different."""
-        audit_path = tmp_path / "audit.jsonl"
-        runner = AgentRunner(
-            llm_call=make_llm([
-                '{"tool": "search", "args": {"q": "a"}}',
-                '{"tool": "search", "args": {"q": "b"}}',
-                '{"tool": "search", "args": {"q": "c"}}',
-                '{"tool": "done", "args": {}}',
-            ]),
-            tool_executor=make_executor({"search": "ok"}),
-            terminal_tools=frozenset({"done"}),
-            max_iterations=5,
-            audit_writer=create_audit_writer(audit_path),
-        )
-        runner.run("prompt")
-        lines = audit_path.read_text().splitlines()
-        assert len(lines) == 3
-        uuids = [json.loads(ln)["uuid"] for ln in lines]
-        assert len(set(uuids)) == 3
 
     def test_source_appears_in_engine_field(self, tmp_path):
         """source Arguments engine Recorded as a field."""

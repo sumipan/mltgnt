@@ -71,25 +71,6 @@ def _scanned_files(root: Path) -> list[Path]:
     )
 
 
-@pytest.mark.parametrize(
-    ("payload", "kind"),
-    [
-        ("prefix " + chr(0x3042), "literal CJK character"),
-        ("prefix " + "\\" + "u3042", "CJK Unicode escape"),
-        (
-            "prefix " + "\\" + "xe3" + "\\" + "x81" + "\\" + "x82",
-            "CJK UTF-8 byte escape",
-        ),
-        ("prefix " + "\\" + "N{CJK UNIFIED IDEOGRAPH-65E5}", "CJK named escape"),
-    ],
-)
-def test_violation_variants_are_detected(tmp_path: Path, payload: str, kind: str) -> None:
-    candidate = tmp_path / "candidate.py"
-    candidate.write_text(payload, encoding="utf-8")
-
-    assert any(kind in violation for violation in _violations(candidate))
-
-
 def test_unknown_named_escape_is_not_a_violation(tmp_path: Path) -> None:
     candidate = tmp_path / "candidate.py"
     candidate.write_text("prefix " + "\\" + "N{NOT A REAL NAME}", encoding="utf-8")

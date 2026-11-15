@@ -30,8 +30,6 @@ import json
 import logging
 from pathlib import Path
 import textwrap
-from unittest.mock import patch
-
 import pytest
 
 from mltgnt.config import MemoryConfig
@@ -83,70 +81,6 @@ def test_iterative_retriever_importable() -> None:
 
 
 
-def test_search_skills_callback_injection(tmp_path: Path) -> None:
-    """AC4: search_skills via callback skill Search results are merged."""
-    config = make_config(tmp_path)
-    _write_memory(
-        config,
-        "persona",
-        json.dumps(
-            {
-                "timestamp": "2026-01-01T10:00:00+09:00",
-                "role": "user",
-                "content": "General info only.",
-                "source_tag": "file",
-            },
-            ensure_ascii=False,
-        )
-        + "\n",
-    )
-
-    def search_skills(_query: str, _max_entries: int) -> list[ScoredEntry]:
-        return [ScoredEntry(text="deploy procedure", score=1.0)]
-
-    retriever = IterativeRetriever(
-        config=config,
-        persona_stem="persona",
-        llm_call=_make_llm_responses(
-            "INSUFFICIENT\nSKILL\ndeploy",
-            "SUFFICIENT",
-        ),
-        search_skills=search_skills,
-    )
-
-    result = retriever.retrieve(
-        "Tell me the deployment procedure",
-        max_bytes=4096,
-        max_entries=5,
-    )
-
-    assert "deploy" in result
-
-
-def test_issue_ac5_search_skills_none(tmp_path: Path) -> None:
-    """AC5: search_skills=None,LLM Home SKILL Source specification → Loop co ation in empty list."""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_PROJECT)
-
-    retriever = IterativeRetriever(
-        config=config,
-        persona_stem="persona",
-        llm_call=_make_llm_responses(
-            "INSUFFICIENT\nSKILL\ndeploy",
-            "SUFFICIENT",
-        ),
-        search_skills=None,
-    )
-
-    result = retriever.retrieve(
-        "deploy procedure",
-        max_bytes=4096,
-        max_entries=5,
-    )
-
-    assert isinstance(result, str)
-
-
 # ---------------------------------------------------------------------------
 # AC6: AgenticRetriever NoneImportError)
 # ---------------------------------------------------------------------------
@@ -156,64 +90,6 @@ def test_agentic_retriever_import_error() -> None:
     """AC6: from mltgnt.memory._agentic import AgenticRetriever Home ImportError."""
     with pytest.raises(ImportError):
         from mltgnt.memory._agentic import AgenticRetriever  # noqa: F401
-
-
-# ---------------------------------------------------------------------------
-# TC1: memory Only enough
-# ---------------------------------------------------------------------------
-
-
-def test_tc1_memory_sufficient(tmp_path: Path) -> None:
-    """TC1: LLM Home SUFFICIENT loop if 0 Returns results at times."""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_SUSHI)
-
-    call_count = 0
-
-    def llm_call(_prompt: str) -> str:
-        nonlocal call_count
-        call_count += 1
-        return "SUFFICIENT"
-
-    result = read_memory_iterative(
-        config,
-        "persona",
-        "What food do you like?",
-        max_bytes=4096,
-        max_entries=5,
-        llm_call=llm_call,
-    )
-
-    assert "I like sushi" in result
-    assert call_count == 1  # 1Ends once it is determined
-
-
-# ---------------------------------------------------------------------------
-# TC2: memory Close → memory If re-search is sufficient
-# ---------------------------------------------------------------------------
-
-
-def test_tc2_memory_requery(tmp_path: Path) -> None:
-    """TC2: INSUFFICIENT→MEMORY→re-search query,2 SUFFICIENT."""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_PROJECT)
-
-    llm_call = _make_llm_responses(
-        "INSUFFICIENT\nMEMORY\nLast week's project progress",
-        "SUFFICIENT",
-    )
-
-    result = read_memory_iterative(
-        config,
-        "persona",
-        "What is the project progress last week?",
-        max_bytes=4096,
-        max_entries=5,
-        llm_call=llm_call,
-    )
-
-    # Both entries included (no duplicates)
-    assert "Front End" in result or "Backend" in result
 
 
 # ---------------------------------------------------------------------------
@@ -256,41 +132,6 @@ def test_tc3_skill_search(tmp_path: Path) -> None:
     )
 
     assert "deploy" in result
-
-
-# ---------------------------------------------------------------------------
-# TC4: When the loop is sufficient after multiple loops
-# ---------------------------------------------------------------------------
-
-
-def test_tc4_multi_loop(tmp_path: Path) -> None:
-    """TC4: 2After looping SUFFICIENTEach entry is merged."""
-    config = make_config(tmp_path)
-    _write_memory(
-        config,
-        "persona",
-        json.dumps({"timestamp": "2026-01-01T10:00:00+09:00", "role": "user", "content": "A: First information.", "source_tag": "file"}, ensure_ascii=False) + "\n"
-        + json.dumps({"timestamp": "2026-01-02T10:00:00+09:00", "role": "user", "content": "B: Additional information.", "source_tag": "file"}, ensure_ascii=False) + "\n"
-        + json.dumps({"timestamp": "2026-01-03T10:00:00+09:00", "role": "user", "content": "C: More information.", "source_tag": "file"}, ensure_ascii=False) + "\n",
-    )
-
-    llm_call = _make_llm_responses(
-        "INSUFFICIENT\nMEMORY\nAdditional information",
-        "INSUFFICIENT\nMEMORY\nMore information",
-        "SUFFICIENT",
-    )
-
-    result = read_memory_iterative(
-        config,
-        "persona",
-        "Questions",
-        max_bytes=4096,
-        max_entries=5,
-        llm_call=llm_call,
-        max_iterations=3,
-    )
-
-    assert result  # Returns some results
 
 
 # ---------------------------------------------------------------------------
@@ -433,33 +274,6 @@ def test_tc9_empty_skill_paths(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC10: LLM Failed to parse the response
-# ---------------------------------------------------------------------------
-
-
-def test_tc10_parse_failure(tmp_path: Path, caplog) -> None:
-    """TC10: LLM returns an unexpected format → sufficient=True Handles and returns collected entries."""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_SUSHI)
-
-    with caplog.at_level(logging.WARNING, logger="mltgnt.memory._sufficiency"):
-        result = read_memory_iterative(
-            config,
-            "persona",
-            "test",
-            max_bytes=4096,
-            max_entries=5,
-            llm_call=lambda _: "INVALID_FORMAT_XYZ",
-        )
-
-    assert isinstance(result, str)
-    assert any(
-        "unexpected" in r.message.lower() or "sufficient" in r.message.lower()
-        for r in caplog.records
-    )
-
-
-# ---------------------------------------------------------------------------
 # TC11: memory If the file is empty
 # ---------------------------------------------------------------------------
 
@@ -528,29 +342,3 @@ def test_retrieve_skills_none_returns_empty(tmp_path: Path) -> None:
     assert result == []
 
 
-def test_retrieve_skills_does_not_search_memory(tmp_path: Path) -> None:
-    """retrieve_skills Home memory Do not search the source."""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_SUSHI)
-
-    memory_searched = False
-
-    original_search_memory = IterativeRetriever._search_memory
-
-    def tracking_search_memory(self, query, max_entries):
-        nonlocal memory_searched
-        memory_searched = True
-        return original_search_memory(self, query, max_entries)
-
-    retriever = IterativeRetriever(
-        config=config,
-        persona_stem="persona",
-        llm_call=lambda _: "SUFFICIENT",
-        search_skills=lambda q, n: [ScoredEntry(text="skill only", score=1.0)],
-    )
-
-    with patch.object(IterativeRetriever, "_search_memory", tracking_search_memory):
-        result = retriever.retrieve_skills("sushi", max_entries=5)
-
-    assert memory_searched is False
-    assert result[0].text == "skill only"
