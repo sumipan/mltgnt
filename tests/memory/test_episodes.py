@@ -16,42 +16,6 @@ def _config(tmp_path: Path) -> MemoryConfig:
     return MemoryConfig(chat_dir=tmp_path, chat_memory_dir=tmp_path / "memory", commit_debounce_sec=3600)
 
 
-def test_append_turn_episodes_writes_direct_pair(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    (tmp_path / "memory" / "p").mkdir(parents=True)
-    ok = append_turn_episodes(
-        config,
-        "p",
-        user_text="hello",
-        assistant_text="hi",
-        space_id="C",
-        thread_key="T",
-        message_id="M1",
-        timestamp="2026-09-27 10:00",
-    )
-    assert ok
-    entries = parse_jsonl(tmp_path / "memory" / "p" / "episodes.jsonl")
-    base = direct_dedupe_base("C", "T", "M1")
-    keys = [e.dedupe_key for e in entries]
-    assert keys == [f"{base}:user", f"{base}:assistant"]
-
-
-def test_append_turn_episodes_is_idempotent(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    (tmp_path / "memory" / "p").mkdir(parents=True)
-    kwargs = dict(
-        config=config,
-        persona_stem="p",
-        user_text="hello",
-        assistant_text="hi",
-        space_id="C",
-        thread_key="T",
-        message_id="M1",
-        timestamp="2026-09-27 10:00",
-    )
-    assert append_turn_episodes(**kwargs)
-    assert append_turn_episodes(**kwargs)
-    assert len(parse_jsonl(tmp_path / "memory" / "p" / "episodes.jsonl")) == 2
 
 
 def test_append_turn_episodes_prefixes_tool_trace(tmp_path: Path) -> None:

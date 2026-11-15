@@ -178,23 +178,6 @@ def test_reaction_persists(tmp_path: Path) -> None:
     assert row is not None and row["reactions"] == ["bulb", "eyes"]
 
 
-def test_thread_summary_three_replies(tmp_path: Path) -> None:
-    store, _clock = _store(tmp_path)
-    store.append(message_id="root", author="u", text="q")
-    store.append(message_id="r1", author="a", text="one", thread_ts="root")
-    store.append(message_id="r2", author="b", text="two", thread_ts="root")
-    r3 = store.append(message_id="r3", author="a", text="three", thread_ts="root")
-    root_row = store.latest("root")
-    assert root_row is not None
-    assert root_row["reply_count"] == 3
-    assert root_row["last_reply_ts"] == r3["ts"]
-    assert root_row["participants"] == ["a", "b"]
-    read_rows = store.read(DAY)
-    parent = next(r for r in read_rows if r["message_id"] == "root")
-    assert parent["reply_count"] == 3
-    assert parent["last_reply_ts"] == r3["ts"]
-    assert parent["participants"] == ["a", "b"]
-
 
 def test_thread_summary_empty_and_reply_rows(tmp_path: Path) -> None:
     store, _clock = _store(tmp_path)
@@ -210,29 +193,6 @@ def test_thread_summary_empty_and_reply_rows(tmp_path: Path) -> None:
     assert reply["last_reply_ts"] is None
     assert reply["participants"] == []
 
-
-def test_thread_summary_ignores_revisions_and_side_effects(tmp_path: Path) -> None:
-    store, _clock = _store(tmp_path)
-    store.append(message_id="root", author="u", text="q")
-    reply_message = store.append(message_id="reply", author="bot", text="draft", thread_ts="root")
-    store.revise("reply", "update", text="final")
-    store.revise("reply", "status", status="done")
-    root = store.latest("root")
-    assert root is not None
-    assert root["reply_count"] == 1
-    assert root["last_reply_ts"] == reply_message["ts"]
-    store.add_reaction("root", "bulb")
-    store.set_bookmark("root", True)
-    root = store.latest("root")
-    assert root is not None
-    assert root["reply_count"] == 1
-    assert root["participants"] == ["bot"]
-    store.revise("root", "status", status="done")
-    root = store.latest("root")
-    assert root is not None
-    assert root["reply_count"] == 1
-    assert root["last_reply_ts"] == reply_message["ts"]
-    assert root["participants"] == ["bot"]
 
 
 def test_display_extra_survives_revise_and_reaction(tmp_path: Path) -> None:

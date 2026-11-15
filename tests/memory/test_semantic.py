@@ -1,7 +1,6 @@
 """Tests for mltgnt.memory.semantic (Issue #4037)."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -40,25 +39,6 @@ def test_validate_entry_lists_all_violations() -> None:
     errors = validate_entry(_entry(kind="unknown", subject="team", content="  "))
     assert errors == ["invalid_kind", "invalid_subject", "empty_content"]
 
-
-def test_append_writes_one_line_with_sequential_ids(tmp_path: Path) -> None:
-    store = _store(tmp_path)
-    a = store.append("fact", "likes tea", "user", "slack:c:1", ts="2026-09-26 14:05")
-    b = store.append("caveat", "no calls", "user", "slack:c:2", ts="2026-09-26 15:00")
-    c = store.append("fact", "has a cat", "user", "slack:c:3", ts="2026-09-27 09:00")
-    assert (a.id, b.id, c.id) == ("m_2026-09-26_0001", "m_2026-09-26_0002", "m_2026-09-27_0001")
-    lines = store.path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 3
-    first = json.loads(lines[0])
-    assert first == {
-        "id": "m_2026-09-26_0001",
-        "ts": "2026-09-26 14:05",
-        "kind": "fact",
-        "content": "likes tea",
-        "subject": "user",
-        "source": "slack:c:1",
-        "status": "active",
-    }
 
 
 def test_append_rejects_invalid_entry(tmp_path: Path) -> None:

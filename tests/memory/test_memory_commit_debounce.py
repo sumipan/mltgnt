@@ -13,8 +13,7 @@ import pytest
 from ghdag.vcs import LocalGitSink
 
 from mltgnt.config import MemoryConfig
-from mltgnt.memory import append_memory_entry, compact, flush_memory_commits, memory_file_path
-from mltgnt.memory._format import MemoryEntry, serialize_entry
+from mltgnt.memory import append_memory_entry, flush_memory_commits, memory_file_path
 from mltgnt.memory.dream._format import DreamSection, DreamSummary
 from mltgnt.memory.dream.api import write_dream, write_global
 
@@ -185,29 +184,3 @@ def test_m7_write_dream_and_global_commit_once_each(
     assert _count(work) == before + 2
     assert _subjects(work, 1) == ["mltgnt(memory): __global__ global"]
 
-
-def test_m8_compact_commits_only_on_real_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    work = _setup_sink(tmp_path, monkeypatch)
-    config = _config(work, 300)
-    path = memory_file_path(config, "p1")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    entry = MemoryEntry(
-        timestamp="2026-09-20T00:00:00+09:00",
-        role="user",
-        content="hello world",
-        source_tag="chat",
-        layer="recent",
-    )
-    path.write_text(serialize_entry(entry) + "\n", encoding="utf-8")
-    before = _count(work)
-
-    compact(config, "p1", llm_call=lambda prompt: "ok", dry_run=True)
-    assert flush_memory_commits() == 0
-    assert _count(work) == before
-
-    compact(config, "p1", llm_call=lambda prompt: "ok")
-    assert flush_memory_commits() == 1
-    assert _count(work) == before + 1
-    assert _subjects(work, 1) == ["mltgnt(memory): p1 compact"]

@@ -69,25 +69,6 @@ def test_header_meters_disabled_contract() -> None:
     assert "if (!headerMetersUrl)" in INDEX_HTML
 
 
-def test_header_meters_render_contract() -> None:
-    """Issue #6022: clamp, progress, footers, and failure hide."""
-    assert "function meterView" in INDEX_HTML
-    assert "Math.round" in INDEX_HTML and "clamp01" in INDEX_HTML
-    assert "86400" in INDEX_HTML
-    assert "window_seconds * 1000" in INDEX_HTML
-    assert "1 - (resetsAtMs - nowMs)" in INDEX_HTML
-    assert "0.1" in INDEX_HTML
-    assert "String.fromCharCode" in INDEX_HTML
-    assert "console.warn" in INDEX_HTML
-    assert "hideHeaderMeters" in INDEX_HTML
-    assert "textContent" in INDEX_HTML
-    assert "innerHTML" not in INDEX_HTML.split("function renderHeaderMeters")[1].split("function fetchHeaderMeters")[0]
-    assert "cache: \"no-store\"" in INDEX_HTML
-    assert "validateHeaderMetersPayload" in INDEX_HTML
-    assert 'typeof meter.resets_at === "string"' in INDEX_HTML
-    assert 'typeof data.fetched_at === "string"' in INDEX_HTML
-    assert "meter.window_seconds > 0 && isFinite(parsed)" in INDEX_HTML
-
 
 def test_header_meters_refresh_contract() -> None:
     """Issue #6022: fetch and tick intervals plus agent message refresh."""

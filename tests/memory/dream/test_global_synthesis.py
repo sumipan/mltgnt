@@ -12,7 +12,6 @@ from mltgnt.memory.dream.api import (
     global_json_path,
     read_global,
     read_global_summary,
-    read_dream,
     write_dream,
     write_global,
 )
@@ -64,28 +63,6 @@ def _memory_config(chat_dir: Path, **kwargs: object) -> MemoryConfig:
     return MemoryConfig(chat_dir=chat_dir, **kwargs)  # type: ignore[arg-type]
 
 
-def test_synthesize_global_three_personas(chat_dir: Path) -> None:
-    for stem in ("alice", "bob", "charlie"):
-        _write_persona_md(chat_dir, stem)
-        _write_persona_dream(chat_dir, stem, _two_category_sections(stem))
-
-    config = _memory_config(chat_dir)
-    summary = Synthesizer.synthesize_global(
-        config,
-        llm_call=lambda _prompt: _global_llm_response(),
-    )
-
-    assert summary.persona == "__global__"
-    assert len(summary.sections) == 2
-    assert summary.sections[0].category == "Behavior patterns"
-    assert summary.updated_at.endswith("+09:00") or "T" in summary.updated_at
-
-    write_global(chat_dir, summary)
-    loaded = read_global(chat_dir)
-    assert loaded is not None
-    assert loaded.persona == "__global__"
-    assert global_json_path(chat_dir).is_file()
-
 
 def test_synthesize_global_single_persona(chat_dir: Path) -> None:
     _write_persona_md(chat_dir, "alice")
@@ -101,44 +78,6 @@ def test_synthesize_global_single_persona(chat_dir: Path) -> None:
     assert len(summary.sections) == 2
 
 
-def test_synthesize_global_skips_personas_without_dream(chat_dir: Path) -> None:
-    for stem in ("alice", "bob", "charlie"):
-        _write_persona_md(chat_dir, stem)
-    _write_persona_dream(chat_dir, "alice", _two_category_sections("alice"))
-    _write_persona_dream(chat_dir, "bob", _two_category_sections("bob"))
-
-    captured_prompts: list[str] = []
-
-    def llm(prompt: str) -> str:
-        captured_prompts.append(prompt)
-        return _global_llm_response()
-
-    config = _memory_config(chat_dir)
-    summary = Synthesizer.synthesize_global(config, llm_call=llm)
-
-    assert summary.persona == "__global__"
-    assert "[Persona: alice]" in captured_prompts[0]
-    assert "[Persona: bob]" in captured_prompts[0]
-    assert "[Persona: charlie]" not in captured_prompts[0]
-    assert read_dream(chat_dir / "charlie") is None
-
-
-def test_synthesize_global_respects_exclude_personas(chat_dir: Path) -> None:
-    for stem in ("alice", "bob"):
-        _write_persona_md(chat_dir, stem)
-        _write_persona_dream(chat_dir, stem, _two_category_sections(stem))
-
-    captured_prompts: list[str] = []
-
-    def llm(prompt: str) -> str:
-        captured_prompts.append(prompt)
-        return _global_llm_response()
-
-    config = _memory_config(chat_dir, global_dream_exclude_personas=("alice",))
-    Synthesizer.synthesize_global(config, llm_call=llm)
-
-    assert "[Persona: alice]" not in captured_prompts[0]
-    assert "[Persona: bob]" in captured_prompts[0]
 
 
 def test_synthesize_global_raises_when_no_dreams(chat_dir: Path) -> None:

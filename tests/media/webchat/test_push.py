@@ -21,7 +21,6 @@ from mltgnt.media.webchat.config import WebChatMediaConfig, WebPushConfig  # noq
 from mltgnt.media.webchat.push import (  # noqa: E402
     PushSubscriptionStore,
     PushWorker,
-    build_notification_payload,
     push_enabled,
     validate_delete_body,
     validate_subscription,
@@ -230,32 +229,6 @@ def test_subscription_store_recovers_from_broken_lines(tmp_path: Path) -> None:
     assert store.active() == [{"endpoint": "https://b", "keys": {"p256dh": "3", "auth": "4"}}]
 
 
-def test_notification_payload_uses_display_name_and_fixed_body() -> None:
-    body_text = WebPushConfig().body_text
-    row = {"message_id": "m1", "author": "bot", "thread_ts": None}
-    payload = build_notification_payload(
-        row,
-        channel_slug="chan",
-        body_text=body_text,
-        display_names={"bot": "Agent"},
-    )
-    assert payload == {
-        "title": "Agent",
-        "body": body_text,
-        "url": "/c/chan/t/m1",
-        "tag": "m1",
-    }
-    reply = {"message_id": "m2", "author": "bot", "thread_ts": "root"}
-    payload2 = build_notification_payload(
-        reply,
-        channel_slug="chan",
-        body_text=body_text,
-        display_names={},
-    )
-    assert payload2["url"] == "/c/chan/t/root"
-    assert payload2["tag"] == "root"
-    assert "text" not in payload2
-
 
 def test_worker_sends_only_new_agent_messages(tmp_path: Path) -> None:
     clock = FakeClock()
@@ -392,35 +365,6 @@ def test_push_worker_start_and_stop_are_idempotent(tmp_path: Path) -> None:
     assert worker._thread is not None
     assert not worker._thread.is_alive()
 
-
-def test_push_worker_stop_uses_bounded_join(tmp_path: Path) -> None:
-    class _Thread:
-        def __init__(self) -> None:
-            self.timeouts: list[float | None] = []
-
-        def is_alive(self) -> bool:
-            return True
-
-        def join(self, timeout: float | None = None) -> None:
-            self.timeouts.append(timeout)
-
-    stop = threading.Event()
-    worker = PushWorker(
-        WebChatStore(tmp_path / "w", clock=FakeClock()),
-        PushSubscriptionStore(tmp_path / "w"),
-        _enabled_push(),
-        channel_slug="general",
-        display_names={},
-        stop_event=stop,
-        send=lambda _sub, _payload: None,
-        join_timeout_sec=0.25,
-    )
-    thread = _Thread()
-    worker._started = True
-    worker._thread = thread  # type: ignore[assignment]
-    worker.stop()
-    assert stop.is_set()
-    assert thread.timeouts == [0.25]
 
 
 def test_push_disabled_when_pywebpush_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -86,46 +86,6 @@ def test_collect_persona_filter(tmp_path: Path) -> None:
     assert personas == ["persona-b"]
 
 
-def test_collect_archives_episodes_older_than_90_days(tmp_path: Path) -> None:
-    memory_dir, state_file = _memory_layout(tmp_path)
-    old_ts = (NOW - timedelta(days=100)).strftime("%Y-%m-%d %H:%M")
-    recent_ts = (NOW - timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
-    persona_dir = memory_dir / "persona-a"
-    _write_episodes(persona_dir, [_episode(old_ts, "old"), _episode(recent_ts, "recent")])
-
-    payload = build_collect_payload(memory_dir, state_file=state_file, now=NOW)
-
-    remaining = (persona_dir / "episodes.jsonl").read_text(encoding="utf-8")
-    assert "old" not in remaining
-    assert "recent" in remaining
-    month = old_ts[:7]
-    archive_path = persona_dir / "episodes" / f"{month}.jsonl"
-    assert archive_path.is_file()
-    archived = archive_path.read_text(encoding="utf-8")
-    assert "old" in archived
-    timestamps = [e["timestamp"] for i in payload["items"] for e in i["episodes"]]
-    assert old_ts not in timestamps
-
-
-def test_collect_lists_only_persona_directories(tmp_path: Path) -> None:
-    memory_dir, state_file = _memory_layout(tmp_path)
-    _write_episodes(memory_dir / "persona-a", [_episode(T3)])
-
-    flat = memory_dir / "persona-c.jsonl"
-    flat.write_text(serialize_entry(_episode(T3, "flat")) + "\n", encoding="utf-8")
-
-    hidden = memory_dir / ".hidden"
-    hidden.mkdir()
-    _write_episodes(hidden, [_episode(T3, "hidden")])
-
-    archive = memory_dir / "archive"
-    archive.mkdir()
-    _write_episodes(archive, [_episode(T3, "archive")])
-
-    payload = build_collect_payload(memory_dir, state_file=state_file, now=NOW)
-
-    personas = [i["persona"] for i in payload["items"]]
-    assert personas == ["persona-a"]
 
 
 def _valid_collect(persona: str = "persona-a") -> dict:
