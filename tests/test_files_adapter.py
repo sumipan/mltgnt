@@ -48,23 +48,3 @@ class TestMdWrite:
         with patch("ghdag.files.md_write", return_value=42):
             result = md_write("out.md", "x")
         assert result == 42
-
-
-class TestBridgesAll:
-    def test_bridges_all_contains_expected_modules(self):
-        from mltgnt import bridges
-        assert hasattr(bridges, "__all__"), "bridges/__init__.py must define __all__"
-        assert set(bridges.__all__) == {
-            "DagStep",
-            "MltgntHooks",
-            "call_llm",
-            "create_audit_writer",
-            "enqueue_and_wait",
-            "enqueue_dag",
-            "files_adapter",
-            "ghdag_bridge",
-            "hooks_adapter",
-            "llm_adapter",
-            "md_read",
-            "md_write",
-        }

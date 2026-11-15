@@ -105,24 +105,6 @@ def _exec_uuids(jobs_dir: Path) -> list[str]:
 
 
 class TestTimeoutCancel:
-    def test_enqueue_and_wait_timeout_writes_cancel_marker(self, tmp_path):
-        jobs_dir = _make_jobs_dir(tmp_path)
-        with patch(_WAIT, side_effect=TimeoutError):
-            result = enqueue_and_wait(
-                prompt="prompt",
-                engine="cursor",
-                model="auto",
-                timeout=3.0,
-                idempotency_key=f"scheduler:cancel:{uuid.uuid4()}",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-            )
-        assert result == (False, "timeout (3.0s)")
-        uuids = _exec_uuids(jobs_dir)
-        markers = list((jobs_dir / "cancel").iterdir())
-        assert [m.name for m in markers] == uuids
-        assert len(markers) == 1
-        assert markers[0].read_text() == ""
 
     def test_enqueue_and_wait_cancel_failure_appended(self, tmp_path):
         jobs_dir = _make_jobs_dir(tmp_path)

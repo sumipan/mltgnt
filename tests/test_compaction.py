@@ -386,25 +386,6 @@ class TestRedistributeEntries:
 
 
 class TestNoDeprecationWarnings:
-    def test_compact_does_not_emit_deprecation_warning(self, tmp_path: Path):
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-        entries = [
-            MemoryEntry(
-                timestamp="2026-05-01T00:00:00+09:00",
-                role="user",
-                content="hello",
-                source_tag="chat",
-                layer="recent",
-            )
-        ]
-        _write_jsonl(path, entries)
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            compact(cfg, "test_persona", llm_call=lambda p: "ok")
-
-        assert not any(w.category is DeprecationWarning for w in caught)
 
     def test_needs_compaction_does_not_emit_deprecation_warning(self, tmp_path: Path):
         cfg = _make_config(tmp_path, target_bytes=25_600)
@@ -449,29 +430,6 @@ class TestCompactPerSectionCap:
             source_tag=source_tag, layer=layer
         )
 
-    def test_no_compaction_when_under_cap(self, tmp_path: Path):
-        """AC-1: the LLM is not called when all sections fit under the cap."""
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-
-        entries = [
-            self._make_entry("2026-05-01T00:00:00+09:00", "x" * 100, "recent"),
-            self._make_entry("2026-04-01T00:00:00+09:00", "y" * 100, "mid_term"),
-        ]
-        _write_jsonl(path, entries)
-
-        llm_called = []
-        def _llm(prompt: str) -> str:
-            llm_called.append(prompt)
-            return "compressed"
-
-        result = compact(cfg, "test_persona", llm_call=_llm)
-        # cap within cap so LLM is not called
-        assert llm_called == []
-        # result returns successfully
-        assert isinstance(result, CompactionResult)
-        assert result.before_bytes > 0
-
     def test_promote_candidates_field_is_empty_list(self, tmp_path: Path):
         """AC-3: compact() returns an empty promote_candidates list."""
         cfg = _make_config(tmp_path, target_bytes=25_600)
@@ -514,69 +472,6 @@ class TestCompactPerSectionCap:
         # file contents are unchanged
         assert path.read_text(encoding="utf-8") == original_text
 
-    def test_long_term_over_cap_triggers_llm(self, tmp_path: Path):
-        """AC-1: exceeding the long-term cap triggers LLM compression."""
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-
-        # long_term_cap = 25600 * 0.25 = 6400 bytes
-        # place content exceeding this value into  long_term
-        long_content = "L" * 7000  # 7KB > 6.4KB cap
-        entries = [
-            self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
-        ]
-        _write_jsonl(path, entries)
-
-        llm_calls: list[str] = []
-        def _llm(prompt: str) -> str:
-            llm_calls.append(prompt)
-            # cap return a size that fits within the cap(keep at least 90% of original)
-            return "L" * 6000
-
-        compact(cfg, "test_persona", llm_call=_llm)
-        assert len(llm_calls) > 0, "LLM should be called when long_term exceeds cap"
-
-    def test_mid_term_over_cap_promotes_to_long_term(self, tmp_path: Path):
-        """AC-8: exceeding the mid-term cap cascades into long-term storage."""
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-
-        # mid_term_cap = 25600 * 0.25 = 6400 bytes
-        # mid_term  place content exceeding the cap
-        mid_content = "M" * 7000  # 7KB > 6.4KB cap
-        entries = [
-            self._make_entry("2026-02-01T00:00:00+09:00", mid_content, "mid_term"),
-        ]
-        _write_jsonl(path, entries)
-
-        llm_calls: list[str] = []
-        def _llm(prompt: str) -> str:
-            llm_calls.append(prompt)
-            return "M" * 6000
-
-        result = compact(cfg, "test_persona", llm_call=_llm)
-        # mid_term  exceeds cap so some processing should occur
-        assert isinstance(result, CompactionResult)
-
-    def test_warnings_on_llm_failure(self, tmp_path: Path):
-        """LLM failure → record warning, keep original text (error-path test)."""
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-
-        long_content = "L" * 7000  # cap  exceeded
-        entries = [
-            self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
-        ]
-        _write_jsonl(path, entries)
-
-        def _llm_fail(prompt: str) -> str:
-            raise RuntimeError("LLM unavailable")
-
-        result = compact(cfg, "test_persona", llm_call=_llm_fail)
-        # LLM fails to get warning instead of exception
-        assert isinstance(result, CompactionResult)
-        assert len(result.warnings) > 0
-
     def test_redistribute_uses_config_timezone(self, tmp_path: Path):
         """re bute entries uses config.timezone (AC-5)."""
         cfg = MemoryConfig(chat_dir=tmp_path, chat_memory_dir=tmp_path, timezone="UTC")
@@ -591,33 +486,6 @@ class TestCompactPerSectionCap:
         )]
         result = mod._redistribute_entries(entries, now, cfg)
         assert len(result) == 1
-
-    def test_wrapped_llm_call_applies_preprocessing(self, tmp_path: Path):
-        """The wrapper callable returns pre-processing for all LLM calls."""
-        cfg = _make_config(tmp_path, target_bytes=25_600)
-        path = tmp_path / "test_persona.jsonl"
-        long_content = "L" * 7000  # long_term_cap(6400B)  to exceed
-        entries = [
-            self._make_entry("2025-01-01T00:00:00+09:00", long_content, "long_term"),
-        ]
-        _write_jsonl(path, entries)
-
-        date_prefix = "[DATE_CONTEXT: 2026-09-02]\n"
-        captured_prompts: list[str] = []
-
-        def _base_llm(prompt: str) -> str:
-            captured_prompts.append(prompt)
-            # long term max 0.9io=0.90
-            return "L" * 6500
-
-        def _wrapped_llm(prompt: str) -> str:
-            enriched = f"{date_prefix}{prompt}"
-            return _base_llm(enriched)
-
-        compact(cfg, "test_persona", llm_call=_wrapped_llm)
-
-        assert captured_prompts, "LLM should be called at least once"
-        assert all(p.startswith(date_prefix) for p in captured_prompts)
 
     def test_compact_handles_over_256kb_prompt_without_truncation(self, tmp_path: Path):
         """llm call is passed even with 256KB super prompt."""

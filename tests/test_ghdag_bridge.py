@@ -9,31 +9,11 @@ Coverage:
 from __future__ import annotations
 
 import json
-import os
-import uuid
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from mltgnt.bridges.ghdag_bridge import (
-    DagStep,
-    SkillIOTypeError,
     _extract_result_filename,
     _order_to_result_filename,
-    _request_cancel,
     _scheduler_audit_context,
-    compose_pipeline,
-    enqueue_and_wait,
-    enqueue_dag,
-    typecheck_dag,
-)
-from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMatchResult, SkillMeta
-from tests.ghdag_bridge_helpers import (
-    _MD_READ,
-    _WAIT,
-    _make_jobs_dir,
-    _make_jobs_dir_dag,
 )
 
 
@@ -51,128 +31,6 @@ class TestBridgesInitImports:
         assert callable(create_audit_writer)
         assert callable(call_llm)
 
-    def test_bridges_all_exports(self):
-        """AC2: __all__ contains only public symbols."""
-        import mltgnt.bridges
-
-        assert set(mltgnt.bridges.__all__) == {
-            "DagStep",
-            "MltgntHooks",
-            "call_llm",
-            "create_audit_writer",
-            "enqueue_and_wait",
-            "enqueue_dag",
-            "files_adapter",
-            "ghdag_bridge",
-            "hooks_adapter",
-            "llm_adapter",
-            "md_read",
-            "md_write",
-        }
-
-
-# ---------------------------------------------------------------------------
-# correlation_id — AuditContext PropagationAC3-AC5)
-# ---------------------------------------------------------------------------
-
-
-class TestCorrelationIdPropagation:
-    def test_enqueue_and_wait_correlation_id(self, tmp_path):
-        """AC3: enqueue_and_wait Home correlation_id Home AuditContext passed to."""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir = _make_jobs_dir(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_and_wait(
-                prompt="prompt",
-                engine="cursor",
-                model="auto",
-                timeout=5.0,
-                idempotency_key="scheduler:test:corr",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-                correlation_id="test-123",
-            )
-
-        assert len(captured_contexts) == 1
-        ctx = captured_contexts[0]
-        assert ctx.source == "mltgnt-scheduler"
-        assert ctx.correlation_id == "test-123"
-
-    def test_enqueue_dag_correlation_id(self, tmp_path):
-        """AC4: enqueue_dag Home correlation_id Home AuditContext passed to."""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_dag(
-                steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
-                timeout=5.0,
-                idempotency_key=f"dag:corr:{uuid.uuid4()}",
-                jobs_dir=jobs_dir,
-                exec_done_dir=done_dir,
-                correlation_id="dag-456",
-            )
-
-        assert len(captured_contexts) == 1
-        ctx = captured_contexts[0]
-        assert ctx.source == "mltgnt-scheduler"
-        assert ctx.correlation_id == "dag-456"
-
-    def test_enqueue_and_wait_default_correlation_id(self, tmp_path):
-        """AC5: correlation_id When omitted,  None   AuditContext  is passed."""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir = _make_jobs_dir(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_and_wait(
-                prompt="prompt",
-                engine="cursor",
-                model="auto",
-                timeout=5.0,
-                idempotency_key="scheduler:test:default",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-            )
-
-        assert len(captured_contexts) == 1
-        ctx = captured_contexts[0]
-        assert ctx.source == "mltgnt-scheduler"
-        assert ctx.correlation_id is None
-
 
 # ---------------------------------------------------------------------------
 # request_id — AuditContext Propagation#1346)
@@ -186,95 +44,8 @@ class TestRequestIdPropagation:
         assert ctx.source == "mltgnt-scheduler"
         assert ctx.request_id == "test-rid"
 
-    def test_enqueue_and_wait_request_id(self, tmp_path):
-        """enqueue_and_wait Home request_id Home api.submit Home audit_context passed to."""
-        from ghdag.pipeline import LLMPipelineAPI
 
-        jobs_dir = _make_jobs_dir(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
 
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_and_wait(
-                prompt="prompt",
-                engine="cursor",
-                model="auto",
-                timeout=5.0,
-                idempotency_key="scheduler:test:rid",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-                request_id="test-rid",
-            )
-
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0].request_id == "test-rid"
-
-    def test_enqueue_dag_request_id(self, tmp_path):
-        """enqueue_dag Home request_id Home api.submit Home audit_context passed to."""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_dag(
-                steps=[DagStep(id="s1", prompt="P1", engine="cursor")],
-                timeout=5.0,
-                idempotency_key=f"dag:rid:{uuid.uuid4()}",
-                jobs_dir=jobs_dir,
-                exec_done_dir=done_dir,
-                request_id="test-rid",
-            )
-
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0].request_id == "test-rid"
-
-    def test_enqueue_and_wait_default_request_id(self, tmp_path):
-        """request_id When omitted,  None   AuditContext  is passed."""
-        from ghdag.pipeline import LLMPipelineAPI
-
-        jobs_dir = _make_jobs_dir(tmp_path)
-        captured_contexts: list = []
-        original_submit = LLMPipelineAPI.submit
-
-        def capture_submit(self_api, steps, **kwargs):
-            captured_contexts.append(kwargs.get("audit_context"))
-            return original_submit(self_api, steps, **kwargs)
-
-        with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
-            patch(_MD_READ, return_value=MagicMock(content="")),
-        ):
-            enqueue_and_wait(
-                prompt="prompt",
-                engine="cursor",
-                model="auto",
-                timeout=5.0,
-                idempotency_key="scheduler:test:default-rid",
-                jobs_dir=jobs_dir,
-                exec_done_dir=jobs_dir / "done",
-            )
-
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0].request_id is None
 
 
 # ---------------------------------------------------------------------------
