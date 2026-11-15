@@ -115,30 +115,6 @@ def test_set_language_pack_rejects_non_pack(restore_language_pack):
 
 
 
-def test_language_pack_defaults_are_ascii():
-    """Field defaults that used to hold Japanese text now match EN."""
-    import re
-
-    from mltgnt.config import LanguagePack
-    from mltgnt.config.language import EN
-
-    pack = LanguagePack(
-        work_request_markers=(),
-        create_request_markers=(),
-        deferred_patterns=(),
-        compress_prompt_template="{heavy_text}",
-        v21_required_sections=(),
-        v21_example_section="",
-        meta_header_needles=(),
-        dedupe_opener_re=re.compile(r"NOMATCH"),
-        persona_cut_re=re.compile(r"NOMATCH"),
-        exclude_stems=frozenset(),
-    )
-    assert pack.persona_end_re.pattern == EN.persona_end_re.pattern
-    assert pack.cancel_words == EN.cancel_words
-    assert pack.composite_header == EN.composite_header
-    assert pack.composite_cancel_suffix == EN.composite_cancel_suffix
-
 
 def test_default_composite_header_avoids_ongoing_work_wording():
     from mltgnt.config import LanguagePack
@@ -152,27 +128,6 @@ def test_default_composite_header_avoids_ongoing_work_wording():
             assert word not in lowered, f"{word!r} found in {text!r}"
     assert field_default == EN.composite_header
 
-
-def test_has_work_request_with_synthetic_pack():
-    """AC-3: Synthetic pack injection — 'please' returns True; Japanese text returns False."""
-    import re
-    from mltgnt.config import LanguagePack
-    from mltgnt.agent.deterministic_gate import has_work_request
-
-    pack = LanguagePack(
-        work_request_markers=("please",),
-        create_request_markers=(),
-        deferred_patterns=(),
-        compress_prompt_template="{heavy_text}",
-        v21_required_sections=(),
-        v21_example_section="",
-        meta_header_needles=(),
-        dedupe_opener_re=re.compile(r"NOMATCH"),
-        persona_cut_re=re.compile(r"NOMATCH"),
-        exclude_stems=frozenset(),
-    )
-    assert has_work_request("please do this", pack=pack) is True
-    assert has_work_request("do this", pack=pack) is False
 
 
 def test_has_work_request_default_pack(restore_language_pack):

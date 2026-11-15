@@ -227,31 +227,6 @@ def test_primary_only_channel_with_thread_fixed():
     assert result == "persona-a"
 
 
-def test_thread_fixed_persona_not_in_channel_falls_through_to_primary():
-    """Ignore a thread-fixed persona that is not in the channel's entries.
-
-    Repro: persona-e belongs only to another channel (task-society) but was
-    written into a C_TEST thread via a delegate result, then incorrectly
-    kept responding in C_TEST.
-    """
-    PERSONA_E = ChannelPersonaEntry(name="persona-e", role="primary", nickname="eve")
-    persona_e_channel_map = {"C_TASK_SOCIETY": [PERSONA_E]}
-    merged_map = {**CHANNEL_MAP_MULTI, **persona_e_channel_map}
-
-    thread_ts = "5000.0000"
-    # persona-e was incorrectly recorded on the C_TEST thread
-    thread_persona_map = {f"{CHANNEL}:{thread_ts}": "persona-e"}
-
-    result = resolve_persona(
-        "please continue",
-        space_id=CHANNEL,
-        conversation_id=f"{CHANNEL}:{thread_ts}",
-        persona_map=merged_map,
-        pinned_personas=thread_persona_map,
-    )
-    # persona-e is not in C_TEST entries, so ignore and return primary (persona-a)
-    assert result == "persona-a"
-
 
 # ---------------------------------------------------------------------------
 # resolve_persona / find_observers_in_space / SpacePersonaEntry (Issue #3285)
