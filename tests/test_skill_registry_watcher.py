@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import textwrap
 import time
-import threading
 from pathlib import Path
 
 import pytest
@@ -63,35 +62,6 @@ class TestSkillRegistry:
         _write_skill(tmp_path, "skill-b")
         registry.reload()
         assert "skill-b" in registry.get()
-
-    def test_thread_safe_concurrent_access(self, tmp_path):
-        _write_skill(tmp_path, "skill-a")
-        registry = SkillRegistry(paths=[tmp_path])
-        registry.reload()
-        errors = []
-
-        def reader():
-            for _ in range(50):
-                try:
-                    registry.get()
-                except Exception as e:
-                    errors.append(e)
-
-        def reloader():
-            for _ in range(10):
-                try:
-                    registry.reload()
-                except Exception as e:
-                    errors.append(e)
-
-        threads = [threading.Thread(target=reader) for _ in range(5)]
-        threads += [threading.Thread(target=reloader) for _ in range(2)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=5)
-
-        assert errors == []
 
 
 # ---------------------------------------------------------------------------

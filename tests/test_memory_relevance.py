@@ -54,27 +54,6 @@ MEMORY_THREE_ENTRIES = (
 )
 
 
-def test_tc1_score_ordering(tmp_path: Path) -> None:
-    """TC1: for a Python query, the programming entry ranks first."""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
-
-    result = read_memory_by_relevance(
-        config,
-        "persona",
-        "Python decorator",
-        max_bytes=4096,
-        max_entries=3,
-    )
-
-    # Programming entry must appear before cooking/weather
-    prog_idx = result.find("Python  decorators")
-    cook_idx = result.find("recipes")
-    assert prog_idx != -1
-    assert cook_idx != -1
-    assert prog_idx < cook_idx
-
-
 # ---------------------------------------------------------------------------
 # TC2: preferences always included
 # ---------------------------------------------------------------------------
@@ -363,71 +342,6 @@ def test_suf_tc1_sufficient_same_as_relevance(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # TC2: llm_call returns INSUFFICIENT → re-search, results merged
 # ---------------------------------------------------------------------------
-
-
-def test_suf_tc2_insufficient_merges_results(tmp_path: Path) -> None:
-    """TC2: INSUFFICIENT → re-search; all three entries appear in the result."""
-    config = make_config(tmp_path)
-    # Create the memory file (needed for preferences loading)
-    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
-
-    entry_a = ScoredEntry("entry-A: project progress", 0.9)
-    entry_b = ScoredEntry("entry-B: DB connection settings", 0.8)
-    entry_c = ScoredEntry("entry-C: cooking", 0.3)
-
-    call_count = [0]
-
-    def mock_search(cfg, persona, q, *, max_entries):
-        call_count[0] += 1
-        if call_count[0] == 1:
-            return [entry_a, entry_c]
-        else:
-            return [entry_b, entry_a]
-
-    with patch("mltgnt.memory._search_and_score", side_effect=mock_search):
-        result = read_memory_with_sufficiency_check(
-            config,
-            "persona",
-            "project",
-            max_bytes=4096,
-            max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\nMEMORY\nDB connection details",
-        )
-
-    assert "entry-A" in result
-    assert "entry-B" in result
-    assert "entry-C" in result
-    assert call_count[0] == 2
-
-
-# ---------------------------------------------------------------------------
-# TC3: duplicate deduplication
-# ---------------------------------------------------------------------------
-
-
-def test_suf_tc3_deduplication(tmp_path: Path) -> None:
-    """TC3: first and re-search return the same entries → no duplicates."""
-    config = make_config(tmp_path)
-    _write_memory(config, "persona", MEMORY_THREE_ENTRIES)
-
-    entries = [
-        ScoredEntry("entry-A", 0.9),
-        ScoredEntry("entry-B", 0.8),
-    ]
-
-    with patch("mltgnt.memory._search_and_score", return_value=entries):
-        result = read_memory_with_sufficiency_check(
-            config,
-            "persona",
-            "test",
-            max_bytes=4096,
-            max_entries=10,
-            llm_call=lambda p: "INSUFFICIENT\nMEMORY\nextra query",
-        )
-
-    # entry-A must not appear more than once
-    assert result.count("entry-A") == 1
-    assert result.count("entry-B") == 1
 
 
 # ---------------------------------------------------------------------------

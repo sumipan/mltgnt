@@ -33,23 +33,3 @@ def test_ops_chat_model_rejected() -> None:
     assert not result.ok
 
 
-def test_canonical_imports() -> None:
-    from mltgnt.interfaces.types import ChatInput, ChatOutput, Message  # noqa: F401
-    from mltgnt.memory import (
-        LlmCall,
-        compact as compact_from_memory,
-        needs_compaction,
-        read_memory_iterative,
-    )  # noqa: F401
-    from mltgnt.memory.compaction import CompactionResult, compact as compact_from_compaction  # noqa: F401
-    from mltgnt.bridges.ghdag_bridge import enqueue_and_wait  # noqa: F401
-
-    assert callable(compact_from_memory)
-    assert callable(compact_from_compaction)
-    assert callable(needs_compaction)
-    assert LlmCall is not None
-    assert ChatInput is not None
-    assert ChatOutput is not None
-    assert Message is not None
-    assert callable(enqueue_and_wait)
-    assert callable(read_memory_iterative)

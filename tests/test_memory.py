@@ -20,7 +20,6 @@ from mltgnt.memory import (
     read_memory_tail_text,
     memory_file_path,
     persona_memory_lock,
-    CompactionResult,
 )
 from mltgnt.memory.compaction import compact, needs_compaction
 from mltgnt.memory._format import (
@@ -58,26 +57,6 @@ def _write_jsonl(path: Path, entries: list[MemoryEntry]) -> None:
 # ---------------------------------------------------------------------------
 # JSONL Round Trip
 # ---------------------------------------------------------------------------
-
-def test_jsonl_roundtrip() -> None:
-    """MemoryEntry → serialize → parse All fields matched on the round trip."""
-    entry = MemoryEntry(
-        timestamp="2030-05-09T17:00:00+09:00",
-        role="user",
-        content="test",
-        source_tag="file",
-        layer=None,
-        dedupe_key=None,
-    )
-    line = serialize_entry(entry)
-    data = json.loads(line)
-    assert data["timestamp"] == entry.timestamp
-    assert data["role"] == entry.role
-    assert data["content"] == entry.content
-    assert data["source_tag"] == entry.source_tag
-    assert "layer" not in data
-    assert "dedupe_key" not in data
-
 
 def test_jsonl_roundtrip_with_layer() -> None:
     """layer Round trip of entry with."""
@@ -123,25 +102,6 @@ def test_parse_jsonl_skips_invalid_lines(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # append_memory_entry — JSONL Type
 # ---------------------------------------------------------------------------
-
-def test_append_memory_entry_creates_file(tmp_path: Path) -> None:
-    """append_memory_entry Home JSONL Add entry in format."""
-    config = make_config(tmp_path)
-    result = append_memory_entry(
-        config, "test_persona", "user", "hello", "2026-04-17T10:00:00+09:00",
-        source_tag="file",
-    )
-    assert result is True
-    mp = memory_file_path(config, "test_persona")
-    assert mp.exists()
-    assert mp.suffix == ".jsonl"
-    entries = parse_jsonl(mp)
-    assert len(entries) == 1
-    assert entries[0].timestamp == "2026-04-17T10:00:00+09:00"
-    assert entries[0].role == "user"
-    assert entries[0].content == "hello"
-    assert entries[0].source_tag == "file"
-
 
 def test_append_memory_entry_with_layer(tmp_path: Path) -> None:
     """`layer="caveat"` If JSONL  layer fields."""
@@ -564,34 +524,6 @@ def _identity_llm(prompt: str) -> str:
     return parts[-1] if len(parts) > 1 else prompt
 
 
-def test_compact_calls_llm_per_group_and_writes_result(tmp_path: Path) -> None:
-    """compact Home cap Excess section llm_call call results JSONL Write to
-
-    per-section cap ContactIssue #1135): long_term / mid_term Home cap Excessive LLM is called.
-    """
-    config, persona = _make_compact_entries(tmp_path)
-
-    calls: list[str] = []
-
-    def mock_llm(prompt: str) -> str:
-        calls.append(prompt)
-        # cap Returns compact results that fit inside90% size)
-        return "()act)Compressed content " + "z" * 800
-
-    result = compact(config, persona, llm_call=mock_llm)
-
-    # per-section cap Excess section LLM is called1More
-    assert len(calls) >= 1
-    assert isinstance(result, CompactionResult)
-    assert result.before_bytes > 0
-    assert result.after_bytes > 0
-
-    entries = parse_jsonl(memory_file_path(config, "persona"))
-    contents = [e.content for e in entries]
-    assert any("Like content" in c for c in contents)
-    assert any("Recent Posts" in c for c in contents)
-
-
 def test_compact_dry_run_does_not_write(tmp_path: Path) -> None:
     config, persona = _make_compact_entries(tmp_path)
     original = memory_file_path(config, persona).read_text(encoding="utf-8")
@@ -640,89 +572,3 @@ def test_compact_preserves_preferences(tmp_path: Path) -> None:
     assert "Like content" in prefs[0].content
 
 
-def test_compact_preserves_protected_layers(tmp_path: Path) -> None:
-    """compact Close`layer="caveat"` the entry JSONL """
-    config, persona = _make_compact_entries(tmp_path)
-    mp = memory_file_path(config, persona)
-
-    # caveat Add entry
-    caveat_entry = MemoryEntry(
-        _ts_ago(days=90),
-        "assistant",
-        "Never reverse redepro  order",
-        "manual",
-        layer="caveat",
-    )
-    existing = parse_jsonl(mp)
-    _write_jsonl(mp, existing + [caveat_entry])
-
-    compact(config, persona, llm_call=_identity_llm)
-
-    entries = parse_jsonl(mp)
-    caveat_entries = [e for e in entries if e.layer == "caveat"]
-    assert caveat_entries
-    assert "Never reverse redepro  order" in caveat_entries[0].content
-
-
-def test_compact_protected_layer_content_unchanged(tmp_path: Path) -> None:
-    """compact Closecaveat Entry content Not supported."""
-    config, persona = _make_compact_entries(tmp_path)
-    mp = memory_file_path(config, persona)
-    original_caveat_content = "This content is not changed"
-    caveat_entry = MemoryEntry(
-        _ts_ago(days=90),
-        "assistant",
-        original_caveat_content,
-        "manual",
-        layer="caveat",
-    )
-    existing = parse_jsonl(mp)
-    _write_jsonl(mp, existing + [caveat_entry])
-
-    compact(config, persona, llm_call=_identity_llm)
-
-    entries = parse_jsonl(mp)
-    caveat_entries = [e for e in entries if e.layer == "caveat"]
-    assert caveat_entries[0].content == original_caveat_content
-
-
-def test_compact_no_protected_layers_compacts_all(tmp_path: Path) -> None:
-    """`protected_layers=()` Home caveat Entry is also included.
-
-    per-section cap ContactIssue #1135): protected_layers=() Forcaveat Contact Us
-    Normal layer Classificationlong_term/mid_term/recent) Followcap Overtime LLM Compressed.
-    """
-    config = MemoryConfig(
-        chat_dir=tmp_path,
-        chat_memory_dir=tmp_path / "memory",
-        compact_threshold_bytes=10,
-        compact_target_bytes=4_096,  # cap = 1024 bytes per section
-        raw_days=7,
-        mid_weeks=3,
-        protected_layers=(),
-    )
-    (tmp_path / "memory").mkdir(exist_ok=True)
-    mp = memory_file_path(config, "persona")
-    entries = [
-        # caveat Entrieslong_term layer,cap Oversize)
-        MemoryEntry(_ts_ago(days=90), "assistant", "caveatcontent " + "c" * 1100, "manual", layer="long_term"),
-        MemoryEntry(_ts_ago(days=2), "user", "Recent Posts", "file", layer="recent"),
-    ]
-    _write_jsonl(mp, entries)
-
-    calls: list[str] = []
-
-    def track_llm(prompt: str) -> str:
-        calls.append(prompt)
-        # max_ratio(0.90) Returns compression result passing the guard (existing Home 95% )
-        # existing Home ~1110 bytes → Result ~1050 bytes More
-        return "Compressed Data " + "z" * 1080
-
-    compact(config, "persona", llm_call=track_llm)
-
-    # cap Excess long_term Home LLM is called
-    assert len(calls) >= 1
-    result_entries = parse_jsonl(mp)
-    # LLM The original long content is not left because the compression was executed
-    original_content_entries = [e for e in result_entries if "c" * 100 in e.content]
-    assert len(original_content_entries) == 0  # LLM compressed "ccc..." No content

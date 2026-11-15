@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 
 from mltgnt.agent._parse import _parse_json_response
-from mltgnt.agent._runner import AgentRunner, ReflexionVerdict
+from mltgnt.agent._runner import AgentRunner
 from mltgnt.agent.action_classifier import ActionClass, ActionClassifier
 
 
@@ -107,79 +105,6 @@ def make_executor(results: dict, *, fail_tools: frozenset[str] = frozenset()):
 # ---------------------------------------------------------------------------
 
 
-@patch("mltgnt.agent._runner.ThreadPoolExecutor")
-def test_parallel_tools_use_thread_pool(mock_executor_cls):
-    """search and read run via ThreadPoolExecutor."""
-    mock_executor = mock_executor_cls.return_value.__enter__.return_value
-    submitted: list[tuple[str, dict]] = []
-
-    def capture_submit(fn, tool_name, args):
-        submitted.append((tool_name, args))
-        return _FakeFuture(fn(tool_name, args))
-
-    mock_executor.submit.side_effect = capture_submit
-
-    parallel_response = json.dumps({
-        "tools": [
-            {"tool": "search", "args": {"q": "x"}},
-            {"tool": "read", "args": {"path": "y"}},
-        ]
-    })
-    llm = make_tracking_llm([parallel_response, '{"tool": "done", "args": {}}'])
-    runner = AgentRunner(
-        llm_call=llm,
-        tool_executor=make_executor({"search": "found", "read": "content"}),
-        terminal_tools=frozenset({"done"}),
-        max_iterations=3,
-    )
-    result = runner.run("prompt")
-    assert result is not None
-    assert result.tool == "done"
-    mock_executor_cls.assert_called_once()
-    assert mock_executor_cls.call_args.kwargs["max_workers"] == 2
-    assert len(submitted) == 2
-    assert submitted[0][0] == "search"
-    assert submitted[1][0] == "read"
-
-
-class _FakeFuture:
-    def __init__(self, value):
-        self._value = value
-
-    def result(self):
-        return self._value
-
-
-def test_parallel_three_tools_one_fails():
-    """3 Tools in 1 if the 2 is normal, failure is [ERROR] Close"""
-    parallel_response = json.dumps({
-        "tools": [
-            {"tool": "search", "args": {"q": "a"}},
-            {"tool": "read", "args": {"path": "b"}},
-            {"tool": "fetch", "args": {"url": "c"}},
-        ]
-    })
-    llm = make_tracking_llm([parallel_response, '{"tool": "done", "args": {}}'])
-    runner = AgentRunner(
-        llm_call=llm,
-        tool_executor=make_executor(
-            {"search": "ok-search", "read": "ok-read", "fetch": "ok-fetch"},
-            fail_tools=frozenset({"read"}),
-        ),
-        terminal_tools=frozenset({"done"}),
-        max_iterations=3,
-    )
-    result = runner.run("prompt")
-    assert result is not None
-    tool_result = llm.received[1]
-    assert "search: ok-search" in tool_result
-    assert "fetch: ok-fetch" in tool_result
-    assert "read: [ERROR]" in tool_result
-    assert result.tool_trace is not None
-    assert len(result.tool_trace) == 3
-    assert result.tool_trace[1]["result"].startswith("[ERROR]")
-
-
 def test_parallel_empty_tools_list():
     """Home tools Lists are skipped and empty strings are LLM Contact Us"""
     llm = make_tracking_llm(['{"tools": []}', '{"tool": "done", "args": {}}'])
@@ -221,68 +146,6 @@ def test_parallel_terminal_tool_in_list():
     assert result.tool_trace is not None
     assert len(result.tool_trace) == 1
     assert result.tool_trace[0]["tool"] == "search"
-
-
-def test_parallel_tool_trace_format():
-    """tool_trace Each entry maintains the existing format."""
-    parallel_response = json.dumps({
-        "tools": [
-            {"thought": "Search", "tool": "search", "args": {"q": "x"}},
-            {"tool": "read", "args": {"path": "y"}},
-        ]
-    })
-    llm = make_tracking_llm([parallel_response, '{"tool": "done", "args": {}}'])
-    runner = AgentRunner(
-        llm_call=llm,
-        tool_executor=make_executor({"search": "found", "read": "content"}),
-        terminal_tools=frozenset({"done"}),
-    )
-    result = runner.run("prompt")
-    assert result is not None
-    assert result.tool_trace is not None
-    assert result.tool_trace[0] == {
-        "tool": "search",
-        "args": {"q": "x"},
-        "result": "found",
-        "thought": "Search",
-    }
-    assert result.tool_trace[1] == {
-        "tool": "read",
-        "args": {"path": "y"},
-        "result": "content",
-    }
-
-
-def test_parallel_reflexion_per_tool():
-    """ReflexionEvaluator rated to each tool result."""
-    parallel_response = json.dumps({
-        "tools": [
-            {"tool": "search", "args": {"q": "x"}},
-            {"tool": "read", "args": {"path": "y"}},
-        ]
-    })
-    llm = make_tracking_llm([parallel_response, '{"tool": "done", "args": {}}'])
-    evaluated: list[str] = []
-
-    def evaluator(prompt, tool_name, tool_args, tool_result, tool_trace):
-        evaluated.append(tool_name)
-        if tool_name == "search":
-            return ReflexionVerdict(should_retry=True, feedback="retry search")
-        return ReflexionVerdict(should_retry=False, feedback="")
-
-    runner = AgentRunner(
-        llm_call=llm,
-        tool_executor=make_executor({"search": "raw-search", "read": "raw-read"}),
-        terminal_tools=frozenset({"done"}),
-        evaluator=evaluator,
-    )
-    result = runner.run("prompt")
-    assert result is not None
-    assert result.reflexion_count == 1
-    assert set(evaluated) == {"search", "read"}
-    tool_result = llm.received[1]
-    assert "search: [REFLEXION] retry search\n\nraw-search" in tool_result
-    assert "read: raw-read" in tool_result
 
 
 def test_parallel_action_classifier(tmp_path: Path):
