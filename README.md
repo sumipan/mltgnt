@@ -731,7 +731,7 @@ Every Python module under `src/mltgnt/` (155 modules at `v0.138.26`). "Depends t
 | `mltgnt.bridges.__init__` | Implementation module. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.audit_adapter` | Implementation module. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.files_adapter` | mltgnt.bridges.files_adapter | L4 → L5 (+ ghdag) |
-| `mltgnt.bridges.ghdag_bridge` | mltgnt.bridges.ghdag_bridge — wrapper around LLMPipelineAPI + wait_for_result. | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.ghdag_bridge` | mltgnt.bridges.ghdag_bridge — wrapper around TaskQueue + wait_for_result. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.hooks_adapter` | mltgnt.bridges.hooks_adapter — audit_writer callback factory for AgentRunner + DagHooks adapter. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.llm_adapter` | mltgnt.bridges.llm_adapter | L4 → L5 (+ ghdag) |
 | `mltgnt.cli.__init__` | Implementation module. | entry (CLI) |

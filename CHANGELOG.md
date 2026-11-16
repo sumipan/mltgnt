@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.138.80
+
+- Follow ghdag v0.142 `TaskQueue` in `enqueue_and_wait` / `enqueue_dag` (fixes ImportError on ghdag v0.142+).
+
 ## v0.138.49
 
 - **BREAKING** Dispatch preflight: removed `PreflightContext.secretary_memo` and `run_preflight(read_secretary_memo_fn=...)`. `memory_tail` is now the memory excerpt as-is; include extra notes in the context you pass (for example the memory worker excerpt).
