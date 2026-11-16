@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.138.80
+
 - Follow ghdag v0.142 `TaskQueue` in `enqueue_and_wait` / `enqueue_dag` (fixes ImportError on ghdag v0.142+).
 
 ## v0.138.49
