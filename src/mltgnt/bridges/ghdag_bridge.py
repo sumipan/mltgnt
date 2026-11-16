@@ -1,4 +1,4 @@
-"""mltgnt.bridges.ghdag_bridge — wrapper around LLMPipelineAPI + wait_for_result.
+"""mltgnt.bridges.ghdag_bridge — wrapper around TaskQueue + wait_for_result.
 
 Called from scheduler action: skill; keeps order/result files and exposes
 a (bool, str) interface.
@@ -259,7 +259,7 @@ def typecheck_dag(
 
 
 def _task_timeout_submit_kwargs(task_timeout_sec: float | None) -> dict:
-    """Build api.submit kwargs carrying annotations.timeout_sec when set."""
+    """Build api.enqueue kwargs carrying annotations.timeout_sec when set."""
     if task_timeout_sec is None:
         return {}
     return {"metadata": {"timeout_sec": task_timeout_sec}}
@@ -327,18 +327,14 @@ def enqueue_dag(
 
     from ghdag.pipeline import (
         InlineOrderBuilder,
-        LLMPipelineAPI,
-        PipelineState,
+        TaskQueue,
         wait_for_result,
     )
     from ghdag.workflow import StepConfig
 
-    state = PipelineState(
+    api = TaskQueue(
         state_dir=jobs_dir / ".pipeline-state",
         exec_jsonl_path=jobs_dir / "exec.jsonl",
-    )
-    api = LLMPipelineAPI(
-        pipeline_state=state,
         order_builder=order_builder or InlineOrderBuilder(),
         queue_dir=str(jobs_dir),
     )
@@ -383,7 +379,7 @@ def enqueue_dag(
             permission=permission,
         )
 
-        exec_lines = api.submit(
+        exec_lines = api.enqueue(
             [step_config],
             base_context=base_context,
             idempotency_key=idempotency_key if first_submit else None,
@@ -462,7 +458,7 @@ def enqueue_and_wait(
     run_result: SkillRunResult | None = None,
     task_timeout_sec: float | None = None,
 ) -> tuple[bool, str]:
-    """Submit an order via LLMPipelineAPI and wait for the result.
+    """Enqueue an order via TaskQueue and wait for the result.
 
     Args:
         prompt: Prompt body written to the order file (caller must already apply persona formatting)
@@ -482,18 +478,14 @@ def enqueue_and_wait(
     """
     from ghdag.pipeline import (
         InlineOrderBuilder,
-        LLMPipelineAPI,
-        PipelineState,
+        TaskQueue,
         wait_for_result,
     )
     from ghdag.workflow import StepConfig
 
-    state = PipelineState(
+    api = TaskQueue(
         state_dir=jobs_dir / ".pipeline-state",
         exec_jsonl_path=jobs_dir / "exec.jsonl",
-    )
-    api = LLMPipelineAPI(
-        pipeline_state=state,
         order_builder=order_builder or InlineOrderBuilder(),
         queue_dir=str(jobs_dir),
     )
@@ -501,7 +493,7 @@ def enqueue_and_wait(
     if not api.check_idempotency(idempotency_key):
         return True, ""
 
-    exec_lines = api.submit(
+    exec_lines = api.enqueue(
         [StepConfig(id="skill", template=prompt, engine=engine, model=model or "", permission=permission)],
         base_context={"workflow_name": "scheduler"},
         idempotency_key=idempotency_key,

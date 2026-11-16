@@ -89,11 +89,11 @@ class TestEnqueueDagDataFlow:
 
     def test_compose_failed_step_blocks_dependent_submission(self, tmp_path):
         """AC-11: The following steps depend on the previous step failure submit not."""
-        from ghdag.pipeline import LLMPipelineAPI
+        from ghdag.pipeline import TaskQueue
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         submitted_ids: list[str] = []
-        original_submit = LLMPipelineAPI.submit
+        original_submit = TaskQueue.enqueue
 
         def capture_submit(self_api, step_list, **kwargs):
             for s in step_list:
@@ -101,7 +101,7 @@ class TestEnqueueDagDataFlow:
             return original_submit(self_api, step_list, **kwargs)
 
         with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch.object(TaskQueue, "enqueue", capture_submit),
             patch(_WAIT, return_value=("failed_exit", "exit code 1")),
         ):
             results = enqueue_dag(
@@ -126,11 +126,11 @@ class TestEnqueueDagPipelineStatus:
     """AC-2: PIPELINE_STATUS Extraction / Injection /INVALID_STATE Home downstream ."""
 
     def test_pipeline_status_injected_into_downstream_context(self, tmp_path):
-        from ghdag.pipeline import LLMPipelineAPI
+        from ghdag.pipeline import TaskQueue
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         captured_contexts: list[dict] = []
-        original_submit = LLMPipelineAPI.submit
+        original_submit = TaskQueue.enqueue
 
         def capture_submit(self_api, step_list, base_context=None, **kwargs):
             captured_contexts.append(dict(base_context or {}))
@@ -142,7 +142,7 @@ class TestEnqueueDagPipelineStatus:
         mock_md_b.content = "summary"
 
         with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch.object(TaskQueue, "enqueue", capture_submit),
             patch(_WAIT, return_value=("success", "")),
             patch(_MD_READ, side_effect=[mock_md_a, mock_md_b]),
         ):
@@ -168,11 +168,11 @@ class TestEnqueueDagPipelineStatus:
         assert "step_a_result" in captured_contexts[1]
 
     def test_invalid_state_blocks_downstream(self, tmp_path):
-        from ghdag.pipeline import LLMPipelineAPI
+        from ghdag.pipeline import TaskQueue
 
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         submitted_ids: list[str] = []
-        original_submit = LLMPipelineAPI.submit
+        original_submit = TaskQueue.enqueue
 
         def capture_submit(self_api, step_list, **kwargs):
             for s in step_list:
@@ -183,7 +183,7 @@ class TestEnqueueDagPipelineStatus:
         mock_md.content = "blocked\nPIPELINE_STATUS: INVALID_STATE\n"
 
         with (
-            patch.object(LLMPipelineAPI, "submit", capture_submit),
+            patch.object(TaskQueue, "enqueue", capture_submit),
             patch(_WAIT, return_value=("success", "")),
             patch(_MD_READ, return_value=mock_md),
         ):
