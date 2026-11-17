@@ -59,6 +59,9 @@ REMOVED_README_TOKENS = (
     "_write_post_content",
     "_build_meta",
     "optional adapters",
+    "persona × secretary",
+    "Source inventory",
+    "v0.107.2",
 )
 
 _FIVE_PART_TOKENS = ("persona", "memory", "skill", "scheduler", "media")
