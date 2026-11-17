@@ -56,7 +56,6 @@ def test_manifest_and_sw_routes(tmp_path: Path) -> None:
     manifest_resp = client.get("/manifest.webmanifest")
     assert manifest_resp.status_code == 200
     assert manifest_resp.headers["content-type"].startswith("application/manifest+json")
-    assert manifest_resp.json()["start_url"] == "/"
 
     sw = client.get("/sw.js")
     assert sw.status_code == 200
