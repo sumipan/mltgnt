@@ -239,10 +239,9 @@ def test_worker_sends_only_new_agent_messages(tmp_path: Path) -> None:
     subs = PushSubscriptionStore(tmp_path / "w")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
     worker = PushWorker(
-        store,
+        [("general", store)],
         subs,
         _enabled_push(),
-        channel_slug="general",
         display_names={"bot": "Bot"},
         stop_event=stop,
         send=lambda _sub, payload: sent.append(payload),
@@ -268,10 +267,9 @@ def test_worker_follows_next_day(tmp_path: Path) -> None:
     subs = PushSubscriptionStore(tmp_path / "w")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
     worker = PushWorker(
-        store,
+        [("general", store)],
         subs,
         _enabled_push(),
-        channel_slug="general",
         display_names={},
         stop_event=stop,
         send=lambda _sub, payload: sent.append(payload),
@@ -296,16 +294,15 @@ def test_worker_removes_gone_subscription(tmp_path: Path) -> None:
         response = type("R", (), {"status_code": 410})()
 
     worker = PushWorker(
-        store,
+        [("general", store)],
         subs,
         _enabled_push(),
-        channel_slug="general",
         display_names={},
         stop_event=threading.Event(),
         send=lambda _sub, _payload: (_ for _ in ()).throw(GoneError()),
         poll_interval_sec=0.01,
     )
-    worker._maybe_notify({"kind": "message", "author": "bot", "message_id": "m", "thread_ts": None})
+    worker._maybe_notify({"kind": "message", "author": "bot", "message_id": "m", "thread_ts": None}, "general")
     assert subs.active() == []
 
 
@@ -322,16 +319,15 @@ def test_worker_continues_after_other_send_errors(tmp_path: Path) -> None:
             raise RuntimeError("temporary")
 
     worker = PushWorker(
-        store,
+        [("general", store)],
         subs,
         _enabled_push(),
-        channel_slug="general",
         display_names={},
         stop_event=threading.Event(),
         send=flaky_send,
         poll_interval_sec=0.01,
     )
-    worker._maybe_notify({"kind": "message", "author": "bot", "message_id": "m", "thread_ts": None})
+    worker._maybe_notify({"kind": "message", "author": "bot", "message_id": "m", "thread_ts": None}, "general")
     assert calls["n"] == 2
 
 
@@ -348,10 +344,9 @@ def test_push_worker_start_and_stop_are_idempotent(tmp_path: Path) -> None:
     subs = PushSubscriptionStore(tmp_path / "w")
     stop = threading.Event()
     worker = PushWorker(
-        store,
+        [("general", store)],
         subs,
         _enabled_push(),
-        channel_slug="general",
         display_names={},
         stop_event=stop,
         send=lambda _sub, _payload: None,
@@ -365,6 +360,35 @@ def test_push_worker_start_and_stop_are_idempotent(tmp_path: Path) -> None:
     assert worker._thread is not None
     assert not worker._thread.is_alive()
 
+
+
+def test_worker_notifies_with_the_row_channel_slug(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#7205 AC6."""
+    clock = FakeClock()
+    main = WebChatStore(tmp_path / "main", clock=clock)
+    side = WebChatStore(tmp_path / "side", clock=clock)
+    sent: list[dict[str, str]] = []
+    subs = PushSubscriptionStore(tmp_path / "main")
+    subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
+    stop = threading.Event()
+    worker = PushWorker(
+        [("main", main), ("side", side)],
+        subs,
+        _enabled_push(),
+        display_names={},
+        stop_event=stop,
+        send=lambda _sub, payload: sent.append(payload),
+        poll_interval_sec=0.01,
+    )
+    worker.start()
+    time.sleep(0.05)
+    side.append(message_id="s1", author="bot", text="side")
+    main.append(message_id="m1", author="bot", text="main")
+    time.sleep(0.2)
+    worker.stop()
+    urls = {p["url"] for p in sent}
+    assert "/c/side/t/s1" in urls
+    assert "/c/main/t/m1" in urls
 
 
 def test_push_disabled_when_pywebpush_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

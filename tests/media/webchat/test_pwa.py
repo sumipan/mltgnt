@@ -38,11 +38,12 @@ def _png_size(data: bytes) -> tuple[int, int]:
     return width, height
 
 
-def test_manifest_uses_channel_slug_and_standalone(tmp_path: Path) -> None:
+def test_manifest_starts_at_root(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#7205 AC7."""
     config = _config(tmp_path, channel_name="Ops", channel_slug="ops-room")
     body = manifest(config)
     assert body["name"] == "Ops"
-    assert body["start_url"] == "/c/ops-room"
+    assert body["start_url"] == "/"
     assert body["scope"] == "/"
     assert body["display"] == "standalone"
     icons = body["icons"]
@@ -55,7 +56,6 @@ def test_manifest_and_sw_routes(tmp_path: Path) -> None:
     manifest_resp = client.get("/manifest.webmanifest")
     assert manifest_resp.status_code == 200
     assert manifest_resp.headers["content-type"].startswith("application/manifest+json")
-    assert manifest_resp.json()["start_url"] == "/c/general"
 
     sw = client.get("/sw.js")
     assert sw.status_code == 200
