@@ -10,7 +10,13 @@ from types import MappingProxyType
 
 from mltgnt.media._core.config import MediaConfig
 
-__all__ = ["WebChatMediaConfig", "WebPushConfig", "validate_header_meters_url"]
+__all__ = [
+    "ResolvedWebChatChannel",
+    "WebChatChannel",
+    "WebChatMediaConfig",
+    "WebPushConfig",
+    "validate_header_meters_url",
+]
 
 
 def validate_header_meters_url(value: str | None) -> str | None:
@@ -48,6 +54,27 @@ class WebPushConfig:
 
 
 @dataclass(frozen=True)
+class WebChatChannel:
+    """One additional WebChat channel declared in ``WebChatMediaConfig.channels``."""
+
+    slug: str
+    name: str
+    author: str | None = None
+    store_dir: Path | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedWebChatChannel:
+    """A WebChat channel after defaults are applied (default channel or an entry in ``channels``)."""
+
+    slug: str
+    name: str
+    space_id: str
+    store_dir: Path
+    author: str | None
+
+
+@dataclass(frozen=True)
 class WebChatMediaConfig(MediaConfig):
     """Message store directory (required) and the local listen address of the single channel.
 
@@ -72,6 +99,7 @@ class WebChatMediaConfig(MediaConfig):
     pwa_icon_192: str | None = None
     pwa_icon_512: str | None = None
     header_meters_url: str | None = None
+    channels: tuple[WebChatChannel, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "header_meters_url", validate_header_meters_url(self.header_meters_url))
@@ -81,6 +109,53 @@ class WebChatMediaConfig(MediaConfig):
             object.__setattr__(self, "avatars", MappingProxyType(dict(self.avatars)))
         if not isinstance(self.display_names, MappingProxyType):
             object.__setattr__(self, "display_names", MappingProxyType(dict(self.display_names)))
+        ch_tuple = tuple(self.channels)
+        object.__setattr__(self, "channels", ch_tuple)
+        seen: set[str] = set()
+        for ch in ch_tuple:
+            if not re.fullmatch(r"[a-z0-9-]+", ch.slug):
+                raise ValueError("channel slug must match [a-z0-9-]+")
+            if ch.slug == self.channel_slug:
+                raise ValueError("channel slug must not match channel_slug")
+            if ch.slug in seen:
+                raise ValueError("duplicate channel slug")
+            seen.add(ch.slug)
+
+    @property
+    def resolved_channels(self) -> tuple[ResolvedWebChatChannel, ...]:
+        default = ResolvedWebChatChannel(
+            slug=self.channel_slug,
+            name=self.channel_name,
+            space_id=self.space_id,
+            store_dir=Path(self.store_dir),
+            author=None,
+        )
+        parent = Path(self.store_dir).parent
+        extra: list[ResolvedWebChatChannel] = []
+        for ch in self.channels:
+            store_dir = ch.store_dir if ch.store_dir is not None else parent / "channels" / ch.slug
+            extra.append(
+                ResolvedWebChatChannel(
+                    slug=ch.slug,
+                    name=ch.name,
+                    space_id=f"{self.space_id}.{ch.slug}",
+                    store_dir=Path(store_dir),
+                    author=ch.author,
+                )
+            )
+        return (default, *extra)
+
+    def channel_by_space(self, space: str) -> ResolvedWebChatChannel | None:
+        for ch in self.resolved_channels:
+            if ch.space_id == space:
+                return ch
+        return None
+
+    def channel_by_slug(self, slug: str) -> ResolvedWebChatChannel | None:
+        for ch in self.resolved_channels:
+            if ch.slug == slug:
+                return ch
+        return None
 
     @property
     def resolved_files_dir(self) -> Path:

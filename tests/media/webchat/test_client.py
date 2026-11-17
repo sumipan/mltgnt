@@ -9,7 +9,7 @@ import pytest
 
 from mltgnt.interfaces.media import MediaClient, Status
 from mltgnt.media.webchat.client import WebChatClient
-from mltgnt.media.webchat.config import WebChatMediaConfig
+from mltgnt.media.webchat.config import WebChatChannel, WebChatMediaConfig
 from mltgnt.media.webchat.store import WebChatStore
 
 
@@ -187,3 +187,85 @@ def test_upload_posts_an_image_message(tmp_path: Path) -> None:
 
 def test_upload_missing_file_is_false(tmp_path: Path) -> None:
     assert WebChatClient(_config(tmp_path)).upload(str(tmp_path / "nope.png"), "webchat") is False
+
+
+def _multi_channel_config(tmp_path: Path) -> WebChatMediaConfig:
+    root = tmp_path / "root"
+    return WebChatMediaConfig(
+        state_dir=root / "s",
+        pending_dir=root / "p",
+        events_dir=root / "e",
+        store_dir=root / "chat" / "channel",
+        channel_slug="main",
+        channel_name="Main",
+        channels=(WebChatChannel(slug="side", name="Side", author="persona-a"),),
+    )
+
+
+def test_post_routes_by_space_to_the_channel_store(tmp_path: Path) -> None:
+    """Issue #7201 AC3."""
+    config = _multi_channel_config(tmp_path)
+    client = WebChatClient(config)
+    assert client.post("a", "webchat") is not None
+    assert client.post("b", "webchat.side") is not None
+    default_rows = [r["text"] for r in client.store_for("webchat").read_all()]
+    side_rows = [r["text"] for r in client.store_for("webchat.side").read_all()]
+    assert default_rows == ["a"]
+    assert side_rows == ["b"]
+    side_jsonl = list((tmp_path / "root" / "chat" / "channels" / "side").glob("*.jsonl"))
+    assert len(side_jsonl) >= 1
+    default_texts = [r["text"] for r in client.store_for("webchat").read_all()]
+    assert "b" not in default_texts
+
+
+def test_post_unknown_space_writes_nothing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Issue #7201 AC4."""
+    caplog.set_level(logging.WARNING)
+    config = _multi_channel_config(tmp_path)
+    client = WebChatClient(config)
+    client.post("warm", "webchat")
+    counts_before = {ch.space_id: len(client.store_for(ch.space_id).read_all()) for ch in config.resolved_channels}
+    caplog.clear()
+    assert client.post("x", "other") is None
+    counts_after = {ch.space_id: len(client.store_for(ch.space_id).read_all()) for ch in config.resolved_channels}
+    assert counts_before == counts_after
+    assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
+    image = tmp_path / "chart.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n0000")
+    assert client.upload(str(image), "other") is False
+
+
+def test_post_author_precedence_extra_channel_client(tmp_path: Path) -> None:
+    """Issue #7201 AC5."""
+    config = _multi_channel_config(tmp_path)
+    client = WebChatClient(config, author="assistant")
+    mid_side = client.post("b", "webchat.side")
+    assert mid_side is not None
+    row = client.store_for("webchat.side").latest(mid_side)
+    assert row is not None and row["author"] == "persona-a"
+    mid = client.post("b", "webchat.side", extra={"author": "persona-b"})
+    assert mid is not None
+    row = client.store_for("webchat.side").latest(mid)
+    assert row is not None and row["author"] == "persona-b"
+    mid_default = client.post("a", "webchat")
+    assert mid_default is not None
+    row = client.store_for("webchat").latest(mid_default)
+    assert row is not None and row["author"] == "assistant"
+
+
+def test_update_status_react_find_the_message_channel(tmp_path: Path) -> None:
+    """Issue #7201 AC6."""
+    config = _multi_channel_config(tmp_path)
+    client = WebChatClient(config)
+    message_id = client.post("v1", "webchat.side")
+    assert message_id is not None
+    default_count = len(client.store_for("webchat").read_all())
+    assert client.update(message_id, "v2") is True
+    assert client.set_status(message_id, Status.DONE) is True
+    assert client.react(message_id, "eyes") is True
+    row = client.store_for("webchat.side").latest(message_id)
+    assert row is not None
+    assert (row["text"], row["status"], row["reactions"]) == ("v2", "done", ["eyes"])
+    assert len(client.store_for("webchat").read_all()) == default_count

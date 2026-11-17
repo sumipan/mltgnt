@@ -14,7 +14,7 @@ from typing import Any
 
 from mltgnt.interfaces.hub import HubDisplay
 from mltgnt.interfaces.media import Status
-from mltgnt.media.webchat.config import WebChatMediaConfig
+from mltgnt.media.webchat.config import ResolvedWebChatChannel, WebChatMediaConfig
 from mltgnt.media.webchat.files import WebChatFiles
 from mltgnt.media.webchat.store import WebChatStore
 
@@ -56,7 +56,7 @@ def _display_from_extra(extra: Mapping[str, Any] | None) -> dict[str, str] | Non
 
 
 class WebChatClient:
-    """Single-channel client: ``space`` is accepted for the contract but not stored."""
+    """Multi-channel client: ``space`` selects which channel store receives each write."""
 
     def __init__(
         self,
@@ -67,7 +67,13 @@ class WebChatClient:
         author: str = "assistant",
     ) -> None:
         self._config = config
-        self._store = store if store is not None else WebChatStore(config.store_dir)
+        self._default_store = store if store is not None else WebChatStore(config.store_dir)
+        self._stores_by_space: dict[str, WebChatStore] = {}
+        for ch in config.resolved_channels:
+            if ch.space_id == config.space_id:
+                self._stores_by_space[ch.space_id] = self._default_store
+            else:
+                self._stores_by_space[ch.space_id] = WebChatStore(ch.store_dir)
         self._files = (
             files
             if files is not None
@@ -77,7 +83,20 @@ class WebChatClient:
 
     @property
     def store(self) -> WebChatStore:
-        return self._store
+        return self._default_store
+
+    def store_for(self, space: str) -> WebChatStore | None:
+        return self._stores_by_space.get(space)
+
+    def _channel_for_space(self, space: str) -> ResolvedWebChatChannel | None:
+        return self._config.channel_by_space(space)
+
+    def _post_author(self, channel: ResolvedWebChatChannel, extra: Mapping[str, Any] | None) -> str:
+        channel_author = channel.author if channel.author is not None else self._author
+        return _author_from_extra(extra, channel_author)
+
+    def _upload_author(self, channel: ResolvedWebChatChannel) -> str:
+        return channel.author if channel.author is not None else self._author
 
     def post(
         self,
@@ -87,14 +106,19 @@ class WebChatClient:
         *,
         extra: Mapping[str, Any] | None = None,
     ) -> str | None:
+        channel = self._channel_for_space(space)
+        if channel is None:
+            _log.warning("webchat client: unknown space=%s", space)
+            return None
+        store = self._stores_by_space[channel.space_id]
         message_id = uuid.uuid4().hex
-        author = _author_from_extra(extra, self._author)
+        author = self._post_author(channel, extra)
         append_extra: dict[str, Any] = {}
         display = _display_from_extra(extra)
         if display is not None:
             append_extra["display"] = display
         try:
-            self._store.append(
+            store.append(
                 message_id=message_id,
                 author=author,
                 text=text,
@@ -114,11 +138,16 @@ class WebChatClient:
 
     def upload(self, path: str, space: str, thread: str | None = None) -> bool:
         """Post the image at ``path`` as a message with no text. False for non-images or on failure."""
+        channel = self._channel_for_space(space)
+        if channel is None:
+            _log.warning("webchat client: unknown space=%s", space)
+            return False
+        store = self._stores_by_space[channel.space_id]
         try:
             entry = self._files.save_path(Path(path))
-            self._store.append(
+            store.append(
                 message_id=uuid.uuid4().hex,
-                author=self._author,
+                author=self._upload_author(channel),
                 text="",
                 thread_ts=thread or None,
                 files=[entry],
@@ -129,23 +158,27 @@ class WebChatClient:
         return True
 
     def react(self, message_id: str, name: str) -> bool:
-        try:
-            row = self._store.add_reaction(message_id, name)
-        except (OSError, ValueError) as exc:
-            _log.warning("webchat client: reaction failed message_id=%s: %s", message_id, exc)
-            return False
-        if row is None:
-            _log.warning("webchat client: unknown message_id=%s for reaction", message_id)
-            return False
-        return True
+        for ch in self._config.resolved_channels:
+            store = self._stores_by_space[ch.space_id]
+            try:
+                row = store.add_reaction(message_id, name)
+            except (OSError, ValueError) as exc:
+                _log.warning("webchat client: reaction failed message_id=%s: %s", message_id, exc)
+                return False
+            if row is not None:
+                return True
+        _log.warning("webchat client: unknown message_id=%s for reaction", message_id)
+        return False
 
     def _revise(self, message_id: str, kind: str, **changes: str) -> bool:
-        try:
-            row = self._store.revise(message_id, kind, **changes)
-        except (OSError, ValueError) as exc:
-            _log.warning("webchat client: %s failed message_id=%s: %s", kind, message_id, exc)
-            return False
-        if row is None:
-            _log.warning("webchat client: unknown message_id=%s", message_id)
-            return False
-        return True
+        for ch in self._config.resolved_channels:
+            store = self._stores_by_space[ch.space_id]
+            try:
+                row = store.revise(message_id, kind, **changes)
+            except (OSError, ValueError) as exc:
+                _log.warning("webchat client: %s failed message_id=%s: %s", kind, message_id, exc)
+                return False
+            if row is not None:
+                return True
+        _log.warning("webchat client: unknown message_id=%s", message_id)
+        return False
