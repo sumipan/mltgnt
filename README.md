@@ -20,7 +20,6 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 Pre-1.0. The current release is `0.139.2` (tag `v0.139.2`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
-
 ## Not
 
 | mltgnt is not | Use instead |
@@ -176,7 +175,6 @@ media.set_status(media.post("hello", "general"), Status.DONE)
 
 ## CLI Reference
 
-
 The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
 
 | Command | Purpose |
@@ -242,7 +240,6 @@ Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` 
 | `3` | `ImportError` when `fastapi` / `uvicorn` are not installed, or `DependencyError` from the server (`pip install 'mltgnt[hub]'`) |
 
 ## Public API
-
 
 ### Top level: `mltgnt.__all__`
 
@@ -858,7 +855,6 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 
 ## Configuration
 
-
 mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
 
 ### Environment variables
@@ -1019,7 +1015,6 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 
 ## Error Reference
 
-
 | Exception | Module | Base | Raised when |
 |-----------|--------|------|-------------|
 | `MltgntError` | `mltgnt.exceptions` | `Exception` | Base class. `mltgnt run` maps any subclass not listed below to exit code `1` |
@@ -1049,7 +1044,6 @@ Built-in exceptions raised by the public API:
 - Pin an exact tag in production, for example `@v0.139.2` (update when releasing).
 
 ## Deprecated API
-
 
 | Deprecated | Module | Replacement | Warning |
 |------------|--------|-------------|---------|
