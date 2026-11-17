@@ -16,25 +16,10 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.138.26)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.139.1)-orange)
 
-Pre-1.0. The current release is `0.138.26` (tag `v0.138.26`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.139.1` (tag `v0.139.1`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
-## Source inventory (`v0.138.26`)
-
-Regenerated from the `v0.138.26` tree (`package 0.138.0`, ghdag pin `v0.107.2`) on 2026-11-09. Row counts below match the tables in this file.
-
-| Inventory item | Count |
-|----------------|------:|
-| Python modules under `src/mltgnt/` | 155 |
-| `mltgnt.__all__` exports | 23 |
-| `mltgnt.agent.__all__` exports | 38 |
-| `mltgnt.media.__all__` exports | 27 |
-| Direct `os.environ` / `os.getenv` keys in library code | 4 (`REPO_ROOT`, `SKILL_IO_TYPECHECK`, `THREAD_PERSONA_TTL_DAYS`, `MLTGNT_DEFAULT_ENGINE`) |
-| `SkillConfig.passthrough_env` keys | host-declared at startup |
-| Exceptions in [Error Reference](#error-reference) | 9 |
-| Rows in [Deprecated API](#deprecated-api) | 3 |
-| CLI commands documented | 4 (`run`, `memory dream show`, `memory dream forget`, `hub serve`) |
 
 ## Not
 
@@ -50,31 +35,31 @@ Regenerated from the `v0.138.26` tree (`package 0.138.0`, ghdag pin `v0.107.2`) 
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.138.26"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.139.1"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.138.26"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.139.1"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.138.26"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.139.1"
 
 # WebChat Web Push (includes the webchat dependencies and pywebpush)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.138.26"
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.139.1"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
-pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.138.26"
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.139.1"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.138.26"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.139.1"
 ```
 
 See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.138.26` |
+| Distribution | `mltgnt` `0.139.1` |
 | Python | `>=3.10` |
-| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, `ghdag @ git+https://github.com/sumipan/ghdag.git@v0.107.2` |
+| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, plus `ghdag` as a git tag pin declared in `pyproject.toml` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
 | Extra `webchat-push` | `fastapi>=0.100`, `uvicorn>=0.20`, `pywebpush` (enables VAPID push when `WebChatMediaConfig.push` is configured) |
@@ -191,7 +176,6 @@ media.set_status(media.post("hello", "general"), Status.DONE)
 
 ## CLI Reference
 
-Inventory source: `src/mltgnt/cli/main.py`, `src/mltgnt/cli/memory.py`, and `src/mltgnt/cli/hub.py` (`argparse`) at `v0.138.26`.
 
 The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
 
@@ -259,7 +243,6 @@ Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` 
 
 ## Public API
 
-Inventory source: `__all__` and public re-exports under `src/mltgnt/` at `v0.138.26` (23 top-level names).
 
 ### Top level: `mltgnt.__all__`
 
@@ -488,7 +471,7 @@ Dependency-free DTOs and Protocols that every layer shares.
 | `MediaClient` | `post(text, space, thread=None, *, extra=None) -> str \| None`, `update(message_id, text) -> bool`, `set_status(message_id, status) -> bool`, `upload(path, space, thread=None) -> bool`, `react(message_id, name) -> bool`. Failures return `None` or `False` instead of raising |
 | `adapt_client` | `(obj) -> MediaClient`. An object with `post` passes through unchanged. An object with only `post_message` is wrapped, with one `DeprecationWarning`. Anything else raises `TypeError` |
 | `HubDisplay` | `name`, `icon_url` (optional). Self-declared sender presentation on hub envelopes; not used for routing or auth. `from_mapping` / `to_mapping` round-trip JSON |
-| `HubMessage` | Envelope with `display: HubDisplay \| None` on outbound rows (since `v0.131.0`) |
+| `HubMessage` | Envelope with `display: HubDisplay \| None` on outbound rows |
 
 ### `mltgnt.media`
 
@@ -533,9 +516,9 @@ Dependency-free DTOs and Protocols that every layer shares.
 | Module | Main names | Purpose |
 |--------|------------|---------|
 | `config` | `WebChatMediaConfig`, `WebChatChannel`, `ResolvedWebChatChannel`, `WebPushConfig` | See [Media settings](#media-settings) |
-| `pwa` | `manifest`, `service_worker_source`, `resolve_pwa_icon` | PWA manifest, service worker source, and icon paths |
+| `pwa` | `manifest`, `service_worker_source`, `resolve_pwa_icon` | PWA manifest (`start_url` is `/`), service worker source, and icon paths |
 | `push` | `PushSubscriptionStore`, `PushWorker`, `push_enabled` | Web Push subscription JSONL store and tail worker over all channel stores |
-| `client` | `WebChatClient` | `WebChatClient(config, *, store=None, files=None, author="assistant")`. `post` / `upload` choose the channel store by `space`; unknown `space` returns `None` / `False`. `upload(path, space, thread)` posts a PNG / JPEG / GIF / WebP image as a message |
+| `client` | `WebChatClient` | `WebChatClient(config, *, store=None, files=None, author="assistant")`. `store_for(space)` returns the per-channel `WebChatStore` (or `None`). `post` / `upload` choose the channel store by `space`; unknown `space` returns `None` / `False`. `upload(path, space, thread)` posts a PNG / JPEG / GIF / WebP image as a message |
 | `files` | `WebChatFiles`, `CONTENT_TYPES`, `content_type_for` | Message images under `<files_dir>/<YYYY-MM-DD>/<hex>.<ext>`; the relative path is the file id |
 | `store` | `WebChatStore`, `KINDS`, `MESSAGE_KINDS` | `WebChatStore` subclasses `JsonlMessageStore` (`mltgnt.media._core.jsonl_store`). Daily JSONL of message snapshots. `KINDS = ("message", "update", "status", "bookmark", "reaction")` |
 | `app` | `create_app`, `serve`, `EventHandler`, `parse_event_id` | `create_app(config, bridge, *, store=None, files=None, poll_interval_sec=0.5, stream_timeout_sec=None)` serves `GET /` (redirects to the default channel), slug routes `GET /c/{slug}`, `GET /c/{slug}/t/{message_id}` (thread permalink), `GET /c/{slug}/p/{message_id}` (message permalink), `GET /c/{slug}/bookmarks`, `GET /config` (includes `push_enabled`, `channels`, and `default_channel`), `GET /api/channels`, per-channel API under `GET /api/c/{slug}/messages` (`?day=`, or `?limit=` with optional `&before=<ISO ts>`), `POST /api/c/{slug}/messages`, `GET /api/c/{slug}/threads/{thread_id}`, `POST /api/c/{slug}/messages/{message_id}/bookmark`, `GET /api/c/{slug}/bookmarks`, `GET /api/c/{slug}/stream` (SSE), PWA routes (`/manifest.webmanifest`, `/sw.js`, `/pwa/icon-192.png`, `/pwa/icon-512.png`), optional push routes when enabled (`/push/vapid-public-key`, `POST /push/subscriptions`, `DELETE /push/subscriptions`), `GET /assets/{name}`, `POST /files?name=` (raw image body), `GET /files/{day}/{name}`. `PushWorker` tails all channel stores when push is enabled. `serve(app, config)` listens on `config.host:config.port` |
@@ -548,8 +531,8 @@ Dependency-free DTOs and Protocols that every layer shares.
 | Module | Main names | Purpose |
 |--------|------------|---------|
 | `config` | `HubMediaConfig` | Remote hub client settings: `hub_url`, `host_id`, `token_env`, `rooms`, `cursor_dir`, `poll_interval_sec`, `space_prefix`, `guard`, optional `outbound_filter` |
-| `guard` | `GuardConfig`, `GuardVerdict`, `check` | Pure hop / rate / agent-run limits before posting (`hop_limit`, `max_agent_run`, `min_interval_sec`, `room_daily_limit`). **`too_fast` applies only within an existing thread**; root posts are not subject to the room-wide interval check (since `v0.135.2`). |
-| `client` | `HubClient`, `UrllibTransport` | `HubClient(config, *, persona, transport=None, display=None)` is a `MediaClient` over the hub HTTP API; optional `display` sets `HubMessage.display` on outbound posts. `UrllibTransport` implements `HubTransport`. Both expose **`HubClient.last_error`** and **`UrllibTransport.last_error`** (`str | None`) with structured reasons such as **`http:<status>:<reason>`** on HTTP API rejection; transport return types are unchanged (since `v0.135.2`). |
+| `guard` | `GuardConfig`, `GuardVerdict`, `check` | Pure hop / rate / agent-run limits before posting (`hop_limit`, `max_agent_run`, `min_interval_sec`, `room_daily_limit`). **`too_fast` applies only within an existing thread**; root posts are not subject to the room-wide interval check. |
+| `client` | `HubClient`, `UrllibTransport` | `HubClient(config, *, persona, transport=None, display=None)` is a `MediaClient` over the hub HTTP API; optional `display` sets `HubMessage.display` on outbound posts. `UrllibTransport` implements `HubTransport`. Both expose **`HubClient.last_error`** and **`UrllibTransport.last_error`** (`str | None`) with structured reasons such as **`http:<status>:<reason>`** on HTTP API rejection; transport return types are unchanged. |
 | `inbound` | `to_media_event` | Hub poll payload → `MediaEvent` (uses `space_prefix` + room id) |
 | `subscriber` | `HubSubscriber` | `DaemonComponent` that polls rooms, persists cursors under `cursor_dir`, and calls `handle_event` |
 | `server` | `HubServerConfig`, `load_server_config`, `create_app`, `serve`, `parse_cursor`, `purge_expired_daily_files` | FastAPI relay with per-room `JsonlMessageStore`, bearer auth from `token_env`, guard checks, SSE poll |
@@ -712,11 +695,11 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/` (155 modules at `v0.138.26`). "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
-| `mltgnt.__init__` | mltgnt — type contracts and chat I/O for persona × secretary (OSS core). | entry |
+| `mltgnt.__init__` | mltgnt — building blocks for persona agents that live in chat (persona, memory, skills, scheduler and loop, media). | entry |
 | `mltgnt.__main__` | Implementation module. | entry |
 | `mltgnt.agent.__init__` | mltgnt.agent — generic agent loop + decision-layer skeleton (#3318). | L2 → L3–L5 |
 | `mltgnt.agent._parse` | mltgnt.agent._parse — parse JSON from an LLM response. | L2 → L3–L5 |
@@ -875,7 +858,6 @@ Every Python module under `src/mltgnt/` (155 modules at `v0.138.26`). "Depends t
 
 ## Configuration
 
-Inventory source: configuration dataclasses in `mltgnt.config`, media configs, and direct environment reads in `src/mltgnt/**/*.py` at `v0.138.26`.
 
 mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
 
@@ -883,7 +865,7 @@ mltgnt hardcodes no host paths. Every directory comes from a config object or a 
 
 | Variable | Read by | Default | Effect |
 |----------|---------|---------|--------|
-| names in `get_skill_config().passthrough_env` | `mltgnt.skill.runner` | empty | Replaces `$KEY` in skill bodies. Declare at startup with `from mltgnt.config import SkillConfig, set_skill_config` and `set_skill_config(SkillConfig(passthrough_env=("NOTES_ROOT", ...)))`. Undeclared `$KEY` stay as is (since `v0.126.0`, `$NIKKI_ROOT` is not implicit). Built-in keys win over passthrough |
+| names in `get_skill_config().passthrough_env` | `mltgnt.skill.runner` | empty | Replaces `$KEY` in skill bodies. Declare at startup with `from mltgnt.config import SkillConfig, set_skill_config` and `set_skill_config(SkillConfig(passthrough_env=("NOTES_ROOT", ...)))`. Undeclared `$KEY` stay as is. Built-in keys win over passthrough |
 | `REPO_ROOT` | `mltgnt.skill.runner` | empty | Replaces `$REPO_ROOT` in skill bodies |
 | `SKILL_IO_TYPECHECK` | `mltgnt.bridges.ghdag_bridge.enqueue_dag` | enabled | `0` turns off the skill I/O type check between DAG steps |
 | `THREAD_PERSONA_TTL_DAYS` | `mltgnt.conversation.thread_persona_store` | `30` | Lifetime of conversation-to-persona bindings. Invalid values fall back to `30`. Ignored once a `ConversationConfig` is configured |
@@ -1037,7 +1019,6 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 
 ## Error Reference
 
-Inventory source: `mltgnt.exceptions`, package `__all__`, and raised types documented against CLI exit codes at `v0.138.26`.
 
 | Exception | Module | Base | Raised when |
 |-----------|--------|------|-------------|
@@ -1065,11 +1046,10 @@ Built-in exceptions raised by the public API:
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.138.26` (update when releasing).
+- Pin an exact tag in production, for example `@v0.139.1` (update when releasing).
 
 ## Deprecated API
 
-Inventory source: `CHANGELOG.md` entries from `v0.126.0` through `v0.136.0` (removed aliases are not listed as current API). Releases `v0.136.1` and `v0.136.3` are patch bumps with no `CHANGELOG.md` section; the `v0.136.4` section covers testing policy only, with no public API change.
 
 | Deprecated | Module | Replacement | Warning |
 |------------|--------|-------------|---------|
