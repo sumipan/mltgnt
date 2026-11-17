@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.139.0
+
 - **WebChat multi-channel config**: add `WebChatChannel`, `ResolvedWebChatChannel`, and `WebChatMediaConfig.channels` for extra channels (`space_id` `<base>.<slug>`, default store under `<store_dir>/../channels/<slug>`). `WebChatClient` routes `post` / `upload` by `space` and adds `store_for(space)`.
 - **BREAKING**: `WebChatClient.post` / `upload` no longer write to the default channel when `space` is unknown; they return `None` / `False` and log a warning instead.
 
