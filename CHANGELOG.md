@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.139.1
+
 - **BREAKING**: WebChat message APIs move to `GET /api/channels` and `GET|POST /api/c/{slug}/...` (messages, threads, bookmarks, stream). Channel-less `/messages` paths are removed.
 - **BREAKING**: `GET /config` returns `channels` and `default_channel` instead of `channel_name` / `channel_slug`.
 - **BREAKING**: `PushWorker` takes `channels: Sequence[tuple[str, WebChatStore]]` instead of `(store, *, channel_slug=...)`.
