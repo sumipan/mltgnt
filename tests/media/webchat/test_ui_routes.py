@@ -76,7 +76,24 @@ def test_custom_channel_slug_redirect_and_config(tmp_path: Path) -> None:
     resp = client.get("/", follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["location"] == "/c/ops-1"
-    assert client.get("/config").json()["channel_slug"] == "ops-1"
+    cfg = client.get("/config").json()
+    assert cfg["default_channel"] == "ops-1"
+    assert cfg["channels"] == [{"slug": "ops-1", "name": "general"}]
+
+
+def test_index_html_uses_channel_api_and_channel_list() -> None:
+    """Refs sumipan/nexus#7205 AC8."""
+    assert INDEX_HTML.isascii()
+    for token in ('"/api/c/"', "/api/channels", "channel-list", "webchat.read."):
+        assert token in INDEX_HTML
+    for forbidden in (
+        'fetch("/messages',
+        'fetch("/threads/',
+        'fetch("/bookmarks',
+        'new EventSource("/stream")',
+        "config.channel_slug",
+    ):
+        assert forbidden not in INDEX_HTML
 
 
 

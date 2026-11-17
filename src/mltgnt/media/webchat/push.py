@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -179,25 +179,25 @@ class PushSubscriptionStore:
 
 
 class PushWorker:
-    """Tail the message store and send Web Push notifications for agent replies."""
+    """Tail message stores and send Web Push notifications for agent replies."""
 
     def __init__(
         self,
-        store: WebChatStore,
+        channels: Sequence[tuple[str, WebChatStore]],
         subscriptions: PushSubscriptionStore,
         push_config: WebPushConfig,
         *,
-        channel_slug: str,
         display_names: Mapping[str, str],
         stop_event: threading.Event | None = None,
         send: Callable[[dict[str, object], dict[str, str]], None] | None = None,
         poll_interval_sec: float = 0.5,
         join_timeout_sec: float = 5.0,
     ) -> None:
-        self._store = store
+        if not channels:
+            raise ValueError("channels must not be empty")
+        self._channels = list(channels)
         self._subscriptions = subscriptions
         self._push_config = push_config
-        self._channel_slug = channel_slug
         self._display_names = display_names
         self._stop = stop_event if stop_event is not None else threading.Event()
         self._send = send if send is not None else self._default_send
@@ -205,6 +205,7 @@ class PushWorker:
         self._join_timeout_sec = join_timeout_sec
         self._thread: threading.Thread | None = None
         self._started = False
+        self._positions: dict[str, tuple[date, int]] = {}
 
     def start(self) -> None:
         if self._started:
@@ -233,34 +234,44 @@ class PushWorker:
             vapid_claims={"sub": self._push_config.vapid_subject},
         )
 
+    def _tail_start(self, store: WebChatStore) -> tuple[date, int]:
+        day = store.today()
+        path = store.path_for(day)
+        offset = path.stat().st_size if path.is_file() else 0
+        return day, offset
+
     def _run(self) -> None:
         try:
-            day = self._store.today()
-            path = self._store.path_for(day)
-            offset = path.stat().st_size if path.is_file() else 0
+            for slug, store in self._channels:
+                self._positions[slug] = self._tail_start(store)
             while not self._stop.is_set():
-                today = self._store.today()
-                if today > day:
-                    day = today
-                    offset = 0
-                rows, offset = self._store.read_from(day, offset)
-                for _end, row in rows:
+                for slug, store in self._channels:
                     if self._stop.is_set():
                         break
-                    self._maybe_notify(row)
+                    day, offset = self._positions[slug]
+                    today = store.today()
+                    if today > day:
+                        day = today
+                        offset = 0
+                    rows, new_offset = store.read_from(day, offset)
+                    self._positions[slug] = (day, new_offset)
+                    for _end, row in rows:
+                        if self._stop.is_set():
+                            break
+                        self._maybe_notify(row, slug)
                 if self._stop.wait(self._poll_interval_sec):
                     break
         except Exception:
             _log.exception("[webchat push] worker stopped after error")
 
-    def _maybe_notify(self, row: Mapping[str, Any]) -> None:
+    def _maybe_notify(self, row: Mapping[str, Any], channel_slug: str) -> None:
         if row.get("kind") != "message":
             return
         if row.get("author") == DEFAULT_AUTHOR:
             return
         payload = build_notification_payload(
             row,
-            channel_slug=self._channel_slug,
+            channel_slug=channel_slug,
             body_text=self._push_config.body_text,
             display_names=self._display_names,
         )

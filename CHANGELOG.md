@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **BREAKING**: WebChat message APIs move to `GET /api/channels` and `GET|POST /api/c/{slug}/...` (messages, threads, bookmarks, stream). Channel-less `/messages` paths are removed.
+- **BREAKING**: `GET /config` returns `channels` and `default_channel` instead of `channel_name` / `channel_slug`.
+- **BREAKING**: `PushWorker` takes `channels: Sequence[tuple[str, WebChatStore]]` instead of `(store, *, channel_slug=...)`.
+- **BREAKING**: PWA manifest `start_url` is `/` (default channel redirect). Reload open tabs after upgrade so the UI uses the new API paths.
+
 ## v0.139.0
 
 - **WebChat multi-channel config**: add `WebChatChannel`, `ResolvedWebChatChannel`, and `WebChatMediaConfig.channels` for extra channels (`space_id` `<base>.<slug>`, default store under `<store_dir>/../channels/<slug>`). `WebChatClient` routes `post` / `upload` by `space` and adds `store_for(space)`.

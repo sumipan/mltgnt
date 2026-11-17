@@ -25,12 +25,10 @@ def _safe_asset_path(assets_dir: Path, name: str) -> Path | None:
 
 def manifest(config: WebChatMediaConfig) -> dict[str, object]:
     """Web app manifest dict for ``GET /manifest.webmanifest``."""
-    slug = config.channel_slug
-    start = f"/c/{slug}"
     return {
         "name": config.channel_name,
         "short_name": config.channel_name,
-        "start_url": start,
+        "start_url": "/",
         "scope": "/",
         "display": "standalone",
         "theme_color": "#1a1d21",

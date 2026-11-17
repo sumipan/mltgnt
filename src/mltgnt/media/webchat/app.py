@@ -1,12 +1,11 @@
 """FastAPI app of the WebChat medium. FastAPI / uvicorn are imported lazily.
 
-Endpoints: ``GET /`` (UI), ``GET /config``, ``GET /assets/{name}``, ``GET /messages?day=``
-(or ``?limit=[&before=<ts>]`` for the latest root messages across days, paging back with ``before``), ``POST /messages``,
-``POST /files?name=`` (raw image body; returns the entry to pass in ``files``),
-``GET /files/{day}/{name}``, ``GET /threads/{thread_id}``, ``POST /messages/{id}/bookmark``,
-``GET /bookmarks`` and ``GET /stream`` (SSE of enriched message / update / status /
-bookmark / reaction rows; the UI replaces the element with the same message_id).
-SSE event ids are ``<day>:<byte offset>`` so a reconnect resumes via ``Last-Event-ID``.
+Endpoints: ``GET /`` (redirects to the default channel), channel pages under ``/c/{slug}``,
+``GET /config``, ``GET /api/channels``, ``GET /api/c/{slug}/messages`` (``?day=`` or
+``?limit=[&before=<ts>]``), ``POST /api/c/{slug}/messages``, ``GET /api/c/{slug}/threads/{id}``,
+``POST /api/c/{slug}/messages/{id}/bookmark``, ``GET /api/c/{slug}/bookmarks``,
+``GET /api/c/{slug}/stream`` (SSE), ``POST /files?name=``, ``GET /files/{day}/{name}``,
+``GET /assets/{name}``, push and PWA routes. SSE event ids are ``<day>:<byte offset>``.
 """
 
 import asyncio
@@ -24,7 +23,7 @@ from typing import Any, Literal, Protocol
 
 from mltgnt.media._core import id_map
 from mltgnt.media._core.types import MediaEvent
-from mltgnt.media.webchat.config import WebChatMediaConfig
+from mltgnt.media.webchat.config import ResolvedWebChatChannel, WebChatMediaConfig
 from mltgnt.media.webchat.files import WebChatFiles
 from mltgnt.media.webchat.inbound import file_entries, to_media_event
 from mltgnt.media.webchat.pwa import manifest as pwa_manifest
@@ -80,6 +79,18 @@ def _sse(row: dict[str, Any], event_id: str) -> str:
     return f"id: {event_id}\nevent: {kind}\ndata: {json.dumps(row, ensure_ascii=False)}\n\n"
 
 
+def _channel_last_ts(store: WebChatStore) -> str | None:
+    days = store.days()
+    if not days:
+        return None
+    day = max(days)
+    rows = store.read(day)
+    if not rows:
+        return None
+    ts = rows[-1].get("ts")
+    return str(ts) if ts is not None else None
+
+
 def _run_event(bridge: EventHandler, event: MediaEvent) -> None:
     try:
         bridge.handle_event(event)
@@ -98,9 +109,9 @@ def create_app(
     push_worker: PushWorker | None = None,
     push_store: PushSubscriptionStore | None = None,
 ) -> Any:
-    """Build the FastAPI app. ``POST /messages`` stores the message, then runs the turn in the background.
+    """Build the FastAPI app. ``POST /api/c/{slug}/messages`` stores the message, then runs the turn.
 
-    ``stream_timeout_sec`` closes ``GET /stream`` after that many seconds (the browser
+    ``stream_timeout_sec`` closes ``GET /api/c/{slug}/stream`` after that many seconds (the browser
     reconnects with ``Last-Event-ID``); None keeps it open until the client leaves.
     """
     try:
@@ -109,17 +120,20 @@ def create_app(
     except ImportError as exc:
         raise ImportError(_EXTRA_HINT) from exc
 
-    store = store if store is not None else WebChatStore(config.store_dir)
+    resolved = config.resolved_channels
+    default_slug = resolved[0].slug
+    stores: dict[str, WebChatStore] = {ch.slug: WebChatStore(ch.store_dir) for ch in resolved}
+    if store is not None:
+        stores[default_slug] = store
     files = files if files is not None else WebChatFiles(config.resolved_files_dir, max_bytes=config.max_upload_bytes)
     push_active = push_enabled(config)
     subscription_store = push_store if push_store is not None else PushSubscriptionStore(config.store_dir)
     worker = push_worker if push_active else None
     if worker is None and push_active:
         worker = PushWorker(
-            store,
+            [(ch.slug, stores[ch.slug]) for ch in resolved],
             subscription_store,
             config.push,
-            channel_slug=config.channel_slug,
             display_names=config.display_names,
             stop_event=threading.Event(),
             poll_interval_sec=poll_interval_sec,
@@ -135,16 +149,20 @@ def create_app(
 
     app = FastAPI(title="mltgnt webchat", lifespan=lifespan)
 
-    slug = config.channel_slug
+    def _require_channel(slug: str) -> tuple[ResolvedWebChatChannel, WebChatStore]:
+        ch = config.channel_by_slug(slug)
+        if ch is None:
+            raise HTTPException(status_code=404, detail="unknown channel")
+        return ch, stores[ch.slug]
 
     def _channel_page(requested_slug: str, tail: str = "") -> Any:
-        if requested_slug != slug:
-            return RedirectResponse(f"/c/{slug}{tail}", status_code=302)
-        return HTMLResponse(INDEX_HTML)
+        if config.channel_by_slug(requested_slug) is not None:
+            return HTMLResponse(INDEX_HTML)
+        return RedirectResponse(f"/c/{default_slug}{tail}", status_code=302)
 
     @app.get("/")
     def index() -> RedirectResponse:
-        return RedirectResponse(f"/c/{slug}", status_code=302)
+        return RedirectResponse(f"/c/{default_slug}", status_code=302)
 
     @app.get("/c/{requested_slug}")
     def channel_index(requested_slug: str) -> Any:
@@ -167,12 +185,25 @@ def create_app(
         return {
             "avatars": dict(config.avatars),
             "display_names": dict(config.display_names),
-            "channel_name": config.channel_name,
-            "channel_slug": config.channel_slug,
+            "channels": [{"slug": ch.slug, "name": ch.name} for ch in resolved],
+            "default_channel": default_slug,
             "max_upload_bytes": files.max_bytes,
             "push_enabled": push_active,
             "header_meters_url": config.header_meters_url,
         }
+
+    @app.get("/api/channels")
+    def list_channels() -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for ch in resolved:
+            out.append(
+                {
+                    "slug": ch.slug,
+                    "name": ch.name,
+                    "last_ts": _channel_last_ts(stores[ch.slug]),
+                }
+            )
+        return out
 
     @app.get("/manifest.webmanifest")
     def get_manifest() -> JSONResponse:
@@ -257,10 +288,14 @@ def create_app(
         media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return FileResponse(path, media_type=media_type)
 
-    @app.get("/messages")
+    @app.get("/api/c/{slug}/messages")
     def list_messages(
-        day: date | None = None, limit: int | None = None, before: str | None = None
+        slug: str,
+        day: date | None = None,
+        limit: int | None = None,
+        before: str | None = None,
     ) -> list[dict[str, Any]]:
+        _ch, channel_store = _require_channel(slug)
         if day is None and limit is not None:
             cutoff = None
             if before:
@@ -268,8 +303,8 @@ def create_app(
                     cutoff = datetime.fromisoformat(before.replace(" ", "+"))
                 except ValueError as exc:
                     raise HTTPException(status_code=422, detail="before must be an ISO timestamp") from exc
-            return store.recent(max(0, min(limit, 1000)), before=cutoff)
-        return store.read(day or store.today())
+            return channel_store.recent(max(0, min(limit, 1000)), before=cutoff)
+        return channel_store.read(day or channel_store.today())
 
     @app.post("/files", status_code=201)
     async def upload_file(request: Request, name: str | None = None) -> dict[str, Any]:
@@ -294,26 +329,28 @@ def create_app(
         media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=86400"})
 
-    @app.get("/bookmarks")
-    def list_bookmarks() -> list[dict[str, Any]]:
-        return store.bookmarks()
+    @app.get("/api/c/{slug}/bookmarks")
+    def list_bookmarks(slug: str) -> list[dict[str, Any]]:
+        _ch, channel_store = _require_channel(slug)
+        return channel_store.bookmarks()
 
-    @app.post("/messages", status_code=202)
-    async def post_message(request: Request, background: BackgroundTasks) -> dict[str, Any]:
+    @app.post("/api/c/{slug}/messages", status_code=202)
+    async def post_message(slug: str, request: Request, background: BackgroundTasks) -> dict[str, Any]:
+        ch, channel_store = _require_channel(slug)
         try:
             body = await request.json()
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="body must be JSON") from exc
         message_id = uuid.uuid4().hex
         try:
-            event = to_media_event(body, space_id=config.space_id, message_id=message_id, files=files)
+            event = to_media_event(body, space_id=ch.space_id, message_id=message_id, files=files)
             entries = file_entries(body, files)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         thread = id_map.resolve(event.conversation_id)[1]
         thread_ts = None if thread == message_id else thread
         try:
-            store.append(
+            channel_store.append(
                 message_id=message_id, author=event.author, text=event.text, thread_ts=thread_ts, files=entries
             )
         except OSError as exc:
@@ -322,8 +359,9 @@ def create_app(
         background.add_task(_run_event, bridge, event)
         return {"message_id": message_id, "thread_ts": thread_ts, "conversation_id": event.conversation_id}
 
-    @app.post("/messages/{message_id}/bookmark")
-    async def set_bookmark(message_id: str, request: Request) -> dict[str, Any]:
+    @app.post("/api/c/{slug}/messages/{message_id}/bookmark")
+    async def set_bookmark(slug: str, message_id: str, request: Request) -> dict[str, Any]:
+        _ch, channel_store = _require_channel(slug)
         try:
             body = await request.json()
         except ValueError as exc:
@@ -334,27 +372,29 @@ def create_app(
         if not isinstance(bookmarked, bool):
             raise HTTPException(status_code=422, detail="bookmarked must be a bool")
         try:
-            row = store.set_bookmark(message_id, bookmarked)
+            row = channel_store.set_bookmark(message_id, bookmarked)
         except OSError as exc:
             _log.warning("[webchat] bookmark failed: %s", exc)
             raise HTTPException(status_code=503, detail="store unavailable") from exc
         if row is None:
             raise HTTPException(status_code=404, detail="unknown or non-root message_id")
-        return store.enrich(store.latest(message_id) or row)
+        return channel_store.enrich(channel_store.latest(message_id) or row)
 
-    @app.get("/threads/{thread_id}")
-    def get_thread(thread_id: str) -> list[dict[str, Any]]:
-        return store.thread(thread_id)
+    @app.get("/api/c/{slug}/threads/{thread_id}")
+    def get_thread(slug: str, thread_id: str) -> list[dict[str, Any]]:
+        _ch, channel_store = _require_channel(slug)
+        return channel_store.thread(thread_id)
 
-    @app.get("/stream")
-    def stream(request: Request) -> Any:
+    @app.get("/api/c/{slug}/stream")
+    def stream(slug: str, request: Request) -> Any:
+        _ch, channel_store = _require_channel(slug)
         resume = parse_event_id(request.headers.get("last-event-id"))
         if resume is None:
-            today = store.today()
-            path = store.path_for(today)
+            today = channel_store.today()
+            path = channel_store.path_for(today)
             resume = (today, path.stat().st_size if path.is_file() else 0)
         return StreamingResponse(
-            _tail(request, store, resume, poll_interval_sec, stream_timeout_sec),
+            _tail(request, channel_store, resume, poll_interval_sec, stream_timeout_sec),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )

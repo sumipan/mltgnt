@@ -16,11 +16,27 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from mltgnt.media._core.types import MediaEvent  # noqa: E402
 from mltgnt.media.webchat.app import _tail, create_app, parse_event_id, safe_asset_path, serve  # noqa: E402
-from mltgnt.media.webchat.config import WebChatMediaConfig  # noqa: E402
+from mltgnt.media.webchat.config import WebChatChannel, WebChatMediaConfig  # noqa: E402
 from mltgnt.media.webchat.store import WebChatStore  # noqa: E402
 from mltgnt.media.webchat.ui import INDEX_HTML  # noqa: E402
 
 DAY = date(2026, 1, 5)
+_API = "/api/c/general"
+
+
+def _multi_config(tmp_path: Path) -> WebChatMediaConfig:
+    side_dir = tmp_path / "channels" / "side"
+    side_dir.mkdir(parents=True)
+    return WebChatMediaConfig(
+        state_dir=tmp_path / "s",
+        pending_dir=tmp_path / "p",
+        events_dir=tmp_path / "e",
+        store_dir=tmp_path / "main",
+        space_id="webchat",
+        channel_name="Main",
+        channel_slug="main",
+        channels=(WebChatChannel(slug="side", name="Side", store_dir=side_dir),),
+    )
 
 
 class FakeClock:
@@ -83,19 +99,19 @@ def test_index_serves_ascii_html(tmp_path: Path) -> None:
 
 def test_post_message_stores_and_runs_the_turn(tmp_path: Path) -> None:
     client, store, bridge = _app(tmp_path)
-    resp = client.post("/messages", json={"text": "ping", "author": "u1"})
+    resp = client.post(f"{_API}/messages", json={"text": "ping", "author": "u1"})
     assert resp.status_code == 202
     message_id = resp.json()["message_id"]
     assert resp.json() == {"message_id": message_id, "thread_ts": None, "conversation_id": f"webchat:{message_id}"}
     assert [e.text for e in bridge.events] == ["ping"]
     assert bridge.events[0].message_id == message_id
-    rows = client.get("/messages").json()
+    rows = client.get(f"{_API}/messages").json()
     assert [(r["author"], r["text"], r["thread_ts"]) for r in rows] == [
         ("u1", "ping", None),
         ("bot", "pong", message_id),
     ]
-    assert client.get("/messages", params={"day": "2026-01-05"}).json() == rows
-    assert client.get("/messages", params={"day": "2026-01-04"}).json() == []
+    assert client.get(f"{_API}/messages", params={"day": "2026-01-05"}).json() == rows
+    assert client.get(f"{_API}/messages", params={"day": "2026-01-04"}).json() == []
 
 
 def test_messages_api_returns_row_display(tmp_path: Path) -> None:
@@ -107,26 +123,26 @@ def test_messages_api_returns_row_display(tmp_path: Path) -> None:
         text="hi",
         extra={"display": {"name": "Persona A", "icon_url": "https://example.test/a.png"}},
     )
-    rows = client.get("/messages").json()
+    rows = client.get(f"{_API}/messages").json()
     (row,) = [r for r in rows if r["message_id"] == "m-display"]
     assert row["display"] == {"name": "Persona A", "icon_url": "https://example.test/a.png"}
 
 
 def test_reply_in_thread_and_thread_endpoint(tmp_path: Path) -> None:
     client, _store, bridge = _app(tmp_path)
-    root = client.post("/messages", json={"text": "first"}).json()["message_id"]
-    resp = client.post("/messages", json={"text": "second", "thread_ts": root})
+    root = client.post(f"{_API}/messages", json={"text": "first"}).json()["message_id"]
+    resp = client.post(f"{_API}/messages", json={"text": "second", "thread_ts": root})
     assert resp.json()["thread_ts"] == root
     assert bridge.events[1].conversation_id == f"webchat:{root}"
-    client.post("/messages", json={"text": "elsewhere"})
-    texts = [r["text"] for r in client.get(f"/threads/{root}").json()]
+    client.post(f"{_API}/messages", json={"text": "elsewhere"})
+    texts = [r["text"] for r in client.get(f"{_API}/threads/{root}").json()]
     assert texts == ["first", "pong", "second", "pong"]
 
 
 @pytest.mark.parametrize("body", [{"text": ""}, {"text": "  "}, {}, ["x"]])
 def test_empty_text_is_422_and_store_unchanged(tmp_path: Path, body: Any) -> None:
     client, store, bridge = _app(tmp_path)
-    resp = client.post("/messages", json=body)
+    resp = client.post(f"{_API}/messages", json=body)
     assert resp.status_code == 422
     assert bridge.events == []
     assert store.days() == []
@@ -134,7 +150,7 @@ def test_empty_text_is_422_and_store_unchanged(tmp_path: Path, body: Any) -> Non
 
 def test_non_json_body_is_422(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path)
-    resp = client.post("/messages", content=b"not json", headers={"Content-Type": "application/json"})
+    resp = client.post(f"{_API}/messages", content=b"not json", headers={"Content-Type": "application/json"})
     assert resp.status_code == 422
     assert store.days() == []
 
@@ -144,14 +160,14 @@ def test_store_failure_is_503(tmp_path: Path) -> None:
     blocker.write_text("", encoding="utf-8")
     bridge = RecordingBridge()
     app = create_app(_config(tmp_path), bridge, store=WebChatStore(blocker / "w"))
-    resp = TestClient(app).post("/messages", json={"text": "ping"})
+    resp = TestClient(app).post(f"{_API}/messages", json={"text": "ping"})
     assert resp.status_code == 503
     assert bridge.events == []
 
 
 def test_bridge_failure_does_not_break_the_request(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path, bridge=RecordingBridge(error=RuntimeError("boom")))
-    resp = client.post("/messages", json={"text": "ping"})
+    resp = client.post(f"{_API}/messages", json={"text": "ping"})
     assert resp.status_code == 202
     assert [r["text"] for r in store.read(DAY)] == ["ping"]
 
@@ -159,9 +175,9 @@ def test_bridge_failure_does_not_break_the_request(tmp_path: Path) -> None:
 
 def test_stream_without_last_event_id_starts_at_the_end(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path, poll_interval_sec=0.01, stream_timeout_sec=0.05)
-    assert _frames(client.get("/stream").text) == []
+    assert _frames(client.get(f"{_API}/stream").text) == []
     store.append(message_id="m1", author="bot", text="old")
-    resp = client.get("/stream", headers={"Last-Event-ID": "garbage"})
+    resp = client.get(f"{_API}/stream", headers={"Last-Event-ID": "garbage"})
     assert resp.text.startswith("retry:")
     assert _frames(resp.text) == []
 
@@ -271,37 +287,37 @@ def test_safe_asset_path_rejects_dotdot(tmp_path: Path) -> None:
 
 def test_bookmark_toggle_and_list(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path)
-    root = client.post("/messages", json={"text": "keep"}).json()["message_id"]
-    on = client.post(f"/messages/{root}/bookmark", json={"bookmarked": True})
+    root = client.post(f"{_API}/messages", json={"text": "keep"}).json()["message_id"]
+    on = client.post(f"{_API}/messages/{root}/bookmark", json={"bookmarked": True})
     assert on.status_code == 200
     assert on.json()["bookmarked"] is True
-    assert client.get("/bookmarks").json()[0]["message_id"] == root
-    off = client.post(f"/messages/{root}/bookmark", json={"bookmarked": False})
+    assert client.get(f"{_API}/bookmarks").json()[0]["message_id"] == root
+    off = client.post(f"{_API}/messages/{root}/bookmark", json={"bookmarked": False})
     assert off.status_code == 200
     assert off.json()["bookmarked"] is False
-    assert client.get("/bookmarks").json() == []
+    assert client.get(f"{_API}/bookmarks").json() == []
 
 
 @pytest.mark.parametrize("body", [{"bookmarked": "yes"}, {"flag": True}, {}])
 def test_bookmark_rejects_non_bool(tmp_path: Path, body: Any) -> None:
     client, store, _bridge = _app(tmp_path)
     root = store.append(message_id="root", author="u", text="x")["message_id"]
-    assert client.post(f"/messages/{root}/bookmark", json=body).status_code == 422
+    assert client.post(f"{_API}/messages/{root}/bookmark", json=body).status_code == 422
 
 
 def test_bookmark_unknown_or_reply_is_404(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path)
     root = store.append(message_id="root", author="u", text="x")["message_id"]
     store.append(message_id="reply", author="u", text="r", thread_ts=root)
-    assert client.post("/messages/missing/bookmark", json={"bookmarked": True}).status_code == 404
-    assert client.post("/messages/reply/bookmark", json={"bookmarked": True}).status_code == 404
+    assert client.post(f"{_API}/messages/missing/bookmark", json={"bookmarked": True}).status_code == 404
+    assert client.post(f"{_API}/messages/reply/bookmark", json={"bookmarked": True}).status_code == 404
 
 
 def test_messages_include_reply_count(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path)
     root = store.append(message_id="root", author="u", text="q")["message_id"]
     store.append(message_id="r1", author="bot", text="a", thread_ts=root)
-    rows = client.get("/messages").json()
+    rows = client.get(f"{_API}/messages").json()
     root_row = next(r for r in rows if r["message_id"] == "root")
     assert root_row["reply_count"] == 1
     assert root_row["reactions"] == []
@@ -313,7 +329,7 @@ def test_stream_emits_bookmark_and_reaction(tmp_path: Path) -> None:
     root = store.append(message_id="root", author="u", text="x")["message_id"]
     store.set_bookmark(root, True)
     store.add_reaction(root, "bulb")
-    resp = client.get("/stream", headers={"Last-Event-ID": "2026-01-05:0"})
+    resp = client.get(f"{_API}/stream", headers={"Last-Event-ID": "2026-01-05:0"})
     events = [f["event"] for f in _frames(resp.text)]
     assert "bookmark" in events
     assert "reaction" in events
@@ -332,7 +348,7 @@ def test_stream_status_event_includes_enriched_thread_fields(tmp_path: Path) -> 
     store.append(message_id="root", author="u", text="q")
     store.append(message_id="r1", author="a", text="a", thread_ts="root")
     store.revise("root", "status", status="done")
-    resp = client.get("/stream", headers={"Last-Event-ID": "2026-01-05:0"})
+    resp = client.get(f"{_API}/stream", headers={"Last-Event-ID": "2026-01-05:0"})
     status_frames = [f for f in _frames(resp.text) if f["event"] == "status"]
     assert len(status_frames) == 1
     data = json.loads(status_frames[0]["data"])
@@ -348,7 +364,7 @@ def test_stream_reaction_event_includes_enriched_reactions(tmp_path: Path) -> No
     client, store, _bridge = _app(tmp_path, poll_interval_sec=0.01, stream_timeout_sec=0.05)
     root = store.append(message_id="root", author="u", text="x")["message_id"]
     store.add_reaction(root, "bulb")
-    resp = client.get("/stream", headers={"Last-Event-ID": "2026-01-05:0"})
+    resp = client.get(f"{_API}/stream", headers={"Last-Event-ID": "2026-01-05:0"})
     reaction_frames = [f for f in _frames(resp.text) if f["event"] == "reaction"]
     assert len(reaction_frames) == 1
     data = json.loads(reaction_frames[0]["data"])
@@ -399,7 +415,7 @@ def test_upload_then_post_message_with_files(tmp_path: Path) -> None:
     assert got.content == PNG
     assert got.headers["content-type"] == "image/png"
 
-    posted = client.post("/messages", json={"text": "", "files": [{"id": entry["id"], "name": "shot.png"}]})
+    posted = client.post(f"{_API}/messages", json={"text": "", "files": [{"id": entry["id"], "name": "shot.png"}]})
     assert posted.status_code == 202
     message_id = posted.json()["message_id"]
     row = store.latest(message_id)
@@ -416,7 +432,7 @@ def test_upload_then_post_message_with_files(tmp_path: Path) -> None:
 def test_files_survive_status_revision(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path)
     entry = client.post("/files", content=PNG, headers={"Content-Type": "image/png"}).json()
-    message_id = client.post("/messages", json={"text": "see", "files": [{"id": entry["id"]}]}).json()["message_id"]
+    message_id = client.post(f"{_API}/messages", json={"text": "see", "files": [{"id": entry["id"]}]}).json()["message_id"]
     store.revise(message_id, "status", status="done")
     row = store.latest(message_id)
     assert row is not None and row["status"] == "done"
@@ -447,7 +463,7 @@ def test_upload_rejects_bad_files(tmp_path: Path, content: bytes, ctype: str, st
 )
 def test_post_message_rejects_unknown_files(tmp_path: Path, files: Any) -> None:
     client, store, bridge = _app(tmp_path)
-    resp = client.post("/messages", json={"text": "hi", "files": files})
+    resp = client.post(f"{_API}/messages", json={"text": "hi", "files": files})
     assert resp.status_code == 422
     assert store.read(DAY) == []
     assert bridge.events == []
@@ -468,10 +484,10 @@ def test_messages_limit_returns_recent_roots_across_days(tmp_path: Path) -> None
     store.append(message_id="d2a", author="u", text="day two a")
     store.append(message_id="d2r", author="a", text="reply", thread_ts="d2a")
     store.append(message_id="d2b", author="u", text="day two b")
-    rows = client.get("/messages?limit=2").json()
+    rows = client.get(f"{_API}/messages?limit=2").json()
     assert [r["message_id"] for r in rows] == ["d2a", "d2b"]
     assert rows[0]["reply_count"] == 1
-    assert [r["message_id"] for r in client.get("/messages?limit=10").json()] == ["d1", "d2a", "d2b"]
+    assert [r["message_id"] for r in client.get(f"{_API}/messages?limit=10").json()] == ["d1", "d2a", "d2b"]
 
 
 def test_ui_supports_avatar_urls_and_image_upload() -> None:
@@ -486,21 +502,102 @@ def test_messages_before_pages_back_through_days(tmp_path: Path) -> None:
     for i in range(5):
         store.append(message_id=f"m{i}", author="u", text=str(i))
         clock.now = clock.now + timedelta(hours=12)
-    page = client.get("/messages?limit=2").json()
+    page = client.get(f"{_API}/messages?limit=2").json()
     assert [r["message_id"] for r in page] == ["m3", "m4"]
-    older = client.get("/messages", params={"limit": 2, "before": page[0]["ts"]}).json()
+    older = client.get(f"{_API}/messages", params={"limit": 2, "before": page[0]["ts"]}).json()
     assert [r["message_id"] for r in older] == ["m1", "m2"]
-    oldest = client.get("/messages", params={"limit": 2, "before": older[0]["ts"]}).json()
+    oldest = client.get(f"{_API}/messages", params={"limit": 2, "before": older[0]["ts"]}).json()
     assert [r["message_id"] for r in oldest] == ["m0"]
 
 
 def test_messages_before_accepts_plus_decoded_as_space(tmp_path: Path) -> None:
     client, store, _bridge = _app(tmp_path)
     store.append(message_id="m0", author="u", text="x")
-    resp = client.get("/messages?limit=5&before=2099-01-01T00:00:00 09:00")
+    resp = client.get(f"{_API}/messages?limit=5&before=2099-01-01T00:00:00 09:00")
     assert [r["message_id"] for r in resp.json()] == ["m0"]
 
 
 def test_messages_before_rejects_bad_timestamp(tmp_path: Path) -> None:
     client, _store, _bridge = _app(tmp_path)
-    assert client.get("/messages?limit=5&before=yesterday").status_code == 422
+    assert client.get(f"{_API}/messages?limit=5&before=yesterday").status_code == 422
+
+
+def test_messages_are_separate_per_channel(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#7205 AC1."""
+    cfg = _multi_config(tmp_path)
+    client = TestClient(create_app(cfg, RecordingBridge()))
+    posted = client.post("/api/c/side/messages", json={"text": "b"})
+    assert posted.status_code == 202
+    side_rows = client.get("/api/c/side/messages", params={"limit": 10}).json()
+    assert len(side_rows) == 1
+    assert side_rows[0]["text"] == "b"
+    assert client.get("/api/c/main/messages", params={"limit": 10}).json() == []
+    message_id = side_rows[0]["message_id"]
+    thread = client.get(f"/api/c/side/threads/{message_id}").json()
+    assert thread[0]["text"] == "b"
+    client.post(f"/api/c/side/messages/{message_id}/bookmark", json={"bookmarked": True})
+    assert len(client.get("/api/c/side/bookmarks").json()) == 1
+    assert client.get("/api/c/main/bookmarks").json() == []
+
+
+def test_post_runs_the_turn_with_the_channel_space(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#7205 AC2."""
+    cfg = _multi_config(tmp_path)
+    bridge = RecordingBridge()
+    client = TestClient(create_app(cfg, bridge))
+    side = client.post("/api/c/side/messages", json={"text": "x"}).json()
+    main = client.post("/api/c/main/messages", json={"text": "y"}).json()
+    assert len(bridge.events) == 2
+    by_id = {e.message_id: e for e in bridge.events}
+    side_ev = by_id[side["message_id"]]
+    main_ev = by_id[main["message_id"]]
+    assert side_ev.space_id == "webchat.side"
+    assert side_ev.conversation_id == f"webchat.side:{side['message_id']}"
+    assert main_ev.space_id == "webchat"
+
+
+def test_unknown_channel_and_old_paths_are_404(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#7205 AC3."""
+    cfg = _multi_config(tmp_path)
+    client = TestClient(create_app(cfg, RecordingBridge()))
+    assert client.get("/api/c/nope/messages").status_code == 404
+    for old in ("/messages", "/threads/x", "/bookmarks", "/stream"):
+        assert client.get(old).status_code == 404
+    assert client.post("/messages", json={"text": "x"}).status_code == 404
+    assert client.get("/c/nope/t/abc", follow_redirects=False).headers["location"] == "/c/main/t/abc"
+    assert client.get("/c/side").status_code == 200
+
+
+def test_config_and_channel_list(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#7205 AC4."""
+    cfg = _multi_config(tmp_path)
+    client = TestClient(create_app(cfg, RecordingBridge()))
+    body = client.get("/config").json()
+    assert body["channels"] == [{"slug": "main", "name": "Main"}, {"slug": "side", "name": "Side"}]
+    assert body["default_channel"] == "main"
+    assert "channel_name" not in body
+    assert "channel_slug" not in body
+    listed = client.get("/api/channels").json()
+    assert [row["slug"] for row in listed] == ["main", "side"]
+    assert listed[0]["last_ts"] is None
+    client.post("/api/c/side/messages", json={"text": "z"})
+    side_rows = client.get("/api/c/side/messages", params={"limit": 1}).json()
+    listed2 = client.get("/api/channels").json()
+    assert listed2[1]["last_ts"] == side_rows[0]["ts"]
+
+
+def test_stream_only_carries_its_channel(tmp_path: Path) -> None:
+    """Refs sumipan/nexus#7205 AC5."""
+    clock = FakeClock()
+    cfg = _multi_config(tmp_path)
+    side_dir = tmp_path / "channels" / "side"
+    store_main = WebChatStore(tmp_path / "main", clock=clock)
+    store_side = WebChatStore(side_dir, clock=clock)
+    client = TestClient(
+        create_app(cfg, RecordingBridge(), poll_interval_sec=0.01, stream_timeout_sec=0.05)
+    )
+    store_side.append(message_id="s1", author="bot", text="side-only")
+    store_main.append(message_id="m1", author="bot", text="main-only")
+    resp = client.get("/api/c/side/stream", headers={"Last-Event-ID": "2026-01-05:0"})
+    texts = [json.loads(f["data"])["text"] for f in _frames(resp.text) if "data" in f]
+    assert texts == ["side-only"]

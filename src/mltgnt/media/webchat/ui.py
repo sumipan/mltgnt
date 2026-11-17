@@ -46,6 +46,12 @@ INDEX_HTML = r"""<!doctype html>
   button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
   #app { display: flex; height: 100vh; height: 100dvh; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  #channel-list { width: 220px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--bg-raised); display: none; flex-direction: column; padding: 8px 0; overflow-y: auto; }
+  #channel-list.show { display: flex; }
+  #channel-list a { display: flex; align-items: center; gap: 6px; padding: 6px 16px; font-size: 15px; font-weight: 700; color: var(--muted); text-decoration: none; }
+  #channel-list a:hover { background: var(--bg-hover); color: var(--text-strong); }
+  #channel-list a.active { color: var(--text-strong); background: var(--bg-hover); }
+  #channel-list .unread { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--link); flex-shrink: 0; }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
   #header { display: flex; align-items: center; gap: 8px; min-height: 49px; padding: 4px 12px 4px 16px; flex-shrink: 0; min-width: 0; }
   #header .star { color: var(--muted); }
@@ -197,6 +203,7 @@ INDEX_HTML = r"""<!doctype html>
 </head>
 <body>
 <div id="app">
+  <nav id="channel-list" hidden aria-label="Channels"></nav>
   <div id="main">
     <div id="header">
       <span class="star"><svg viewBox="0 0 24 24"><polygon points="12 3 14.8 8.9 21 9.6 16.4 13.9 17.7 20 12 16.9 6.3 20 7.6 13.9 3 9.6 9.2 8.9"/></svg></span>
@@ -298,7 +305,10 @@ INDEX_HTML = r"""<!doctype html>
   var lightbox = document.getElementById("lightbox");
   var threadTs = null;
   var panelMode = null;
-  var config = { avatars: {}, display_names: {}, channel_name: "general", channel_slug: "general", max_upload_bytes: 20971520, push_enabled: false, header_meters_url: null };
+  var config = { avatars: {}, display_names: {}, channels: [], default_channel: "general", max_upload_bytes: 20971520, push_enabled: false, header_meters_url: null };
+  var channelListEl = document.getElementById("channel-list");
+  var CHANNEL_POLL_MS = 15000;
+  var channelPollTimer = null;
   var headerMetersEl = document.getElementById("header-meters");
   var headerBadgesEl = document.getElementById("header-badges");
   var headerMetersUrl = null;
@@ -361,12 +371,92 @@ INDEX_HTML = r"""<!doctype html>
   var ICON_SAVE = '<svg viewBox="0 0 24 24"><path d="M7 4h10v16l-5-4-5 4z"/></svg>';
   var ICON_X = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
+  function channelSlugFromPath() {
+    var parts = location.pathname.split("/").filter(Boolean);
+    if (parts[0] === "c" && parts[1]) { return parts[1]; }
+    return null;
+  }
+
   function channelSlug() {
-    return config.channel_slug || "general";
+    return channelSlugFromPath() || config.default_channel || "general";
+  }
+
+  function apiPrefix() {
+    return "/api/c/" + channelSlug();
+  }
+
+  function currentChannelName() {
+    var slug = channelSlug();
+    var list = config.channels || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].slug === slug) { return list[i].name; }
+    }
+    return slug;
   }
 
   function channelPath() {
     return "/c/" + channelSlug();
+  }
+
+  function readStorageKey(slug) {
+    return "webchat.read." + slug;
+  }
+
+  function markChannelRead(ts) {
+    if (!ts) { return; }
+    try { localStorage.setItem(readStorageKey(channelSlug()), ts); } catch (e) {}
+    refreshChannelListBadges();
+  }
+
+  function refreshChannelListBadges() {
+    if (!channelListEl || channelListEl.hidden) { return; }
+    fetch("/api/channels").then(function (r) { return r.json(); }).then(function (rows) {
+      if (!Array.isArray(rows)) { return; }
+      var bySlug = {};
+      rows.forEach(function (row) { bySlug[row.slug] = row; });
+      var links = channelListEl.querySelectorAll("a[data-slug]");
+      for (var i = 0; i < links.length; i++) {
+        var link = links[i];
+        var slug = link.getAttribute("data-slug");
+        var badge = link.querySelector(".unread");
+        if (!badge) { continue; }
+        var info = bySlug[slug];
+        var last = info && info.last_ts;
+        var read = null;
+        try { read = localStorage.getItem(readStorageKey(slug)); } catch (e) {}
+        var show = slug !== channelSlug() && last && (!read || last > read);
+        badge.hidden = !show;
+      }
+    }).catch(function () {});
+  }
+
+  function renderChannelList() {
+    var list = config.channels || [];
+    channelListEl.innerHTML = "";
+    if (list.length <= 1) {
+      channelListEl.hidden = true;
+      channelListEl.classList.remove("show");
+      return;
+    }
+    channelListEl.hidden = false;
+    channelListEl.classList.add("show");
+    var cur = channelSlug();
+    list.forEach(function (ch) {
+      var a = document.createElement("a");
+      a.href = "/c/" + ch.slug;
+      a.setAttribute("data-slug", ch.slug);
+      if (ch.slug === cur) { a.className = "active"; }
+      a.appendChild(document.createTextNode("# " + ch.name));
+      var dot = document.createElement("span");
+      dot.className = "unread";
+      dot.hidden = true;
+      a.appendChild(dot);
+      channelListEl.appendChild(a);
+    });
+    refreshChannelListBadges();
+    if (channelPollTimer === null) {
+      channelPollTimer = setInterval(refreshChannelListBadges, CHANNEL_POLL_MS);
+    }
   }
 
   function threadPath(id) {
@@ -663,7 +753,7 @@ INDEX_HTML = r"""<!doctype html>
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       var current = rowsById[row.message_id] || row;
-      fetch("/messages/" + current.message_id + "/bookmark", {
+      fetch(apiPrefix() + "/messages/" + current.message_id + "/bookmark", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bookmarked: !current.bookmarked })
@@ -788,6 +878,7 @@ INDEX_HTML = r"""<!doctype html>
 
   function upsertRow(row) {
     rowsById[row.message_id] = row;
+    if (!row.thread_ts && row.ts) { markChannelRead(row.ts); }
     if (panelMode === "thread" && (row.message_id === threadTs || row.thread_ts === threadTs)) {
       render(row, panelBody);
     }
@@ -802,7 +893,7 @@ INDEX_HTML = r"""<!doctype html>
   }
 
   function refreshParent(threadId) {
-    fetch("/threads/" + threadId).then(function (r) { return r.json(); }).then(function (rows) {
+    fetch(apiPrefix() + "/threads/" + threadId).then(function (r) { return r.json(); }).then(function (rows) {
       rows.forEach(function (row) {
         if (row.message_id === threadId) {
           rowsById[row.message_id] = row;
@@ -846,10 +937,10 @@ INDEX_HTML = r"""<!doctype html>
     box.className = "channel-intro";
     var title = document.createElement("div");
     title.className = "title";
-    title.textContent = "# " + config.channel_name;
+    title.textContent = "# " + currentChannelName();
     var sub = document.createElement("div");
     sub.className = "sub";
-    sub.textContent = "This is the very beginning of the #" + config.channel_name + " channel.";
+    sub.textContent = "This is the very beginning of the #" + currentChannelName() + " channel.";
     box.appendChild(title);
     box.appendChild(sub);
     return box;
@@ -885,7 +976,7 @@ INDEX_HTML = r"""<!doctype html>
     spinner.className = "history-loading";
     spinner.textContent = "Loading older messages...";
     log.insertBefore(spinner, log.firstChild);
-    fetch("/messages?limit=" + PAGE + "&before=" + encodeURIComponent(oldest.ts)).then(function (r) {
+    fetch(apiPrefix() + "/messages?limit=" + PAGE + "&before=" + encodeURIComponent(oldest.ts)).then(function (r) {
       if (!r.ok) { throw new Error("HTTP " + r.status); }
       return r.json();
     }).then(function (rows) {
@@ -927,7 +1018,7 @@ INDEX_HTML = r"""<!doctype html>
     panelMode = mode;
     panel.classList.add("open");
     panelTitle.textContent = title;
-    panelSub.textContent = mode === "thread" ? "# " + config.channel_name : "";
+    panelSub.textContent = mode === "thread" ? "# " + currentChannelName() : "";
     panelBody.textContent = "";
     stick["panel-body"] = true;
     savedLink.classList.toggle("active", mode === "saved");
@@ -948,7 +1039,7 @@ INDEX_HTML = r"""<!doctype html>
     panelForm.classList.remove("hidden");
     clearComposer(panelComposer);
     markSelected();
-    fetch("/threads/" + rootId).then(function (r) { return r.json(); }).then(function (rows) {
+    fetch(apiPrefix() + "/threads/" + rootId).then(function (r) { return r.json(); }).then(function (rows) {
       if (threadTs !== rootId) { return; }
       if (!rows.length) {
         closePanel({ push: false });
@@ -998,7 +1089,7 @@ INDEX_HTML = r"""<!doctype html>
     openPanel("saved", "Saved items");
     panelForm.classList.add("hidden");
     markSelected();
-    fetch("/bookmarks").then(function (r) { return r.json(); }).then(function (rows) {
+    fetch(apiPrefix() + "/bookmarks").then(function (r) { return r.json(); }).then(function (rows) {
       panelBody.textContent = "";
       rows.forEach(function (row) {
         rowsById[row.message_id] = row;
@@ -1032,7 +1123,7 @@ INDEX_HTML = r"""<!doctype html>
     match = path.match(/^\/c\/[^/]+\/p\/([^/]+)$/);
     if (match) {
       var messageId = match[1];
-      fetch("/threads/" + messageId).then(function (r) { return r.json(); }).then(function (rows) {
+      fetch(apiPrefix() + "/threads/" + messageId).then(function (r) { return r.json(); }).then(function (rows) {
         var row = null;
         for (var i = 0; i < rows.length; i++) {
           if (rows[i].message_id === messageId) { row = rows[i]; break; }
@@ -1230,7 +1321,7 @@ INDEX_HTML = r"""<!doctype html>
     if (c.threaded) { body.thread_ts = threadTs; }
     c.sending = true;
     updateSend(c);
-    fetch("/messages", {
+    fetch(apiPrefix() + "/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -1566,15 +1657,17 @@ INDEX_HTML = r"""<!doctype html>
   function applyConfig(c) {
     config.avatars = c.avatars || {};
     config.display_names = c.display_names || {};
-    config.channel_name = c.channel_name || "general";
-    config.channel_slug = c.channel_slug || "general";
+    config.channels = c.channels || [];
+    config.default_channel = c.default_channel || config.default_channel || "general";
     config.max_upload_bytes = c.max_upload_bytes || config.max_upload_bytes;
     config.push_enabled = !!c.push_enabled;
     config.header_meters_url = c.header_meters_url || null;
     headerMetersUrl = config.header_meters_url;
-    document.title = config.channel_name;
-    document.getElementById("channel-name").textContent = config.channel_name;
-    mainComposer.input.placeholder = "Message #" + config.channel_name;
+    var name = currentChannelName();
+    document.title = name;
+    document.getElementById("channel-name").textContent = name;
+    mainComposer.input.placeholder = "Message #" + name;
+    renderChannelList();
     scheduleHeaderMetersFromConfig();
   }
 
@@ -1596,10 +1689,15 @@ INDEX_HTML = r"""<!doctype html>
       var parsed;
       try { parsed = new URL(data.url, location.origin); } catch (e) { return; }
       if (parsed.origin !== location.origin) { return; }
-      var prefix = "/c/" + channelSlug() + "/t/";
-      if (parsed.pathname.indexOf(prefix) !== 0) { return; }
-      var id = parsed.pathname.slice(prefix.length);
+      var match = parsed.pathname.match(/^\/c\/([^/]+)\/t\/(.+)$/);
+      if (!match) { return; }
+      var urlSlug = match[1];
+      var id = match[2];
       if (!id) { return; }
+      if (urlSlug !== channelSlug()) {
+        location.assign(parsed.pathname);
+        return;
+      }
       openThread(id, { push: true });
     });
   }
@@ -1733,16 +1831,18 @@ INDEX_HTML = r"""<!doctype html>
   fetch("/config").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (c) {
     applyConfig(c);
     initPushUi();
-    return fetch("/messages?limit=" + PAGE).then(function (r) { return r.json(); });
+    return fetch(apiPrefix() + "/messages?limit=" + PAGE).then(function (r) { return r.json(); });
   }).then(function (rows) {
     logOrder = addRoots(rows);
     backlog.more = rows.length >= PAGE;
     rebuildLog();
     scrollBottom(log);
     if (backlog.more && log.scrollHeight <= log.clientHeight) { loadOlder(); }
+    var lastRow = rows.length ? rows[rows.length - 1] : null;
+    if (lastRow && lastRow.ts) { markChannelRead(lastRow.ts); }
     restoreFromPath();
     if (!touch) { mainComposer.input.focus(); }
-    var source = new EventSource("/stream");
+    var source = new EventSource(apiPrefix() + "/stream");
     ["message", "update", "status", "bookmark", "reaction"].forEach(function (kind) {
       source.addEventListener(kind, function (e) {
         var row = JSON.parse(e.data);
