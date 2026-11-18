@@ -48,10 +48,13 @@ INDEX_HTML = r"""<!doctype html>
   #app { display: flex; height: 100vh; height: 100dvh; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
   #channel-list { width: 220px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--bg-raised); display: none; flex-direction: column; padding: 8px 0; overflow-y: auto; }
   #channel-list.show { display: flex; }
-  #channel-list a { display: flex; align-items: center; gap: 6px; padding: 6px 16px; font-size: 15px; font-weight: 700; color: var(--muted); text-decoration: none; }
+  .channel-list-title { padding: 8px 16px 4px; font-size: 13px; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  #channel-list a { display: flex; align-items: center; gap: 6px; padding: 6px 16px; font-size: 15px; font-weight: 400; color: var(--muted); text-decoration: none; }
   #channel-list a:hover { background: var(--bg-hover); color: var(--text-strong); }
   #channel-list a.active { color: var(--text-strong); background: var(--bg-hover); }
-  #channel-list .unread { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--link); flex-shrink: 0; }
+  #channel-list a.has-unread { font-weight: 900; color: var(--text-strong); }
+  #channel-back { display: none; position: relative; }
+  #channel-back.has-unread::after { content: ""; position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--link); }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
   #header { display: flex; align-items: center; gap: 8px; min-height: 49px; padding: 4px 12px 4px 16px; flex-shrink: 0; min-width: 0; }
   #header .star { color: var(--muted); }
@@ -184,6 +187,11 @@ INDEX_HTML = r"""<!doctype html>
   #lightbox img { max-width: 92vw; max-height: 86vh; border-radius: 4px; }
   #lightbox .caption { color: var(--text); font-size: 13px; }
   @media (max-width: 760px) {
+    #app.has-channels:not(.show-channels) #channel-list { display: none !important; }
+    #app.show-channels #channel-list { width: 100%; max-width: none; flex-shrink: 1; border-right: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    #app.show-channels #channel-list a { font-size: 17px; min-height: 44px; padding: 8px 16px; }
+    #app.show-channels #main { display: none; }
+    #app.has-channels #channel-back { display: inline-flex; }
     #panel { position: fixed; inset: 0; width: 100%; max-width: none; z-index: 10; border-left: none; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     #panel-back { display: inline-flex; }
     #panel-close { display: none; }
@@ -206,6 +214,7 @@ INDEX_HTML = r"""<!doctype html>
   <nav id="channel-list" hidden aria-label="Channels"></nav>
   <div id="main">
     <div id="header">
+      <button type="button" class="hicon" id="channel-back" title="Channels"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
       <span class="star"><svg viewBox="0 0 24 24"><polygon points="12 3 14.8 8.9 21 9.6 16.4 13.9 17.7 20 12 16.9 6.3 20 7.6 13.9 3 9.6 9.2 8.9"/></svg></span>
       <span id="channel-title"><span class="hash">#</span><span id="channel-name">general</span></span>
       <div id="header-meters" hidden></div>
@@ -306,7 +315,9 @@ INDEX_HTML = r"""<!doctype html>
   var threadTs = null;
   var panelMode = null;
   var config = { avatars: {}, display_names: {}, channels: [], default_channel: "general", max_upload_bytes: 20971520, push_enabled: false, header_meters_url: null };
+  var appEl = document.getElementById("app");
   var channelListEl = document.getElementById("channel-list");
+  var channelBackEl = document.getElementById("channel-back");
   var CHANNEL_POLL_MS = 15000;
   var channelPollTimer = null;
   var headerMetersEl = document.getElementById("header-meters");
@@ -408,6 +419,17 @@ INDEX_HTML = r"""<!doctype html>
     refreshChannelListBadges();
   }
 
+  function syncChannelsView() {
+    if (!appEl) { return; }
+    var base = channelPath();
+    var onTop = location.pathname === base || location.pathname === base + "/";
+    if (appEl.classList.contains("has-channels") && onTop && location.hash === "#channels") {
+      appEl.classList.add("show-channels");
+    } else {
+      appEl.classList.remove("show-channels");
+    }
+  }
+
   function refreshChannelListBadges() {
     if (!channelListEl || channelListEl.hidden) { return; }
     fetch("/api/channels").then(function (r) { return r.json(); }).then(function (rows) {
@@ -415,17 +437,25 @@ INDEX_HTML = r"""<!doctype html>
       var bySlug = {};
       rows.forEach(function (row) { bySlug[row.slug] = row; });
       var links = channelListEl.querySelectorAll("a[data-slug]");
+      var anyUnread = false;
       for (var i = 0; i < links.length; i++) {
         var link = links[i];
         var slug = link.getAttribute("data-slug");
-        var badge = link.querySelector(".unread");
-        if (!badge) { continue; }
         var info = bySlug[slug];
         var last = info && info.last_ts;
         var read = null;
         try { read = localStorage.getItem(readStorageKey(slug)); } catch (e) {}
         var show = slug !== channelSlug() && last && (!read || last > read);
-        badge.hidden = !show;
+        if (show) {
+          link.classList.add("has-unread");
+          anyUnread = true;
+        } else {
+          link.classList.remove("has-unread");
+        }
+      }
+      if (channelBackEl) {
+        if (anyUnread) { channelBackEl.classList.add("has-unread"); }
+        else { channelBackEl.classList.remove("has-unread"); }
       }
     }).catch(function () {});
   }
@@ -436,10 +466,20 @@ INDEX_HTML = r"""<!doctype html>
     if (list.length <= 1) {
       channelListEl.hidden = true;
       channelListEl.classList.remove("show");
+      if (appEl) {
+        appEl.classList.remove("has-channels");
+        appEl.classList.remove("show-channels");
+      }
+      syncChannelsView();
       return;
     }
+    if (appEl) { appEl.classList.add("has-channels"); }
     channelListEl.hidden = false;
     channelListEl.classList.add("show");
+    var title = document.createElement("div");
+    title.className = "channel-list-title";
+    title.textContent = "Channels";
+    channelListEl.appendChild(title);
     var cur = channelSlug();
     list.forEach(function (ch) {
       var a = document.createElement("a");
@@ -447,16 +487,13 @@ INDEX_HTML = r"""<!doctype html>
       a.setAttribute("data-slug", ch.slug);
       if (ch.slug === cur) { a.className = "active"; }
       a.appendChild(document.createTextNode("# " + ch.name));
-      var dot = document.createElement("span");
-      dot.className = "unread";
-      dot.hidden = true;
-      a.appendChild(dot);
       channelListEl.appendChild(a);
     });
     refreshChannelListBadges();
     if (channelPollTimer === null) {
       channelPollTimer = setInterval(refreshChannelListBadges, CHANNEL_POLL_MS);
     }
+    syncChannelsView();
   }
 
   function threadPath(id) {
@@ -473,13 +510,15 @@ INDEX_HTML = r"""<!doctype html>
 
   function pushPath(path) {
     if (restoring) { return; }
-    if (location.pathname === path) { return; }
+    if (location.pathname + location.hash === path) { return; }
     history.pushState(null, "", path);
+    syncChannelsView();
   }
 
   function replacePath(path) {
-    if (location.pathname === path) { return; }
+    if (location.pathname + location.hash === path) { return; }
     history.replaceState(null, "", path);
+    syncChannelsView();
   }
 
   function esc(s) {
@@ -1168,6 +1207,20 @@ INDEX_HTML = r"""<!doctype html>
   lightbox.addEventListener("click", closeLightbox);
   document.getElementById("panel-close").addEventListener("click", closePanel);
   document.getElementById("panel-back").addEventListener("click", closePanel);
+  if (channelBackEl) {
+    channelBackEl.addEventListener("click", function () {
+      pushPath(channelPath() + "#channels");
+      syncChannelsView();
+    });
+  }
+  channelListEl.addEventListener("click", function (e) {
+    var link = e.target.closest ? e.target.closest("a[data-slug]") : null;
+    if (!link || !link.classList.contains("active")) { return; }
+    e.preventDefault();
+    replacePath(channelPath());
+    syncChannelsView();
+  });
+  window.addEventListener("hashchange", syncChannelsView);
   savedLink.addEventListener("click", function (e) {
     e.preventDefault();
     if (panelMode === "saved") { closePanel(); } else { loadSaved(); }
@@ -1826,6 +1879,7 @@ INDEX_HTML = r"""<!doctype html>
 
   window.addEventListener("popstate", function () {
     restoreFromPath();
+    syncChannelsView();
   });
 
   fetch("/config").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (c) {
@@ -1841,6 +1895,7 @@ INDEX_HTML = r"""<!doctype html>
     var lastRow = rows.length ? rows[rows.length - 1] : null;
     if (lastRow && lastRow.ts) { markChannelRead(lastRow.ts); }
     restoreFromPath();
+    syncChannelsView();
     if (!touch) { mainComposer.input.focus(); }
     var source = new EventSource(apiPrefix() + "/stream");
     ["message", "update", "status", "bookmark", "reaction"].forEach(function (kind) {
