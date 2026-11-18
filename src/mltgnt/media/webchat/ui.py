@@ -512,11 +512,13 @@ INDEX_HTML = r"""<!doctype html>
     if (restoring) { return; }
     if (location.pathname + location.hash === path) { return; }
     history.pushState(null, "", path);
+    syncChannelsView();
   }
 
   function replacePath(path) {
     if (location.pathname + location.hash === path) { return; }
     history.replaceState(null, "", path);
+    syncChannelsView();
   }
 
   function esc(s) {
