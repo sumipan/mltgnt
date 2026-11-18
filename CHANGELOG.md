@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **WebChat mobile channels**: on narrow screens, switch between a full-width channel list and the conversation; header back button opens the list via `#channels` history. Unread channels use bold text instead of dots (back button shows a dot when any channel is unread).
+
 ## v0.139.1
 
 - **BREAKING**: WebChat message APIs move to `GET /api/channels` and `GET|POST /api/c/{slug}/...` (messages, threads, bookmarks, stream). Channel-less `/messages` paths are removed.

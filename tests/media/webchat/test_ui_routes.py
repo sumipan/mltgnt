@@ -97,6 +97,52 @@ def test_index_html_uses_channel_api_and_channel_list() -> None:
 
 
 
+def _narrow_screen_css_block() -> str:
+    """Extract the ``@media (max-width: 760px)`` rule block from ``INDEX_HTML``."""
+    marker = "@media (max-width: 760px) {"
+    start = INDEX_HTML.index(marker)
+    depth = 0
+    for i in range(start, len(INDEX_HTML)):
+        ch = INDEX_HTML[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return INDEX_HTML[start : i + 1]
+    raise AssertionError("unclosed @media (max-width: 760px) block")
+
+
+def test_index_html_narrow_screen_switches_between_channel_list_and_main() -> None:
+    """Refs sumipan/nexus#7239 AC1 and AC2."""
+    block = _narrow_screen_css_block()
+    for token in (
+        "#app.show-channels #channel-list",
+        "width: 100%",
+        "#app.show-channels #main",
+        "display: none",
+        "#app.has-channels:not(.show-channels) #channel-list",
+        "#app.has-channels #channel-back",
+    ):
+        assert token in block
+    for token in (
+        'id="channel-back"',
+        "function syncChannelsView",
+        '"#channels"',
+        'addEventListener("hashchange"',
+        "location.pathname + location.hash",
+    ):
+        assert token in INDEX_HTML
+
+
+def test_index_html_marks_unread_channels_by_weight() -> None:
+    """Refs sumipan/nexus#7239 AC4."""
+    assert "#channel-list a.has-unread" in INDEX_HTML
+    assert "#channel-back.has-unread" in INDEX_HTML
+    assert "#channel-list .unread" not in INDEX_HTML
+    assert 'dot.className = "unread"' not in INDEX_HTML
+
+
 def test_index_html_prefers_row_display() -> None:
     """Issue #5956 AC6."""
     for token in (
