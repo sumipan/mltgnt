@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.139.3
+
 - **WebChat mobile channels**: on narrow screens, switch between a full-width channel list and the conversation; header back button opens the list via `#channels` history. Unread channels use bold text instead of dots (back button shows a dot when any channel is unread).
 
 ## v0.139.1
