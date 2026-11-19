@@ -212,6 +212,8 @@ EXPECTED_ALL: dict[str, list[str]] = {
         "Attachment",
         "ConversationConfig",
         "HistoryMessage",
+        "PersonaTurnConfig",
+        "PersonaTurnHandler",
         "TurnInput",
         "TurnResult",
         "configure",
