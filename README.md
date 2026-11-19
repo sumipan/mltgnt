@@ -395,6 +395,16 @@ Memory submodules that declare their own `__all__`:
 | `mltgnt.memory.core_render` | `render_core`, `MANDATORY_KINDS`, `OPTIONAL_KINDS` | `render_core(entries, *, max_bytes=4096, heading="## Memory")`. `caveat` and `commitment` entries are always kept |
 | `mltgnt.memory.archive` | `archive_episodes` | `archive_episodes(persona_dir, *, now, keep_days=90) -> int`. Moves old episodes into monthly files |
 
+The cross-thread section of `build_memory_context` accepts optional `recent_peer` (only episodic lines whose `MemoryEntry.peer` matches) and `recent_per_thread_entries` (cap how many lines per thread before the global `recent_entries` tail). The same knobs exist on `recent_episodes_text` as `peer` and `per_thread_entries`.
+
+| What the prompt gets | Arguments | When to use |
+|---|---|---|
+| Core + this thread | `recent_hours=0` (default) | Default. Nothing from other threads |
+| + other threads with the same participant | `recent_hours>0`, `recent_entries>0`, `recent_peer=<turn.author_id>` | Several people talk to the same persona |
+| + all other threads | `recent_hours>0`, `recent_entries>0`, `recent_peer=None` | A single person uses the persona |
+
+When `recent_peer` is omitted, every other thread within the time window is eligible. Hosts shared by multiple people should pass `recent_entries=0` when `author_id` is missing on a turn, so unrelated peers do not leak into the prompt.
+
 ### `mltgnt.skill`
 
 | Names | Purpose |

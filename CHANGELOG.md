@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Memory context**: optional `recent_peer` / `recent_per_thread_entries` on `build_memory_context` (and `peer` / `per_thread_entries` on `recent_episodes_text`) to narrow cross-thread episodic excerpts by conversational counterparty and per-thread caps before the global tail limit.
+
 ## v0.140.0
 
 - **Turn and episodic memory**: optional `TurnInput.author_id` from media events or the drained inbox; optional `MemoryEntry.peer` on `append_memory_entry` / `append_turn_episodes`; `thread_queue.drained_author` for a single inbox author.
