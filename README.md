@@ -35,8 +35,6 @@ Scope boundaries for the library (not an LLM client, DAG engine, host, or chat b
 
 ## Installation
 
-Git tag installs from `sumipan/mltgnt` (not PyPI):
-
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
@@ -249,7 +247,9 @@ Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` 
 
 ## Public API
 
-Symbols below are derived from package `__all__` lists under `src/mltgnt/`. ### Top level: `mltgnt.__all__`
+Symbols below are derived from package `__all__` lists under `src/mltgnt/`.
+
+### Top level: `mltgnt.__all__`
 
 The top level exports these 23 names. Import everything else from its subpackage.
 
@@ -775,7 +775,7 @@ Inventory of every `src/mltgnt/**/*.py` module (roles from module docstrings).
 | `mltgnt.media._core.id_map` | Opaque conversation id <-> (space, thread) mapping. | L1 → L2–L5 |
 | `mltgnt.media._core.jsonl_store` | Append-only JSONL message store (one file per day). Shared by webchat and hub. | L1 → L2–L5 |
 | `mltgnt.media._core.pending` | Pending-request metadata store (one JSON file per request id). | L1 → L2–L5 |
-| `mltgnt.media._core.plan_gate` | Plan approval state machine: ``awaiting -> approved | rejected | expired``. | rejected \ |
+| `mltgnt.media._core.plan_gate` | Plan approval state machine: `awaiting` -> `approved`, `rejected`, or `expired`. | L1 → L2–L5 |
 | `mltgnt.media._core.progress` | Summarize a job's events JSONL into a progress message and rewrite it in place. | L1 → L2–L5 |
 | `mltgnt.media._core.sanitizer` | Pure helpers that strip internal markers from an agent result before posting. | L1 → L2–L5 |
 | `mltgnt.media._core.thread_reactions` | Reaction layer of the conversation wait queue: admit result -> message status. | L1 → L2–L5 |
