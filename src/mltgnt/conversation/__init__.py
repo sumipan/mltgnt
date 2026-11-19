@@ -15,6 +15,7 @@ from . import (
     thread_persona_store,
     thread_queue,
 )
+from .persona_turn import PersonaTurnConfig, PersonaTurnHandler
 from .types import (
     Attachment,
     HistoryMessage,
@@ -47,6 +48,8 @@ __all__ = [
     "Attachment",
     "ConversationConfig",
     "HistoryMessage",
+    "PersonaTurnConfig",
+    "PersonaTurnHandler",
     "TurnInput",
     "TurnResult",
     "configure",

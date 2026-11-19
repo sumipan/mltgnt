@@ -16,9 +16,9 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.140.3)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.141.0)-orange)
 
-Pre-1.0. The current release is `0.140.3` (tag `v0.140.3`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.141.0` (tag `v0.141.0`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
 ## Not
 
@@ -34,29 +34,29 @@ Pre-1.0. The current release is `0.140.3` (tag `v0.140.3`). A minor release may 
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.140.3"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.140.3"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.140.3"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
 
 # WebChat Web Push (includes the webchat dependencies and pywebpush)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.140.3"
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
-pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.140.3"
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.140.3"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
 ```
 
 See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.140.3` |
+| Distribution | `mltgnt` `0.141.0` |
 | Python | `>=3.10` |
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, plus `ghdag` as a git tag pin declared in `pyproject.toml` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
@@ -573,6 +573,8 @@ Names exported from submodule `__all__` lists that are not repeated in the table
 | `DiscoverVerdict` | frozen dataclass | kind, skill_name, next_query, reason, top_candidates | `mltgnt.memory._sufficiency` |
 | `IterativeRetriever` | class | see source | `mltgnt.memory._iterative` |
 | `LOCK` | constant | see source | `mltgnt.conversation.thread_persona_store` |
+| `PersonaTurnConfig` | frozen dataclass | persona_dir, jobs_dir, exec_done_dir, memory, timeout_sec, history_turns, core_max_bytes, thread_tail_entries, recent_scope, recent_hours, recent_entries, recent_per_thread_entries, permission | `mltgnt.conversation.persona_turn` |
+| `PersonaTurnHandler` | class | (config, *, resolve_persona, instruction=None, extend_prompt=None, postprocess=None, enqueue=..., now=None); `handle(turn) -> TurnResult` | `mltgnt.conversation.persona_turn` |
 | `PidLock` | class | see source | `mltgnt.daemon._pidlock` |
 | `PromoteCandidate` | frozen dataclass | topic, summary, source_entries, recurrence | `mltgnt.memory.compaction` |
 | `SearchAction` | frozen dataclass | source, query | `mltgnt.memory._sufficiency` |
@@ -734,6 +736,7 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.config.language` | mltgnt.config.language — language-pack dataclass for locale-specific vocabulary. | cross-cutting (any layer) |
 | `mltgnt.conversation.__init__` | mltgnt.conversation — media-agnostic conversation layer (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.fake_media` | Fake media layer — build TurnInput without Slack (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.persona_turn` | Standard one-turn persona flow — load persona, memory, LLM (DAG), record episodes (#7434). | L3 → L4–L5 |
 | `mltgnt.conversation.session_compact` | Automatic compaction of conversation logs (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.session_store` | Conversation-layer session ledger and turn log (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.thread_index` | Conversation-layer thread index (#3317). | L3 → L4–L5 |
@@ -1052,7 +1055,7 @@ Built-in exceptions raised by the public API:
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.140.3` (update when releasing).
+- Pin an exact tag in production, for example `@v0.141.0` (update when releasing).
 
 ## Deprecated API
 
