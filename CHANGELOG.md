@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.140.1
+
 - **Memory context**: optional `recent_peer` / `recent_per_thread_entries` on `build_memory_context` (and `peer` / `per_thread_entries` on `recent_episodes_text`) to narrow cross-thread episodic excerpts by conversational counterparty and per-thread caps before the global tail limit.
 
 ## v0.140.0
