@@ -69,6 +69,7 @@ class MediaBridge:
             text=event.text,
             attachments=event.attachments,
             history=self._history(event.conversation_id),
+            author_id=event.author or None,
         )
         result = self._run_turn(event.space_id, turn, (event.message_id,))
         if result is None or result.kind != "task" or not result.task_ref:
@@ -192,6 +193,7 @@ class MediaBridge:
                 text=thread_queue.build_composite_instruction(entries),
                 attachments=thread_queue.drained_attachments(entries),
                 history=self._history(conversation_id),
+                author_id=thread_queue.drained_author(entries),
             )
             result = self._run_turn(space, turn, message_ids)
             if result is not None and result.kind == "task" and result.task_ref:

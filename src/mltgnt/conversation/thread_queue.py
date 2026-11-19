@@ -32,6 +32,7 @@ __all__ = [
     "build_composite_instruction",
     "configure",
     "drain_to_turn_input",
+    "drained_author",
     "drained_attachments",
     "drained_entries_meta",
     "finish_turn",
@@ -211,6 +212,21 @@ def _attachments_payload(attachments: Sequence[Attachment]) -> list[dict]:
         }
         for attachment in attachments
     ]
+
+
+def drained_author(entries: list[dict]) -> str | None:
+    """Return the single non-empty inbox author, or None when ambiguous or absent."""
+    if not entries:
+        return None
+    authors: set[str] = set()
+    for entry in entries:
+        raw = entry.get("user")
+        if not isinstance(raw, str) or not raw:
+            return None
+        authors.add(raw)
+        if len(authors) > 1:
+            return None
+    return next(iter(authors))
 
 
 def drained_attachments(entries: list[dict]) -> tuple[Attachment, ...]:
@@ -415,6 +431,7 @@ def drain_to_turn_input(
         attachments=drained_attachments(entries),
         history=history,
         persona_id=persona_id,
+        author_id=drained_author(entries),
     )
 
 

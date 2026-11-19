@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -762,16 +763,7 @@ def _redistribute_entries(
         if entry.layer == new_layer:
             result.append(entry)
         else:
-            result.append(
-                MemoryEntry(
-                    timestamp=entry.timestamp,
-                    role=entry.role,
-                    content=entry.content,
-                    source_tag=entry.source_tag,
-                    layer=new_layer,
-                    dedupe_key=entry.dedupe_key,
-                )
-            )
+            result.append(dataclasses.replace(entry, layer=new_layer))
     return result
 
 

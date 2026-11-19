@@ -184,6 +184,7 @@ def append_memory_entry(
     dedupe_key: str | None = None,
     under_lock: bool = False,
     layer: str | None = None,
+    peer: str | None = None,
 ) -> bool:
     """Append an entry in JSONL form.
 
@@ -201,6 +202,7 @@ def append_memory_entry(
             source_tag=source_tag,
             layer=layer,
             dedupe_key=dedupe_key,
+            peer=peer,
         )
         line = serialize_entry(entry) + "\n"
         with mp.open("a", encoding="utf-8") as f:
