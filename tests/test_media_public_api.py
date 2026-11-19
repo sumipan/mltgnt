@@ -14,6 +14,7 @@ MEDIA_PUBLIC_NAMES: tuple[str, ...] = (
     "ExecDoneHandler",
     "HookRegistry",
     "MediaBridge",
+    "MediaBridgeComponent",
     "MediaConfig",
     "MediaEvent",
     "PendingStore",
@@ -28,6 +29,7 @@ MEDIA_PUBLIC_NAMES: tuple[str, ...] = (
     "expire_pending",
     "extract_final_assistant_text",
     "finalize_progress",
+    "id_map",
     "is_approval",
     "is_cancel_request",
     "iter_pending_with_done",
@@ -39,10 +41,12 @@ MEDIA_PUBLIC_NAMES: tuple[str, ...] = (
 
 _CORE_SOURCES: tuple[tuple[str, str, str], ...] = (
     ("MediaBridge", "mltgnt.media._core.bridge", "MediaBridge"),
+    ("MediaBridgeComponent", "mltgnt.media._core.component", "MediaBridgeComponent"),
     ("HookRegistry", "mltgnt.media._core.hooks", "HookRegistry"),
     ("PendingStore", "mltgnt.media._core.pending", "PendingStore"),
     ("ProgressState", "mltgnt.media._core.progress", "ProgressState"),
     ("finalize_progress", "mltgnt.media._core.progress", "finalize_progress"),
+    ("id_map", "mltgnt.media._core", "id_map"),
     ("summarize_tool_use_block", "mltgnt.media._core.progress", "summarize_tool_use_block"),
     ("PlanGate", "mltgnt.media._core.plan_gate", "PlanGate"),
     ("PlanState", "mltgnt.media._core.plan_gate", "PlanState"),
@@ -82,6 +86,25 @@ def test_media_public_symbols_match_core(public_name: str, mod_path: str, attr: 
 
     core_mod = importlib.import_module(mod_path)
     assert getattr(media, public_name) is getattr(core_mod, attr)
+
+
+def test_media_exports_component_and_id_map() -> None:
+    """MediaBridgeComponent and id_map are importable from mltgnt.media (#7430)."""
+    from mltgnt.media import MediaBridgeComponent, id_map
+
+    from mltgnt.media._core.component import MediaBridgeComponent as CoreComponent
+    from mltgnt.media._core import id_map as core_id_map
+
+    assert MediaBridgeComponent is CoreComponent
+    assert id_map is core_id_map
+
+
+def test_media_all_lists_component_and_id_map() -> None:
+    """__all__ lists MediaBridgeComponent and id_map (#7430)."""
+    import mltgnt.media as media
+
+    assert "MediaBridgeComponent" in media.__all__
+    assert "id_map" in media.__all__
 
 
 def test_import_media_does_not_load_slack_or_webchat_submodules() -> None:
