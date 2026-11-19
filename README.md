@@ -573,6 +573,8 @@ Names exported from submodule `__all__` lists that are not repeated in the table
 | `DiscoverVerdict` | frozen dataclass | kind, skill_name, next_query, reason, top_candidates | `mltgnt.memory._sufficiency` |
 | `IterativeRetriever` | class | see source | `mltgnt.memory._iterative` |
 | `LOCK` | constant | see source | `mltgnt.conversation.thread_persona_store` |
+| `PersonaTurnConfig` | frozen dataclass | persona_dir, jobs_dir, exec_done_dir, memory, timeout_sec, history_turns, core_max_bytes, thread_tail_entries, recent_scope, recent_hours, recent_entries, recent_per_thread_entries, permission | `mltgnt.conversation.persona_turn` |
+| `PersonaTurnHandler` | class | (config, *, resolve_persona, instruction=None, extend_prompt=None, postprocess=None, enqueue=..., now=None); `handle(turn) -> TurnResult` | `mltgnt.conversation.persona_turn` |
 | `PidLock` | class | see source | `mltgnt.daemon._pidlock` |
 | `PromoteCandidate` | frozen dataclass | topic, summary, source_entries, recurrence | `mltgnt.memory.compaction` |
 | `SearchAction` | frozen dataclass | source, query | `mltgnt.memory._sufficiency` |
@@ -734,6 +736,7 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.config.language` | mltgnt.config.language — language-pack dataclass for locale-specific vocabulary. | cross-cutting (any layer) |
 | `mltgnt.conversation.__init__` | mltgnt.conversation — media-agnostic conversation layer (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.fake_media` | Fake media layer — build TurnInput without Slack (#3317). | L3 → L4–L5 |
+| `mltgnt.conversation.persona_turn` | Standard one-turn persona flow — load persona, memory, LLM (DAG), record episodes (#7434). | L3 → L4–L5 |
 | `mltgnt.conversation.session_compact` | Automatic compaction of conversation logs (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.session_store` | Conversation-layer session ledger and turn log (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.thread_index` | Conversation-layer thread index (#3317). | L3 → L4–L5 |
