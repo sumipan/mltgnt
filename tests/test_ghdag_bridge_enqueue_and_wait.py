@@ -145,7 +145,7 @@ class TestEnqueueAndWaitJsonlIntegration:
 class TestEnqueueAndWaitPermissionPassThrough:
     """ghdag Permission values pass through enqueue_and_wait to StepConfig."""
 
-    def test_permission_object_allowed_tools_reach_exec_command(self, tmp_path):
+    def test_enqueue_and_wait_passes_permission_value_to_the_command(self, tmp_path):
         """Ref #7429: Permission.allowed_tools appear in exec.jsonl command (claude)."""
         jobs_dir = _make_jobs_dir(tmp_path)
         (jobs_dir / "done").mkdir()

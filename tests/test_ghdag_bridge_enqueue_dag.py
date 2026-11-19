@@ -32,7 +32,7 @@ Permission = capabilities.Permission
 class TestEnqueueDagPermissionPassThrough:
     """ghdag Permission values pass through enqueue_dag to each StepConfig."""
 
-    def test_permission_object_allowed_tools_reach_exec_command(self, tmp_path):
+    def test_enqueue_dag_passes_permission_value_to_the_command(self, tmp_path):
         """Ref #7429: DAG-level permission embeds allowed_tools in every step command."""
         jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
         perm = Permission(allowed_tools=("Read", "Bash(ls:*)"))

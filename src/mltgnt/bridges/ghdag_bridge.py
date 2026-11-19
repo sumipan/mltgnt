@@ -314,6 +314,10 @@ def enqueue_dag(
     Submit and wait one step at a time; inject prior results into later base_context.
 
     Args:
+        permission: Built-in permission name (a key of ghdag ``PERMISSIONS``) or a
+            caller-built ghdag ``Permission`` value (per-job ``allowed_tools`` /
+            ``disallowed_tools`` / ``stream`` and so on), applied to every step.
+            None uses the ghdag default.
         task_timeout_sec: ghdag task execution limit in seconds, applied to every
             step. None uses the host default.
 
@@ -471,6 +475,9 @@ def enqueue_and_wait(
         idempotency_key: Idempotency key recorded in exec.jsonl
         jobs_dir: Location for order/result/exec.jsonl (jobs/)
         exec_done_dir: Location for done markers (jobs/done/<uuid>)
+        permission: Built-in permission name (a key of ghdag ``PERMISSIONS``) or a
+            caller-built ghdag ``Permission`` value (per-job ``allowed_tools`` /
+            ``disallowed_tools`` / ``stream`` and so on). None uses the ghdag default.
         run_result: Skill runner result; write result frontmatter when skill_io=v1
         task_timeout_sec: ghdag task execution limit in seconds. None uses the host default.
 
