@@ -1,6 +1,8 @@
 """Media layer (Slack / WebChat implementations live in submodules)."""
 
+from mltgnt.media._core import id_map
 from mltgnt.media._core.bridge import MediaBridge
+from mltgnt.media._core.component import MediaBridgeComponent
 from mltgnt.media._core.cancel import is_cancel_request
 from mltgnt.media._core.config import MediaConfig
 from mltgnt.media._core.enqueue_guard import enqueue_or_report
@@ -43,6 +45,7 @@ __all__: list[str] = [
     "ExecDoneHandler",
     "HookRegistry",
     "MediaBridge",
+    "MediaBridgeComponent",
     "MediaConfig",
     "MediaEvent",
     "PendingStore",
@@ -57,6 +60,7 @@ __all__: list[str] = [
     "expire_pending",
     "extract_final_assistant_text",
     "finalize_progress",
+    "id_map",
     "is_approval",
     "is_cancel_request",
     "iter_pending_with_done",
