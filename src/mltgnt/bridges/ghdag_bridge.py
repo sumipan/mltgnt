@@ -13,7 +13,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ghdag.core.capabilities import Permission
+from ghdag.core import capabilities
+
+Permission = capabilities.Permission
 from ghdag.files import md_read
 from ghdag.pipeline import OrderBuilder
 

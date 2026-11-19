@@ -8,7 +8,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from ghdag.core.capabilities import Permission
+from ghdag.core import capabilities
+
+Permission = capabilities.Permission
 
 from mltgnt.bridges.ghdag_bridge import (
     DagStep,
