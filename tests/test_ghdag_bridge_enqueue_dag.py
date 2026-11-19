@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ghdag.core import capabilities
 
 from mltgnt.bridges.ghdag_bridge import (
     DagStep,
@@ -25,10 +26,57 @@ from tests.ghdag_bridge_helpers import (
     _make_jobs_dir_dag,
 )
 
+Permission = capabilities.Permission
+
+
+class TestEnqueueDagPermissionPassThrough:
+    """ghdag Permission values pass through enqueue_dag to each StepConfig."""
+
+    def test_enqueue_dag_passes_permission_value_to_the_command(self, tmp_path):
+        """Ref #7429: DAG-level permission embeds allowed_tools in every step command."""
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        perm = Permission(allowed_tools=("Read", "Bash(ls:*)"))
+        steps = [
+            DagStep(
+                id="s1",
+                prompt="P1",
+                engine="claude",
+                model="claude-sonnet-4-6",
+            ),
+            DagStep(
+                id="s2",
+                prompt="P2",
+                engine="claude",
+                model="claude-sonnet-4-6",
+                depends=["s1"],
+            ),
+        ]
+
+        with (
+            patch(_WAIT, return_value=("success", "")),
+            patch(_MD_READ, return_value=MagicMock(content="")),
+        ):
+            enqueue_dag(
+                steps=steps,
+                timeout=5.0,
+                idempotency_key=f"perm:dag:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+                permission=perm,
+            )
+
+        lines = [
+            ln for ln in (jobs_dir / "exec.jsonl").read_text().splitlines() if ln.strip()
+        ]
+        assert len(lines) == 2
+        for line in lines:
+            command = json.loads(line)["command"]
+            assert "Read" in command
+            assert "Bash(ls:*)" in command
+
+
 class TestEnqueueDag:
     """enqueue_dag() Acceptance test."""
-
-
 
     def test_compose_empty_steps_raises_value_error(self, tmp_path):
         """AC-3: empty list ValueError('empty' messages)."""

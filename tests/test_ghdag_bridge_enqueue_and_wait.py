@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ghdag.core import capabilities
 
 from mltgnt.bridges.ghdag_bridge import (
     DagStep,
@@ -24,6 +25,9 @@ from tests.ghdag_bridge_helpers import (
     _make_jobs_dir,
     _make_jobs_dir_dag,
 )
+
+Permission = capabilities.Permission
+
 
 class TestEnqueueAndWaitJsonlIntegration:
     """exec.jsonl Write to valid JSON Integrated testing to ensure that."""
@@ -138,15 +142,36 @@ class TestEnqueueAndWaitJsonlIntegration:
 
 
 
-# ---------------------------------------------------------------------------
-# enqueue_and_wait — permission Transmittance TestIssue #2191)
-# ---------------------------------------------------------------------------
+class TestEnqueueAndWaitPermissionPassThrough:
+    """ghdag Permission values pass through enqueue_and_wait to StepConfig."""
 
+    def test_enqueue_and_wait_passes_permission_value_to_the_command(self, tmp_path):
+        """Ref #7429: Permission.allowed_tools appear in exec.jsonl command (claude)."""
+        jobs_dir = _make_jobs_dir(tmp_path)
+        (jobs_dir / "done").mkdir()
+        perm = Permission(allowed_tools=("Read", "Bash(ls:*)"))
 
+        with patch(_WAIT, return_value=("success", "")):
+            try:
+                enqueue_and_wait(
+                    prompt="permission probe",
+                    engine="claude",
+                    model="claude-sonnet-4-6",
+                    timeout=5.0,
+                    idempotency_key=f"perm:wait:{uuid.uuid4()}",
+                    jobs_dir=jobs_dir,
+                    exec_done_dir=jobs_dir / "done",
+                    permission=perm,
+                )
+            except (StopIteration, OSError):
+                pass
 
-
-# ---------------------------------------------------------------------------
-# enqueue_and_wait — Prompt delivery test
-# ---------------------------------------------------------------------------
+        lines = [
+            ln for ln in (jobs_dir / "exec.jsonl").read_text().splitlines() if ln.strip()
+        ]
+        assert len(lines) == 1
+        command = json.loads(lines[0])["command"]
+        assert "Read" in command
+        assert "Bash(ls:*)" in command
 
 

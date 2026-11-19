@@ -13,11 +13,14 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ghdag.core import capabilities
 from ghdag.files import md_read
 from ghdag.pipeline import OrderBuilder
 
 from mltgnt.skill.models import SkillMatchResult, SkillMeta, SkillRunResult
 from mltgnt.skill.runner import write_result_frontmatter
+
+Permission = capabilities.Permission
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _PIPELINE_STATUS_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$", re.MULTILINE)
@@ -302,7 +305,7 @@ def enqueue_dag(
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
     skills: dict[str, SkillMeta] | None = None,
-    permission: str | None = None,
+    permission: str | Permission | None = None,
     order_builder: OrderBuilder | None = None,
     task_timeout_sec: float | None = None,
 ) -> list[tuple[bool, str]]:
@@ -311,6 +314,10 @@ def enqueue_dag(
     Submit and wait one step at a time; inject prior results into later base_context.
 
     Args:
+        permission: Built-in permission name (a key of ghdag ``PERMISSIONS``) or a
+            caller-built ghdag ``Permission`` value (per-job ``allowed_tools`` /
+            ``disallowed_tools`` / ``stream`` and so on), applied to every step.
+            None uses the ghdag default.
         task_timeout_sec: ghdag task execution limit in seconds, applied to every
             step. None uses the host default.
 
@@ -453,7 +460,7 @@ def enqueue_and_wait(
     correlation_id: str | None = None,
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
-    permission: str | None = None,
+    permission: str | Permission | None = None,
     order_builder: OrderBuilder | None = None,
     run_result: SkillRunResult | None = None,
     task_timeout_sec: float | None = None,
@@ -468,6 +475,9 @@ def enqueue_and_wait(
         idempotency_key: Idempotency key recorded in exec.jsonl
         jobs_dir: Location for order/result/exec.jsonl (jobs/)
         exec_done_dir: Location for done markers (jobs/done/<uuid>)
+        permission: Built-in permission name (a key of ghdag ``PERMISSIONS``) or a
+            caller-built ghdag ``Permission`` value (per-job ``allowed_tools`` /
+            ``disallowed_tools`` / ``stream`` and so on). None uses the ghdag default.
         run_result: Skill runner result; write result frontmatter when skill_io=v1
         task_timeout_sec: ghdag task execution limit in seconds. None uses the host default.
 
