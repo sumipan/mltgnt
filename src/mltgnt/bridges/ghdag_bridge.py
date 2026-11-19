@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ghdag.core.capabilities import Permission
 from ghdag.files import md_read
 from ghdag.pipeline import OrderBuilder
 
@@ -302,7 +303,7 @@ def enqueue_dag(
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
     skills: dict[str, SkillMeta] | None = None,
-    permission: str | None = None,
+    permission: str | Permission | None = None,
     order_builder: OrderBuilder | None = None,
     task_timeout_sec: float | None = None,
 ) -> list[tuple[bool, str]]:
@@ -453,7 +454,7 @@ def enqueue_and_wait(
     correlation_id: str | None = None,
     parent_correlation_id: str | None = None,
     request_id: str | None = None,
-    permission: str | None = None,
+    permission: str | Permission | None = None,
     order_builder: OrderBuilder | None = None,
     run_result: SkillRunResult | None = None,
     task_timeout_sec: float | None = None,
