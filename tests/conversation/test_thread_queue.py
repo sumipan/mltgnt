@@ -66,6 +66,24 @@ def test_drain_to_turn_input_returns_turn_input(queue_root: Path):
     assert "[1] second" in turn.text
 
 
+def test_drained_author_is_set_only_for_a_single_author(queue_root: Path):
+    """Issue #7323: drained_author and drain_to_turn_input author_id."""
+    from mltgnt.conversation.thread_queue import admit, drain_to_turn_input, drained_author
+
+    assert drained_author([]) is None
+    assert drained_author([{"user": "alice"}, {"user": "alice"}]) == "alice"
+    assert drained_author([{"user": "alice"}, {"user": "bob"}]) is None
+    assert drained_author([{"user": "alice"}, {"user": ""}]) is None
+    assert drained_author([{"text": "no user key"}]) is None
+
+    cid = "C1:171.0000"
+    assert admit(cid, "first", message_ts="171.0001", author="alice").proceed
+    assert admit(cid, "second", message_ts="171.0002", author="alice").queued
+    turn = drain_to_turn_input(cid)
+    assert turn is not None
+    assert turn.author_id == "alice"
+
+
 def test_drain_to_turn_input_empty_returns_none(queue_root: Path):
     from mltgnt.conversation.thread_queue import admit, drain_to_turn_input
 

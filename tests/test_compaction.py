@@ -379,6 +379,28 @@ class TestRedistributeEntries:
         # preferences layer not changed
         assert result[0].source_tag == "preferences"
 
+    def test_layer_reassignment_keeps_peer(self, tmp_path: Path):
+        """Issue #7323: _redistribute_entries preserves MemoryEntry.peer."""
+        from datetime import datetime, timezone, timedelta
+
+        cfg = _make_config(tmp_path)
+        now = datetime.now(timezone.utc)
+        old_ts = (now - timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S+09:00")
+        entries = [
+            MemoryEntry(
+                timestamp=old_ts,
+                role="user",
+                content="hello",
+                source_tag="chat",
+                layer="recent",
+                peer="alice",
+            )
+        ]
+        result = _redistribute_entries(entries, now, cfg)
+        assert len(result) == 1
+        assert result[0].layer == "long_term"
+        assert result[0].peer == "alice"
+
 
 # ---------------------------------------------------------------------------
 # DeprecationWarning  not emitted(#2128)

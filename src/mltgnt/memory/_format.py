@@ -27,6 +27,7 @@ class MemoryEntry:
     source_tag: str
     layer: str | None = None
     dedupe_key: str | None = None
+    peer: str | None = None
 
 
 def serialize_entry(entry: MemoryEntry) -> str:
@@ -41,6 +42,8 @@ def serialize_entry(entry: MemoryEntry) -> str:
         d["layer"] = entry.layer
     if entry.dedupe_key is not None:
         d["dedupe_key"] = entry.dedupe_key
+    if entry.peer is not None:
+        d["peer"] = entry.peer
     return json.dumps(d, ensure_ascii=False)
 
 
@@ -65,6 +68,7 @@ def parse_jsonl(path: Path) -> list[MemoryEntry]:
                     source_tag=data.get("source_tag", ""),
                     layer=data.get("layer"),
                     dedupe_key=data.get("dedupe_key"),
+                    peer=data.get("peer"),
                 )
             )
         except (json.JSONDecodeError, TypeError):

@@ -37,6 +37,7 @@ class TurnInput:
     attachments: tuple[Attachment, ...] = ()
     history: tuple[HistoryMessage, ...] = ()
     persona_id: str | None = None
+    author_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -91,6 +91,21 @@ def test_reply_round_trip(tmp_path: Path) -> None:
     assert thread_queue.read_state(thread_queue.storage_key(CID))["status"] == "idle"
 
 
+def test_handle_event_passes_author_to_turn_input(tmp_path: Path) -> None:
+    """Issue #7323: MediaEvent.author becomes TurnInput.author_id."""
+    handler = RecordingHandler(TurnResult(kind="reply", text="pong"))
+    bridge, _web = _bridge(tmp_path, handler)
+    bridge.handle_event(
+        MediaEvent(space_id="C1", conversation_id=CID, message_id="100.0", author="alice", text="hi")
+    )
+    assert handler.turns[0].author_id == "alice"
+    handler.turns.clear()
+    bridge.handle_event(
+        MediaEvent(space_id="C1", conversation_id=CID, message_id="101.0", author="", text="anon")
+    )
+    assert handler.turns[0].author_id is None
+
+
 def test_history_carries_earlier_turns(tmp_path: Path) -> None:
     handler = RecordingHandler(TurnResult(kind="reply", text="pong"))
     bridge, _web = _bridge(tmp_path, handler)

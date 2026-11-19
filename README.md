@@ -366,10 +366,10 @@ Persona section headings are canonical English (`Background`, `Values`, `Reactio
 
 | Group | Names |
 |-------|-------|
-| Episodic log | `append_memory_entry`, `append_turn_episodes`, `read_memory_preferences`, `read_memory_tail_text`, `memory_file_path`, `persona_memory_lock`, `tail_utf8_bytes`, `assemble_entries_text` |
+| Episodic log | `append_memory_entry`, `append_turn_episodes`, `read_memory_preferences`, `read_memory_tail_text`, `memory_file_path`, `persona_memory_lock`, `tail_utf8_bytes`, `assemble_entries_text`. Optional `peer` on append marks the conversational counterparty on both user and assistant lines |
 | Host wiring | `build_memory_context`, `thread_tail_text`, `recent_episodes_text`, `forced_memory_tool`, `strip_trigger_words`, `build_memory_gate`, `MigrationGuardedMemoryToolExecutor` |
 | Search | `read_memory_by_relevance`, `read_memory_with_sufficiency_check`, `read_memory_iterative` |
-| Entries | `MemoryEntry`, `parse_jsonl`, `serialize_entry` |
+| Entries | `MemoryEntry` (optional `peer` for the counterparty on a turn), `parse_jsonl`, `serialize_entry` |
 | Compaction | `compact`, `needs_compaction`, `CompactionResult`, `LlmCall`, `LlmCallError` |
 | Commits | `flush_memory_commits` |
 | Chroma (optional) | `get_collection`, `query_similar`, `upsert_entry`. `get_collection` returns `None` when `chromadb` is not installed |
@@ -427,8 +427,8 @@ When `engine="claude"` and no model is given, the LLM matcher uses `claude-haiku
 | Names | Purpose |
 |-------|---------|
 | `configure`, `get_config`, `ConversationConfig` | Set and read the active conversation paths. `get_config` raises `RuntimeError` before `configure` is called |
-| `TurnInput`, `TurnResult`, `Attachment`, `HistoryMessage` | Re-exported from `mltgnt.interfaces.turn` |
-| `thread_queue`, `session_store`, `session_compact`, `thread_index`, `thread_persona_store`, `fake_media` | Submodules: per-conversation queue (`drained_attachments` collects image metadata from drained inbox entries for `MediaBridge`), session ledger, log compaction, thread index, persona bindings, and a `TurnInput` builder that needs no real medium |
+| `TurnInput`, `TurnResult`, `Attachment`, `HistoryMessage` | Re-exported from `mltgnt.interfaces.turn`. `TurnInput.author_id` is the medium-specific id of whoever wrote this turn's text (from `MediaEvent.author` or the drained inbox) |
+| `thread_queue`, `session_store`, `session_compact`, `thread_index`, `thread_persona_store`, `fake_media` | Submodules: per-conversation queue (`drained_attachments` collects image metadata; `drained_author` picks a single inbox author for `author_id`), session ledger, log compaction, thread index, persona bindings, and a `TurnInput` builder that needs no real medium |
 
 ### `mltgnt.scheduler`
 
@@ -600,6 +600,7 @@ Names exported from submodule `__all__` lists that are not repeated in the table
 | `configure_paths` | function | (*) | `mltgnt.conversation.session_store` |
 | `configure_resume_check` | function | (check) | `mltgnt.conversation.session_store` |
 | `drain_to_turn_input` | function | (conversation_id, *) | `mltgnt.conversation.thread_queue` |
+| `drained_author` | function | (entries) | `mltgnt.conversation.thread_queue` |
 | `drained_entries_meta` | function | (entries) | `mltgnt.conversation.thread_queue` |
 | `dream_json_path` | function | (persona_dir, *) | `mltgnt.memory.dream.api` |
 | `dream_summary_from_dict` | function | (data) | `mltgnt.memory.dream._format` |
@@ -651,7 +652,7 @@ Names exported from submodule `__all__` lists that are not repeated in the table
 | Extension point | Module | Contract | Consumed by |
 |-----------------|--------|----------|-------------|
 | `MediaClient` | `mltgnt.interfaces.media` | `post` / `update` / `set_status` / `upload` / `react` | `PersonaScheduler`, `MediaBridge`. Implemented by `SlackClient` and `WebChatClient` |
-| `TurnHandler` | `mltgnt.interfaces.turn` | `handle(turn: TurnInput) -> TurnResult`. `TurnResult.kind` is `"reply"` or `"task"`; it also carries `text`, `task_ref`, `reaction`, and `post_options` | `MediaBridge` |
+| `TurnHandler` | `mltgnt.interfaces.turn` | `handle(turn: TurnInput) -> TurnResult`. `TurnInput` may carry `author_id` (optional). `TurnResult.kind` is `"reply"` or `"task"`; it also carries `text`, `task_ref`, `reaction`, and `post_options` | `MediaBridge` |
 | `HookRegistry` hooks | `mltgnt.media._core.hooks` | `OnInbound(event) -> bool` (`True` stops the turn), `BeforeDispatch(turn) -> TurnInput`, `AfterPost(result, message_id)`, `OnResult(uid, body)` | `MediaBridge` |
 | `EventHandler` | `mltgnt.media.webchat.app` | `handle_event(event: MediaEvent)` | `create_app`. `MediaBridge` satisfies it |
 | `DaemonComponent` | `mltgnt.daemon` | `name` property, non-blocking `start()`, `stop()` | `DaemonRunner`, `mltgnt run` |
@@ -727,7 +728,7 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.conversation.session_store` | Conversation-layer session ledger and turn log (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.thread_index` | Conversation-layer thread index (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.thread_persona_store` | JSONL persistence for conversation-bound personas (#3317). | L3 → L4–L5 |
-| `mltgnt.conversation.thread_queue` | Conversation-layer wait queue (#3317); persists attachment metadata on enqueue and exposes `drained_attachments` when a turn is admitted. | L3 → L4–L5 |
+| `mltgnt.conversation.thread_queue` | Conversation-layer wait queue (#3317); persists attachment metadata on enqueue and exposes `drained_attachments` / `drained_author` when a turn is admitted. | L3 → L4–L5 |
 | `mltgnt.conversation.types` | Conversation-layer boundary types — re-export mltgnt.interfaces.turn (#3317). | L3 → L4–L5 |
 | `mltgnt.daemon.__init__` | Implementation module. | L1 → L2–L5 |
 | `mltgnt.daemon._pidlock` | Implementation module. | L1 → L2–L5 |

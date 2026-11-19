@@ -1,6 +1,7 @@
 """Tests for mltgnt.memory.episodes (Issue #6238)."""
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from unittest.mock import patch
@@ -8,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from mltgnt.config import MemoryConfig
-from mltgnt.memory import append_turn_episodes, parse_jsonl, persona_memory_lock
+from mltgnt.memory import append_turn_episodes, parse_jsonl, persona_memory_lock, serialize_entry
 from mltgnt.persona.memory import direct_dedupe_base
 
 
@@ -16,6 +17,53 @@ def _config(tmp_path: Path) -> MemoryConfig:
     return MemoryConfig(chat_dir=tmp_path, chat_memory_dir=tmp_path / "memory", commit_debounce_sec=3600)
 
 
+
+
+def test_append_turn_episodes_writes_peer_on_both_lines(tmp_path: Path) -> None:
+    """Issue #7323: peer is stored on user and assistant lines."""
+    config = _config(tmp_path)
+    (tmp_path / "memory" / "p").mkdir(parents=True)
+    append_turn_episodes(
+        config,
+        "p",
+        user_text="hi",
+        assistant_text="hello",
+        space_id="C",
+        thread_key="T",
+        message_id="M-peer",
+        timestamp="2026-11-19 10:00",
+        peer="alice",
+    )
+    path = tmp_path / "memory" / "p" / "episodes.jsonl"
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    for line in lines:
+        assert json.loads(line)["peer"] == "alice"
+    entries = parse_jsonl(path)
+    assert all(e.peer == "alice" for e in entries)
+
+
+def test_entries_without_peer_round_trip_unchanged(tmp_path: Path) -> None:
+    """Issue #7323: legacy lines without peer stay key-compatible."""
+    config = _config(tmp_path)
+    (tmp_path / "memory" / "p").mkdir(parents=True)
+    append_turn_episodes(
+        config,
+        "p",
+        user_text="u",
+        assistant_text="a",
+        space_id="C",
+        thread_key="T",
+        message_id="M-nopeer",
+        timestamp="2026-11-19 10:00",
+    )
+    path = tmp_path / "memory" / "p" / "episodes.jsonl"
+    original = path.read_text(encoding="utf-8").strip().splitlines()
+    assert all("peer" not in json.loads(line) for line in original)
+    entries = parse_jsonl(path)
+    assert all(e.peer is None for e in entries)
+    round_tripped = [serialize_entry(e) for e in entries]
+    assert round_tripped == original
 
 
 def test_append_turn_episodes_prefixes_tool_trace(tmp_path: Path) -> None:

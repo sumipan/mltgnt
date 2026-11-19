@@ -32,6 +32,7 @@ def append_turn_episodes(
     source_tag: str = LEGACY_DIRECT_SOURCE_TAG,
     tool_trace: list[dict] | None = None,
     lock_timeout_sec: float | None = None,
+    peer: str | None = None,
 ) -> bool:
     """Append a user and assistant line for one direct-chat turn (idempotent dedupe keys)."""
     dedupe_base = direct_dedupe_base(space_id, thread_key, message_id)
@@ -55,6 +56,7 @@ def append_turn_episodes(
             source_tag=source_tag,
             dedupe_key=user_key,
             under_lock=True,
+            peer=peer,
         )
         assistant_ok = append_memory_entry(
             config,
@@ -65,6 +67,7 @@ def append_turn_episodes(
             source_tag=source_tag,
             dedupe_key=assistant_key,
             under_lock=True,
+            peer=peer,
         )
         if not (user_ok and assistant_ok):
             _log.warning(

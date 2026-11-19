@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Turn and episodic memory**: optional `TurnInput.author_id` from media events or the drained inbox; optional `MemoryEntry.peer` on `append_memory_entry` / `append_turn_episodes`; `thread_queue.drained_author` for a single inbox author.
+
 ## v0.139.3
 
 - **WebChat mobile channels**: on narrow screens, switch between a full-width channel list and the conversation; header back button opens the list via `#channels` history. Unread channels use bold text instead of dots (back button shows a dot when any channel is unread).
