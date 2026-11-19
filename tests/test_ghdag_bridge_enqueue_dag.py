@@ -10,8 +10,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from ghdag.core import capabilities
 
-Permission = capabilities.Permission
-
 from mltgnt.bridges.ghdag_bridge import (
     DagStep,
     SkillIOTypeError,
@@ -27,6 +25,9 @@ from tests.ghdag_bridge_helpers import (
     _make_jobs_dir,
     _make_jobs_dir_dag,
 )
+
+Permission = capabilities.Permission
+
 
 class TestEnqueueDagPermissionPassThrough:
     """ghdag Permission values pass through enqueue_dag to each StepConfig."""

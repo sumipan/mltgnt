@@ -14,13 +14,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ghdag.core import capabilities
-
-Permission = capabilities.Permission
 from ghdag.files import md_read
 from ghdag.pipeline import OrderBuilder
 
 from mltgnt.skill.models import SkillMatchResult, SkillMeta, SkillRunResult
 from mltgnt.skill.runner import write_result_frontmatter
+
+Permission = capabilities.Permission
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _PIPELINE_STATUS_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$", re.MULTILINE)
