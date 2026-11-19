@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from mltgnt.config.language import LanguagePack
-from mltgnt.memory._format import assemble_entries_text, parse_jsonl
+from mltgnt.memory._format import MemoryEntry, assemble_entries_text, parse_jsonl
 from mltgnt.memory.core_render import render_core
 from mltgnt.memory.semantic import SemanticStore
 
@@ -54,12 +54,36 @@ def _parse_timestamp(ts: str) -> datetime | None:
         return None
 
 
+def _thread_group_key(dedupe_key: str | None) -> str:
+    return (dedupe_key or "").rsplit(":", 2)[0]
+
+
+def _cap_entries_per_thread(
+    entries: list[MemoryEntry],
+    per_thread_entries: int,
+) -> list[MemoryEntry]:
+    if per_thread_entries <= 0:
+        return entries
+    counts: dict[str, int] = {}
+    kept_rev: list[MemoryEntry] = []
+    for entry in reversed(entries):
+        group = _thread_group_key(entry.dedupe_key)
+        seen = counts.get(group, 0)
+        if seen >= per_thread_entries:
+            continue
+        counts[group] = seen + 1
+        kept_rev.append(entry)
+    return list(reversed(kept_rev))
+
+
 def recent_episodes_text(
     episodes_path: Path,
     *,
     since: datetime,
     max_entries: int,
     exclude_thread_key: str | None = None,
+    peer: str | None = None,
+    per_thread_entries: int = 0,
 ) -> str:
     """Return recent episodic lines since ``since``, optionally excluding one thread."""
     if max_entries <= 0 or not episodes_path.exists():
@@ -72,7 +96,10 @@ def recent_episodes_text(
         parsed = _parse_timestamp(entry.timestamp)
         if parsed is None or parsed < since:
             continue
+        if peer is not None and (entry.peer is None or entry.peer != peer):
+            continue
         selected.append(entry)
+    selected = _cap_entries_per_thread(selected, per_thread_entries)
     if not selected:
         return ""
     return assemble_entries_text(selected[-max_entries:]).strip()
@@ -101,6 +128,8 @@ def build_memory_context(
     thread_tail_entries: int = 5,
     recent_hours: int = 0,
     recent_entries: int = 0,
+    recent_peer: str | None = None,
+    recent_per_thread_entries: int = 0,
     now: datetime | None = None,
     pack: LanguagePack | None = None,
     core_heading: str | None = None,
@@ -143,6 +172,8 @@ def build_memory_context(
             since=anchor - timedelta(hours=recent_hours),
             max_entries=recent_entries,
             exclude_thread_key=thread_key,
+            peer=recent_peer,
+            per_thread_entries=recent_per_thread_entries,
         )
         if recent:
             parts.append(f"{recent_heading_resolved}\n{recent}")
