@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.140.0
+
 - **Turn and episodic memory**: optional `TurnInput.author_id` from media events or the drained inbox; optional `MemoryEntry.peer` on `append_memory_entry` / `append_turn_episodes`; `thread_queue.drained_author` for a single inbox author.
 
 ## v0.139.3
