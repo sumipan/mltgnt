@@ -4,6 +4,8 @@
 
 **Building blocks for persona agents that live in chat: who they are (persona), what they remember (memory), what they can do (skills), when they act (scheduler and loop), and where they talk (media).**
 
+Documentation in this file tracks release `0.141.1` and is aligned with `src/mltgnt/` exports, CLI argparse, config dataclasses, and exception types.
+
 mltgnt is a Python library. It sits between an execution engine and the application that hosts your agents:
 
 | Layer | Owner | Responsibility |
@@ -16,11 +18,13 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.141.0)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.141.1)-orange)
 
-Pre-1.0. The current release is `0.141.0` (tag `v0.141.0`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.141.1` (tag `v0.141.1`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
 ## Not
+
+Scope boundaries for the library (not an LLM client, DAG engine, host, or chat bot vendor):
 
 | mltgnt is not | Use instead |
 |---------------|-------------|
@@ -34,29 +38,29 @@ Pre-1.0. The current release is `0.141.0` (tag `v0.141.0`). A minor release may 
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.141.1"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.141.1"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.141.1"
 
 # WebChat Web Push (includes the webchat dependencies and pywebpush)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.141.1"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
-pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.141.1"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.141.0"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.141.1"
 ```
 
 See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.141.0` |
+| Distribution | `mltgnt` `0.141.1` |
 | Python | `>=3.10` |
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, plus `ghdag` as a git tag pin declared in `pyproject.toml` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
@@ -71,6 +75,8 @@ See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 The Slack and WebChat apps import their third-party packages lazily. The rest of `mltgnt.media` imports without the extras.
 
 ## Quick Start
+
+Offline walkthrough (no network, no external LLM):
 
 This example needs no LLM and no network. It loads a persona, saves a dream summary, and drives the agent loop with a scripted LLM.
 
@@ -175,7 +181,7 @@ media.set_status(media.post("hello", "general"), Status.DONE)
 
 ## CLI Reference
 
-The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
+Subcommands match `argparse` in `src/mltgnt/cli/`. The CLI is defined in `src/mltgnt/cli/main.py` (`run`), `src/mltgnt/cli/memory.py` (`memory dream show`, `memory dream forget`), and `src/mltgnt/cli/hub.py` (`hub serve`). Running `mltgnt` with no subcommand prints help and exits with `0`.
 
 | Command | Purpose |
 |---------|---------|
@@ -240,6 +246,8 @@ Loads YAML via `load_server_config` (see `HubServerConfig`: `store_dir`, `host` 
 | `3` | `ImportError` when `fastapi` / `uvicorn` are not installed, or `DependencyError` from the server (`pip install 'mltgnt[hub]'`) |
 
 ## Public API
+
+Symbols below are derived from package `__all__` lists under `src/mltgnt/`.
 
 ### Top level: `mltgnt.__all__`
 
@@ -705,12 +713,12 @@ All packages live under `src/mltgnt/`.
 
 ### Modules
 
-Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter` layers: higher layers import inward toward `interfaces` and ghdag via `bridges`.
+Inventory of every `src/mltgnt/**/*.py` module (roles from module docstrings).
 
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
 | `mltgnt.__init__` | mltgnt — building blocks for persona agents that live in chat (persona, memory, skills, scheduler and loop, media). | entry |
-| `mltgnt.__main__` | Implementation module. | entry |
+| `mltgnt.__main__` | Python module `__main__.py`. | entry |
 | `mltgnt.agent.__init__` | mltgnt.agent — generic agent loop + decision-layer skeleton (#3318). | L2 → L3–L5 |
 | `mltgnt.agent._parse` | mltgnt.agent._parse — parse JSON from an LLM response. | L2 → L3–L5 |
 | `mltgnt.agent._runner` | mltgnt.agent._runner — generic agent loop. | L2 → L3–L5 |
@@ -721,38 +729,38 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.agent.plan` | mltgnt.agent.plan — work plan data structure and JSON contract (#3855). | L2 → L3–L5 |
 | `mltgnt.agent.reflexion` | mltgnt.agent.reflexion — deterministic default Reflexion evaluator (#3855). | L2 → L3–L5 |
 | `mltgnt.agent.work_loop` | mltgnt.agent.work_loop — generic work loop with optional skill delegation. | L2 → L3–L5 |
-| `mltgnt.bridges.__init__` | Implementation module. | L4 → L5 (+ ghdag) |
-| `mltgnt.bridges.audit_adapter` | Implementation module. | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.__init__` | Python module `bridges/__init__.py`. | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.audit_adapter` | Python module `bridges/audit_adapter.py`. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.files_adapter` | mltgnt.bridges.files_adapter | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.ghdag_bridge` | mltgnt.bridges.ghdag_bridge — wrapper around TaskQueue + wait_for_result. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.hooks_adapter` | mltgnt.bridges.hooks_adapter — audit_writer callback factory for AgentRunner + DagHooks adapter. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.llm_adapter` | mltgnt.bridges.llm_adapter | L4 → L5 (+ ghdag) |
-| `mltgnt.cli.__init__` | Implementation module. | entry (CLI) |
+| `mltgnt.cli.__init__` | Python module `cli/__init__.py`. | entry (CLI) |
 | `mltgnt.cli.hub` | mltgnt.cli.hub — hub serve subcommand. | entry (CLI) |
-| `mltgnt.cli.main` | Implementation module. | entry (CLI) |
+| `mltgnt.cli.main` | Python module `cli/main.py`. | entry (CLI) |
 | `mltgnt.cli.memory` | mltgnt.cli.memory — memory dream show/forget subcommands. | entry (CLI) |
-| `mltgnt.cli.run` | Implementation module. | entry (CLI) |
+| `mltgnt.cli.run` | Python module `cli/run.py`. | entry (CLI) |
 | `mltgnt.config.__init__` | mltgnt.config — host-independent configuration dataclasses. | cross-cutting (any layer) |
 | `mltgnt.config.language` | mltgnt.config.language — language-pack dataclass for locale-specific vocabulary. | cross-cutting (any layer) |
 | `mltgnt.conversation.__init__` | mltgnt.conversation — media-agnostic conversation layer (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.fake_media` | Fake media layer — build TurnInput without Slack (#3317). | L3 → L4–L5 |
-| `mltgnt.conversation.persona_turn` | Standard one-turn persona flow — load persona, memory, LLM (DAG), record episodes (#7434). | L3 → L4–L5 |
+| `mltgnt.conversation.persona_turn` | Standard one-turn persona conversation flow (#7434). | L3 → L4–L5 |
 | `mltgnt.conversation.session_compact` | Automatic compaction of conversation logs (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.session_store` | Conversation-layer session ledger and turn log (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.thread_index` | Conversation-layer thread index (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.thread_persona_store` | JSONL persistence for conversation-bound personas (#3317). | L3 → L4–L5 |
-| `mltgnt.conversation.thread_queue` | Conversation-layer wait queue (#3317); persists attachment metadata on enqueue and exposes `drained_attachments` / `drained_author` when a turn is admitted. | L3 → L4–L5 |
+| `mltgnt.conversation.thread_queue` | Conversation-layer wait queue (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.types` | Conversation-layer boundary types — re-export mltgnt.interfaces.turn (#3317). | L3 → L4–L5 |
-| `mltgnt.daemon.__init__` | Implementation module. | L1 → L2–L5 |
-| `mltgnt.daemon._pidlock` | Implementation module. | L1 → L2–L5 |
-| `mltgnt.daemon._runner` | Implementation module. | L1 → L2–L5 |
+| `mltgnt.daemon.__init__` | Python module `daemon/__init__.py`. | L1 → L2–L5 |
+| `mltgnt.daemon._pidlock` | Python module `daemon/_pidlock.py`. | L1 → L2–L5 |
+| `mltgnt.daemon._runner` | Python module `daemon/_runner.py`. | L1 → L2–L5 |
 | `mltgnt.daemon._skill_watcher` | mltgnt.daemon._skill_watcher — DaemonComponent that watches skills/ and hot-reloads. | L1 → L2–L5 |
 | `mltgnt.exceptions` | mltgnt.exceptions — shared exception type hierarchy. | shared |
-| `mltgnt.interfaces.__init__` | Implementation module. | L5 (no inward deps) |
+| `mltgnt.interfaces.__init__` | Python module `interfaces/__init__.py`. | L5 (no inward deps) |
 | `mltgnt.interfaces.hub` | Hub envelope types and transport boundary (no media-layer imports). | L5 (no inward deps) |
 | `mltgnt.interfaces.media` | Media-agnostic client contract (MediaClient / Status) and the legacy adapter. | L5 (no inward deps) |
-| `mltgnt.interfaces.persona` | Implementation module. | L5 (no inward deps) |
-| `mltgnt.interfaces.slack` | Implementation module. | L5 (no inward deps) |
+| `mltgnt.interfaces.persona` | Python module `interfaces/persona.py`. | L5 (no inward deps) |
+| `mltgnt.interfaces.slack` | Python module `interfaces/slack.py`. | L5 (no inward deps) |
 | `mltgnt.interfaces.turn` | Conversation-layer boundary types (neck: TurnInput / TurnResult) and TurnHandler Protocol. | L5 (no inward deps) |
 | `mltgnt.interfaces.types` | L1 DTO — type definitions for the interfaces layer. | L5 (no inward deps) |
 | `mltgnt.media.__init__` | Media layer (Slack / WebChat implementations live in submodules). | L1 → L2–L5 |
@@ -767,7 +775,7 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.media._core.id_map` | Opaque conversation id <-> (space, thread) mapping. | L1 → L2–L5 |
 | `mltgnt.media._core.jsonl_store` | Append-only JSONL message store (one file per day). Shared by webchat and hub. | L1 → L2–L5 |
 | `mltgnt.media._core.pending` | Pending-request metadata store (one JSON file per request id). | L1 → L2–L5 |
-| `mltgnt.media._core.plan_gate` | Plan approval state machine: ``awaiting -> approved \| rejected \| expired``. | L1 → L2–L5 |
+| `mltgnt.media._core.plan_gate` | Plan approval state machine: `awaiting` -> `approved`, `rejected`, or `expired`. | L1 → L2–L5 |
 | `mltgnt.media._core.progress` | Summarize a job's events JSONL into a progress message and rewrite it in place. | L1 → L2–L5 |
 | `mltgnt.media._core.sanitizer` | Pure helpers that strip internal markers from an agent result before posting. | L1 → L2–L5 |
 | `mltgnt.media._core.thread_reactions` | Reaction layer of the conversation wait queue: admit result -> message status. | L1 → L2–L5 |
@@ -780,12 +788,12 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.media.hub.inbound` | Hub envelope rows -> MediaEvent (no FastAPI). | L1 → L2–L5 |
 | `mltgnt.media.hub.server` | FastAPI hub server: per-room JSONL stores and bearer auth. | L1 → L2–L5 |
 | `mltgnt.media.hub.subscriber` | Poll hub rooms and deliver inbound messages to a host handler. | L1 → L2–L5 |
-| `mltgnt.media.matrix.__init__` | Matrix medium package (stdlib only; no slack/webchat/hub imports). | L1 → L2–L5 |
-| `mltgnt.media.matrix.client` | MatrixClient (MediaClient), MatrixTransport, and urllib transport. | L1 → L2–L5 |
-| `mltgnt.media.matrix.config` | Matrix media client / subscriber settings. | L1 → L2–L5 |
-| `mltgnt.media.matrix.inbound` | Matrix client events -> MediaEvent. | L1 → L2–L5 |
-| `mltgnt.media.matrix.markdown` | Markdown subset -> HTML for Matrix formatted messages. | L1 → L2–L5 |
-| `mltgnt.media.matrix.subscriber` | Long-poll Matrix /sync and deliver inbound messages to a host handler. | L1 → L2–L5 |
+| `mltgnt.media.matrix.__init__` | Matrix media implementation (Matrix client medium; stdlib and mltgnt only). | L1 → L2–L5 |
+| `mltgnt.media.matrix.client` | Matrix MediaClient and urllib transport. | L1 → L2–L5 |
+| `mltgnt.media.matrix.config` | Matrix-specific media settings. | L1 → L2–L5 |
+| `mltgnt.media.matrix.inbound` | Matrix client event dict -> MediaEvent. | L1 → L2–L5 |
+| `mltgnt.media.matrix.markdown` | Markdown to a small HTML subset for Matrix formatted_body. | L1 → L2–L5 |
+| `mltgnt.media.matrix.subscriber` | Poll Matrix /sync and deliver inbound messages. | L1 → L2–L5 |
 | `mltgnt.media.slack.__init__` | Slack media implementation. Import from the submodules (requires the ``slack`` extra at runtime). | L1 → L2–L5 |
 | `mltgnt.media.slack.app` | Slack Bolt App factory and Socket Mode start-up. Bolt is imported lazily. | L1 → L2–L5 |
 | `mltgnt.media.slack.client` | SlackClient: MediaClient implementation over a Slack WebClient. | L1 → L2–L5 |
@@ -799,9 +807,9 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.media.webchat.client` | WebChatClient: MediaClient implementation over the WebChat store. | L1 → L2–L5 |
 | `mltgnt.media.webchat.config` | WebChat-specific media settings. | L1 → L2–L5 |
 | `mltgnt.media.webchat.files` | Image files attached to WebChat messages. | L1 → L2–L5 |
-| `mltgnt.media.webchat.inbound` | WebChat ``POST /api/c/{slug}/messages`` body -> MediaEvent. | L1 → L2–L5 |
-| `mltgnt.media.webchat.push` | Web Push subscription JSONL store, validation, notification payload builder, and ``PushWorker`` tail over all channel stores for agent replies. | L1 → L2–L5 |
-| `mltgnt.media.webchat.pwa` | PWA manifest, service worker source, and safe resolution of custom PWA icon paths. | L1 → L2–L5 |
+| `mltgnt.media.webchat.inbound` | WebChat ``POST /messages`` body -> MediaEvent. | L1 → L2–L5 |
+| `mltgnt.media.webchat.push` | Web Push subscription store, validation, and tail worker for WebChat. | L1 → L2–L5 |
+| `mltgnt.media.webchat.pwa` | PWA manifest, service worker source, and icon resolution for WebChat. | L1 → L2–L5 |
 | `mltgnt.media.webchat.store` | Append-only message store: one ``YYYY-MM-DD.jsonl`` file per day, one JSON row per line. | L1 → L2–L5 |
 | `mltgnt.media.webchat.ui` | Static single-page UI of the WebChat medium (served by ``GET /``). | L1 → L2–L5 |
 | `mltgnt.memory.__init__` | mltgnt.memory — re-export hub. | L3 → L4–L5 |
@@ -817,14 +825,14 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.memory.compaction` | mltgnt.memory.compaction — memory compaction (per-section cap). | L3 → L4–L5 |
 | `mltgnt.memory.context` | mltgnt.memory.context — deterministic memory context assembly. | L3 → L4–L5 |
 | `mltgnt.memory.core_render` | mltgnt.memory.core_render — render the always-loaded memory core. | L3 → L4–L5 |
-| `mltgnt.memory.episodes` | mltgnt.memory.episodes — append user/assistant turn pairs to episodic memory. | L3 → L4–L5 |
 | `mltgnt.memory.dream.__init__` | mltgnt.memory.dream — dream.json synthesis API. | L3 → L4–L5 |
 | `mltgnt.memory.dream._format` | mltgnt.memory.dream._format — DreamSection / DreamSummary and JSON conversion. | L3 → L4–L5 |
 | `mltgnt.memory.dream.api` | mltgnt.memory.dream.api — read/write dream.json. | L3 → L4–L5 |
 | `mltgnt.memory.dream.selector` | mltgnt.memory.dream.selector — select personas for synthesis. | L3 → L4–L5 |
 | `mltgnt.memory.dream.synthesizer` | mltgnt.memory.dream.synthesizer — synthesize DreamSummary via LLM. | L3 → L4–L5 |
-| `mltgnt.memory.reflection` | mltgnt.memory.reflection — reflection prompt, parser and applier. | L3 → L4–L5 |
+| `mltgnt.memory.episodes` | mltgnt.memory.episodes — append user/assistant turn pairs to episodic memory. | L3 → L4–L5 |
 | `mltgnt.memory.reflect_job` | mltgnt.memory.reflect_job — deterministic collect / validate / apply steps of the reflection job. | L3 → L4–L5 |
+| `mltgnt.memory.reflection` | mltgnt.memory.reflection — reflection prompt, parser and applier. | L3 → L4–L5 |
 | `mltgnt.memory.search` | mltgnt.memory.search — relevance search, sufficiency, iterative retrieval. | L3 → L4–L5 |
 | `mltgnt.memory.semantic` | mltgnt.memory.semantic — semantic memory store (``semantic.jsonl``). | L3 → L4–L5 |
 | `mltgnt.memory.tools` | mltgnt.memory.tools — ``remember`` / ``recall`` / ``forget`` tool executor. | L3 → L4–L5 |
@@ -848,15 +856,15 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 | `mltgnt.routing.channel_router` | src/mltgnt/routing/channel_router.py | L2 → L3–L5 |
 | `mltgnt.routing.triage` | mltgnt.routing.triage | L2 → L3–L5 |
 | `mltgnt.scheduler.__init__` | mltgnt.scheduler — job dispatch core + YAML parser. | L2 → L3–L5 |
-| `mltgnt.scheduler.actions.__init__` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.actions.__init__` | Python module `scheduler/actions/__init__.py`. | L2 → L3–L5 |
 | `mltgnt.scheduler.actions.dream` | mltgnt.scheduler.actions.dream — memory_dream schedule action. | L2 → L3–L5 |
-| `mltgnt.scheduler.actions.skill` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.actions.skill` | Python module `scheduler/actions/skill.py`. | L2 → L3–L5 |
 | `mltgnt.scheduler.base_runner` | mltgnt.scheduler.base_runner — shared ABC for the tick loop. | L2 → L3–L5 |
-| `mltgnt.scheduler.fanout` | Implementation module. | L2 → L3–L5 |
-| `mltgnt.scheduler.loader` | Implementation module. | L2 → L3–L5 |
-| `mltgnt.scheduler.models` | Implementation module. | L2 → L3–L5 |
-| `mltgnt.scheduler.runner` | Implementation module. | L2 → L3–L5 |
-| `mltgnt.scheduler.state` | Implementation module. | L2 → L3–L5 |
+| `mltgnt.scheduler.fanout` | Python module `scheduler/fanout.py`. | L2 → L3–L5 |
+| `mltgnt.scheduler.loader` | Python module `scheduler/loader.py`. | L2 → L3–L5 |
+| `mltgnt.scheduler.models` | Python module `scheduler/models.py`. | L2 → L3–L5 |
+| `mltgnt.scheduler.runner` | Python module `scheduler/runner.py`. | L2 → L3–L5 |
+| `mltgnt.scheduler.state` | Python module `scheduler/state.py`. | L2 → L3–L5 |
 | `mltgnt.skill.__init__` | mltgnt.skill — load and run Markdown-based skill files. | L3 → L4–L5 |
 | `mltgnt.skill._registry` | mltgnt.skill._registry — skill registry. | L3 → L4–L5 |
 | `mltgnt.skill.context` | mltgnt.skill.context — build extra_context from knowledge + memory. | L3 → L4–L5 |
@@ -869,7 +877,7 @@ Every Python module under `src/mltgnt/`. "Depends toward" follows `.importlinter
 
 ## Configuration
 
-mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
+Environment variables and config dataclass fields are taken from `os.getenv` / `os.environ` usage and public frozen dataclasses in the source tree. mltgnt hardcodes no host paths. Every directory comes from a config object or a function argument.
 
 ### Environment variables
 
@@ -1029,6 +1037,8 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 
 ## Error Reference
 
+Custom exceptions defined under `src/mltgnt/`:
+
 | Exception | Module | Base | Raised when |
 |-----------|--------|------|-------------|
 | `MltgntError` | `mltgnt.exceptions` | `Exception` | Base class. `mltgnt run` maps any subclass not listed below to exit code `1` |
@@ -1052,12 +1062,16 @@ Built-in exceptions raised by the public API:
 
 ## Public API Stability
 
+Pre-1.0 SemVer policy for git tags:
+
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.141.0` (update when releasing).
+- Pin an exact tag in production, for example `@v0.141.1` (update when releasing).
 
 ## Deprecated API
+
+Deprecated aliases still exported in the current tree:
 
 | Deprecated | Module | Replacement | Warning |
 |------------|--------|-------------|---------|
@@ -1065,5 +1079,7 @@ Built-in exceptions raised by the public API:
 | `ChannelPersonaEntry` | `mltgnt.routing` | `SpacePersonaEntry` | None (plain alias) |
 
 ## License
+
+SPDX license identifier from `pyproject.toml`:
 
 MIT (SPDX: `MIT`). See [`LICENSE`](LICENSE).
