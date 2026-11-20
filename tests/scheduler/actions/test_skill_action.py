@@ -159,6 +159,56 @@ class TestResolveExitCode:
             ), name
 
 
+class TestFanoutPrompt:
+    def test_fanout_prompt_uses_reply_block(self, tmp_path: Path) -> None:
+        """Issue #7554 AC2: fan-out suffix uses ghdag reply block, not ghdag_fanout."""
+        from unittest.mock import patch
+
+        from mltgnt.scheduler.actions.skill import run_skill_action
+        from mltgnt.scheduler.models import ScheduleJob
+
+        from .skill_helpers import _ENQUEUE, _make_persona, _make_skill_meta
+
+        persona_dir = _make_persona(tmp_path)
+        meta = _make_skill_meta("test-skill", tmp_path)
+        job = ScheduleJob.from_dict(
+            {
+                "id": "skill_job",
+                "mode": "scheduled",
+                "action": "skill",
+                "notify": "silent",
+                "every_day_at": "10:00",
+                "action_args": {
+                    "skill": "test-skill",
+                    "persona": "persona-a",
+                    "enable_fanout": True,
+                    "permission": "dangerous_full_access",
+                },
+            }
+        )
+        captured: list[dict] = []
+
+        def _fake(**kwargs):
+            captured.append(kwargs)
+            return True, "ok"
+
+        with patch(_ENQUEUE, side_effect=_fake):
+            run_skill_action(
+                job,
+                persona_dir=persona_dir,
+                skill_registry={"test-skill": meta},
+                default_tz="Asia/Tokyo",
+                repo_root=tmp_path,
+            )
+
+        prompt = captured[0]["prompt"]
+        assert "```ghdag" in prompt
+        assert "children:" in prompt
+        assert "prompt:" in prompt
+        assert "permission: dangerous_full_access" in prompt
+        assert "ghdag_fanout" not in prompt
+
+
 class TestRunSkillActionExitCodeBranch:
     def test_success_returns_original_msg(self, tmp_path: Path) -> None:
         ok, msg = _run_skill(tmp_path, enqueue_return=(True, "response text"))

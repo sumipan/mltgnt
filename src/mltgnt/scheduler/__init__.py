@@ -8,7 +8,6 @@ Design: Issue #118 §3 (T4)
 """
 from __future__ import annotations
 
-from mltgnt.scheduler.fanout import _FANOUT_PROMPT_SUFFIX, _parse_fanout_steps  # noqa: F401
 from mltgnt.scheduler.loader import load_schedule_jobs
 from mltgnt.scheduler.models import (  # noqa: F401
     ActionFn,

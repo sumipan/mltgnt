@@ -13,13 +13,14 @@ _ENQUEUE_DAG = "mltgnt.bridges.ghdag_bridge.enqueue_dag"
 
 _FANOUT_RESPONSE = (
     "normal response text\n"
-    "---\n"
-    "ghdag_fanout:\n"
-    "  children:\n"
-    "    - id: child-1\n"
-    "      command: \"agent -p --force < order-1.md\"\n"
-    "    - id: child-2\n"
-    "      command: \"agent -p --force < order-2.md\"\n"
+    "```ghdag\n"
+    "status: ok\n"
+    "children:\n"
+    "  - id: child-1\n"
+    "    prompt: \"Instructions for child 1\"\n"
+    "  - id: child-2\n"
+    "    prompt: \"Instructions for child 2\"\n"
+    "```\n"
 )
 
 

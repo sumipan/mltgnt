@@ -23,7 +23,6 @@ from mltgnt.skill.runner import write_result_frontmatter
 Permission = capabilities.Permission
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-_PIPELINE_STATUS_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$", re.MULTILINE)
 
 
 @dataclass
@@ -41,12 +40,6 @@ class DagStep:
 
 class SkillIOTypeError(TypeError):
     """Pipe type mismatch detected by compose-time typecheck."""
-
-
-def _extract_pipeline_status(content: str) -> str | None:
-    """Extract PIPELINE_STATUS: <value> from result content (last match)."""
-    matches = _PIPELINE_STATUS_RE.findall(content)
-    return matches[-1] if matches else None
 
 
 def compose_pipeline(
@@ -332,6 +325,7 @@ def enqueue_dag(
     if not steps:
         raise ValueError("steps must not be empty")
 
+    from ghdag.dag import check_pipeline_status
     from ghdag.pipeline import (
         InlineOrderBuilder,
         TaskQueue,
@@ -430,9 +424,13 @@ def enqueue_dag(
                 content = md_read(result_filename, repo_root=jobs_dir).content.strip()
             except OSError:
                 content = ""
-            pipeline_status = _extract_pipeline_status(content)
+            pipeline_status = (
+                check_pipeline_status(str(jobs_dir / result_filename))
+                if result_filename
+                else None
+            )
             # Fail on INVALID_STATE even if ghdag exit succeeded (block downstream submit)
-            if pipeline_status == "INVALID_STATE":
+            if pipeline_status in ("INVALID_STATE", "INVALID_STATE_FAILED"):
                 results_by_id[step.id] = (False, "PIPELINE_STATUS: INVALID_STATE")
                 failed_steps.add(step.id)
                 continue
