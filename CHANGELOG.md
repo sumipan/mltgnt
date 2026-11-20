@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.141.2
+
+### Changed
+
+- bump ghdag to v0.146.1
+
 ## v0.140.1
 
 - **Memory context**: optional `recent_peer` / `recent_per_thread_entries` on `build_memory_context` (and `peer` / `per_thread_entries` on `recent_episodes_text`) to narrow cross-thread episodic excerpts by conversational counterparty and per-thread caps before the global tail limit.
