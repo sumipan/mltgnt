@@ -74,6 +74,8 @@ V0135_README_MARKERS = (
     "http:<status>:<reason>",
 )
 
+_ARCHITECTURE_PLACEHOLDER_ROLE = re.compile(r"^Python module `[^`]+`\.?$")
+
 
 def _readme_text() -> str:
     return README_PATH.read_text(encoding="utf-8")
@@ -1099,6 +1101,20 @@ def test_readme_architecture_inventory_covers_modules() -> None:
     assert empty == [], f"empty architecture roles: {empty[:15]}"
 
 
+def test_readme_architecture_roles_are_not_placeholders() -> None:
+    """Architecture module rows must describe behavior, not generic file-path placeholders.
+
+    Refs: sumipan/nexus#7604 (AC4).
+    """
+    rows = _architecture_module_rows(_readme_text())
+    placeholders = sorted(
+        module
+        for module, role in rows.items()
+        if _ARCHITECTURE_PLACEHOLDER_ROLE.fullmatch(role.strip())
+    )
+    assert placeholders == []
+
+
 def test_readme_configuration_inventory_covers_runtime_contracts() -> None:
     """Env vars and public config fields are documented; header meters contract is stated."""
     text = _readme_text()
@@ -1161,6 +1177,23 @@ def _module_docstring_first_line() -> str:
 def _text_includes_five_parts(text: str) -> list[str]:
     lowered = text.lower()
     return [token for token in _FIVE_PART_TOKENS if token not in lowered]
+
+
+def test_readme_version_and_license_match_pyproject() -> None:
+    """README Status, positioning, and License track pyproject version and license.
+
+    Refs: sumipan/nexus#7604 (AC8).
+    """
+    project = _pyproject()["project"]
+    version = project["version"]
+    license_id = project["license"]
+    text = _readme_text()
+    status_block = _section_slice(text, "Status", stop_before=("Not",))
+    title_block = _section_slice(text, "Title / Positioning", stop_before=("Status",))
+    license_block = _section_slice(text, "License")
+    assert f"v{version}" in status_block
+    assert f"`{version}`" in title_block
+    assert f"SPDX: `{license_id}`" in license_block
 
 
 def test_self_descriptions_name_the_five_parts() -> None:

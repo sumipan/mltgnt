@@ -718,7 +718,7 @@ Inventory of every `src/mltgnt/**/*.py` module (roles from module docstrings).
 | Module | Responsibility | Depends toward |
 |--------|----------------|----------------|
 | `mltgnt.__init__` | mltgnt — building blocks for persona agents that live in chat (persona, memory, skills, scheduler and loop, media). | entry |
-| `mltgnt.__main__` | Python module `__main__.py`. | entry |
+| `mltgnt.__main__` | Console-script entry: calls `mltgnt.cli.main.main` for `python -m mltgnt`. | entry |
 | `mltgnt.agent.__init__` | mltgnt.agent — generic agent loop + decision-layer skeleton (#3318). | L2 → L3–L5 |
 | `mltgnt.agent._parse` | mltgnt.agent._parse — parse JSON from an LLM response. | L2 → L3–L5 |
 | `mltgnt.agent._runner` | mltgnt.agent._runner — generic agent loop. | L2 → L3–L5 |
@@ -729,17 +729,17 @@ Inventory of every `src/mltgnt/**/*.py` module (roles from module docstrings).
 | `mltgnt.agent.plan` | mltgnt.agent.plan — work plan data structure and JSON contract (#3855). | L2 → L3–L5 |
 | `mltgnt.agent.reflexion` | mltgnt.agent.reflexion — deterministic default Reflexion evaluator (#3855). | L2 → L3–L5 |
 | `mltgnt.agent.work_loop` | mltgnt.agent.work_loop — generic work loop with optional skill delegation. | L2 → L3–L5 |
-| `mltgnt.bridges.__init__` | Python module `bridges/__init__.py`. | L4 → L5 (+ ghdag) |
-| `mltgnt.bridges.audit_adapter` | Python module `bridges/audit_adapter.py`. | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.__init__` | Re-exports ghdag bridge helpers (`call_llm`, `enqueue_dag`, `enqueue_and_wait`). | L4 → L5 (+ ghdag) |
+| `mltgnt.bridges.audit_adapter` | Maps mltgnt audit records onto ghdag `DagHooks` callbacks. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.files_adapter` | mltgnt.bridges.files_adapter | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.ghdag_bridge` | mltgnt.bridges.ghdag_bridge — wrapper around TaskQueue + wait_for_result. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.hooks_adapter` | mltgnt.bridges.hooks_adapter — audit_writer callback factory for AgentRunner + DagHooks adapter. | L4 → L5 (+ ghdag) |
 | `mltgnt.bridges.llm_adapter` | mltgnt.bridges.llm_adapter | L4 → L5 (+ ghdag) |
-| `mltgnt.cli.__init__` | Python module `cli/__init__.py`. | entry (CLI) |
+| `mltgnt.cli.__init__` | CLI package root (`run`, `memory`, `hub` subcommand modules). | entry (CLI) |
 | `mltgnt.cli.hub` | mltgnt.cli.hub — hub serve subcommand. | entry (CLI) |
-| `mltgnt.cli.main` | Python module `cli/main.py`. | entry (CLI) |
+| `mltgnt.cli.main` | Builds the root `argparse` tree and routes to subcommand handlers. | entry (CLI) |
 | `mltgnt.cli.memory` | mltgnt.cli.memory — memory dream show/forget subcommands. | entry (CLI) |
-| `mltgnt.cli.run` | Python module `cli/run.py`. | entry (CLI) |
+| `mltgnt.cli.run` | `mltgnt run` implementation: host factory, daemon components, process lifecycle. | entry (CLI) |
 | `mltgnt.config.__init__` | mltgnt.config — host-independent configuration dataclasses. | cross-cutting (any layer) |
 | `mltgnt.config.language` | mltgnt.config.language — language-pack dataclass for locale-specific vocabulary. | cross-cutting (any layer) |
 | `mltgnt.conversation.__init__` | mltgnt.conversation — media-agnostic conversation layer (#3317). | L3 → L4–L5 |
@@ -751,16 +751,16 @@ Inventory of every `src/mltgnt/**/*.py` module (roles from module docstrings).
 | `mltgnt.conversation.thread_persona_store` | JSONL persistence for conversation-bound personas (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.thread_queue` | Conversation-layer wait queue (#3317). | L3 → L4–L5 |
 | `mltgnt.conversation.types` | Conversation-layer boundary types — re-export mltgnt.interfaces.turn (#3317). | L3 → L4–L5 |
-| `mltgnt.daemon.__init__` | Python module `daemon/__init__.py`. | L1 → L2–L5 |
-| `mltgnt.daemon._pidlock` | Python module `daemon/_pidlock.py`. | L1 → L2–L5 |
-| `mltgnt.daemon._runner` | Python module `daemon/_runner.py`. | L1 → L2–L5 |
+| `mltgnt.daemon.__init__` | Re-exports `DaemonRunner`, PID lock types, and `SkillWatcherComponent`. | L1 → L2–L5 |
+| `mltgnt.daemon._pidlock` | PID file lock so only one daemon process owns a host directory. | L1 → L2–L5 |
+| `mltgnt.daemon._runner` | Supervises registered `DaemonComponent`s with restart/backoff on exit. | L1 → L2–L5 |
 | `mltgnt.daemon._skill_watcher` | mltgnt.daemon._skill_watcher — DaemonComponent that watches skills/ and hot-reloads. | L1 → L2–L5 |
 | `mltgnt.exceptions` | mltgnt.exceptions — shared exception type hierarchy. | shared |
-| `mltgnt.interfaces.__init__` | Python module `interfaces/__init__.py`. | L5 (no inward deps) |
+| `mltgnt.interfaces.__init__` | Re-exports turn, media, hub, and persona boundary types (no mltgnt imports). | L5 (no inward deps) |
 | `mltgnt.interfaces.hub` | Hub envelope types and transport boundary (no media-layer imports). | L5 (no inward deps) |
 | `mltgnt.interfaces.media` | Media-agnostic client contract (MediaClient / Status) and the legacy adapter. | L5 (no inward deps) |
-| `mltgnt.interfaces.persona` | Python module `interfaces/persona.py`. | L5 (no inward deps) |
-| `mltgnt.interfaces.slack` | Python module `interfaces/slack.py`. | L5 (no inward deps) |
+| `mltgnt.interfaces.persona` | Persona-related DTOs shared across layers (no upward imports). | L5 (no inward deps) |
+| `mltgnt.interfaces.slack` | Legacy Slack client Protocol superseded by `MediaClient` (deprecated). | L5 (no inward deps) |
 | `mltgnt.interfaces.turn` | Conversation-layer boundary types (neck: TurnInput / TurnResult) and TurnHandler Protocol. | L5 (no inward deps) |
 | `mltgnt.interfaces.types` | L1 DTO — type definitions for the interfaces layer. | L5 (no inward deps) |
 | `mltgnt.media.__init__` | Media layer (Slack / WebChat implementations live in submodules). | L1 → L2–L5 |
@@ -853,18 +853,18 @@ Inventory of every `src/mltgnt/**/*.py` module (roles from module docstrings).
 | `mltgnt.persona.types` | mltgnt.persona.types — persona-layer boundary data (#3318). | L3 → L4–L5 |
 | `mltgnt.routing.__init__` | mltgnt.routing — space → persona routing (media-agnostic). | L2 → L3–L5 |
 | `mltgnt.routing.agentic_discover` | mltgnt.routing.agentic_discover — skill discovery via AgenticSkillDiscoverer. | L2 → L3–L5 |
-| `mltgnt.routing.channel_router` | src/mltgnt/routing/channel_router.py | L2 → L3–L5 |
+| `mltgnt.routing.channel_router` | Resolves a channel or space id to a persona via routing tables. | L2 → L3–L5 |
 | `mltgnt.routing.triage` | mltgnt.routing.triage | L2 → L3–L5 |
 | `mltgnt.scheduler.__init__` | mltgnt.scheduler — job dispatch core + YAML parser. | L2 → L3–L5 |
-| `mltgnt.scheduler.actions.__init__` | Python module `scheduler/actions/__init__.py`. | L2 → L3–L5 |
+| `mltgnt.scheduler.actions.__init__` | Built-in scheduler actions: `noop`, `skill`, and `memory_dream`. | L2 → L3–L5 |
 | `mltgnt.scheduler.actions.dream` | mltgnt.scheduler.actions.dream — memory_dream schedule action. | L2 → L3–L5 |
-| `mltgnt.scheduler.actions.skill` | Python module `scheduler/actions/skill.py`. | L2 → L3–L5 |
+| `mltgnt.scheduler.actions.skill` | Runs a scheduled skill step; optional fan-out uses ghdag reply blocks. | L2 → L3–L5 |
 | `mltgnt.scheduler.base_runner` | mltgnt.scheduler.base_runner — shared ABC for the tick loop. | L2 → L3–L5 |
-| `mltgnt.scheduler.fanout` | Python module `scheduler/fanout.py`. | L2 → L3–L5 |
-| `mltgnt.scheduler.loader` | Python module `scheduler/loader.py`. | L2 → L3–L5 |
-| `mltgnt.scheduler.models` | Python module `scheduler/models.py`. | L2 → L3–L5 |
-| `mltgnt.scheduler.runner` | Python module `scheduler/runner.py`. | L2 → L3–L5 |
-| `mltgnt.scheduler.state` | Python module `scheduler/state.py`. | L2 → L3–L5 |
+| `mltgnt.scheduler.fanout` | `fanout_prompt_suffix`: prompt appendix for ghdag `children` reply blocks. | L2 → L3–L5 |
+| `mltgnt.scheduler.loader` | Parses scheduler YAML into validated job definitions. | L2 → L3–L5 |
+| `mltgnt.scheduler.models` | Scheduler job, schedule, and action dataclasses. | L2 → L3–L5 |
+| `mltgnt.scheduler.runner` | Tick loop: fire due jobs and invoke registered actions. | L2 → L3–L5 |
+| `mltgnt.scheduler.state` | Persisted run ledger, pruning, and idempotency keys. | L2 → L3–L5 |
 | `mltgnt.skill.__init__` | mltgnt.skill — load and run Markdown-based skill files. | L3 → L4–L5 |
 | `mltgnt.skill._registry` | mltgnt.skill._registry — skill registry. | L3 → L4–L5 |
 | `mltgnt.skill.context` | mltgnt.skill.context — build extra_context from knowledge + memory. | L3 → L4–L5 |
@@ -1015,7 +1015,7 @@ If an action raises an exception, the job is marked failed with `<ExceptionType>
 | `task_timeout_sec` | `null` | Positive number of seconds, sent to ghdag as the task execution limit. Invalid values are ignored with a warning |
 | `knowledge_count`, `memory_max_bytes`, `memory_exclude_source_tags` | `0`, `0`, `null` | Opt-in context from skill knowledge files and persona memory |
 | `enable_pipeline` | `false` | Match a skill pipeline, compose it, type-check it, and run it with `enqueue_dag` |
-| `enable_fanout` | `false` | Create dynamic child tasks from the skill result |
+| `enable_fanout` | `false` | Append `fanout_prompt_suffix` to the skill prompt so the engine may return a ghdag reply block with `children`; `fanout_children_count` in `mltgnt.bridges.ghdag_bridge` parses how many child tasks were emitted |
 | `enforce_status_markers` | `false` | Fail the job when the `PIPELINE_STATUS` markers in the result do not match the skill contract |
 | `result_frontmatter` | `false` | Write skill I/O frontmatter at the top of the result |
 
