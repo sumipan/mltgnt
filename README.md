@@ -4,7 +4,7 @@
 
 **Building blocks for persona agents that live in chat: who they are (persona), what they remember (memory), what they can do (skills), when they act (scheduler and loop), and where they talk (media).**
 
-Documentation in this file tracks release `0.142.1` and is aligned with `src/mltgnt/` exports, CLI argparse, config dataclasses, and exception types.
+Documentation in this file tracks release `0.142.2` and is aligned with `src/mltgnt/` exports, CLI argparse, config dataclasses, and exception types.
 
 mltgnt is a Python library. It sits between an execution engine and the application that hosts your agents:
 
@@ -18,9 +18,9 @@ All LLM calls and git commits go out through `mltgnt.bridges`, which is the only
 
 ## Status
 
-![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.142.1)-orange)
+![Status](https://img.shields.io/badge/status-Pre--1.0%20(v0.142.2)-orange)
 
-Pre-1.0. The current release is `0.142.1` (tag `v0.142.1`). A minor release may change the API. See [Public API Stability](#public-api-stability).
+Pre-1.0. The current release is `0.142.2` (tag `v0.142.2`). A minor release may change the API. See [Public API Stability](#public-api-stability).
 
 ## Not
 
@@ -38,29 +38,29 @@ Scope boundaries for the library (not an LLM client, DAG engine, host, or chat b
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
-pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.142.1"
+pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.142.2"
 
 # Slack medium (mltgnt.media.slack)
-pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.142.1"
+pip install "mltgnt[slack] @ git+https://github.com/sumipan/mltgnt.git@v0.142.2"
 
 # WebChat medium (mltgnt.media.webchat)
-pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.142.1"
+pip install "mltgnt[webchat] @ git+https://github.com/sumipan/mltgnt.git@v0.142.2"
 
 # WebChat Web Push (includes the webchat dependencies and pywebpush)
-pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.142.1"
+pip install "mltgnt[webchat-push] @ git+https://github.com/sumipan/mltgnt.git@v0.142.2"
 
 # Hub relay server (mltgnt.media.hub; mltgnt hub serve)
-pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.142.1"
+pip install "mltgnt[hub] @ git+https://github.com/sumipan/mltgnt.git@v0.142.2"
 
 # Development tools (pytest, ruff, mypy, import-linter)
-pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.142.1"
+pip install "mltgnt[dev] @ git+https://github.com/sumipan/mltgnt.git@v0.142.2"
 ```
 
 See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 
 | Item | Value |
 |------|-------|
-| Distribution | `mltgnt` `0.142.1` |
+| Distribution | `mltgnt` `0.142.2` |
 | Python | `>=3.10` |
 | Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, plus `ghdag` as a git tag pin declared in `pyproject.toml` |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
@@ -1067,7 +1067,7 @@ Pre-1.0 SemVer policy for git tags:
 - Versions follow `0.Y.Z`. A minor release (`0.Y.0`) may change the API. A patch release does not. Changes are recorded in `CHANGELOG.md`.
 - The supported surface is `mltgnt.__all__`, `mltgnt.interfaces` (including `mltgnt.interfaces.media` and `mltgnt.interfaces.hub`), `mltgnt.agent.__all__`, `mltgnt.media.__all__`, the CLI, and the configuration schema described here. Other modules under those packages may change in any minor release.
 - A renamed or removed API usually keeps a deprecated alias for at least one minor release. Exceptions are marked `BREAKING` in `CHANGELOG.md`. For example, `0.125.0` added the keyword-only `pack` parameter to `extract_triage_section` and moved the legacy heading aliases into `LanguagePack.persona_section_aliases`.
-- Pin an exact tag in production, for example `@v0.142.1` (update when releasing).
+- Pin an exact tag in production, for example `@v0.142.2` (update when releasing).
 
 ## Deprecated API
 
