@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.142.0
+
+### Added
+
+- scheduler: delegate fan-out to ghdag reply blocks (#7554)
+
+### Fixed
+
+- repair: route reply-block fan-out parsing through ghdag_bridge (#7554)
+
 ## v0.141.12
 
 ### Changed

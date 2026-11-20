@@ -432,54 +432,6 @@ def test_skill_action_model_action_args_when_skill_meta_none(tmp_path: Path) -> 
     assert _enqueue_kw["model"] == "opus"
 _ENQUEUE_DAG = "mltgnt.bridges.ghdag_bridge.enqueue_dag"
 
-_FANOUT_RESPONSE = (
-    "Normal response text\n"
-    "---\n"
-    "ghdag_fanout:\n"
-    "  children:\n"
-    "    - id: child-1\n"
-    "      command: \"agent -p --force < order-1.md\"\n"
-    "    - id: child-2\n"
-    "      command: \"agent -p --force < order-2.md\"\n"
-)
-
-
-def test_fanout_success_message_contains_step_count(tmp_path: Path) -> None:
-    """AC-4: fanout Success → (True, 'fanout: N steps completed') """
-    sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
-    job = _skill_job(action_args={
-        "skill": "test-skill",
-        "persona": "persona-a",
-        "enable_fanout": True,
-    })
-
-    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
-         patch(_ENQUEUE_DAG, return_value=[(True, "ok1"), (True, "ok2")]):
-        ok, msg = sch.execute_action(job)
-
-    assert ok is True
-    assert "2" in msg and "steps" in msg
-
-
-def test_fanout_failure_returns_false_with_step_id(tmp_path: Path) -> None:
-    """AC-4: fanout Any step fails → (False, 'fanout: step X failed: ...') """
-    sch, _ = _make_skill_scheduler(tmp_path)
-    _make_persona(tmp_path, "persona-a", engine="claude", model="claude-sonnet-4-6")
-    job = _skill_job(action_args={
-        "skill": "test-skill",
-        "persona": "persona-a",
-        "enable_fanout": True,
-    })
-
-    with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
-         patch(_ENQUEUE_DAG, return_value=[(True, "ok"), (False, "timeout (120s)")]):
-        ok, msg = sch.execute_action(job)
-
-    assert ok is False
-    assert "child-2" in msg
-    assert "failed" in msg
-
 
 def test_fanout_no_block_returns_initial_result(tmp_path: Path) -> None:
     """AC-4: enable_fanout=true But ghdag_fanout No block → enqueue_and_wait You can check the result as it is."""
@@ -508,6 +460,8 @@ def test_fanout_disabled_does_not_call_enqueue_dag(tmp_path: Path) -> None:
         "skill": "test-skill",
         "persona": "persona-a",
     })
+
+    from tests.scheduler.actions.skill_helpers import _FANOUT_RESPONSE
 
     with patch(_ENQUEUE, return_value=(True, _FANOUT_RESPONSE)), \
          patch(_ENQUEUE_DAG) as mock_dag:

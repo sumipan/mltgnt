@@ -15,7 +15,6 @@ from mltgnt.skill.models import SideEffectsSpec
 from .skill_helpers import (
     _ENQUEUE,
     _ENQUEUE_DAG,
-    _FANOUT_RESPONSE,
     _make_persona,
     _make_skill_meta,
     _skill_job,

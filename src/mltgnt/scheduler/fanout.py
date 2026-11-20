@@ -1,67 +1,43 @@
 from __future__ import annotations
 
-import yaml
 
-# Fanout instruction: ask the persona to emit YAML at the end of the result for dynamic child tasks.
-# Appended to the prompt for skill jobs with action_args.enable_fanout=true.
-_FANOUT_PROMPT_SUFFIX = """
----
-If you determine that the task should be split into independent parallel subtasks,
-append the following YAML block at the very end of your response (after a `---` separator).
-Each child must have a unique `id` and a `command` that can be executed independently.
+def fanout_prompt_suffix(permission: str | None) -> str:
+    """Prompt suffix instructing the engine to emit a ghdag reply block for fan-out."""
+    if permission is not None:
+        perm_rule = (
+            f"Each child must include `permission: {permission}` "
+            "(use this exact value on every child).\n"
+        )
+        child_example = (
+            "  - id: subtask-1\n"
+            f"    permission: {permission}\n"
+            '    prompt: "Instructions for subtask 1"\n'
+            "  - id: subtask-2\n"
+            f"    permission: {permission}\n"
+            '    prompt: "Instructions for subtask 2"\n'
+        )
+    else:
+        perm_rule = ""
+        child_example = (
+            "  - id: subtask-1\n"
+            '    prompt: "Instructions for subtask 1"\n'
+            "  - id: subtask-2\n"
+            '    prompt: "Instructions for subtask 2"\n'
+        )
 
-```
----
-ghdag_fanout:
-  children:
-    - id: "subtask-1"
-      command: "agent -p --force < order-subtask-1.md"
-    - id: "subtask-2"
-      command: "agent -p --force < order-subtask-2.md"
-```
-
-If no parallel subtasks are needed, omit the `ghdag_fanout` block entirely.
-"""
-
-
-def _parse_fanout_steps(
-    content: str,
-    engine: str,
-    model: "str | None",
-) -> "list | None":
-    """Parse a ghdag_fanout YAML block into a DagStep list.
-
-    content: Response string from enqueue_and_wait
-    Returns a DagStep list. None when the block is absent.
-    """
-    lines = content.splitlines()
-    last_sep_idx = None
-    for i in range(len(lines) - 1, -1, -1):
-        if lines[i].strip() == "---":
-            last_sep_idx = i
-            break
-    if last_sep_idx is None:
-        return None
-
-    yaml_text = "\n".join(lines[last_sep_idx + 1:])
-    try:
-        data = yaml.safe_load(yaml_text)
-    except Exception:
-        return None
-
-    if not isinstance(data, dict) or "ghdag_fanout" not in data:
-        return None
-
-    fanout_data = data.get("ghdag_fanout") or {}
-    children = fanout_data.get("children") or []
-    if not children:
-        return None
-
-    from mltgnt.bridges.ghdag_bridge import DagStep
-    steps = []
-    for c in children:
-        try:
-            steps.append(DagStep(id=c["id"], prompt=c["command"], engine=engine, model=model))
-        except (KeyError, TypeError):
-            return None
-    return steps or None
+    return (
+        "\n---\n"
+        "If independent parallel subtasks are warranted, end your response with a "
+        "```ghdag fenced reply block containing `status: ok` and a `children` list.\n"
+        "Each child must have a unique `id` (no `:` in id) and a `prompt` with the "
+        "full child instruction. Do not use `command`, `engine`, or `model`.\n"
+        "Do not emit legacy YAML fan-out blocks after `---`. Omit the reply block "
+        "when no parallel subtasks are needed.\n"
+        f"{perm_rule}\n"
+        "Example:\n\n"
+        "```ghdag\n"
+        "status: ok\n"
+        "children:\n"
+        f"{child_example}"
+        "```\n"
+    )

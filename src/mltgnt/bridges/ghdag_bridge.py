@@ -23,7 +23,6 @@ from mltgnt.skill.runner import write_result_frontmatter
 Permission = capabilities.Permission
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-_PIPELINE_STATUS_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$", re.MULTILINE)
 
 
 @dataclass
@@ -41,12 +40,6 @@ class DagStep:
 
 class SkillIOTypeError(TypeError):
     """Pipe type mismatch detected by compose-time typecheck."""
-
-
-def _extract_pipeline_status(content: str) -> str | None:
-    """Extract PIPELINE_STATUS: <value> from result content (last match)."""
-    matches = _PIPELINE_STATUS_RE.findall(content)
-    return matches[-1] if matches else None
 
 
 def compose_pipeline(
@@ -332,6 +325,7 @@ def enqueue_dag(
     if not steps:
         raise ValueError("steps must not be empty")
 
+    from ghdag.dag import check_pipeline_status
     from ghdag.pipeline import (
         InlineOrderBuilder,
         TaskQueue,
@@ -430,9 +424,13 @@ def enqueue_dag(
                 content = md_read(result_filename, repo_root=jobs_dir).content.strip()
             except OSError:
                 content = ""
-            pipeline_status = _extract_pipeline_status(content)
+            pipeline_status = (
+                check_pipeline_status(str(jobs_dir / result_filename))
+                if result_filename
+                else None
+            )
             # Fail on INVALID_STATE even if ghdag exit succeeded (block downstream submit)
-            if pipeline_status == "INVALID_STATE":
+            if pipeline_status in ("INVALID_STATE", "INVALID_STATE_FAILED"):
                 results_by_id[step.id] = (False, "PIPELINE_STATUS: INVALID_STATE")
                 failed_steps.add(step.id)
                 continue
@@ -568,3 +566,27 @@ def _order_to_result_filename(exec_line: str) -> str:
     prefix = m.group(1).split("/")[-1]
     uuid = m.group(2)
     return f"{prefix}-result-{uuid}.md"
+
+
+def fanout_children_count(msg: str) -> int | None:
+    """Return the number of fan-out children ghdag would spawn from *msg*, or None.
+
+    Uses the public ``ghdag.dag.parse_fanout_spec`` (the same parser ghdag uses to
+    spawn children) instead of importing ghdag internals. Invalid reply blocks /
+    fan-out specs return None (ghdag fails the parent itself in that case).
+    """
+    import tempfile
+
+    from ghdag.dag import parse_fanout_spec
+
+    with tempfile.TemporaryDirectory() as tmp:
+        result_path = os.path.join(tmp, "result.md")
+        with open(result_path, "w", encoding="utf-8") as f:
+            f.write(msg)
+        try:
+            spec = parse_fanout_spec(result_path)
+        except Exception:  # ReplyBlockError / FanoutError (ghdag ConfigError)
+            return None
+    if spec is None or not spec.children:
+        return None
+    return len(spec.children)

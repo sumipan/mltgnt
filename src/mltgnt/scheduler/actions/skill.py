@@ -11,7 +11,7 @@ from typing import Any
 
 from zoneinfo import ZoneInfo
 
-from mltgnt.scheduler.fanout import _FANOUT_PROMPT_SUFFIX, _parse_fanout_steps
+from mltgnt.scheduler.fanout import fanout_prompt_suffix
 from mltgnt.scheduler.models import ScheduleJob
 from mltgnt.skill.models import ExitStatus
 
@@ -231,6 +231,30 @@ def _resolve_exit_code(
     return exit_code, diagnostics
 
 
+def _write_fanout_audit(
+    audit_path: Path,
+    *,
+    skill_name: str,
+    job_id: str,
+    children: int | None,
+    ok: bool,
+) -> None:
+    record = {
+        "schema_version": 1,
+        "event_type": "skill_fanout",
+        "timestamp": datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(),
+        "skill_name": skill_name,
+        "job_id": job_id,
+        "children": children,
+        "ok": ok,
+    }
+    try:
+        with audit_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"skill_fanout_audit: write failed: {e}", file=sys.stderr)
+
+
 def _write_skill_result_audit(
     audit_path: Path,
     *,
@@ -368,8 +392,10 @@ def run_skill_action(
             task_timeout_sec=task_timeout_sec,
         )
 
+    permission = aa.get("permission")
     if aa.get("enable_fanout", False):
-        prompt = prompt + _FANOUT_PROMPT_SUFFIX
+        perm_for_fanout = permission if isinstance(permission, str) else None
+        prompt = prompt + fanout_prompt_suffix(perm_for_fanout)
 
     from mltgnt.bridges.ghdag_bridge import enqueue_and_wait
 
@@ -378,7 +404,6 @@ def run_skill_action(
 
     fired_at = datetime.now(ZoneInfo(default_tz))
     request_id = str(uuid.uuid4())
-    permission = aa.get("permission")
     ok, msg = enqueue_and_wait(
         prompt=prompt,
         engine=engine,
@@ -413,44 +438,28 @@ def run_skill_action(
             memory_bytes=memory_bytes_audit,
         )
 
-    if ok and aa.get("enable_fanout", False):
-        fanout_steps = _parse_fanout_steps(msg, engine=engine, model=resolved_model)
-        if fanout_steps:
-            from mltgnt.bridges.ghdag_bridge import enqueue_dag
+    if aa.get("enable_fanout", False):
+        audit_path = repo_root / "jobs" / "audit.jsonl"
+        if ok:
+            from mltgnt.bridges.ghdag_bridge import fanout_children_count
 
-            permission = aa.get("permission")
-            dag_results = enqueue_dag(
-                fanout_steps,
-                timeout=job.timeout_seconds or 120,
-                idempotency_key=f"scheduler:{job.id}:{fired_at.isoformat()}:fanout",
-                jobs_dir=repo_root / "jobs",
-                exec_done_dir=repo_root / "jobs" / "done",
-                request_id=request_id,
-                permission=permission,
-                task_timeout_sec=task_timeout_sec,
-            )
-            audit_path = repo_root / "jobs" / "audit.jsonl"
-            first_failure: tuple[str, str] | None = None
-            enforce = bool(aa.get("enforce_status_markers", False))
-            for i, (step_ok, step_msg) in enumerate(dag_results):
-                step_exit, step_diag = _resolve_exit_code(
-                    step_ok, step_msg, [], enforce=enforce
-                )
-                _write_skill_result_audit(
+            children = fanout_children_count(msg)
+            if children is not None:
+                _write_fanout_audit(
                     audit_path,
                     skill_name=skill_name,
                     job_id=job.id,
-                    exit_code=step_exit,
-                    diagnostics=step_diag,
+                    children=children,
+                    ok=True,
                 )
-                if not step_ok and first_failure is None:
-                    step_id = fanout_steps[i].id
-                    first_failure = (step_id, step_msg)
-            if first_failure is not None:
-                return False, (
-                    f"fanout: step '{first_failure[0]}' failed: {first_failure[1]}"
-                )
-            return True, f"fanout: {len(dag_results)} steps completed"
+        elif "FANOUT_CHILD_FAILED" in msg:
+            _write_fanout_audit(
+                audit_path,
+                skill_name=skill_name,
+                job_id=job.id,
+                children=None,
+                ok=False,
+            )
 
     enforce = bool(aa.get("enforce_status_markers", False))
     exit_code, diagnostics = _resolve_exit_code(

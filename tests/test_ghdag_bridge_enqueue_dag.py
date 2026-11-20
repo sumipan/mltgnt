@@ -13,6 +13,7 @@ from ghdag.core import capabilities
 from mltgnt.bridges.ghdag_bridge import (
     DagStep,
     SkillIOTypeError,
+    _extract_result_filename,
     compose_pipeline,
     enqueue_and_wait,
     enqueue_dag,
@@ -27,6 +28,27 @@ from tests.ghdag_bridge_helpers import (
 )
 
 Permission = capabilities.Permission
+
+
+def _latest_result_filename(jobs_dir: Path) -> str:
+    lines = [
+        ln
+        for ln in (jobs_dir / "exec.jsonl").read_text().splitlines()
+        if ln.strip() and not ln.startswith("#")
+    ]
+    return _extract_result_filename(lines[-1])
+
+
+def _wait_writes_result(jobs_dir: Path, content: str):
+    """Side effect for wait_for_result: materialize the result file on disk."""
+
+    def _side(exec_done_dir, step_uuid, timeout=None, **kwargs):
+        fn = _latest_result_filename(jobs_dir)
+        if fn:
+            (jobs_dir / fn).write_text(content, encoding="utf-8")
+        return ("success", "")
+
+    return _side
 
 
 class TestEnqueueDagPermissionPassThrough:
@@ -191,7 +213,13 @@ class TestEnqueueDagPipelineStatus:
 
         with (
             patch.object(TaskQueue, "enqueue", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
+            patch(
+                _WAIT,
+                side_effect=_wait_writes_result(
+                    jobs_dir,
+                    "analysis result\nPIPELINE_STATUS: OK\n",
+                ),
+            ),
             patch(_MD_READ, side_effect=[mock_md_a, mock_md_b]),
         ):
             results = enqueue_dag(
@@ -232,7 +260,13 @@ class TestEnqueueDagPipelineStatus:
 
         with (
             patch.object(TaskQueue, "enqueue", capture_submit),
-            patch(_WAIT, return_value=("success", "")),
+            patch(
+                _WAIT,
+                side_effect=_wait_writes_result(
+                    jobs_dir,
+                    "blocked\nPIPELINE_STATUS: INVALID_STATE\n",
+                ),
+            ),
             patch(_MD_READ, return_value=mock_md),
         ):
             results = enqueue_dag(
@@ -247,6 +281,58 @@ class TestEnqueueDagPipelineStatus:
                 ],
                 timeout=5.0,
                 idempotency_key=f"dag:invalid:{uuid.uuid4()}",
+                jobs_dir=jobs_dir,
+                exec_done_dir=done_dir,
+            )
+
+        assert "step_a" in submitted_ids
+        assert "step_b" not in submitted_ids
+        assert results[0][0] is False
+        assert "INVALID_STATE" in results[0][1]
+        assert results[1] == (False, "dependency failed")
+
+    def test_reply_block_invalid_state_blocks_downstream(self, tmp_path):
+        """Issue #7554 AC3: reply block INVALID_STATE blocks downstream submit."""
+        from ghdag.pipeline import TaskQueue
+
+        jobs_dir, done_dir = _make_jobs_dir_dag(tmp_path)
+        submitted_ids: list[str] = []
+        original_submit = TaskQueue.enqueue
+
+        def capture_submit(self_api, step_list, **kwargs):
+            for s in step_list:
+                submitted_ids.append(s.id)
+            return original_submit(self_api, step_list, **kwargs)
+
+        reply_block = (
+            "```ghdag\n"
+            "status: failed\n"
+            "code: INVALID_STATE\n"
+            "```\n"
+        )
+        mock_md = MagicMock()
+        mock_md.content = reply_block
+
+        with (
+            patch.object(TaskQueue, "enqueue", capture_submit),
+            patch(
+                _WAIT,
+                side_effect=_wait_writes_result(jobs_dir, reply_block),
+            ),
+            patch(_MD_READ, return_value=mock_md),
+        ):
+            results = enqueue_dag(
+                steps=[
+                    DagStep(id="step_a", prompt="P_a", engine="cursor"),
+                    DagStep(
+                        id="step_b",
+                        prompt="P_b",
+                        engine="cursor",
+                        depends=["step_a"],
+                    ),
+                ],
+                timeout=5.0,
+                idempotency_key=f"dag:reply-invalid:{uuid.uuid4()}",
                 jobs_dir=jobs_dir,
                 exec_done_dir=done_dir,
             )
