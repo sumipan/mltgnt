@@ -566,3 +566,21 @@ def _order_to_result_filename(exec_line: str) -> str:
     prefix = m.group(1).split("/")[-1]
     uuid = m.group(2)
     return f"{prefix}-result-{uuid}.md"
+
+
+def fanout_children_count(msg: str) -> int | None:
+    """Return child count from an ok ghdag reply block in *msg*, or None."""
+    _reply_block = __import__(
+        "ghdag.core.reply_block",
+        fromlist=["ReplyBlockError", "parse_reply_block"],
+    )
+    parse_reply_block = _reply_block.parse_reply_block
+    ReplyBlockError = _reply_block.ReplyBlockError
+
+    try:
+        block = parse_reply_block(msg)
+    except ReplyBlockError:
+        return None
+    if block is not None and block.status == "ok" and block.children:
+        return len(block.children)
+    return None

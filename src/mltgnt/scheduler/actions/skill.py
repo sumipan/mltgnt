@@ -441,22 +441,15 @@ def run_skill_action(
     if aa.get("enable_fanout", False):
         audit_path = repo_root / "jobs" / "audit.jsonl"
         if ok:
-            from ghdag.core.reply_block import ReplyBlockError, parse_reply_block
+            from mltgnt.bridges.ghdag_bridge import fanout_children_count
 
-            try:
-                block = parse_reply_block(msg)
-            except ReplyBlockError:
-                block = None
-            if (
-                block is not None
-                and block.status == "ok"
-                and block.children
-            ):
+            children = fanout_children_count(msg)
+            if children is not None:
                 _write_fanout_audit(
                     audit_path,
                     skill_name=skill_name,
                     job_id=job.id,
-                    children=len(block.children),
+                    children=children,
                     ok=True,
                 )
         elif "FANOUT_CHILD_FAILED" in msg:
