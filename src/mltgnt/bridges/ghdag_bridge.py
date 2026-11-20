@@ -569,18 +569,24 @@ def _order_to_result_filename(exec_line: str) -> str:
 
 
 def fanout_children_count(msg: str) -> int | None:
-    """Return child count from an ok ghdag reply block in *msg*, or None."""
-    _reply_block = __import__(
-        "ghdag.core.reply_block",
-        fromlist=["ReplyBlockError", "parse_reply_block"],
-    )
-    parse_reply_block = _reply_block.parse_reply_block
-    ReplyBlockError = _reply_block.ReplyBlockError
+    """Return the number of fan-out children ghdag would spawn from *msg*, or None.
 
-    try:
-        block = parse_reply_block(msg)
-    except ReplyBlockError:
+    Uses the public ``ghdag.dag.parse_fanout_spec`` (the same parser ghdag uses to
+    spawn children) instead of importing ghdag internals. Invalid reply blocks /
+    fan-out specs return None (ghdag fails the parent itself in that case).
+    """
+    import tempfile
+
+    from ghdag.dag import parse_fanout_spec
+
+    with tempfile.TemporaryDirectory() as tmp:
+        result_path = os.path.join(tmp, "result.md")
+        with open(result_path, "w", encoding="utf-8") as f:
+            f.write(msg)
+        try:
+            spec = parse_fanout_spec(result_path)
+        except Exception:  # ReplyBlockError / FanoutError (ghdag ConfigError)
+            return None
+    if spec is None or not spec.children:
         return None
-    if block is not None and block.status == "ok" and block.children:
-        return len(block.children)
-    return None
+    return len(spec.children)
