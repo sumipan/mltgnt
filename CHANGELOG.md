@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.142.3
+
+### Changed
+
+- bump ghdag to v0.151.0
+
 ## v0.142.2
 
 ### Changed
