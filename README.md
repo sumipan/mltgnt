@@ -38,6 +38,10 @@ Scope boundaries for the library (not an LLM client, DAG engine, host, or chat b
 mltgnt is distributed as git tags. It is not on PyPI.
 
 ```bash
+# ghdag is not on PyPI either. Install it first from a git tag at or above
+# the lower bound in pyproject.toml (ghdag>=0.152.2), then install mltgnt.
+pip install "ghdag @ git+https://github.com/sumipan/ghdag.git@v0.152.2"
+
 pip install "mltgnt @ git+https://github.com/sumipan/mltgnt.git@v0.142.9"
 
 # Slack medium (mltgnt.media.slack)
@@ -62,7 +66,7 @@ See [TESTING.md](./TESTING.md) for what tests should and should not pin.
 |------|-------|
 | Distribution | `mltgnt` `0.142.9` |
 | Python | `>=3.10` |
-| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, plus `ghdag` as a git tag pin declared in `pyproject.toml` |
+| Dependencies | `PyYAML>=6.0`, `scikit-learn>=1.0`, `numpy>=1.21`, plus `ghdag>=0.152.2` (lower bound in `pyproject.toml`; install ghdag from its git tag first, as above) |
 | Extra `slack` | `slack_sdk>=3.0`, `slack_bolt>=1.18` |
 | Extra `webchat` | `fastapi>=0.100`, `uvicorn>=0.20` |
 | Extra `webchat-push` | `fastapi>=0.100`, `uvicorn>=0.20`, `pywebpush` (enables VAPID push when `WebChatMediaConfig.push` is configured) |

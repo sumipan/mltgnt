@@ -1042,6 +1042,64 @@ def test_pyproject_ghdag_is_single_lower_bound() -> None:
     )
 
 
+_GHDAG_GIT_INSTALL_RE = re.compile(
+    r'pip install "ghdag @ git\+https://github\.com/sumipan/ghdag\.git@v\d+\.\d+\.\d+"'
+)
+
+
+def _installation_pip_install_lines(text: str) -> list[str]:
+    block = _section_slice(text, "Installation", stop_before=("Quick Start",))
+    return [line.strip() for line in block.splitlines() if line.strip().startswith("pip install ")]
+
+
+def _ghdag_lower_bound_version_tuple() -> tuple[int, int, int]:
+    specs = [
+        dep
+        for dep in _pyproject()["project"]["dependencies"]
+        if dep.startswith("ghdag>=")
+    ]
+    assert len(specs) == 1
+    match = re.fullmatch(r"ghdag>=(\d+)\.(\d+)\.(\d+)", specs[0])
+    assert match is not None
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def _version_tuple_from_ghdag_install_line(line: str) -> tuple[int, int, int]:
+    match = re.search(r"@v(\d+)\.(\d+)\.(\d+)", line)
+    assert match is not None, f"ghdag install line missing @v tag: {line!r}"
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def test_readme_installation_installs_ghdag_before_mltgnt() -> None:
+    """Installation lists one ghdag git install before every mltgnt pip line.
+
+    Refs: sumipan/nexus#7749.
+    """
+    lines = _installation_pip_install_lines(_readme_text())
+    ghdag_lines = [line for line in lines if "ghdag" in line]
+    mltgnt_lines = [line for line in lines if line.startswith('pip install "mltgnt')]
+    assert len(ghdag_lines) == 1, ghdag_lines
+    assert _GHDAG_GIT_INSTALL_RE.fullmatch(ghdag_lines[0]), ghdag_lines[0]
+    assert lines[0] == ghdag_lines[0]
+    assert len(mltgnt_lines) == 6, mltgnt_lines
+    ghdag_index = lines.index(ghdag_lines[0])
+    for line in mltgnt_lines:
+        assert lines.index(line) > ghdag_index, line
+
+
+def test_readme_installation_ghdag_tag_meets_pyproject_lower_bound() -> None:
+    """README ghdag install tag is at or above the pyproject lower bound.
+
+    Refs: sumipan/nexus#7749.
+    """
+    lines = _installation_pip_install_lines(_readme_text())
+    ghdag_lines = [line for line in lines if "ghdag" in line]
+    assert len(ghdag_lines) == 1
+    readme_ver = _version_tuple_from_ghdag_install_line(ghdag_lines[0])
+    lower_bound = _ghdag_lower_bound_version_tuple()
+    assert readme_ver >= lower_bound
+
+
 def test_readme_required_sections_are_present_once() -> None:
     """OSS quality headings appear exactly once."""
     counts = _heading_counts(_readme_text())
