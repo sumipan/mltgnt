@@ -11,11 +11,7 @@ from __future__ import annotations
 
 import ast
 import importlib
-import importlib.metadata
-import re
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BRIDGES_ROOT = REPO_ROOT / "src" / "mltgnt" / "bridges"
@@ -127,17 +123,7 @@ def find_missing_upstream_names(bridges_root: Path) -> list[str]:
     return violations
 
 
-def _pinned_ghdag_version() -> str | None:
-    text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r"ghdag\.git@v([0-9][^\"'\s]*)", text)
-    return match.group(1) if match else None
-
-
 def test_real_bridges_reference_existing_upstream_names() -> None:
-    pinned = _pinned_ghdag_version()
-    installed = importlib.metadata.version("ghdag")
-    if pinned is not None and installed != pinned:
-        pytest.skip(f"installed ghdag {installed} does not match pinned v{pinned}")
     assert find_missing_upstream_names(BRIDGES_ROOT) == []
 
 
