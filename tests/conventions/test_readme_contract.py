@@ -1029,18 +1029,17 @@ def _quick_start_python_block(text: str) -> str:
     raise AssertionError("Quick Start python fence not found")
 
 
-def test_pyproject_has_single_ghdag_release_tag_pin() -> None:
-    """The ghdag dependency is exactly one git pin on a semver release tag."""
-    pins = [
+def test_pyproject_ghdag_is_single_lower_bound() -> None:
+    """The ghdag dependency is exactly one lower-bound specifier without a URL."""
+    specs = [
         dep
         for dep in _pyproject()["project"]["dependencies"]
-        if dep.startswith("ghdag ")
+        if dep.startswith("ghdag")
     ]
-    assert len(pins) == 1, f"expected exactly one ghdag dependency: {pins}"
-    assert re.fullmatch(
-        r"ghdag @ git\+https://github\.com/sumipan/ghdag\.git@v\d+\.\d+\.\d+",
-        pins[0],
-    ), f"ghdag dependency is not a release tag pin: {pins[0]}"
+    assert len(specs) == 1, f"expected exactly one ghdag dependency: {specs}"
+    assert re.fullmatch(r"ghdag>=\d+\.\d+\.\d+", specs[0]), (
+        f"ghdag dependency is not a single lower bound: {specs[0]}"
+    )
 
 
 def test_readme_required_sections_are_present_once() -> None:

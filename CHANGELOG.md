@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.142.9
+
+### Changed
+
+- deps: declare ghdag as a lower bound only
+
 ## v0.142.8
 
 ### Changed
