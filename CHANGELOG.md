@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.142.10
+
+### Changed
+
+- readme: install ghdag from git tag before mltgnt
+
 ## v0.142.9
 
 ### Changed
