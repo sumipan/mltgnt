@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.142.11
+
+### Changed
+
+- tests: stop pinning README content in convention tests
+
 ## v0.142.10
 
 ### Changed
