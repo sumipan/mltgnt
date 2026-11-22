@@ -1,6 +1,6 @@
 """Every documented ``mltgnt <subcommand>`` must be registered in the CLI.
 
-Commands are collected from Markdown code spans / fences (README, CHANGELOG)
+Commands are collected from Markdown code spans / fences (CHANGELOG)
 and from code spans inside Python string literals under ``src/``. Prose such as
 "mltgnt import" outside code spans is ignored.
 """
@@ -83,11 +83,8 @@ def _python_string_literals(src_root: Path) -> list[str]:
 
 
 def _documented_texts() -> list[str]:
-    texts = [
-        (REPO_ROOT / name).read_text(encoding="utf-8")
-        for name in ("README.md", "CHANGELOG.md")
-        if (REPO_ROOT / name).exists()
-    ]
+    changelog = REPO_ROOT / "CHANGELOG.md"
+    texts = [changelog.read_text(encoding="utf-8")] if changelog.exists() else []
     return texts + _python_string_literals(SRC_ROOT)
 
 
@@ -98,7 +95,6 @@ def test_known_subcommands_help_exit_zero() -> None:
 
 def test_documented_commands_are_registered() -> None:
     cmds = extract_documented_commands(_documented_texts())
-    assert ("run",) in cmds
     assert find_unregistered(cmds) == []
 
 

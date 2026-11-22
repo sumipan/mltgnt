@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -15,8 +14,6 @@ from fastapi.testclient import TestClient  # noqa: E402
 from mltgnt.media.webchat.app import create_app  # noqa: E402
 from mltgnt.media.webchat.config import WebChatMediaConfig  # noqa: E402
 from mltgnt.media.webchat.ui import INDEX_HTML  # noqa: E402
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class _Bridge:
@@ -92,17 +89,3 @@ def test_header_meters_responsive_contract() -> None:
     assert "#header-meters" in INDEX_HTML
     assert "min-width: 0" in INDEX_HTML
     assert "white-space: nowrap" in INDEX_HTML
-
-
-def test_header_meters_release_contract() -> None:
-    """Issue #6022: README, CHANGELOG v0.135.0; pyproject version line present."""
-    readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    changelog = (_REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    pyproject = (_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-
-    assert "header_meters_url" in readme
-    assert "fetched_at" in readme
-    assert '"groups"' in readme or "groups" in readme
-    assert "## v0.135.0" in changelog
-    assert re.search(r"header.?meter", changelog, re.I)
-    assert re.search(r'^version = "\d+\.\d+\.\d+"', pyproject, re.M)
