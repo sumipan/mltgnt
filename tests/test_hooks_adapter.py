@@ -283,12 +283,36 @@ class TestMltgntHooks:
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_rejected(str(result_file)) is False
 
-    def test_check_pipeline_status(self, tmp_path):
-        """AC-2: PIPELINE_STATUS: BRUSHUP_DONE For files containing 'BRUSHUP_DONE' """
+    def test_check_pipeline_status_from_legacy_line(self, tmp_path):
+        """Issue #7911 AC-5: hooks delegate to mltgnt legacy-line fallback."""
         result_file = tmp_path / "result.md"
         result_file.write_text("output\nPIPELINE_STATUS: BRUSHUP_DONE\n", encoding="utf-8")
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_pipeline_status(str(result_file)) == "BRUSHUP_DONE"
+
+    def test_check_pipeline_status_from_reply_block(self, tmp_path):
+        """Issue #7911 AC-6: hooks use reply-block status when present."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "```ghdag\nstatus: ok\ncode: IMPL_DONE\n```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_pipeline_status(str(result_file)) == "IMPL_DONE"
+
+    def test_check_pipeline_status_failed_reply_block_takes_priority(self, tmp_path):
+        """Issue #7911 AC4: failed reply block wins over a legacy status line."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "PIPELINE_STATUS: OK\n"
+            "```ghdag\n"
+            "status: failed\n"
+            "code: INVALID_STATE\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_pipeline_status(str(result_file)) == "INVALID_STATE_FAILED"
 
     def test_check_promote_target_returns_none(self, tmp_path):
         """AC-2: check_promote_target for any input None """

@@ -23,6 +23,7 @@ from mltgnt.skill.runner import write_result_frontmatter
 Permission = capabilities.Permission
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_PIPELINE_STATUS_LINE_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$")
 
 
 @dataclass
@@ -40,6 +41,35 @@ class DagStep:
 
 class SkillIOTypeError(TypeError):
     """Pipe type mismatch detected by compose-time typecheck."""
+
+
+def _pipeline_status_from_legacy_lines(content: str) -> str | None:
+    """Return the last line-anchored ``PIPELINE_STATUS: <value>`` marker in *content*."""
+    found: str | None = None
+    for line in content.splitlines():
+        m = _PIPELINE_STATUS_LINE_RE.match(line)
+        if m:
+            found = m.group(1)
+    return found
+
+
+def read_pipeline_status(result_path: str) -> str | None:
+    """Read a result file and return pipeline status for mltgnt DAG propagation.
+
+    Prefer ghdag reply-block parsing when present; otherwise fall back to the last
+    ``PIPELINE_STATUS:`` line (legacy skill markers). Missing/unreadable files and
+    bodies with no status marker return ``None``.
+    """
+    from ghdag.dag import check_pipeline_status as ghdag_check_pipeline_status
+
+    status = ghdag_check_pipeline_status(result_path)
+    if status is not None:
+        return status
+    try:
+        content = Path(result_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return _pipeline_status_from_legacy_lines(content)
 
 
 def compose_pipeline(
@@ -325,7 +355,6 @@ def enqueue_dag(
     if not steps:
         raise ValueError("steps must not be empty")
 
-    from ghdag.dag import check_pipeline_status
     from ghdag.pipeline import (
         InlineOrderBuilder,
         TaskQueue,
@@ -425,7 +454,7 @@ def enqueue_dag(
             except OSError:
                 content = ""
             pipeline_status = (
-                check_pipeline_status(str(jobs_dir / result_filename))
+                read_pipeline_status(str(jobs_dir / result_filename))
                 if result_filename
                 else None
             )

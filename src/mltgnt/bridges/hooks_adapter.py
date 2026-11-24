@@ -6,8 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ghdag.dag import check_pipeline_status, default_check_rejected
+from ghdag.dag import default_check_rejected
 from ghdag.pipeline import write_task_exit_audit
+
+from mltgnt.bridges.ghdag_bridge import read_pipeline_status
 
 if TYPE_CHECKING:
     from ghdag.dag import Task
@@ -150,7 +152,7 @@ class MltgntHooks:
         return default_check_rejected(result_path)
 
     def check_pipeline_status(self, result_path: str) -> "str | None":
-        return check_pipeline_status(result_path)
+        return read_pipeline_status(result_path)
 
     def check_promote_target(self, result_path: str) -> "str | None":
         return None
