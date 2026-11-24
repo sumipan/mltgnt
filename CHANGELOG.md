@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.143.0
+
+### Fixed
+
+- bridges: restore legacy PIPELINE_STATUS parsing for DAG hooks
+
 ## v0.142.11
 
 ### Changed
