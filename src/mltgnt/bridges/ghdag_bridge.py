@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ghdag.core import capabilities
+from ghdag.core import capabilities, reply_block
 from ghdag.files import md_read
 from ghdag.pipeline import OrderBuilder
 
@@ -51,6 +51,32 @@ def _pipeline_status_from_legacy_lines(content: str) -> str | None:
         if m:
             found = m.group(1)
     return found
+
+
+def read_rejected(result_path: str) -> bool:
+    """Return True when the result is rejected (reply block or legacy REJECTED: line).
+
+    Reply-block parsing uses ghdag's public parser. When a block is present it takes
+    priority over legacy line markers. Invalid reply blocks do not fall back to legacy
+    lines (matching former ghdag ``default_check_rejected`` behavior).
+    """
+    try:
+        content = Path(result_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    try:
+        block = reply_block.parse_reply_block(content)
+    except reply_block.ReplyBlockError:
+        return False
+    if block is not None:
+        return block.status == "rejected"
+    for line in content.splitlines()[:10]:
+        stripped = line.strip()
+        if stripped.startswith("REJECTED:"):
+            return True
+        if stripped.startswith("ACCEPTED"):
+            return False
+    return False
 
 
 def read_pipeline_status(result_path: str) -> str | None:

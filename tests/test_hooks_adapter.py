@@ -283,6 +283,73 @@ class TestMltgntHooks:
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_rejected(str(result_file)) is False
 
+    def test_check_rejected_reply_block_takes_priority(self, tmp_path):
+        """Issue #7917 AC3: rejected reply block wins over legacy ACCEPTED."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "ACCEPTED\n"
+            "```ghdag\n"
+            "status: rejected\n"
+            "reason: inappropriate response\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_rejected(str(result_file)) is True
+
+    def test_check_rejected_non_rejected_reply_block_takes_priority(self, tmp_path):
+        """Issue #7917 AC4: non-rejected reply block wins over legacy REJECTED line."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "REJECTED: legacy line\n"
+            "```ghdag\n"
+            "status: ok\n"
+            "code: IMPL_DONE\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_rejected(str(result_file)) is False
+
+    def test_check_rejected_invalid_reply_block_does_not_fallback(self, tmp_path):
+        """Issue #7917 AC5: invalid reply block does not fall back to legacy REJECTED."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "REJECTED: legacy line\n"
+            "```ghdag\n"
+            "code: IMPL\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_rejected(str(result_file)) is False
+
+    def test_check_rejected_invalid_status_fields_do_not_fallback(self, tmp_path):
+        """Issue #7917 AC5: ghdag field validation remains authoritative."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "REJECTED: legacy line\n"
+            "```ghdag\n"
+            "status: rejected\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_rejected(str(result_file)) is False
+
+    def test_check_rejected_ignores_marker_after_first_ten_lines(self, tmp_path):
+        """Issue #7917 AC6: REJECTED marker beyond the first ten lines is ignored."""
+        result_file = tmp_path / "result.md"
+        leading = "\n".join(f"line {i}" for i in range(1, 11))
+        result_file.write_text(f"{leading}\nREJECTED: too late\n", encoding="utf-8")
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_rejected(str(result_file)) is False
+
+    def test_check_rejected_missing_file(self, tmp_path):
+        """Issue #7917 AC7: missing result path returns False."""
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_rejected(str(tmp_path / "no-such-result.md")) is False
+
     def test_check_pipeline_status_from_legacy_line(self, tmp_path):
         """Issue #7911 AC-5: hooks delegate to mltgnt legacy-line fallback."""
         result_file = tmp_path / "result.md"
