@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -236,23 +235,28 @@ def test_worker_sends_only_new_agent_messages(tmp_path: Path) -> None:
     store.append(message_id="old", author="bot", text="skip")
     sent: list[dict[str, str]] = []
     stop = threading.Event()
+    delivered = threading.Event()
     subs = PushSubscriptionStore(tmp_path / "w")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
+
+    def capture(_sub: dict[str, object], payload: dict[str, str]) -> None:
+        sent.append(payload)
+        delivered.set()
+
     worker = PushWorker(
         [("general", store)],
         subs,
         _enabled_push(),
         display_names={"bot": "Bot"},
         stop_event=stop,
-        send=lambda _sub, payload: sent.append(payload),
-        poll_interval_sec=0.01,
+        send=capture,
+        poll_interval_sec=0,
     )
     worker.start()
-    time.sleep(0.05)
     store.append(message_id="u1", author="user", text="human")
     store.revise("u1", "update", text="changed")
     store.append(message_id="n1", author="bot", text="hello")
-    time.sleep(0.15)
+    delivered.wait()
     worker.stop()
     assert len(sent) == 1
     assert sent[0]["body"] == WebPushConfig().body_text
@@ -264,22 +268,27 @@ def test_worker_follows_next_day(tmp_path: Path) -> None:
     store = WebChatStore(tmp_path / "w", clock=clock)
     sent: list[dict[str, str]] = []
     stop = threading.Event()
+    delivered = threading.Event()
     subs = PushSubscriptionStore(tmp_path / "w")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
+
+    def capture(_sub: dict[str, object], payload: dict[str, str]) -> None:
+        sent.append(payload)
+        delivered.set()
+
     worker = PushWorker(
         [("general", store)],
         subs,
         _enabled_push(),
         display_names={},
         stop_event=stop,
-        send=lambda _sub, payload: sent.append(payload),
-        poll_interval_sec=0.01,
+        send=capture,
+        poll_interval_sec=0,
     )
     worker.start()
-    time.sleep(0.05)
     clock.now += timedelta(days=1)
     store.append(message_id="d2", author="bot", text="next day")
-    time.sleep(0.15)
+    delivered.wait()
     worker.stop()
     assert len(sent) == 1
 
@@ -371,20 +380,26 @@ def test_worker_notifies_with_the_row_channel_slug(tmp_path: Path) -> None:
     subs = PushSubscriptionStore(tmp_path / "main")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
     stop = threading.Event()
+    both_channels = threading.Event()
+
+    def capture(_sub: dict[str, object], payload: dict[str, str]) -> None:
+        sent.append(payload)
+        if len(sent) >= 2:
+            both_channels.set()
+
     worker = PushWorker(
         [("main", main), ("side", side)],
         subs,
         _enabled_push(),
         display_names={},
         stop_event=stop,
-        send=lambda _sub, payload: sent.append(payload),
-        poll_interval_sec=0.01,
+        send=capture,
+        poll_interval_sec=0,
     )
     worker.start()
-    time.sleep(0.05)
     side.append(message_id="s1", author="bot", text="side")
     main.append(message_id="m1", author="bot", text="main")
-    time.sleep(0.2)
+    both_channels.wait()
     worker.stop()
     urls = {p["url"] for p in sent}
     assert "/c/side/t/s1" in urls

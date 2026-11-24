@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
-import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -59,6 +58,7 @@ class ScriptedTransport:
     def __init__(self, batches: list[tuple[list[HubMessage], str | None] | None]) -> None:
         self._batches = list(batches)
         self.poll_calls = 0
+        self.polled = threading.Event()
 
     def send(self, message: HubMessage) -> str | None:
         return None
@@ -82,6 +82,7 @@ class ScriptedTransport:
         limit: int = 100,
     ) -> tuple[list[HubMessage], str | None] | None:
         self.poll_calls += 1
+        self.polled.set()
         if not self._batches:
             return [], None
         batch = self._batches.pop(0)
@@ -100,21 +101,20 @@ class RecordingHandler:
         self.events: list[MediaEvent] = []
         self.fail_ids: set[str] = set()
         self.lock = threading.Lock()
+        self.activity = threading.Event()
 
     def handle_event(self, event: MediaEvent) -> None:
         if event.message_id in self.fail_ids:
             raise RuntimeError("poison")
         with self.lock:
             self.events.append(event)
+        self.activity.set()
 
 
-def _wait_for(predicate: Any, timeout: float = 2.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(0.02)
-    raise AssertionError("condition not met in time")
+def _wait_for(predicate: Callable[[], bool], activity: threading.Event) -> None:
+    while not predicate():
+        activity.clear()
+        activity.wait()
 
 
 def test_filters_self_other_host_and_non_message(tmp_path: Path) -> None:
@@ -134,7 +134,7 @@ def test_filters_self_other_host_and_non_message(tmp_path: Path) -> None:
     transport = ScriptedTransport(batches)
     sub = HubSubscriber(_config(tmp_path), handler, transport=transport)
     sub.start()
-    _wait_for(lambda: len(handler.events) == 1)
+    _wait_for(lambda: len(handler.events) == 1, handler.activity)
     sub.stop()
     assert handler.events[0].message_id == "m4"
 
@@ -152,11 +152,12 @@ def test_cursor_resume_and_no_duplicate(tmp_path: Path) -> None:
     config = _config(tmp_path)
     sub = HubSubscriber(config, handler, transport=transport)
     sub.start()
-    _wait_for(lambda: len(handler.events) == 1)
+    _wait_for(lambda: len(handler.events) == 1, handler.activity)
     sub.stop()
-    sub2 = HubSubscriber(config, handler, transport=ScriptedTransport([([], None)]))
+    idle_transport = ScriptedTransport([([], None)])
+    sub2 = HubSubscriber(config, handler, transport=idle_transport)
     sub2.start()
-    time.sleep(0.15)
+    _wait_for(lambda: idle_transport.poll_calls >= 1, idle_transport.polled)
     sub2.stop()
     assert len(handler.events) == 1
 
@@ -176,7 +177,7 @@ def test_handle_event_exception_recorded_and_continues(tmp_path: Path) -> None:
     ]
     sub = HubSubscriber(_config(tmp_path), handler, transport=ScriptedTransport(batches))
     sub.start()
-    _wait_for(lambda: any(e.message_id == "good" for e in handler.events))
+    _wait_for(lambda: any(e.message_id == "good" for e in handler.events), handler.activity)
     sub.stop()
     state = json.loads((tmp_path / "s" / "hub-cursors" / "r1.json").read_text(encoding="utf-8"))
     assert "bad" in state["recent_ids"]
@@ -191,7 +192,7 @@ def test_corrupt_cursor_is_quarantined(tmp_path: Path) -> None:
     transport = ScriptedTransport([([], None)])
     sub = HubSubscriber(_config(tmp_path), handler, transport=transport)
     sub.start()
-    time.sleep(0.1)
+    _wait_for(lambda: path.with_suffix(".json.corrupt").is_file(), transport.polled)
     sub.stop()
     assert path.with_suffix(".json.corrupt").is_file()
 
@@ -201,13 +202,10 @@ def test_structurally_invalid_cursor_is_quarantined(tmp_path: Path) -> None:
     cursor_dir.mkdir(parents=True)
     path = cursor_dir / "r1.json"
     path.write_text('{"cursor": 12, "recent_ids": ["m1"]}', encoding="utf-8")
-    sub = HubSubscriber(
-        _config(tmp_path),
-        RecordingHandler(),
-        transport=ScriptedTransport([([], None)]),
-    )
+    transport = ScriptedTransport([([], None)])
+    sub = HubSubscriber(_config(tmp_path), RecordingHandler(), transport=transport)
     sub.start()
-    _wait_for(lambda: path.with_suffix(".json.corrupt").is_file())
+    _wait_for(lambda: path.with_suffix(".json.corrupt").is_file(), transport.polled)
     sub.stop()
     assert not path.exists()
 
@@ -217,7 +215,7 @@ def test_poll_failure_backoff_and_stop(tmp_path: Path) -> None:
     handler = RecordingHandler()
     sub = HubSubscriber(_config(tmp_path), handler, transport=transport)
     sub.start()
-    _wait_for(lambda: transport.poll_calls >= 1)
+    _wait_for(lambda: transport.poll_calls >= 1, transport.polled)
     sub.stop()
     assert transport.poll_calls == 1
 

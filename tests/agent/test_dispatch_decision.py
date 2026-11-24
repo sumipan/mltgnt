@@ -121,7 +121,7 @@ def test_make_dispatch_decision_resume_three_engines() -> None:
         ledger = SessionRecord(
             engine=engine,
             session_id=session_id,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc),
         )
 
         def _make_agent(eng: str):

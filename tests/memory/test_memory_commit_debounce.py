@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -100,10 +99,24 @@ def test_m2_timer_fires_after_debounce(tmp_path: Path, monkeypatch: pytest.Monke
     work = _setup_sink(tmp_path, monkeypatch)
     config = _config(work, 0.2)
     before = _count(work)
+    scheduled: list[object] = []
+
+    class SignalTimer:
+        def __init__(self, interval: float, function: object) -> None:
+            self.interval = interval
+            self.function = function
+
+        def start(self) -> None:
+            scheduled.append(self)
+
+        def cancel(self) -> None:
+            pass
+
+    monkeypatch.setattr("mltgnt.memory._commit.threading.Timer", SignalTimer)
     assert _append(config, "p1", 0) is True
-    deadline = time.monotonic() + 5.0
-    while _count(work) == before and time.monotonic() < deadline:
-        time.sleep(0.05)
+    assert len(scheduled) == 1
+    assert scheduled[0].interval == 0.2  # type: ignore[attr-defined]
+    scheduled[0].function()  # type: ignore[attr-defined]
     assert _count(work) == before + 1
 
 

@@ -17,6 +17,15 @@ from mltgnt.conversation import (
 )
 
 
+def _patch_module_datetime(monkeypatch: pytest.MonkeyPatch, module: object, now: datetime) -> None:
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return now if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(module, "datetime", FixedDatetime)
+
+
 @pytest.fixture
 def config(tmp_path: Path) -> ConversationConfig:
     return ConversationConfig(
@@ -106,7 +115,9 @@ def test_read_state_and_is_stale(
 ) -> None:
     monkeypatch.setattr(thread_queue, "THREAD_QUEUE_DIR", config.queue_dir)
     assert thread_queue.read_state("missing")["status"] == "idle"
-    old = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
+    now = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    _patch_module_datetime(monkeypatch, thread_queue, now)
+    old = (now - timedelta(seconds=10)).isoformat()
     assert thread_queue.is_stale({"status": "running", "started_at": old}, 5) is True
     assert thread_queue.is_stale({"status": "running", "started_at": old}, 60) is False
     assert thread_queue.is_stale({"status": "idle", "started_at": old}, 5) is False
@@ -131,7 +142,9 @@ def test_is_expired_boundary(config: ConversationConfig, monkeypatch: pytest.Mon
 def test_compact_writes_entries(config: ConversationConfig, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(thread_persona_store, "_active_config", config)
     monkeypatch.setattr(thread_persona_store, "_store_path_override", None)
-    ts = datetime.now(timezone.utc).isoformat()
+    now = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+    _patch_module_datetime(monkeypatch, thread_persona_store, now)
+    ts = now.isoformat()
     thread_persona_store.compact({"C1": ("persona-a", ts)})
     assert thread_persona_store.load() == {"C1": "persona-a"}
     assert isinstance(thread_persona_store.LOCK, type(threading.Lock()))
