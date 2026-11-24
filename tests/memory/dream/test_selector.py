@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -37,10 +36,8 @@ def test_pick_targets_includes_persona_when_jsonl_newer_than_dream(tmp_path: Pat
     _write_dream(persona_dir, "2020-01-01T00:00:00+09:00")
     jsonl_path = memory_dir / "chat.jsonl"
     _write_jsonl(jsonl_path)
-    past = datetime(2019, 1, 1, tzinfo=ZoneInfo("Asia/Tokyo")).timestamp()
-    os.utime(jsonl_path, (past + 100, past + 100))
-    time.sleep(0.01)
-    os.utime(jsonl_path, None)
+    newer = datetime(2021, 6, 1, tzinfo=ZoneInfo("Asia/Tokyo")).timestamp()
+    os.utime(jsonl_path, (newer, newer))
     result = DreamSelector.pick_targets([persona_dir])
     assert result == [persona_dir]
 

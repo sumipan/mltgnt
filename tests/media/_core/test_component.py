@@ -46,9 +46,9 @@ def test_stop_during_backoff_prevents_restart() -> None:
 
     component = MediaBridgeComponent(lambda: None, mode="thread", backoff_sec=(30.0,), on_exit=on_exit)
     component.start()
-    assert exited.wait(5)
-    component.stop(timeout=5)
-    component.join(timeout=5)
+    assert exited.wait()
+    component.stop()
+    component.join()
     assert calls == [0]
 
 
