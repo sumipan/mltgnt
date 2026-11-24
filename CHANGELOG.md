@@ -7,7 +7,7 @@
 ### Fixed
 
 - bridges: localize rejected result detection in mltgnt
-- repair: inline reply-block rejection parsing without deep ghdag imports (#7917)
+- repair: use the public reply-block parser without deep ghdag imports (#7917)
 
 ## v0.143.0
 
