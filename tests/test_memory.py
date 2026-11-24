@@ -311,7 +311,9 @@ def test_no_dedupe_key_allows_duplicate(tmp_path: Path) -> None:
 # Lock
 # ---------------------------------------------------------------------------
 
-def test_persona_memory_lock_blocks_second_acquire(tmp_path: Path) -> None:
+def test_persona_memory_lock_blocks_second_acquire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = make_config(tmp_path)
     ready = threading.Event()
     release = threading.Event()
@@ -325,31 +327,54 @@ def test_persona_memory_lock_blocks_second_acquire(tmp_path: Path) -> None:
     t = threading.Thread(target=hold, daemon=True)
     t.start()
     assert ready.wait()
+
+    import mltgnt.memory.api as memory_api
+
+    clock = [0.0]
+    monkeypatch.setattr(memory_api.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(memory_api.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
     with persona_memory_lock(config, "lock_test", timeout_sec=0.05) as ok2:
         assert not ok2
     release.set()
     t.join()
 
 
-def test_persona_memory_lock_removes_stale_lock(tmp_path: Path) -> None:
+def test_persona_memory_lock_removes_stale_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """empty older than threshold lock The file is automatically deleted and locked successfully."""
     config = make_config(tmp_path)
     config.chat_dir.mkdir(parents=True, exist_ok=True)
     lock_path = config.chat_dir / ".lock-memory-stale_test"
     lock_path.touch()
     import os
-    old_mtime = 1_000_000.0
+    import mltgnt.memory.api as memory_api
+
+    now = 1_000_600.0
+    monkeypatch.setattr(memory_api.time, "time", lambda: now)
+    old_mtime = now - 600
     os.utime(lock_path, (old_mtime, old_mtime))
     with persona_memory_lock(config, "stale_test", timeout_sec=1.0) as ok:
         assert ok
 
 
-def test_persona_memory_lock_keeps_fresh_lock(tmp_path: Path) -> None:
+def test_persona_memory_lock_keeps_fresh_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Less than threshold lock File is not deleted and timeout."""
     config = make_config(tmp_path)
     config.chat_dir.mkdir(parents=True, exist_ok=True)
     lock_path = config.chat_dir / ".lock-memory-fresh_test"
     lock_path.touch()
+    import os
+    import mltgnt.memory.api as memory_api
+
+    now = 1_000_600.0
+    os.utime(lock_path, (now, now))
+    clock = [0.0]
+    monkeypatch.setattr(memory_api.time, "time", lambda: now)
+    monkeypatch.setattr(memory_api.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(memory_api.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
     with persona_memory_lock(config, "fresh_test", timeout_sec=0.1) as ok:
         assert not ok
 
@@ -574,5 +599,4 @@ def test_compact_preserves_preferences(tmp_path: Path) -> None:
     prefs = [e for e in entries if e.source_tag == "preferences"]
     assert prefs
     assert "Like content" in prefs[0].content
-
 

@@ -41,17 +41,35 @@ def _reload_notifier(registry: SkillRegistry, monkeypatch: pytest.MonkeyPatch) -
     return reloaded
 
 
-def _instant_poll_interval(monkeypatch: pytest.MonkeyPatch, watcher: SkillWatcherComponent) -> None:
-    """Make SkillWatcherComponent poll without waiting on wall-clock sleep."""
+class _ControlledStopEvent:
+    """Let a watcher test advance exactly one polling cycle."""
 
-    real_wait = threading.Event.wait
+    def __init__(self) -> None:
+        self._stopped = threading.Event()
+        self._poll_allowed = threading.Event()
+        self.poll_requested = threading.Event()
 
-    def wait(self: threading.Event, timeout: float | None = None) -> bool:
-        if self is watcher._stop_event:
-            return self.is_set()
-        return real_wait(self, timeout)
+    def clear(self) -> None:
+        self._stopped.clear()
 
-    monkeypatch.setattr(threading.Event, "wait", wait)
+    def set(self) -> None:
+        self._stopped.set()
+        self._poll_allowed.set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.poll_requested.set()
+        self._poll_allowed.wait()
+        self._poll_allowed.clear()
+        return self._stopped.is_set()
+
+    def allow_poll(self) -> None:
+        self._poll_allowed.set()
+
+
+def _control_poll(watcher: SkillWatcherComponent) -> _ControlledStopEvent:
+    control = _ControlledStopEvent()
+    watcher._stop_event = control  # type: ignore[assignment]
+    return control
 
 
 # ---------------------------------------------------------------------------
@@ -107,10 +125,12 @@ class TestSkillWatcherComponent:
 
         reloaded = _reload_notifier(registry, monkeypatch)
         watcher = SkillWatcherComponent(registry=registry, interval=0.1)
-        _instant_poll_interval(monkeypatch, watcher)
+        control = _control_poll(watcher)
         watcher.start()
 
+        assert control.poll_requested.wait()
         _write_skill(tmp_path, "skill-new")
+        control.allow_poll()
         assert reloaded.wait()
 
         watcher.stop()
@@ -124,13 +144,15 @@ class TestSkillWatcherComponent:
 
         reloaded = _reload_notifier(registry, monkeypatch)
         watcher = SkillWatcherComponent(registry=registry, interval=0.1)
-        _instant_poll_interval(monkeypatch, watcher)
+        control = _control_poll(watcher)
         watcher.start()
 
+        assert control.poll_requested.wait()
         skill_file.write_text(
             skill_file.read_text(encoding="utf-8").replace("original", "updated"),
             encoding="utf-8",
         )
+        control.allow_poll()
         assert reloaded.wait()
 
         watcher.stop()
