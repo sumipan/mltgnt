@@ -6,8 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ghdag.dag import check_pipeline_status, default_check_rejected
+from ghdag.dag import default_check_rejected
 from ghdag.pipeline import write_task_exit_audit
+
+from mltgnt.bridges.ghdag_bridge import check_pipeline_status
 
 if TYPE_CHECKING:
     from ghdag.dag import Task
