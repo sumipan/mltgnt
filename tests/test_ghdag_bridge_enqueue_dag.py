@@ -14,10 +14,10 @@ from mltgnt.bridges.ghdag_bridge import (
     DagStep,
     SkillIOTypeError,
     _extract_result_filename,
-    check_pipeline_status,
     compose_pipeline,
     enqueue_and_wait,
     enqueue_dag,
+    read_pipeline_status,
     typecheck_dag,
 )
 from mltgnt.skill.models import ConsumesSpec, ProducesSpec, SkillMatchResult, SkillMeta
@@ -66,7 +66,7 @@ class TestCheckPipelineStatus:
             "```\n",
             encoding="utf-8",
         )
-        assert check_pipeline_status(str(result)) == "REPLY_CODE"
+        assert read_pipeline_status(str(result)) == "REPLY_CODE"
 
     def test_legacy_line_uses_last_pipeline_status_match(self, tmp_path) -> None:
         """AC-2: legacy marker prefers the last ``PIPELINE_STATUS:`` line."""
@@ -77,17 +77,17 @@ class TestCheckPipelineStatus:
             "PIPELINE_STATUS: LAST\n",
             encoding="utf-8",
         )
-        assert check_pipeline_status(str(result)) == "LAST"
+        assert read_pipeline_status(str(result)) == "LAST"
 
     def test_missing_file_returns_none(self, tmp_path) -> None:
         """AC-3: unreadable paths yield None."""
-        assert check_pipeline_status(str(tmp_path / "missing.md")) is None
+        assert read_pipeline_status(str(tmp_path / "missing.md")) is None
 
     def test_body_without_markers_returns_none(self, tmp_path) -> None:
         """AC-4: no reply block and no legacy line → None."""
         result = tmp_path / "result.md"
         result.write_text("plain output\n", encoding="utf-8")
-        assert check_pipeline_status(str(result)) is None
+        assert read_pipeline_status(str(result)) is None
 
 
 class TestEnqueueDagPermissionPassThrough:

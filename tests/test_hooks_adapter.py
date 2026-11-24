@@ -300,6 +300,20 @@ class TestMltgntHooks:
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_pipeline_status(str(result_file)) == "IMPL_DONE"
 
+    def test_check_pipeline_status_failed_reply_block_takes_priority(self, tmp_path):
+        """Issue #7911 AC4: failed reply block wins over a legacy status line."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "PIPELINE_STATUS: OK\n"
+            "```ghdag\n"
+            "status: failed\n"
+            "code: INVALID_STATE\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_pipeline_status(str(result_file)) == "INVALID_STATE_FAILED"
+
     def test_check_promote_target_returns_none(self, tmp_path):
         """AC-2: check_promote_target for any input None """
         hooks = MltgntHooks(tmp_path / "audit.jsonl")

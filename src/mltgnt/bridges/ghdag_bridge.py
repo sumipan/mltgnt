@@ -53,7 +53,7 @@ def _pipeline_status_from_legacy_lines(content: str) -> str | None:
     return found
 
 
-def check_pipeline_status(result_path: str) -> str | None:
+def read_pipeline_status(result_path: str) -> str | None:
     """Read a result file and return pipeline status for mltgnt DAG propagation.
 
     Prefer ghdag reply-block parsing when present; otherwise fall back to the last
@@ -67,7 +67,7 @@ def check_pipeline_status(result_path: str) -> str | None:
         return status
     try:
         content = Path(result_path).read_text(encoding="utf-8", errors="replace")
-    except (OSError, FileNotFoundError):
+    except OSError:
         return None
     return _pipeline_status_from_legacy_lines(content)
 
@@ -454,7 +454,7 @@ def enqueue_dag(
             except OSError:
                 content = ""
             pipeline_status = (
-                check_pipeline_status(str(jobs_dir / result_filename))
+                read_pipeline_status(str(jobs_dir / result_filename))
                 if result_filename
                 else None
             )
