@@ -12,11 +12,8 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-import yaml
-
-from ghdag.core import capabilities
+from ghdag.core import capabilities, reply_block
 from ghdag.files import md_read
 from ghdag.pipeline import OrderBuilder
 
@@ -27,12 +24,6 @@ Permission = capabilities.Permission
 
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _PIPELINE_STATUS_LINE_RE = re.compile(r"^PIPELINE_STATUS:\s*(\S+)\s*$")
-_REPLY_FENCE_LINE_RE = re.compile(r"^```(\S*)?\s*$")
-_REPLY_STATUS_VALUES = frozenset({"ok", "rejected", "wait_quota", "failed"})
-_REPLY_BLOCK_ALLOWED_KEYS = frozenset(
-    {"status", "reason", "code", "engines", "after", "children"}
-)
-_REPLY_BLOCK_INVALID = object()
 
 
 @dataclass
@@ -62,79 +53,23 @@ def _pipeline_status_from_legacy_lines(content: str) -> str | None:
     return found
 
 
-def _find_reply_block_body(text: str) -> str | None:
-    """Return YAML body of the last top-level ```ghdag fence, or None."""
-    lines = text.splitlines()
-    generic_depth = 0
-    in_ghdag = False
-    body_lines: list[str] = []
-    last_body: str | None = None
-
-    for line in lines:
-        m = _REPLY_FENCE_LINE_RE.match(line)
-        if m is None:
-            if in_ghdag:
-                body_lines.append(line)
-            continue
-
-        info = m.group(1) or ""
-        if in_ghdag:
-            in_ghdag = False
-            last_body = "\n".join(body_lines)
-            body_lines = []
-            continue
-
-        if generic_depth > 0:
-            if info == "":
-                generic_depth -= 1
-            continue
-
-        if info == "ghdag":
-            in_ghdag = True
-            body_lines = []
-        else:
-            generic_depth += 1
-
-    return last_body
-
-
-def _parse_rejected_reply(content: str) -> str | Any:
-    """Return reply-block status, ``_REPLY_BLOCK_INVALID``, or ``None`` when absent."""
-    body = _find_reply_block_body(content)
-    if body is None:
-        return None
-    try:
-        data = yaml.safe_load(body)
-    except yaml.YAMLError:
-        return _REPLY_BLOCK_INVALID
-    if not isinstance(data, dict):
-        return _REPLY_BLOCK_INVALID
-    if set(data) - _REPLY_BLOCK_ALLOWED_KEYS:
-        return _REPLY_BLOCK_INVALID
-    if "status" not in data:
-        return _REPLY_BLOCK_INVALID
-    status = data["status"]
-    if not isinstance(status, str) or status not in _REPLY_STATUS_VALUES:
-        return _REPLY_BLOCK_INVALID
-    return status
-
-
 def read_rejected(result_path: str) -> bool:
     """Return True when the result is rejected (reply block or legacy REJECTED: line).
 
-    Reply-block parsing is inlined here (no deep ``ghdag.core`` imports). When a block
-    is present it takes priority over legacy line markers. Invalid reply blocks do not
-    fall back to legacy lines (matching former ghdag ``default_check_rejected`` behavior).
+    Reply-block parsing uses ghdag's public parser. When a block is present it takes
+    priority over legacy line markers. Invalid reply blocks do not fall back to legacy
+    lines (matching former ghdag ``default_check_rejected`` behavior).
     """
     try:
         content = Path(result_path).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    parsed = _parse_rejected_reply(content)
-    if isinstance(parsed, str):
-        return parsed == "rejected"
-    if parsed is _REPLY_BLOCK_INVALID:
+    try:
+        block = reply_block.parse_reply_block(content)
+    except reply_block.ReplyBlockError:
         return False
+    if block is not None:
+        return block.status == "rejected"
     for line in content.splitlines()[:10]:
         stripped = line.strip()
         if stripped.startswith("REJECTED:"):

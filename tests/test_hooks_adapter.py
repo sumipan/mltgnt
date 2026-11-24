@@ -324,6 +324,19 @@ class TestMltgntHooks:
         hooks = MltgntHooks(tmp_path / "audit.jsonl")
         assert hooks.check_rejected(str(result_file)) is False
 
+    def test_check_rejected_invalid_status_fields_do_not_fallback(self, tmp_path):
+        """Issue #7917 AC5: ghdag field validation remains authoritative."""
+        result_file = tmp_path / "result.md"
+        result_file.write_text(
+            "REJECTED: legacy line\n"
+            "```ghdag\n"
+            "status: rejected\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        hooks = MltgntHooks(tmp_path / "audit.jsonl")
+        assert hooks.check_rejected(str(result_file)) is False
+
     def test_check_rejected_ignores_marker_after_first_ten_lines(self, tmp_path):
         """Issue #7917 AC6: REJECTED marker beyond the first ten lines is ignored."""
         result_file = tmp_path / "result.md"
