@@ -53,6 +53,34 @@ def _pipeline_status_from_legacy_lines(content: str) -> str | None:
     return found
 
 
+def read_rejected(result_path: str) -> bool:
+    """Return True when the result is rejected (reply block or legacy REJECTED: line).
+
+    Reply-block parsing uses ``ghdag.core.reply_block.parse_reply_block``; when a block
+    is present it takes priority over legacy line markers. Invalid reply blocks do not
+    fall back to legacy lines (matching former ghdag ``default_check_rejected`` behavior).
+    """
+    from ghdag.core.reply_block import ReplyBlockError, parse_reply_block
+
+    try:
+        content = Path(result_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    try:
+        block = parse_reply_block(content)
+    except ReplyBlockError:
+        return False
+    if block is not None:
+        return block.status == "rejected"
+    for line in content.splitlines()[:10]:
+        stripped = line.strip()
+        if stripped.startswith("REJECTED:"):
+            return True
+        if stripped.startswith("ACCEPTED"):
+            return False
+    return False
+
+
 def read_pipeline_status(result_path: str) -> str | None:
     """Read a result file and return pipeline status for mltgnt DAG propagation.
 
