@@ -1,7 +1,7 @@
 """PersonaScheduler notifies through MediaClient and the legacy protocol (#4027)."""
 from __future__ import annotations
 
-import time
+import threading
 from datetime import date
 from pathlib import Path
 
@@ -45,9 +45,12 @@ class LegacySlack:
 class MemoryLog:
     def __init__(self) -> None:
         self.rows: list[tuple[str, str, str]] = []
+        self.assistant_recorded = threading.Event()
 
     def __call__(self, persona: str, role: str, text: str, ts: str, **kwargs: object) -> bool:
         self.rows.append((persona, role, text))
+        if role == "assistant":
+            self.assistant_recorded.set()
         return True
 
 
@@ -78,12 +81,7 @@ def _run(slack: object, tmp_path: Path) -> MemoryLog:
     )
     sch.reload_jobs()
     sch._spawn_job(_job(), date(2026, 1, 5))
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        with sch._run_lock:
-            if not sch._running:
-                break
-        time.sleep(0.01)
+    assert memory.assistant_recorded.wait()
     return memory
 
 

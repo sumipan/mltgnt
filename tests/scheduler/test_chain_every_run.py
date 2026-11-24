@@ -1,7 +1,7 @@
 """chain_every_run: chained jobs that fire after every successful upstream run."""
 from __future__ import annotations
 
-import time
+import threading
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,14 +15,6 @@ TZ = ZoneInfo("Asia/Tokyo")
 
 def _dt(hour: int, minute: int) -> datetime:
     return datetime(2026, 4, 17, hour, minute, tzinfo=TZ)
-
-
-def _wait_until(pred, timeout: float = 2.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if pred():
-            return
-        time.sleep(0.02)
 
 
 def _upstream(job_id: str = "check") -> ScheduleJob:
@@ -76,13 +68,20 @@ def test_chain_every_run_requires_chained_mode_and_depends_on() -> None:
 
 def test_dependent_fires_with_upstream_output_and_writes_no_marks(tmp_path: Path) -> None:
     captured: list[str | None] = []
+    finished = threading.Event()
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[_upstream(), _dependent()])
     sch.register_action("probe", lambda job: (True, "free_slots=2"))
-    sch.register_action("capture", lambda job: (captured.append(job.upstream_output) or (True, "done")))
+
+    def capture(job: ScheduleJob) -> tuple[bool, str]:
+        captured.append(job.upstream_output)
+        finished.set()
+        return True, "done"
+
+    sch.register_action("capture", capture)
     sch.reload_jobs()
 
     sch.tick(_dt(10, 0))
-    _wait_until(lambda: len(captured) == 1)
+    assert finished.wait()
 
     assert captured == ["free_slots=2"]
     d = date(2026, 4, 17)
@@ -92,18 +91,40 @@ def test_dependent_fires_with_upstream_output_and_writes_no_marks(tmp_path: Path
 
 def test_dependent_fires_again_on_next_upstream_run(tmp_path: Path) -> None:
     captured: list[str | None] = []
+    upstream_finished = [threading.Event(), threading.Event()]
+    dependent_finished = [threading.Event(), threading.Event()]
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[_upstream(), _dependent()])
     sch.register_action("probe", lambda job: (True, "tick"))
-    sch.register_action("capture", lambda job: (captured.append(job.upstream_output) or (True, "")))
+
+    def capture(job: ScheduleJob) -> tuple[bool, str]:
+        captured.append(job.upstream_output)
+        return True, ""
+
+    sch.register_action("capture", capture)
     sch.reload_jobs()
 
+    original_spawn = sch._spawn_job
+    run_index = {"check": 0, "act": 0}
+
+    def spawn_with_completion(
+        job: ScheduleJob,
+        d: date,
+        on_finish=None,
+        upstream_output: str | None = None,
+    ) -> None:
+        index = run_index[job.id]
+        run_index[job.id] += 1
+        completion = upstream_finished[index] if job.id == "check" else dependent_finished[index]
+        original_spawn(job, d, on_finish=completion.set, upstream_output=upstream_output)
+
+    sch._spawn_job = spawn_with_completion  # type: ignore[method-assign]
+
     sch.tick(_dt(10, 0))
-    _wait_until(lambda: len(captured) == 1)
-    # The action appends before the runner thread leaves ``_running``; a second
-    # tick while ``check`` / ``act`` are still marked running is skipped.
-    _wait_until(lambda: not sch._running)
+    assert upstream_finished[0].wait()
+    assert dependent_finished[0].wait()
     sch.tick(_dt(10, 15))
-    _wait_until(lambda: len(captured) == 2)
+    assert upstream_finished[1].wait()
+    assert dependent_finished[1].wait()
 
     assert captured == ["tick", "tick"]
 
@@ -116,20 +137,27 @@ def test_dependent_is_never_time_triggered(tmp_path: Path) -> None:
 
     for minute in range(0, 60, 5):
         sch.tick(_dt(10, minute))
-    time.sleep(0.2)
 
     assert captured == []
 
 
 def test_dependent_not_fired_when_upstream_skips_or_fails(tmp_path: Path) -> None:
     captured: list[str | None] = []
+    upstream_finished = threading.Event()
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[_upstream(), _dependent()])
     sch.register_action("probe", lambda job: (False, "nothing to do"))
     sch.register_action("capture", lambda job: (captured.append(job.upstream_output) or (True, "")))
     sch.reload_jobs()
 
+    original_spawn = sch._spawn_job
+
+    def spawn_with_completion(job, d, on_finish=None, upstream_output=None):
+        original_spawn(job, d, on_finish=upstream_finished.set, upstream_output=upstream_output)
+
+    sch._spawn_job = spawn_with_completion  # type: ignore[method-assign]
+
     sch.tick(_dt(10, 0))
-    time.sleep(0.3)
+    assert upstream_finished.wait()
 
     assert captured == []
 
@@ -139,11 +167,18 @@ def test_original_job_object_is_not_mutated(tmp_path: Path) -> None:
     sch = PersonaScheduler(slack=None, state_dir=tmp_path / "state", jobs=[_upstream(), dep])
     sch.register_action("probe", lambda job: (True, "payload"))
     seen: list[str | None] = []
-    sch.register_action("capture", lambda job: (seen.append(job.upstream_output) or (True, "")))
+    finished = threading.Event()
+
+    def capture(job: ScheduleJob) -> tuple[bool, str]:
+        seen.append(job.upstream_output)
+        finished.set()
+        return True, ""
+
+    sch.register_action("capture", capture)
     sch.reload_jobs()
 
     sch.tick(_dt(10, 0))
-    _wait_until(lambda: len(seen) == 1)
+    assert finished.wait()
 
     assert seen == ["payload"]
     assert dep.upstream_output is None

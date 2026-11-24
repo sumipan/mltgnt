@@ -5,6 +5,7 @@ Design: Issue #996, Issue #1135
 from __future__ import annotations
 
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -341,10 +342,12 @@ class TestPromoteWithCompression:
 
 
 class TestRedistributeEntries:
+    _NOW = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
+
     def test_recent_entry_stays_recent(self, tmp_path: Path):
-        from datetime import datetime, timezone, timedelta
+        from datetime import timedelta
         cfg = _make_config(tmp_path)
-        now = datetime.now(timezone.utc)
+        now = self._NOW
         recent_ts = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S+09:00")
         entries = [MemoryEntry(
             timestamp=recent_ts, role="user", content="hello", source_tag="chat", layer="recent"
@@ -354,9 +357,9 @@ class TestRedistributeEntries:
         assert result[0].layer == "recent"
 
     def test_old_entry_becomes_long_term(self, tmp_path: Path):
-        from datetime import datetime, timezone, timedelta
+        from datetime import timedelta
         cfg = _make_config(tmp_path)
-        now = datetime.now(timezone.utc)
+        now = self._NOW
         old_ts = (now - timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S+09:00")
         entries = [MemoryEntry(
             timestamp=old_ts, role="user", content="old content", source_tag="chat", layer="recent"
@@ -366,9 +369,9 @@ class TestRedistributeEntries:
         assert result[0].layer == "long_term"
 
     def test_preferences_entry_unchanged(self, tmp_path: Path):
-        from datetime import datetime, timezone, timedelta
+        from datetime import timedelta
         cfg = _make_config(tmp_path)
-        now = datetime.now(timezone.utc)
+        now = self._NOW
         old_ts = (now - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%S+09:00")
         entries = [MemoryEntry(
             timestamp=old_ts, role="assistant", content="prefs",
@@ -381,10 +384,10 @@ class TestRedistributeEntries:
 
     def test_layer_reassignment_keeps_peer(self, tmp_path: Path):
         """Issue #7323: _redistribute_entries preserves MemoryEntry.peer."""
-        from datetime import datetime, timezone, timedelta
+        from datetime import timedelta
 
         cfg = _make_config(tmp_path)
-        now = datetime.now(timezone.utc)
+        now = self._NOW
         old_ts = (now - timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S+09:00")
         entries = [
             MemoryEntry(
@@ -498,10 +501,8 @@ class TestCompactPerSectionCap:
         """re bute entries uses config.timezone (AC-5)."""
         cfg = MemoryConfig(chat_dir=tmp_path, chat_memory_dir=tmp_path, timezone="UTC")
         assert cfg.timezone == "UTC"
-        # UTC timezone
-        from datetime import datetime, timezone as tz
         import mltgnt.memory.compaction as mod
-        now = datetime.now(tz.utc)
+        now = TestRedistributeEntries._NOW
         entries = [MemoryEntry(
             timestamp="2026-05-01T00:00:00+00:00",
             role="user", content="hello", source_tag="chat", layer="recent"

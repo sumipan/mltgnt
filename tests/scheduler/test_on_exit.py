@@ -37,18 +37,6 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
     return sch
 
 
-def wait_idle(sch: PersonaScheduler, timeout: float = 2.0) -> None:
-    """Wait until all job threads have finished."""
-    import time
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        with sch._run_lock:
-            if not sch._running:
-                return
-        time.sleep(0.05)
-    raise TimeoutError("_running did not become empty")
-
-
 # ---------------------------------------------------------------------------
 # Case 3: on_exit.nonzero=skip + ok=False → only skipped_path is written
 #            _post / _record_to_memory are not called
@@ -71,8 +59,9 @@ def test_on_exit_skip_ok_false_writes_skipped(tmp_path: Path) -> None:
         patch.object(sch, "_post") as mock_post,
         patch.object(sch, "_record_to_memory") as mock_mem,
     ):
-        sch._spawn_job(job, d)
-        wait_idle(sch)
+        finished = threading.Event()
+        sch._spawn_job(job, d, on_finish=finished.set)
+        assert finished.wait()
 
     mock_exec.assert_called_once()
     assert not sch.paths.done_path(job.id, d).is_file()

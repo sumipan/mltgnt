@@ -1,7 +1,6 @@
 import os
 import signal
 import threading
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -73,16 +72,13 @@ def test_pidlock_conflict(tmp_path):
 # DaemonRunner tests
 # ---------------------------------------------------------------------------
 
-def _run_and_stop(runner: DaemonRunner, delay: float = 0.05):
-    """Run runner in a background thread and stop it after delay."""
-    def _target():
-        runner.run()
-
-    t = threading.Thread(target=_target, daemon=True)
+def _run_and_stop(runner: DaemonRunner, started: threading.Event) -> None:
+    """Run runner in a background thread and stop it after startup."""
+    t = threading.Thread(target=runner.run, daemon=True)
     t.start()
-    time.sleep(delay)
+    assert started.wait()
     runner.stop()
-    t.join(timeout=5)
+    t.join()
     assert not t.is_alive(), "runner did not stop in time"
 
 
@@ -93,32 +89,34 @@ def test_runner_start_stop_order(tmp_path):
 
     runner = DaemonRunner(pid_file=pid_file, components=[comp_a, comp_b])
     call_order = []
+    started = threading.Event()
     comp_a.mock.start.side_effect = lambda: call_order.append("a.start")
-    comp_b.mock.start.side_effect = lambda: call_order.append("b.start")
+    comp_b.mock.start.side_effect = lambda: (call_order.append("b.start"), started.set())
     comp_a.mock.stop.side_effect = lambda: call_order.append("a.stop")
     comp_b.mock.stop.side_effect = lambda: call_order.append("b.stop")
 
-    _run_and_stop(runner)
+    _run_and_stop(runner, started)
 
     assert call_order == ["a.start", "b.start", "b.stop", "a.stop"]
 
 
 def test_runner_sigterm(tmp_path):
     pid_file = tmp_path / "daemon.pid"
-    comp = MockComponent("c")
+    started = threading.Event()
+    comp = MockComponent("c", start_side_effect=started.set)
 
     runner = DaemonRunner(pid_file=pid_file, components=[comp])
 
-    def _send_signal():
-        time.sleep(0.05)
+    def send_signal() -> None:
+        assert started.wait()
         os.kill(os.getpid(), signal.SIGTERM)
 
-    t_signal = threading.Thread(target=_send_signal, daemon=True)
+    t_signal = threading.Thread(target=send_signal, daemon=True)
     t_run = threading.Thread(target=runner.run, daemon=True)
-
-    t_run.start()
     t_signal.start()
-    t_run.join(timeout=5)
+    t_run.start()
+    t_run.join()
+    t_signal.join()
 
     assert not t_run.is_alive()
     comp.mock.stop.assert_called_once()
@@ -144,10 +142,11 @@ def test_runner_component_start_failure(tmp_path):
 def test_runner_stop_exception_does_not_prevent_others(tmp_path):
     pid_file = tmp_path / "daemon.pid"
     comp_a = MockComponent("a", stop_side_effect=RuntimeError("stop error"))
-    comp_b = MockComponent("b")
+    started = threading.Event()
+    comp_b = MockComponent("b", start_side_effect=started.set)
 
     runner = DaemonRunner(pid_file=pid_file, components=[comp_a, comp_b])
-    _run_and_stop(runner)
+    _run_and_stop(runner, started)
 
     comp_b.mock.stop.assert_called_once()
     assert not pid_file.exists()

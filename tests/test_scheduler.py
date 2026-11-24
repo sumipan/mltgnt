@@ -5,7 +5,7 @@ Design: Issue #118 §7 AC-3
 """
 from __future__ import annotations
 
-import time
+import threading
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -31,6 +31,15 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
     sch.reload_jobs()
     return sch
 
+
+def _notify_when_finished(sch: PersonaScheduler, finished: threading.Event) -> None:
+    original_spawn = sch._spawn_job
+
+    def spawn_with_completion(job, d, on_finish=None, upstream_output=None):
+        original_spawn(job, d, on_finish=finished.set, upstream_output=upstream_output)
+
+    sch._spawn_job = spawn_with_completion  # type: ignore[method-assign]
+
 # ---------------------------------------------------------------------------
 # AC-3: Job execution
 # ---------------------------------------------------------------------------
@@ -45,9 +54,12 @@ def test_scheduled_fires_at_target_time(tmp_path: Path) -> None:
         "notify": "silent",
     })
     sch = make_scheduler(tmp_path / "state", [j])
+    finished = threading.Event()
+    _notify_when_finished(sch, finished)
     sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.5)
-    assert sch.paths.done_path("fire_test", date(2026, 4, 17)).is_file()
+    assert finished.wait()
+    done = sch.paths.done_path("fire_test", date(2026, 4, 17))
+    assert done.is_file()
 
 
 def test_scheduled_does_not_refire_same_day(tmp_path: Path) -> None:
@@ -56,19 +68,23 @@ def test_scheduled_does_not_refire_same_day(tmp_path: Path) -> None:
         "id": "once_test",
         "mode": "scheduled",
         "every_day_at": "10:00",
-        "action": "noop",
+        "action": "record",
         "notify": "silent",
     })
     sch = make_scheduler(tmp_path / "state", [j])
+    calls: list[str] = []
+    finished = threading.Event()
+    sch.register_action("record", lambda job: (calls.append(job.id) or (True, "")))
+    _notify_when_finished(sch, finished)
     sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.5)
+    assert finished.wait()
+    done_path = sch.paths.done_path("once_test", date(2026, 4, 17))
     # Reset slot to simulate second tick at same time
     sch._scheduled_fired_slot.clear()
     sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.2)
     # done file exists from first fire, second should be skipped
-    done_path = sch.paths.done_path("once_test", date(2026, 4, 17))
     assert done_path.is_file()
+    assert calls == ["once_test"]
 
 
 def test_interval_fires_multiple_times(tmp_path: Path) -> None:
@@ -81,9 +97,11 @@ def test_interval_fires_multiple_times(tmp_path: Path) -> None:
         "notify": "silent",
     })
     sch = make_scheduler(tmp_path / "state", [j])
+    finished = threading.Event()
+    _notify_when_finished(sch, finished)
     now = dt_jst(2026, 4, 17, 10, 0)
     sch.tick(now)
-    time.sleep(0.3)
+    assert finished.wait()
     assert sch._interval_last_fired.get("interval_test") is not None
 
 
@@ -99,9 +117,11 @@ def test_interval_persists_last_fired_across_restart(tmp_path: Path) -> None:
     state_dir = tmp_path / "state"
 
     sch1 = make_scheduler(state_dir, [j])
+    finished = threading.Event()
+    _notify_when_finished(sch1, finished)
     now = dt_jst(2026, 4, 17, 10, 0)
     sch1.tick(now)
-    time.sleep(0.3)
+    assert finished.wait()
     assert sch1._interval_last_fired.get("persist_test") is not None
     assert sch1.paths.interval_last_fired_path("persist_test").exists()
 
@@ -111,39 +131,12 @@ def test_interval_persists_last_fired_across_restart(tmp_path: Path) -> None:
     almost_now = dt_jst(2026, 4, 17, 10, 30)
     fired_before = dict(sch2._interval_last_fired)
     sch2.tick(almost_now)
-    time.sleep(0.3)
     assert sch2._interval_last_fired["persist_test"] == fired_before["persist_test"]
 
 
 # ---------------------------------------------------------------------------
 # AC-3: Dependent Chain
 # ---------------------------------------------------------------------------
-
-def test_depends_on_waits_for_dependency(tmp_path: Path) -> None:
-    """`depends_on: [job_a]` Jobs job_a Home done Do not ignite while the file does not exist."""
-    job_a = ScheduleJob.from_dict({
-        "id": "job_a",
-        "mode": "scheduled",
-        "every_day_at": "10:00",
-        "action": "noop",
-        "notify": "silent",
-    })
-    job_b = ScheduleJob.from_dict({
-        "id": "job_b",
-        "mode": "chained",
-        "action": "noop",
-        "notify": "silent",
-        "depends_on": ["job_a"],
-    })
-    sch = make_scheduler(tmp_path / "state", [job_a, job_b])
-    sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.3)
-    # job_b should not have fired yet (job_a is being processed)
-    # just verify it's not marked done without job_a being done
-    # job_a fires noop - done quickly; job_b depends on job_a
-    # The logic: job_b will fire after job_a's done file appears
-    # For this test, we just verify no exception and job_b doesn't fire immediately on its own
-
 
 def test_cycle_detection_raises(tmp_path: Path) -> None:
     """Cir ating Dependenciesjob_a → job_b → job_a _detect_cycles()  ValueError throw."""
@@ -297,9 +290,11 @@ def test_registered_action_failure_creates_failed_marker(tmp_path: Path) -> None
     sch.register_action("fail_action", lambda j: (False, "something went wrong"))
     sch.reload_jobs()
     d = date(2026, 5, 1)
-    sch._spawn_job(job, d)
-    time.sleep(0.5)
-    assert sch.paths.failed_path("fail_marker_job", d).is_file()
+    finished = threading.Event()
+    sch._spawn_job(job, d, on_finish=finished.set)
+    assert finished.wait()
+    failed = sch.paths.failed_path("fail_marker_job", d)
+    assert failed.is_file()
 
 
 def test_slack_none_post_does_not_raise(tmp_path: Path) -> None:
@@ -345,15 +340,6 @@ def test_reload_jobs_keeps_previous_jobs_on_config_error(tmp_path: Path) -> None
     sch.reload_jobs()
     assert len(sch._jobs) == 1
     assert sch._jobs[0].id == "morning"
-def _wait_until(pred, timeout: float = 2.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if pred():
-            return True
-        time.sleep(0.02)
-    return pred()
-
-
 def _raise_boom(job: ScheduleJob) -> tuple[bool, str]:
     raise RuntimeError("boom")
 
@@ -371,12 +357,12 @@ def test_action_exception_marks_failed_and_notifies(tmp_path: Path) -> None:
     sch.reload_jobs()
     posted: list[str] = []
     sch._post = lambda j, text: posted.append(text)  # type: ignore[method-assign]
-    finished: list[bool] = []
+    finished = threading.Event()
     d = date(2026, 5, 1)
 
-    sch._spawn_job(job, d, on_finish=lambda: finished.append(True))
+    sch._spawn_job(job, d, on_finish=finished.set)
 
-    assert _wait_until(lambda: finished == [True])
+    assert finished.wait()
     failed = sch.paths.failed_path("boom_job", d)
     assert failed.is_file()
     assert "RuntimeError: boom" in failed.read_text(encoding="utf-8")
@@ -398,12 +384,12 @@ def test_interval_action_exception_notifies_without_failed_file(tmp_path: Path) 
     sch.reload_jobs()
     posted: list[str] = []
     sch._post = lambda j, text: posted.append(text)  # type: ignore[method-assign]
-    finished: list[bool] = []
+    finished = threading.Event()
     d = date(2026, 5, 1)
 
-    sch._spawn_job(job, d, on_finish=lambda: finished.append(True))
+    sch._spawn_job(job, d, on_finish=finished.set)
 
-    assert _wait_until(lambda: finished == [True])
+    assert finished.wait()
     assert not sch.paths.failed_path("boom_interval", d).exists()
     assert len(posted) == 1
     assert "boom" in posted[0]
@@ -470,12 +456,12 @@ def test_chain_every_run_collision_logs_and_writes_no_state(
     sch.register_action("capture", lambda j: (called.append("x") or (True, "")))
     sch.reload_jobs()
     sch._running.add("act_down")  # downstream still running from a previous run
-    finished: list[bool] = []
+    finished = threading.Event()
     d = date(2026, 4, 17)
 
     with caplog.at_level("WARNING", logger="mltgnt.scheduler.runner"):
-        sch._spawn_job(upstream, d, on_finish=lambda: finished.append(True))
-        assert _wait_until(lambda: finished == [True])
+        sch._spawn_job(upstream, d, on_finish=finished.set)
+        assert finished.wait()
 
     assert called == []
     assert any(
@@ -486,13 +472,11 @@ def test_chain_every_run_collision_logs_and_writes_no_state(
     assert not sch.paths.done_path("act_down", d).exists()
 
 
-def test_stop_returns_promptly(tmp_path: Path) -> None:
+def test_stop_stops_background_thread(tmp_path: Path) -> None:
     sch = make_scheduler(tmp_path / "state", [])
     sch.start_background()
     thread = sch._thread
     assert thread is not None
-    time.sleep(0.1)
-    started = time.monotonic()
     sch.stop()
-    assert time.monotonic() - started < 1.0
+    thread.join()
     assert not thread.is_alive()

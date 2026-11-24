@@ -4,7 +4,7 @@ Tests for SkillRegistry and SkillWatcherComponent.
 from __future__ import annotations
 
 import textwrap
-import time
+import threading
 from pathlib import Path
 
 import pytest
@@ -26,6 +26,50 @@ def _write_skill(base: Path, skill_name: str, description: str = "A test skill")
         Body.
     """).lstrip(), encoding="utf-8")
     return skill_file
+
+
+def _reload_notifier(registry: SkillRegistry, monkeypatch: pytest.MonkeyPatch) -> threading.Event:
+    reloaded = threading.Event()
+    original = registry.reload
+
+    def reload_and_notify() -> dict:
+        result = original()
+        reloaded.set()
+        return result
+
+    monkeypatch.setattr(registry, "reload", reload_and_notify)
+    return reloaded
+
+
+class _ControlledStopEvent:
+    """Let a watcher test advance exactly one polling cycle."""
+
+    def __init__(self) -> None:
+        self._stopped = threading.Event()
+        self._poll_allowed = threading.Event()
+        self.poll_requested = threading.Event()
+
+    def clear(self) -> None:
+        self._stopped.clear()
+
+    def set(self) -> None:
+        self._stopped.set()
+        self._poll_allowed.set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.poll_requested.set()
+        self._poll_allowed.wait()
+        self._poll_allowed.clear()
+        return self._stopped.is_set()
+
+    def allow_poll(self) -> None:
+        self._poll_allowed.set()
+
+
+def _control_poll(watcher: SkillWatcherComponent) -> _ControlledStopEvent:
+    control = _ControlledStopEvent()
+    watcher._stop_event = control  # type: ignore[assignment]
+    return control
 
 
 # ---------------------------------------------------------------------------
@@ -74,33 +118,42 @@ class TestSkillWatcherComponent:
         watcher = SkillWatcherComponent(registry=registry, interval=1.0)
         assert watcher.name == "skill_watcher"
 
-    def test_detects_new_file(self, tmp_path):
+    def test_detects_new_file(self, tmp_path, monkeypatch):
         _write_skill(tmp_path, "skill-a")
         registry = SkillRegistry(paths=[tmp_path])
         registry.reload()
 
+        reloaded = _reload_notifier(registry, monkeypatch)
         watcher = SkillWatcherComponent(registry=registry, interval=0.1)
+        control = _control_poll(watcher)
         watcher.start()
 
-        time.sleep(0.05)
+        assert control.poll_requested.wait()
         _write_skill(tmp_path, "skill-new")
-        time.sleep(0.5)  # wait at least one polling cycle
+        control.allow_poll()
+        assert reloaded.wait()
 
         watcher.stop()
         assert "skill-new" in registry.get()
 
-    def test_detects_modified_file(self, tmp_path):
+    def test_detects_modified_file(self, tmp_path, monkeypatch):
         skill_file = _write_skill(tmp_path, "skill-a", "original")
         registry = SkillRegistry(paths=[tmp_path])
         registry.reload()
         assert registry.get()["skill-a"].description == "original"
 
+        reloaded = _reload_notifier(registry, monkeypatch)
         watcher = SkillWatcherComponent(registry=registry, interval=0.1)
+        control = _control_poll(watcher)
         watcher.start()
 
-        time.sleep(0.05)
-        skill_file.write_text(skill_file.read_text().replace("original", "updated"), encoding="utf-8")
-        time.sleep(0.5)
+        assert control.poll_requested.wait()
+        skill_file.write_text(
+            skill_file.read_text(encoding="utf-8").replace("original", "updated"),
+            encoding="utf-8",
+        )
+        control.allow_poll()
+        assert reloaded.wait()
 
         watcher.stop()
         assert registry.get()["skill-a"].description == "updated"
