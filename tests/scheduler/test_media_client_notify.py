@@ -1,7 +1,6 @@
 """PersonaScheduler notifies through MediaClient and the legacy protocol (#4027)."""
 from __future__ import annotations
 
-import time
 from datetime import date
 from pathlib import Path
 
@@ -78,12 +77,10 @@ def _run(slack: object, tmp_path: Path) -> MemoryLog:
     )
     sch.reload_jobs()
     sch._spawn_job(_job(), date(2026, 1, 5))
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
+    while True:
         with sch._run_lock:
             if not sch._running:
                 break
-        time.sleep(0.01)
     return memory
 
 

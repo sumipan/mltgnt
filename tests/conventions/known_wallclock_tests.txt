@@ -1,9 +1,1 @@
 # One repo-relative path per line; shrink only when wall-clock usage is removed.
-tests/scheduler/test_chain_every_run.py
-tests/scheduler/test_media_client_notify.py
-tests/scheduler/test_on_exit.py
-tests/test_compaction.py
-tests/test_daemon.py
-tests/test_memory.py
-tests/test_scheduler.py
-tests/test_skill_registry_watcher.py

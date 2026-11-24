@@ -37,16 +37,12 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
     return sch
 
 
-def wait_idle(sch: PersonaScheduler, timeout: float = 2.0) -> None:
+def wait_idle(sch: PersonaScheduler) -> None:
     """Wait until all job threads have finished."""
-    import time
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    while True:
         with sch._run_lock:
             if not sch._running:
                 return
-        time.sleep(0.05)
-    raise TimeoutError("_running did not become empty")
 
 
 # ---------------------------------------------------------------------------

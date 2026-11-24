@@ -8,7 +8,6 @@ from __future__ import annotations
 import datetime
 import json
 import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -39,10 +38,13 @@ def make_config(tmp_path: Path) -> MemoryConfig:
     )
 
 
+_TS_ANCHOR = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.timezone.utc)
+
+
 def _ts_ago(days: float = 0, weeks: float = 0) -> str:
     """Return an ISO 8601 JST timestamp for the requested age."""
     delta = datetime.timedelta(days=days, weeks=weeks)
-    dt = datetime.datetime.now(datetime.timezone.utc) - delta
+    dt = _TS_ANCHOR - delta
     jst = datetime.timezone(datetime.timedelta(hours=9))
     return dt.astimezone(jst).isoformat(timespec="seconds")
 
@@ -312,19 +314,21 @@ def test_no_dedupe_key_allows_duplicate(tmp_path: Path) -> None:
 def test_persona_memory_lock_blocks_second_acquire(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     ready = threading.Event()
+    release = threading.Event()
 
     def hold():
         with persona_memory_lock(config, "lock_test", timeout_sec=5.0) as ok:
             assert ok
             ready.set()
-            time.sleep(0.5)
+            release.wait()
 
     t = threading.Thread(target=hold, daemon=True)
     t.start()
-    assert ready.wait(timeout=2.0)
+    assert ready.wait()
     with persona_memory_lock(config, "lock_test", timeout_sec=0.05) as ok2:
         assert not ok2
-    t.join(timeout=3.0)
+    release.set()
+    t.join()
 
 
 def test_persona_memory_lock_removes_stale_lock(tmp_path: Path) -> None:
@@ -334,7 +338,7 @@ def test_persona_memory_lock_removes_stale_lock(tmp_path: Path) -> None:
     lock_path = config.chat_dir / ".lock-memory-stale_test"
     lock_path.touch()
     import os
-    old_mtime = time.time() - 600
+    old_mtime = 1_000_000.0
     os.utime(lock_path, (old_mtime, old_mtime))
     with persona_memory_lock(config, "stale_test", timeout_sec=1.0) as ok:
         assert ok

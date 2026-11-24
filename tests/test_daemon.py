@@ -1,7 +1,6 @@
 import os
 import signal
 import threading
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -73,16 +72,19 @@ def test_pidlock_conflict(tmp_path):
 # DaemonRunner tests
 # ---------------------------------------------------------------------------
 
-def _run_and_stop(runner: DaemonRunner, delay: float = 0.05):
-    """Run runner in a background thread and stop it after delay."""
-    def _target():
-        runner.run()
+def _spin_until(pred) -> None:
+    while not pred():
+        pass
 
-    t = threading.Thread(target=_target, daemon=True)
+
+def _run_and_stop(runner: DaemonRunner) -> None:
+    """Run runner in a background thread and stop it after startup."""
+    pid_file = runner._pid_lock._pid_file
+    t = threading.Thread(target=runner.run, daemon=True)
     t.start()
-    time.sleep(delay)
+    _spin_until(pid_file.is_file)
     runner.stop()
-    t.join(timeout=5)
+    t.join()
     assert not t.is_alive(), "runner did not stop in time"
 
 
@@ -109,16 +111,11 @@ def test_runner_sigterm(tmp_path):
 
     runner = DaemonRunner(pid_file=pid_file, components=[comp])
 
-    def _send_signal():
-        time.sleep(0.05)
-        os.kill(os.getpid(), signal.SIGTERM)
-
-    t_signal = threading.Thread(target=_send_signal, daemon=True)
     t_run = threading.Thread(target=runner.run, daemon=True)
-
     t_run.start()
-    t_signal.start()
-    t_run.join(timeout=5)
+    _spin_until(pid_file.is_file)
+    os.kill(os.getpid(), signal.SIGTERM)
+    _spin_until(lambda: not t_run.is_alive())
 
     assert not t_run.is_alive()
     comp.mock.stop.assert_called_once()

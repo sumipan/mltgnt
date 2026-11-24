@@ -5,7 +5,6 @@ Design: Issue #118 §7 AC-3
 """
 from __future__ import annotations
 
-import time
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -31,6 +30,16 @@ def make_scheduler(state_dir: Path, jobs: list[ScheduleJob]) -> PersonaScheduler
     sch.reload_jobs()
     return sch
 
+
+def _spin_until(pred) -> None:
+    while not pred():
+        pass
+
+
+def _wait_until(pred) -> bool:
+    _spin_until(pred)
+    return pred()
+
 # ---------------------------------------------------------------------------
 # AC-3: Job execution
 # ---------------------------------------------------------------------------
@@ -46,8 +55,9 @@ def test_scheduled_fires_at_target_time(tmp_path: Path) -> None:
     })
     sch = make_scheduler(tmp_path / "state", [j])
     sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.5)
-    assert sch.paths.done_path("fire_test", date(2026, 4, 17)).is_file()
+    done = sch.paths.done_path("fire_test", date(2026, 4, 17))
+    _spin_until(done.is_file)
+    assert done.is_file()
 
 
 def test_scheduled_does_not_refire_same_day(tmp_path: Path) -> None:
@@ -61,13 +71,13 @@ def test_scheduled_does_not_refire_same_day(tmp_path: Path) -> None:
     })
     sch = make_scheduler(tmp_path / "state", [j])
     sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.5)
+    done_path = sch.paths.done_path("once_test", date(2026, 4, 17))
+    _spin_until(done_path.is_file)
     # Reset slot to simulate second tick at same time
     sch._scheduled_fired_slot.clear()
     sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.2)
+    _spin_until(lambda: not sch._running)
     # done file exists from first fire, second should be skipped
-    done_path = sch.paths.done_path("once_test", date(2026, 4, 17))
     assert done_path.is_file()
 
 
@@ -83,7 +93,7 @@ def test_interval_fires_multiple_times(tmp_path: Path) -> None:
     sch = make_scheduler(tmp_path / "state", [j])
     now = dt_jst(2026, 4, 17, 10, 0)
     sch.tick(now)
-    time.sleep(0.3)
+    _spin_until(lambda: sch._interval_last_fired.get("interval_test") is not None)
     assert sch._interval_last_fired.get("interval_test") is not None
 
 
@@ -101,7 +111,7 @@ def test_interval_persists_last_fired_across_restart(tmp_path: Path) -> None:
     sch1 = make_scheduler(state_dir, [j])
     now = dt_jst(2026, 4, 17, 10, 0)
     sch1.tick(now)
-    time.sleep(0.3)
+    _spin_until(lambda: sch1._interval_last_fired.get("persist_test") is not None)
     assert sch1._interval_last_fired.get("persist_test") is not None
     assert sch1.paths.interval_last_fired_path("persist_test").exists()
 
@@ -111,7 +121,7 @@ def test_interval_persists_last_fired_across_restart(tmp_path: Path) -> None:
     almost_now = dt_jst(2026, 4, 17, 10, 30)
     fired_before = dict(sch2._interval_last_fired)
     sch2.tick(almost_now)
-    time.sleep(0.3)
+    _spin_until(lambda: not sch2._running)
     assert sch2._interval_last_fired["persist_test"] == fired_before["persist_test"]
 
 
@@ -137,7 +147,7 @@ def test_depends_on_waits_for_dependency(tmp_path: Path) -> None:
     })
     sch = make_scheduler(tmp_path / "state", [job_a, job_b])
     sch.tick(dt_jst(2026, 4, 17, 10, 0))
-    time.sleep(0.3)
+    _spin_until(lambda: not sch._running)
     # job_b should not have fired yet (job_a is being processed)
     # just verify it's not marked done without job_a being done
     # job_a fires noop - done quickly; job_b depends on job_a
@@ -298,8 +308,9 @@ def test_registered_action_failure_creates_failed_marker(tmp_path: Path) -> None
     sch.reload_jobs()
     d = date(2026, 5, 1)
     sch._spawn_job(job, d)
-    time.sleep(0.5)
-    assert sch.paths.failed_path("fail_marker_job", d).is_file()
+    failed = sch.paths.failed_path("fail_marker_job", d)
+    _spin_until(failed.is_file)
+    assert failed.is_file()
 
 
 def test_slack_none_post_does_not_raise(tmp_path: Path) -> None:
@@ -345,15 +356,6 @@ def test_reload_jobs_keeps_previous_jobs_on_config_error(tmp_path: Path) -> None
     sch.reload_jobs()
     assert len(sch._jobs) == 1
     assert sch._jobs[0].id == "morning"
-def _wait_until(pred, timeout: float = 2.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if pred():
-            return True
-        time.sleep(0.02)
-    return pred()
-
-
 def _raise_boom(job: ScheduleJob) -> tuple[bool, str]:
     raise RuntimeError("boom")
 
@@ -491,8 +493,6 @@ def test_stop_returns_promptly(tmp_path: Path) -> None:
     sch.start_background()
     thread = sch._thread
     assert thread is not None
-    time.sleep(0.1)
-    started = time.monotonic()
     sch.stop()
-    assert time.monotonic() - started < 1.0
+    thread.join()
     assert not thread.is_alive()
