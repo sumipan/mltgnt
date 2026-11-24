@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -99,24 +100,30 @@ def test_m2_timer_fires_after_debounce(tmp_path: Path, monkeypatch: pytest.Monke
     work = _setup_sink(tmp_path, monkeypatch)
     config = _config(work, 0.2)
     before = _count(work)
-    scheduled: list[object] = []
 
     class SignalTimer:
-        def __init__(self, interval: float, function: object) -> None:
+        def __init__(self, interval: float, function: Callable[[], None]) -> None:
             self.interval = interval
             self.function = function
+            self.started = False
+            self.cancelled = False
 
         def start(self) -> None:
+            self.started = True
             scheduled.append(self)
 
         def cancel(self) -> None:
-            pass
+            self.cancelled = True
+
+    scheduled: list[SignalTimer] = []
 
     monkeypatch.setattr("mltgnt.memory._commit.threading.Timer", SignalTimer)
     assert _append(config, "p1", 0) is True
     assert len(scheduled) == 1
-    assert scheduled[0].interval == 0.2  # type: ignore[attr-defined]
-    scheduled[0].function()  # type: ignore[attr-defined]
+    assert scheduled[0].started is True
+    assert scheduled[0].interval == 0.2
+    assert _count(work) == before
+    scheduled[0].function()
     assert _count(work) == before + 1
 
 
@@ -196,4 +203,3 @@ def test_m7_write_dream_and_global_commit_once_each(
     assert flush_memory_commits() == 1
     assert _count(work) == before + 2
     assert _subjects(work, 1) == ["mltgnt(memory): __global__ global"]
-

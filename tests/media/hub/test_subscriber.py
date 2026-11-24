@@ -112,8 +112,10 @@ class RecordingHandler:
 
 
 def _wait_for(predicate: Callable[[], bool], activity: threading.Event) -> None:
-    while not predicate():
+    while True:
         activity.clear()
+        if predicate():
+            return
         activity.wait()
 
 

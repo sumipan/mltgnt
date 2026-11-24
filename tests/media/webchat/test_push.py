@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -235,6 +235,7 @@ def test_worker_sends_only_new_agent_messages(tmp_path: Path) -> None:
     store.append(message_id="old", author="bot", text="skip")
     sent: list[dict[str, str]] = []
     stop = threading.Event()
+    initialized = threading.Event()
     delivered = threading.Event()
     subs = PushSubscriptionStore(tmp_path / "w")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
@@ -252,7 +253,16 @@ def test_worker_sends_only_new_agent_messages(tmp_path: Path) -> None:
         send=capture,
         poll_interval_sec=0,
     )
+    original_tail_start = worker._tail_start
+
+    def signal_tail_start(store: WebChatStore) -> tuple[date, int]:
+        position = original_tail_start(store)
+        initialized.set()
+        return position
+
+    worker._tail_start = signal_tail_start  # type: ignore[method-assign]
     worker.start()
+    initialized.wait()
     store.append(message_id="u1", author="user", text="human")
     store.revise("u1", "update", text="changed")
     store.append(message_id="n1", author="bot", text="hello")
@@ -268,6 +278,7 @@ def test_worker_follows_next_day(tmp_path: Path) -> None:
     store = WebChatStore(tmp_path / "w", clock=clock)
     sent: list[dict[str, str]] = []
     stop = threading.Event()
+    initialized = threading.Event()
     delivered = threading.Event()
     subs = PushSubscriptionStore(tmp_path / "w")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
@@ -285,7 +296,16 @@ def test_worker_follows_next_day(tmp_path: Path) -> None:
         send=capture,
         poll_interval_sec=0,
     )
+    original_tail_start = worker._tail_start
+
+    def signal_tail_start(store: WebChatStore) -> tuple[date, int]:
+        position = original_tail_start(store)
+        initialized.set()
+        return position
+
+    worker._tail_start = signal_tail_start  # type: ignore[method-assign]
     worker.start()
+    initialized.wait()
     clock.now += timedelta(days=1)
     store.append(message_id="d2", author="bot", text="next day")
     delivered.wait()
@@ -360,7 +380,6 @@ def test_push_worker_start_and_stop_are_idempotent(tmp_path: Path) -> None:
         stop_event=stop,
         send=lambda _sub, _payload: None,
         poll_interval_sec=0.01,
-        join_timeout_sec=1.0,
     )
     worker.start()
     worker.start()
@@ -380,6 +399,7 @@ def test_worker_notifies_with_the_row_channel_slug(tmp_path: Path) -> None:
     subs = PushSubscriptionStore(tmp_path / "main")
     subs.upsert({"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}})
     stop = threading.Event()
+    initialized = threading.Event()
     both_channels = threading.Event()
 
     def capture(_sub: dict[str, object], payload: dict[str, str]) -> None:
@@ -396,7 +416,20 @@ def test_worker_notifies_with_the_row_channel_slug(tmp_path: Path) -> None:
         send=capture,
         poll_interval_sec=0,
     )
+    original_tail_start = worker._tail_start
+    initialized_channels = 0
+
+    def signal_tail_start(store: WebChatStore) -> tuple[date, int]:
+        nonlocal initialized_channels
+        position = original_tail_start(store)
+        initialized_channels += 1
+        if initialized_channels == 2:
+            initialized.set()
+        return position
+
+    worker._tail_start = signal_tail_start  # type: ignore[method-assign]
     worker.start()
+    initialized.wait()
     side.append(message_id="s1", author="bot", text="side")
     main.append(message_id="m1", author="bot", text="main")
     both_channels.wait()
