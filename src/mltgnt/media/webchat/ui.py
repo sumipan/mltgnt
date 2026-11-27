@@ -1163,13 +1163,6 @@ INDEX_HTML = r"""<!doctype html>
     try { localStorage.setItem(ACTIVITY_SEEN_KEY, ts); } catch (e) {}
   }
 
-  function activityRowName(row) {
-    if (row.display && typeof row.display.name === "string" && row.display.name) {
-      return row.display.name;
-    }
-    return displayName(row.author);
-  }
-
   function refreshActivityCount() {
     return fetch("/api/activity?limit=200").then(function (r) { return r.json(); }).then(function (rows) {
       if (!Array.isArray(rows)) { return; }
@@ -1228,7 +1221,7 @@ INDEX_HTML = r"""<!doctype html>
         ch.textContent = "# " + (row.channel_name || row.slug || "");
         var name = document.createElement("div");
         name.className = "activity-name";
-        name.textContent = activityRowName(row);
+        name.textContent = rowName(row);
         var text = document.createElement("div");
         text.className = "activity-text";
         text.textContent = row.text || "";
