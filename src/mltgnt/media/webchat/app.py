@@ -4,7 +4,8 @@ Endpoints: ``GET /`` (redirects to the default channel), channel pages under ``/
 ``GET /config``, ``GET /api/channels``, ``GET /api/c/{slug}/messages`` (``?day=`` or
 ``?limit=[&before=<ts>]``), ``POST /api/c/{slug}/messages``, ``GET /api/c/{slug}/threads/{id}``,
 ``POST /api/c/{slug}/messages/{id}/bookmark``, ``GET /api/c/{slug}/bookmarks``,
-``GET /api/c/{slug}/stream`` (SSE), ``POST /files?name=``, ``GET /files/{day}/{name}``,
+``GET /api/c/{slug}/stream`` (SSE), ``GET /activity``, ``GET /api/activity``, ``POST /files?name=``,
+``GET /files/{day}/{name}``,
 ``GET /assets/{name}``, push and PWA routes. SSE event ids are ``<day>:<byte offset>``.
 """
 
@@ -25,7 +26,7 @@ from mltgnt.media._core import id_map
 from mltgnt.media._core.types import MediaEvent
 from mltgnt.media.webchat.config import ResolvedWebChatChannel, WebChatMediaConfig
 from mltgnt.media.webchat.files import WebChatFiles
-from mltgnt.media.webchat.inbound import file_entries, to_media_event
+from mltgnt.media.webchat.inbound import DEFAULT_AUTHOR, file_entries, to_media_event
 from mltgnt.media.webchat.pwa import manifest as pwa_manifest
 from mltgnt.media.webchat.pwa import resolve_pwa_icon, service_worker_source
 from mltgnt.media.webchat.push import PushSubscriptionStore, PushWorker, push_enabled, validate_delete_body, validate_subscription
@@ -38,6 +39,8 @@ _log = logging.getLogger(__name__)
 
 _EXTRA_HINT = "fastapi is not installed; install the extra: pip install 'mltgnt[webchat]'"
 _SSE_KINDS = frozenset({"message", "update", "status", "bookmark", "reaction"})
+_ACTIVITY_KINDS = frozenset({"message", "update", "status"})
+_ACTIVITY_TEXT_CAP = 120
 
 
 class EventHandler(Protocol):
@@ -77,6 +80,45 @@ def safe_asset_path(assets_dir: Path, name: str) -> Path | None:
 def _sse(row: dict[str, Any], event_id: str) -> str:
     kind = row.get("kind") if row.get("kind") in _SSE_KINDS else "message"
     return f"id: {event_id}\nevent: {kind}\ndata: {json.dumps(row, ensure_ascii=False)}\n\n"
+
+
+def _activity_rows(slug: str, channel_name: str, store: WebChatStore) -> list[dict[str, Any]]:
+    """Agent posts in one channel; first ``message`` row sets metadata, latest content row sets text."""
+    first_message: dict[str, dict[str, Any]] = {}
+    latest_content: dict[str, dict[str, Any]] = {}
+    for day in store.days():
+        raw_rows, _ = store.read_from(day)
+        for _end, row in raw_rows:
+            message_id = row.get("message_id")
+            if not isinstance(message_id, str) or not message_id:
+                continue
+            kind = row.get("kind")
+            if kind == "message" and message_id not in first_message:
+                first_message[message_id] = row
+            if kind in _ACTIVITY_KINDS:
+                latest_content[message_id] = row
+    out: list[dict[str, Any]] = []
+    for message_id, first in first_message.items():
+        if first.get("author") == DEFAULT_AUTHOR:
+            continue
+        latest = latest_content.get(message_id, first)
+        text = str(latest.get("text") or "")
+        if len(text) > _ACTIVITY_TEXT_CAP:
+            text = text[:_ACTIVITY_TEXT_CAP]
+        entry: dict[str, Any] = {
+            "slug": slug,
+            "channel_name": channel_name,
+            "message_id": message_id,
+            "thread_ts": first.get("thread_ts"),
+            "author": first.get("author"),
+            "text": text,
+            "ts": first.get("ts"),
+        }
+        display = latest.get("display")
+        if isinstance(display, dict):
+            entry["display"] = display
+        out.append(entry)
+    return out
 
 
 def _channel_last_ts(store: WebChatStore) -> str | None:
@@ -163,6 +205,19 @@ def create_app(
     @app.get("/")
     def index() -> RedirectResponse:
         return RedirectResponse(f"/c/{default_slug}", status_code=302)
+
+    @app.get("/activity")
+    def activity_page() -> HTMLResponse:
+        return HTMLResponse(INDEX_HTML)
+
+    @app.get("/api/activity")
+    def list_activity(limit: int = 50) -> list[dict[str, Any]]:
+        cap = max(0, min(limit, 200))
+        rows: list[dict[str, Any]] = []
+        for ch in resolved:
+            rows.extend(_activity_rows(ch.slug, ch.name, stores[ch.slug]))
+        rows.sort(key=lambda row: str(row.get("ts") or ""), reverse=True)
+        return rows[:cap]
 
     @app.get("/c/{requested_slug}")
     def channel_index(requested_slug: str) -> Any:
