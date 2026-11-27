@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.144.1
+
+### Fixed
+
+- webchat: show push controls on narrow viewports
+
 ## v0.144.0
 
 ### Fixed
