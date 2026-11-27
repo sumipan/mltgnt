@@ -81,6 +81,14 @@ INDEX_HTML = r"""<!doctype html>
   #header-badges { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--text-strong); white-space: nowrap; font-variant-numeric: tabular-nums; }
   #header-badges[hidden] { display: none !important; }
   #push-btn[hidden] { display: none !important; }
+  #activity-count[hidden] { display: none !important; }
+  .activity-row { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .activity-row:hover { background: var(--bg-hover); }
+  .activity-row.unread { font-weight: 700; }
+  .activity-channel { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  .activity-name { font-size: 15px; font-weight: 900; color: var(--text-strong); }
+  .activity-text { font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .activity-time { font-size: 12px; color: var(--muted); margin-top: 4px; }
   #push-ios-hint { font-size: 12px; color: var(--muted); max-width: 180px; }
   .hicon { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-radius: 6px; color: var(--text); }
   .hicon:hover { background: var(--bg-hover); }
@@ -226,6 +234,7 @@ INDEX_HTML = r"""<!doctype html>
       <span id="header-badges" hidden></span>
       <span class="hicon hide-narrow" title="Members"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.3c2 .7 3.5 2.7 3.5 5.7"/></svg><span class="count" id="member-count">1</span></span>
       <span class="hicon hide-narrow" title="Huddle"><svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg></span>
+      <button type="button" class="hicon" id="activity-btn" title="Activity"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 10-14h-7z"/></svg><span class="count" id="activity-count" hidden></span></button>
       <button type="button" class="hicon" id="push-btn" title="Notifications" hidden><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span class="count" id="push-label"></span></button>
       <span id="push-ios-hint" style="display:none;"></span>
       <span class="hicon" title="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg></span>
@@ -324,6 +333,8 @@ INDEX_HTML = r"""<!doctype html>
   var channelBackEl = document.getElementById("channel-back");
   var CHANNEL_POLL_MS = 15000;
   var channelPollTimer = null;
+  var ACTIVITY_SEEN_KEY = "webchat.activity.seen";
+  var activityPollTimer = null;
   var headerMetersEl = document.getElementById("header-meters");
   var headerBadgesEl = document.getElementById("header-badges");
   var headerMetersUrl = null;
@@ -1143,9 +1154,104 @@ INDEX_HTML = r"""<!doctype html>
     });
   }
 
+  function activitySeen() {
+    try { return localStorage.getItem(ACTIVITY_SEEN_KEY); } catch (e) { return null; }
+  }
+
+  function setActivitySeen(ts) {
+    if (!ts) { return; }
+    try { localStorage.setItem(ACTIVITY_SEEN_KEY, ts); } catch (e) {}
+  }
+
+  function refreshActivityCount() {
+    return fetch("/api/activity?limit=200").then(function (r) { return r.json(); }).then(function (rows) {
+      if (!Array.isArray(rows)) { return; }
+      var seen = activitySeen();
+      var count = 0;
+      var badge = document.getElementById("activity-count");
+      if (!seen) {
+        if (rows.length) { setActivitySeen(rows[0].ts); }
+      } else {
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].ts && rows[i].ts > seen) { count += 1; }
+        }
+      }
+      if (count > 0) {
+        badge.hidden = false;
+        badge.textContent = String(count);
+      } else {
+        badge.hidden = true;
+        badge.textContent = "";
+      }
+      if (navigator.setAppBadge) {
+        if (count > 0) {
+          navigator.setAppBadge(count).catch(function () {});
+        } else if (navigator.clearAppBadge) {
+          navigator.clearAppBadge().catch(function () {});
+        }
+      }
+    }).catch(function () {});
+  }
+
+  function startActivityPoll() {
+    refreshActivityCount();
+    if (activityPollTimer === null) {
+      activityPollTimer = setInterval(refreshActivityCount, CHANNEL_POLL_MS);
+    }
+  }
+
+  function loadActivity(opts) {
+    opts = opts || {};
+    var seenBefore = activitySeen();
+    threadTs = null;
+    openPanel("activity", "Activity");
+    panelForm.classList.add("hidden");
+    markSelected();
+    fetch("/api/activity?limit=50").then(function (r) { return r.json(); }).then(function (rows) {
+      panelBody.textContent = "";
+      var newest = null;
+      if (!Array.isArray(rows)) { return; }
+      rows.forEach(function (row) {
+        if (row.ts && (!newest || row.ts > newest)) { newest = row.ts; }
+        var el = document.createElement("div");
+        el.className = "activity-row";
+        if (seenBefore && row.ts && row.ts > seenBefore) { el.classList.add("unread"); }
+        var ch = document.createElement("div");
+        ch.className = "activity-channel";
+        ch.textContent = "# " + (row.channel_name || row.slug || "");
+        var name = document.createElement("div");
+        name.className = "activity-name";
+        name.textContent = rowName(row);
+        var text = document.createElement("div");
+        text.className = "activity-text";
+        text.textContent = row.text || "";
+        var time = document.createElement("div");
+        time.className = "activity-time";
+        time.textContent = formatClock(row.ts);
+        el.appendChild(ch);
+        el.appendChild(name);
+        el.appendChild(text);
+        el.appendChild(time);
+        el.addEventListener("click", function () {
+          location.href = "/c/" + row.slug + "/p/" + row.message_id;
+        });
+        panelBody.appendChild(el);
+      });
+      panelBody.scrollTop = 0;
+      if (newest) { setActivitySeen(newest); }
+      refreshActivityCount();
+      if (opts.push !== false && !restoring) { pushPath("/activity"); }
+    });
+  }
+
   function restoreFromPath() {
     restoring = true;
     var path = location.pathname;
+    if (path === "/activity") {
+      loadActivity({ push: false });
+      restoring = false;
+      return;
+    }
     var base = channelPath();
     if (path === base || path === base + "/") {
       closePanel({ push: false });
@@ -1229,6 +1335,7 @@ INDEX_HTML = r"""<!doctype html>
     e.preventDefault();
     if (panelMode === "saved") { closePanel(); } else { loadSaved(); }
   });
+  document.getElementById("activity-btn").addEventListener("click", function () { loadActivity(); });
   messagesTab.addEventListener("click", function (e) {
     e.preventDefault();
     if (panelMode === "saved") { closePanel(); }
@@ -1889,6 +1996,7 @@ INDEX_HTML = r"""<!doctype html>
   fetch("/config").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (c) {
     applyConfig(c);
     initPushUi();
+    startActivityPoll();
     return fetch(apiPrefix() + "/messages?limit=" + PAGE).then(function (r) { return r.json(); });
   }).then(function (rows) {
     logOrder = addRoots(rows);

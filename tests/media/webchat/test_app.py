@@ -586,6 +586,72 @@ def test_config_and_channel_list(tmp_path: Path) -> None:
     assert listed2[1]["last_ts"] == side_rows[0]["ts"]
 
 
+def test_activity_lists_agent_posts_across_channels_newest_first(tmp_path: Path) -> None:
+    """Issue #8174 AC1."""
+    clock = FakeClock()
+    cfg = _multi_config(tmp_path)
+    side_dir = tmp_path / "channels" / "side"
+    store_main = WebChatStore(tmp_path / "main", clock=clock)
+    store_side = WebChatStore(side_dir, clock=clock)
+    client = TestClient(create_app(cfg, RecordingBridge()))
+
+    store_main.append(message_id="u1", author="user", text="hi")
+    clock.now += timedelta(seconds=1)
+    store_main.revise("u1", "status", status="done")
+    clock.now += timedelta(seconds=1)
+    b1_first = store_main.append(message_id="b1", author="bot", text="thinking")
+    clock.now += timedelta(seconds=1)
+    store_main.revise("b1", "update", text="final answer")
+    clock.now += timedelta(seconds=1)
+    store_side.append(message_id="s1", author="bot", text="remind", thread_ts="u9")
+
+    rows = client.get("/api/activity").json()
+    assert [r["message_id"] for r in rows] == ["s1", "b1"]
+    assert len(rows) == 2
+    assert rows[0] == {
+        "slug": "side",
+        "channel_name": "Side",
+        "message_id": "s1",
+        "thread_ts": "u9",
+        "author": "bot",
+        "text": "remind",
+        "ts": rows[0]["ts"],
+    }
+    b1_row = rows[1]
+    assert b1_row["slug"] == "main" and b1_row["message_id"] == "b1"
+    assert b1_row["text"] == "final answer"
+    assert b1_row["ts"] == b1_first["ts"]
+    assert b1_row.get("thread_ts") is None
+
+
+def test_activity_limit_truncates_and_text_is_capped(tmp_path: Path) -> None:
+    """Issue #8174 AC2."""
+    client, store, _bridge = _app(tmp_path)
+    clock = FakeClock()
+    store._clock = clock
+    long_text = "x" * 200
+    store.append(message_id="a0", author="bot", text="zero")
+    clock.now += timedelta(seconds=1)
+    store.append(message_id="a1", author="bot", text="one")
+    clock.now += timedelta(seconds=1)
+    store.append(message_id="a2", author="bot", text=long_text)
+
+    two = client.get("/api/activity", params={"limit": 2}).json()
+    assert [r["message_id"] for r in two] == ["a2", "a1"]
+    assert len(two[0]["text"]) == 120
+    assert two[0]["text"] == long_text[:120]
+    assert client.get("/api/activity", params={"limit": 0}).json() == []
+
+
+def test_activity_page_serves_index_html(tmp_path: Path) -> None:
+    """Issue #8174 AC3."""
+    client, _store, _bridge = _app(tmp_path)
+    resp = client.get("/activity")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert resp.text == INDEX_HTML
+
+
 def test_stream_only_carries_its_channel(tmp_path: Path) -> None:
     """Refs sumipan/nexus#7205 AC5."""
     clock = FakeClock()
