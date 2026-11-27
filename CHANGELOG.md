@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.144.2
+
+### Added
+
+- webchat: add cross-channel activity feed
+
 ## v0.144.1
 
 ### Fixed
