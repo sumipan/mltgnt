@@ -80,6 +80,8 @@ INDEX_HTML = r"""<!doctype html>
   .spacer { flex: 1; }
   #header-badges { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--text-strong); white-space: nowrap; font-variant-numeric: tabular-nums; }
   #header-badges[hidden] { display: none !important; }
+  #push-btn[hidden] { display: none !important; }
+  #push-ios-hint { font-size: 12px; color: var(--muted); max-width: 180px; }
   .hicon { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-radius: 6px; color: var(--text); }
   .hicon:hover { background: var(--bg-hover); }
   .hicon svg { width: 18px; height: 18px; }
@@ -196,6 +198,8 @@ INDEX_HTML = r"""<!doctype html>
     #panel-back { display: inline-flex; }
     #panel-close { display: none; }
     .hide-narrow { display: none; }
+    #push-label { display: none; }
+    #push-ios-hint { max-width: 120px; font-size: 11px; line-height: 1.2; }
     .msg { padding-left: 12px; padding-right: 12px; }
     .composer { padding: 0 8px max(8px, env(safe-area-inset-bottom)); }
     .composer textarea { font-size: 16px; }
@@ -222,8 +226,8 @@ INDEX_HTML = r"""<!doctype html>
       <span id="header-badges" hidden></span>
       <span class="hicon hide-narrow" title="Members"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.3c2 .7 3.5 2.7 3.5 5.7"/></svg><span class="count" id="member-count">1</span></span>
       <span class="hicon hide-narrow" title="Huddle"><svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg></span>
-      <button type="button" class="hicon hide-narrow" id="push-btn" title="Notifications" hidden><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span class="count" id="push-label"></span></button>
-      <span id="push-ios-hint" class="hide-narrow" style="font-size:12px;color:var(--muted);max-width:180px;display:none;"></span>
+      <button type="button" class="hicon" id="push-btn" title="Notifications" hidden><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span class="count" id="push-label"></span></button>
+      <span id="push-ios-hint" style="display:none;"></span>
       <span class="hicon" title="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></svg></span>
       <span class="hicon" title="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg></span>
     </div>
