@@ -80,6 +80,7 @@ INDEX_HTML = r"""<!doctype html>
   .spacer { flex: 1; }
   #header-badges { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--text-strong); white-space: nowrap; font-variant-numeric: tabular-nums; }
   #header-badges[hidden] { display: none !important; }
+  #push-btn[hidden] { display: none !important; }
   #push-ios-hint { font-size: 12px; color: var(--muted); max-width: 180px; }
   .hicon { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-radius: 6px; color: var(--text); }
   .hicon:hover { background: var(--bg-hover); }
